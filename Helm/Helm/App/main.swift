@@ -69,9 +69,9 @@ let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquival
 redoItem.keyEquivalentModifierMask = [.command, .shift]
 editMenu.addItem(redoItem)
 editMenu.addItem(NSMenuItem.separator())
-editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(MainWindowController.performCut), keyEquivalent: "x"))
-editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(MainWindowController.performCopy), keyEquivalent: "c"))
-editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(MainWindowController.performPaste), keyEquivalent: "v"))
+editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
 editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
 editMenu.addItem(NSMenuItem.separator())
 let renameItem = NSMenuItem(title: "Rename", action: #selector(MainWindowController.performRename), keyEquivalent: "\r")

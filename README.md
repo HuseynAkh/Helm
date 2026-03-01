@@ -48,28 +48,28 @@ open Helm.xcodeproj
 
 ## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| New Window | `Cmd + N` |
-| New Tab | `Cmd + T` |
-| Close Tab | `Cmd + W` |
-| New Folder | `Cmd + Shift + N` |
-| Find | `Cmd + F` |
-| Go to Folder | `Cmd + L` |
-| Back | `Cmd + [` |
-| Forward | `Cmd + ]` |
-| Enclosing Folder | `Cmd + Up` |
-| Home | `Cmd + Shift + H` |
-| Grid View | `Cmd + 1` |
-| List View | `Cmd + 2` |
-| Show Hidden Files | `Cmd + .` |
-| Rename | `Return` |
-| Move to Trash | `Cmd + Delete` |
-| Quick Look | `Space` |
-| Properties | `Cmd + I` |
-| Refresh | `Cmd + R` |
-| Toggle Sidebar | `Ctrl + Cmd + S` |
-| Toggle Star | `Cmd + D` |
+| Action            | Shortcut            |
+| ----------------- | ------------------- |
+| New Window        | `Cmd + N`         |
+| New Tab           | `Cmd + T`         |
+| Close Tab         | `Cmd + W`         |
+| New Folder        | `Cmd + Shift + N` |
+| Find              | `Cmd + F`         |
+| Go to Folder      | `Cmd + L`         |
+| Back              | `Cmd + [`         |
+| Forward           | `Cmd + ]`         |
+| Enclosing Folder  | `Cmd + Up`        |
+| Home              | `Cmd + Shift + H` |
+| Grid View         | `Cmd + 1`         |
+| List View         | `Cmd + 2`         |
+| Show Hidden Files | `Cmd + .`         |
+| Rename            | `Return`          |
+| Move to Trash     | `Cmd + Delete`    |
+| Quick Look        | `Space`           |
+| Properties        | `Cmd + I`         |
+| Refresh           | `Cmd + R`         |
+| Toggle Sidebar    | `Ctrl + Cmd + S`  |
+| Toggle Star       | `Cmd + D`         |
 
 ## Project Structure
 
@@ -106,5 +106,5 @@ Helm is inspired by [GNOME Files](https://apps.gnome.org/Nautilus/) (historicall
 ---
 
 <p align="center">
-  Engineered with <a href="https://claude.ai/code">Claude Code</a> (Opus 4.6) and <a href="https://chatgpt.com">Codex</a> (o3 5.3)
+  Engineered with <a href="https://claude.ai/code">Claude Code</a> (Opus 4.6) and <a href="https://chatgpt.com">Codex</a> (5.3)
 </p>

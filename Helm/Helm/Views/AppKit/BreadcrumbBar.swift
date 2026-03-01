@@ -14,9 +14,6 @@ class BreadcrumbBar: NSView {
 
     private let scrollView = NSScrollView()
     private let segmentsStack = BreadcrumbStackView()
-    private let accessoryStack = NSStackView()
-    private var copyButton: NSButton!
-    private var editButton: NSButton!
 
     private var editField: NSTextField?
     private var isEditing = false
@@ -29,6 +26,8 @@ class BreadcrumbBar: NSView {
     private var ghostTextField: NSTextField?
     private var ghostLeadingConstraint: NSLayoutConstraint?
     private var currentGhostSuffix: String = ""
+    private var suppressTextDidChange = false
+    private var completionRequestID: Int = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -64,37 +63,14 @@ class BreadcrumbBar: NSView {
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         scrollView.documentView = segmentsStack
 
-        // ---- Accessory buttons ----
-        copyButton = makeAccessoryButton(
-            symbolName: "doc.on.doc",
-            tooltip: "Copy path",
-            action: #selector(copyPath)
-        )
-        editButton = makeAccessoryButton(
-            symbolName: "pencil.line",
-            tooltip: "Edit path",
-            action: #selector(editButtonTapped)
-        )
-
-        accessoryStack.translatesAutoresizingMaskIntoConstraints = false
-        accessoryStack.orientation = .horizontal
-        accessoryStack.spacing = 2
-        accessoryStack.alignment = .centerY
-        accessoryStack.addArrangedSubview(copyButton)
-        accessoryStack.addArrangedSubview(editButton)
-
         // ---- Layout ----
         addSubview(scrollView)
-        addSubview(accessoryStack)
 
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
             scrollView.centerYAnchor.constraint(equalTo: centerYAnchor),
             scrollView.heightAnchor.constraint(equalToConstant: 26),
-            scrollView.trailingAnchor.constraint(equalTo: accessoryStack.leadingAnchor, constant: -2),
-
-            accessoryStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            accessoryStack.centerYAnchor.constraint(equalTo: centerYAnchor)
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4)
         ])
 
         rebuildSegments()
@@ -102,24 +78,6 @@ class BreadcrumbBar: NSView {
 
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: 34)
-    }
-
-    // MARK: - Accessory Buttons
-
-    private func makeAccessoryButton(symbolName: String, tooltip: String, action: Selector) -> NSButton {
-        let button = NSButton(frame: .zero)
-        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: tooltip)
-        button.bezelStyle = .inline
-        button.isBordered = false
-        button.imagePosition = .imageOnly
-        button.toolTip = tooltip
-        button.target = self
-        button.action = action
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.contentTintColor = .secondaryLabelColor
-        button.widthAnchor.constraint(equalToConstant: 26).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 26).isActive = true
-        return button
     }
 
     // MARK: - Segments
@@ -132,14 +90,12 @@ class BreadcrumbBar: NSView {
 
         if url.isHelmRecentsLocation {
             segmentsStack.addArrangedSubview(makeVirtualLabel("Recent"))
-            applyButtonState(isFileLocation: false)
             resizeDocumentView()
             return
         }
 
         guard url.isFileURL else {
             segmentsStack.addArrangedSubview(makeVirtualLabel(url.absoluteString))
-            applyButtonState(isFileLocation: false)
             resizeDocumentView()
             return
         }
@@ -158,7 +114,6 @@ class BreadcrumbBar: NSView {
             segmentsStack.addArrangedSubview(button)
         }
 
-        applyButtonState(isFileLocation: true)
         resizeDocumentView()
 
         DispatchQueue.main.async { [weak self] in
@@ -181,7 +136,7 @@ class BreadcrumbBar: NSView {
     }
 
     private func makeSegmentButton(title: String, isCurrent: Bool) -> SegmentButton {
-        let button = SegmentButton(title: title, target: self, action: #selector(segmentTapped(_:)))
+        let button = SegmentButton(title: title, target: self, action: #selector(segmentClicked(_:)))
         button.bezelStyle = .inline
         button.isBordered = false
         button.font = isCurrent ? .boldSystemFont(ofSize: 13) : .systemFont(ofSize: 13)
@@ -208,13 +163,6 @@ class BreadcrumbBar: NSView {
         return label
     }
 
-    private func applyButtonState(isFileLocation: Bool) {
-        copyButton.isEnabled = isFileLocation
-        editButton.isEnabled = isFileLocation
-        copyButton.contentTintColor = isFileLocation ? .secondaryLabelColor : .quaternaryLabelColor
-        editButton.contentTintColor = isFileLocation ? .secondaryLabelColor : .quaternaryLabelColor
-    }
-
     private func scrollToEnd() {
         guard let documentView = scrollView.documentView else { return }
         let maxX = max(0, documentView.bounds.width - scrollView.contentView.bounds.width)
@@ -222,16 +170,11 @@ class BreadcrumbBar: NSView {
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
-    @objc private func segmentTapped(_ sender: NSButton) {
-        guard let targetURL = objc_getAssociatedObject(sender, &AssociatedKeys.urlKey) as? URL else { return }
-        onSegmentClicked?(targetURL)
+    @objc private func segmentClicked(_ sender: NSButton) {
+        startEditing()
     }
 
     // MARK: - Edit Mode
-
-    @objc private func editButtonTapped() {
-        startEditing()
-    }
 
     /// Whether the delegate is fully wired and focus is stable.
     /// Prevents premature `controlTextDidEndEditing` during setup.
@@ -244,9 +187,9 @@ class BreadcrumbBar: NSView {
         editFieldReady = false
 
         scrollView.isHidden = true
-        accessoryStack.isHidden = true
 
-        let field = NSTextField(string: url.path)
+        let pathWithSlash = url.path.hasSuffix("/") ? url.path : url.path + "/"
+        let field = NSTextField(string: pathWithSlash)
         field.font = NSFont.systemFont(ofSize: 13)
         field.focusRingType = .none
         field.drawsBackground = false
@@ -270,10 +213,19 @@ class BreadcrumbBar: NSView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak field] in
             guard let self, let field, self.isEditing else { return }
             if self.window?.makeFirstResponder(field) == true {
-                field.currentEditor()?.selectAll(nil)
+                // Position cursor at end (not select all) so user can
+                // immediately see completions for the current directory.
+                if let editor = field.currentEditor() {
+                    let len = (editor.string as NSString).length
+                    editor.selectedRange = NSRange(location: len, length: 0)
+                }
                 // Now that focus is stable, wire the delegate.
                 field.delegate = self
                 self.editFieldReady = true
+                // Show directory contents immediately (like terminal).
+                // Use the captured pathWithSlash — not editFieldText — because
+                // the field editor may not have synced its string yet.
+                self.requestCompletions(for: pathWithSlash)
             } else {
                 // Focus failed — fall back to normal breadcrumb view.
                 self.endEditing(navigate: false)
@@ -287,7 +239,8 @@ class BreadcrumbBar: NSView {
         editFieldReady = false
         teardownCompletion()
 
-        if navigate, let rawPath = editField?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), !rawPath.isEmpty {
+        let rawPath = editFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if navigate, !rawPath.isEmpty {
             let expanded = NSString(string: rawPath).expandingTildeInPath
             let targetURL = URL(fileURLWithPath: expanded).standardizedFileURL
             var isDirectory: ObjCBool = false
@@ -304,7 +257,6 @@ class BreadcrumbBar: NSView {
         editField?.removeFromSuperview()
         editField = nil
         scrollView.isHidden = false
-        accessoryStack.isHidden = false
         updateAppearance()
         rebuildSegments()
     }
@@ -371,10 +323,6 @@ class BreadcrumbBar: NSView {
         copyItem.target = self
         menu.addItem(copyItem)
 
-        let editItem = NSMenuItem(title: "Edit Path", action: #selector(editButtonTapped), keyEquivalent: "")
-        editItem.target = self
-        menu.addItem(editItem)
-
         return menu
     }
 
@@ -398,6 +346,67 @@ class BreadcrumbBar: NSView {
         return name.isEmpty ? url.path : name
     }
 
+    // MARK: - Edit Field Text Manipulation
+
+    /// Update the edit field's text without disrupting the editing session.
+    ///
+    /// `NSControl.setStringValue:` calls `abortEditing()` when a field editor
+    /// is active, which terminates the editing session and removes the field
+    /// editor.  After that, `currentEditor()` returns nil, keyboard events
+    /// no longer route through `doCommandBy:`, and the completion system
+    /// breaks.  This helper sidesteps that by writing directly to the field
+    /// editor's text storage.
+    ///
+    /// The suppress flag stays `true` until the *next* run-loop iteration so
+    /// that both synchronous and asynchronous `controlTextDidChange`
+    /// notifications triggered by the text-storage mutation are suppressed.
+    private func setEditFieldText(_ newText: String) {
+        guard let field = editField else { return }
+        suppressTextDidChange = true
+        if let editor = field.currentEditor() as? NSTextView,
+           let textStorage = editor.textStorage {
+            let range = NSRange(location: 0, length: textStorage.length)
+            textStorage.replaceCharacters(in: range, with: newText)
+            editor.selectedRange = NSRange(location: (newText as NSString).length, length: 0)
+        } else {
+            // No field editor — fall back to stringValue (calls abortEditing).
+            field.stringValue = newText
+        }
+        // Reset suppress on the *next* run-loop pass.  This ensures that any
+        // deferred controlTextDidChange fired by the text-storage change is
+        // still suppressed.
+        DispatchQueue.main.async { [weak self] in
+            self?.suppressTextDidChange = false
+        }
+        // Verify the field editor survived the text change.  If it was
+        // removed (e.g. abortEditing was called internally), re-establish
+        // focus so keyboard events keep routing through doCommandBy.
+        ensureFieldEditorActive()
+    }
+
+    /// Re-establish the field editor on the edit field if it was lost.
+    private func ensureFieldEditorActive() {
+        guard let field = editField, isEditing else { return }
+        if field.currentEditor() == nil {
+            if window?.makeFirstResponder(field) == true {
+                if let editor = field.currentEditor() {
+                    let len = (editor.string as NSString).length
+                    editor.selectedRange = NSRange(location: len, length: 0)
+                }
+            }
+        }
+    }
+
+    /// Read the current text from the field editor (authoritative while editing)
+    /// with a fallback to the cell's stringValue.
+    private var editFieldText: String {
+        guard let field = editField else { return "" }
+        if let editor = field.currentEditor() {
+            return editor.string
+        }
+        return field.stringValue
+    }
+
     // MARK: - Path Completion
 
     private func requestCompletions(for text: String) {
@@ -409,13 +418,20 @@ class BreadcrumbBar: NSView {
             return
         }
 
+        completionRequestID += 1
+        let requestID = completionRequestID
+
         completionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let result = await self.completionService.completions(for: text)
 
+            // Use request ID instead of string comparison — the string
+            // guard was fragile and caused multi-level drilling to silently
+            // fail when field.stringValue diverged from the captured text.
             guard !Task.isCancelled,
-                  let field = self.editField,
-                  field.stringValue == text else { return }
+                  self.isEditing,
+                  self.editField != nil,
+                  requestID == self.completionRequestID else { return }
 
             self.displayCompletions(result)
         }
@@ -433,13 +449,12 @@ class BreadcrumbBar: NSView {
         if completionController == nil {
             completionController = PathCompletionWindowController()
             completionController?.onAccept = { [weak self] item in
-                guard let self, let field = self.editField else { return }
-                field.stringValue = item.fullPath
-                if let editor = field.currentEditor() {
-                    editor.selectedRange = NSRange(location: (editor.string as NSString).length, length: 0)
-                }
+                guard let self else { return }
+                self.setEditFieldText(item.fullPath)
                 self.clearGhostText()
                 if item.isDirectory {
+                    // Use item.fullPath directly — not editFieldText — to
+                    // avoid reading stale text from the field editor.
                     self.requestCompletions(for: item.fullPath)
                 } else {
                     self.completionController?.hide()
@@ -510,7 +525,7 @@ class BreadcrumbBar: NSView {
 
         // Calculate typed text width to position ghost after typed text
         let attrs: [NSAttributedString.Key: Any] = [.font: field.font ?? NSFont.systemFont(ofSize: 13)]
-        let typedWidth = (field.stringValue as NSString).size(withAttributes: attrs).width
+        let typedWidth = (editFieldText as NSString).size(withAttributes: attrs).width
         let fieldInset: CGFloat = field.cell?.titleRect(forBounds: field.bounds).origin.x ?? 2
         ghostLeadingConstraint?.constant = fieldInset + typedWidth
     }
@@ -523,22 +538,22 @@ class BreadcrumbBar: NSView {
     }
 
     private func acceptGhostCompletion() {
-        guard let field = editField, !currentGhostSuffix.isEmpty else { return }
-        field.stringValue += currentGhostSuffix
-        if let editor = field.currentEditor() {
-            editor.selectedRange = NSRange(location: (editor.string as NSString).length, length: 0)
-        }
+        guard !currentGhostSuffix.isEmpty else { return }
+        let newText = editFieldText + currentGhostSuffix
+        setEditFieldText(newText)
         clearGhostText()
-        requestCompletions(for: field.stringValue)
+        // Use captured newText — not editFieldText — because the field editor
+        // may not have synced yet after setEditFieldText.
+        requestCompletions(for: newText)
     }
 
     private func updateGhostTextFromSelection() {
-        guard let field = editField,
+        guard editField != nil,
               let item = completionController?.selectedItem() else {
             clearGhostText()
             return
         }
-        let typed = field.stringValue
+        let typed = editFieldText
         let fullPath = item.fullPath
         if fullPath.lowercased().hasPrefix(typed.lowercased()), fullPath.count > typed.count {
             let suffix = String(fullPath.dropFirst(typed.count))
@@ -564,7 +579,7 @@ extension BreadcrumbBar: NSTextFieldDelegate {
             // Accept dropdown selection into field before navigating
             if let controller = completionController, controller.isVisible,
                let item = controller.selectedItem() {
-                editField?.stringValue = item.fullPath
+                setEditFieldText(item.fullPath)
                 clearGhostText()
                 controller.hide()
             }
@@ -586,10 +601,36 @@ extension BreadcrumbBar: NSTextFieldDelegate {
 
         if commandSelector == #selector(NSResponder.insertTab(_:)) {
             if !currentGhostSuffix.isEmpty {
+                // Accept ghost text inline completion
                 acceptGhostCompletion()
-                return true
+            } else if completionController?.isVisible == true,
+                      let item = completionController?.selectedItem() {
+                // Accept the selected dropdown item (terminal-like drill)
+                let path = item.fullPath
+                setEditFieldText(path)
+                clearGhostText()
+                if item.isDirectory {
+                    // Use captured path — not editFieldText — to avoid
+                    // reading stale text from the field editor.
+                    requestCompletions(for: path)
+                } else {
+                    completionController?.hide()
+                }
+            } else {
+                // Nothing visible — show completions for current path.
+                // Read text before requesting so there's no ambiguity.
+                let text = editFieldText
+                if !text.isEmpty {
+                    requestCompletions(for: text)
+                }
             }
-            return false
+            // Always consume Tab so focus never leaves the address bar.
+            return true
+        }
+
+        if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+            // Consume Shift+Tab as well — never leave the address bar.
+            return true
         }
 
         if commandSelector == #selector(NSResponder.moveDown(_:)) {
@@ -624,18 +665,24 @@ extension BreadcrumbBar: NSTextFieldDelegate {
     }
 
     func controlTextDidChange(_ obj: Notification) {
-        guard editFieldReady, let field = editField else { return }
+        guard editFieldReady, !suppressTextDidChange, editField != nil else { return }
 
         clearGhostText()
         debounceTask?.cancel()
-        let currentText = field.stringValue
+        let currentText = editFieldText
+
+        // Typing "/" means the user wants to see directory contents immediately
+        if currentText.hasSuffix("/") {
+            requestCompletions(for: currentText)
+            return
+        }
 
         debounceTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(nanoseconds: AppSettings.completionDebounceNanoseconds)
             } catch { return }
 
-            guard let self, self.editField?.stringValue == currentText else { return }
+            guard let self, self.editFieldText == currentText else { return }
             self.requestCompletions(for: currentText)
         }
     }
@@ -653,12 +700,21 @@ extension BreadcrumbBar: NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard isEditing, editFieldReady else { return }
-        // Only navigate if the user pressed Return. Focus-loss (clicking
-        // away, Tab, window switching) should cancel editing without
-        // navigating to the partially typed path.
+
         let movement = (obj.userInfo?["NSTextMovement"] as? Int)
             ?? NSTextMovement.other.rawValue
         let didPressReturn = movement == NSTextMovement.return.rawValue
+
+        // During a programmatic text change (setEditFieldText), the suppress
+        // flag stays true until the next run-loop pass.  If end-editing fires
+        // inside that window it is almost certainly a side-effect of the text
+        // storage mutation — not a genuine focus-loss.  Re-establish the field
+        // editor and keep editing.
+        if !didPressReturn && suppressTextDidChange {
+            ensureFieldEditorActive()
+            return
+        }
+
         endEditing(navigate: didPressReturn)
     }
 }
@@ -668,20 +724,6 @@ extension BreadcrumbBar: NSTextFieldDelegate {
 /// Breadcrumb segment button that highlights on hover to indicate clickability.
 private class SegmentButton: NSButton {
     private var hoverArea: NSTrackingArea?
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            var ancestor: NSView? = superview
-            while let view = ancestor {
-                if let bar = view as? BreadcrumbBar {
-                    bar.startEditing()
-                    return
-                }
-                ancestor = view.superview
-            }
-        }
-        super.mouseDown(with: event)
-    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

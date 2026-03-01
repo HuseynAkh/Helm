@@ -30,9 +30,9 @@ class FileGridView: NSView, NSCollectionViewDataSource, NSCollectionViewDelegate
 
     private func setup() {
         let layout = NSCollectionViewFlowLayout()
-        layout.itemSize = NSSize(width: 100, height: 100)
-        layout.minimumInteritemSpacing = 8
-        layout.minimumLineSpacing = 12
+        layout.itemSize = NSSize(width: 140, height: 140)
+        layout.minimumInteritemSpacing = 10
+        layout.minimumLineSpacing = 14
         layout.sectionInset = NSEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
 
         gridCollectionView.collectionViewLayout = layout
@@ -222,7 +222,7 @@ class FileGridItemView: NSCollectionViewItem {
     private var thumbnailRequestKey: String?
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 140, height: 140))
     }
 
     override func viewDidLoad() {
@@ -243,14 +243,14 @@ class FileGridItemView: NSCollectionViewItem {
         view.addSubview(nameLabel)
 
         NSLayoutConstraint.activate([
-            iconView.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
+            iconView.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
             iconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 64),
-            iconView.heightAnchor.constraint(equalToConstant: 64),
+            iconView.widthAnchor.constraint(equalToConstant: 96),
+            iconView.heightAnchor.constraint(equalToConstant: 96),
 
             nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 4),
-            nameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 2),
-            nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -2)
+            nameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4)
         ])
     }
 
@@ -264,7 +264,7 @@ class FileGridItemView: NSCollectionViewItem {
             thumbnailRequestKey = nil
         }
 
-        let size = NSSize(width: 64, height: 64)
+        let size = NSSize(width: 96, height: 96)
 
         // Show system icon immediately (synchronous, fast)
         iconView.image = iconService.icon(for: item.url.path, size: size)

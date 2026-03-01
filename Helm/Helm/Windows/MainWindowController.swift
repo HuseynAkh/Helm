@@ -272,6 +272,23 @@ class MainWindowController: NSWindowController, NSToolbarDelegate {
         splitViewController.tabContainer.performPaste()
     }
 
+    // Standard copy:/cut:/paste: overrides so the Edit menu (Cmd+C/V/X)
+    // routes correctly: when a text field editor is first responder it
+    // handles these naturally (text copy/paste); when it's NOT first
+    // responder, the responder chain falls through to us and we perform
+    // file operations.
+    @objc func copy(_ sender: Any?) {
+        splitViewController.tabContainer.performCopy()
+    }
+
+    @objc func cut(_ sender: Any?) {
+        splitViewController.tabContainer.performCut()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        splitViewController.tabContainer.performPaste()
+    }
+
     @objc func performTrash() {
         splitViewController.tabContainer.performTrash()
     }
