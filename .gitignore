@@ -1,0 +1,21 @@
+# Build artifacts
+.build/
+.swiftpm/
+DerivedData/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# VS Code
+.vscode/
+
+# Misc
+*.swp
+*~

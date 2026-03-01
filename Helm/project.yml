@@ -1,0 +1,55 @@
+name: Helm
+options:
+  bundleIdPrefix: com.helm
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+
+targets:
+  Helm:
+    type: application
+    platform: macOS
+    sources:
+      - path: Helm
+        excludes:
+          - "**/*.entitlements"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.helm.filemanager
+        PRODUCT_NAME: Helm
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        INFOPLIST_FILE: Helm/App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Helm/Helm.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        COMBINE_HIDPI_IMAGES: YES
+        CODE_SIGN_STYLE: Automatic
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        ENABLE_HARDENED_RUNTIME: YES
+    entitlements:
+      path: Helm/Helm.entitlements
+
+  HelmTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: HelmTests
+    dependencies:
+      - target: Helm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.helm.filemanager.tests
+        SWIFT_VERSION: "5.9"
+
+  HelmUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: HelmUITests
+    dependencies:
+      - target: Helm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.helm.filemanager.uitests
+        SWIFT_VERSION: "5.9"

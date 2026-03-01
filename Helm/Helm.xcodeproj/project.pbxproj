@@ -1,0 +1,711 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1B038CDEA6FAC7A3B380CFC6 /* URL+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C3B9930114A31AF6FC22F1 /* URL+Extensions.swift */; };
+		2497E61B475B282E751241F3 /* StatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1ED1276FE3F04E11C6CB52A /* StatusBar.swift */; };
+		2821FD7CFCEA5F2D27B09EED /* ViewMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 509384CB5342E9626425AA11 /* ViewMode.swift */; };
+		2B64290267CF0B6C9EC96058 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 658A6D6FBE6AEA167F08CA91 /* Assets.xcassets */; };
+		3303E2DEEBDFE77115183CD9 /* SidebarContainerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5DE145ADC28B0AB416F4BA /* SidebarContainerController.swift */; };
+		39315457D5D08C4CC1EAA02F /* FileSystemService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E56B61D2E0AD42523F9EC7A5 /* FileSystemService.swift */; };
+		4E0401E2AD92419855924118 /* MainSplitViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB102C914D14F5DB4277171 /* MainSplitViewController.swift */; };
+		4EB38B993F02FC33AD126CA7 /* FileGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D12430E3AA837FFAB0F171C /* FileGridView.swift */; };
+		5115D087826C6BD777EF1354 /* FileItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE818B91A52BF8882247397 /* FileItem.swift */; };
+		59752612BBA87A66DBEB0F1A /* FileListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6842AE7354A14075E46213B0 /* FileListViewController.swift */; };
+		5E4D2C5A2EB76CB19EFD154A /* FileSystemServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF7F1641A6ECAA5FE19CC0FE /* FileSystemServiceTests.swift */; };
+		60A663118FDBC44B8DBFD435 /* Place.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D36771D151EEAE2791731BF /* Place.swift */; };
+		65DFFB9A3E15725005D08EC9 /* FileSize+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAFCB9D9D764494508F10C71 /* FileSize+Formatting.swift */; };
+		68EDBBF5E01317EB211E2B75 /* FileItemSort.swift in Sources */ = {isa = PBXBuildFile; fileRef = D73F6766134FC45F9A93E9BC /* FileItemSort.swift */; };
+		6F084069C09AA31B373D4B1F /* NavigationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 519C9CB0F00AAE7B97CA5149 /* NavigationState.swift */; };
+		790C25A1E405879890681A46 /* ContentViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B06AB0B5B4CB0DF3AF25F853 /* ContentViewController.swift */; };
+		7C24D7CCA4E79F18F21ABAB3 /* MainWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A751D32420326FBB201AC0E /* MainWindowController.swift */; };
+		80173029AFBB0D4938BA195E /* SidebarPlacesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1107F8764CAEF727F29ABAA /* SidebarPlacesView.swift */; };
+		848CE7A39747C7D760E4A195 /* SidebarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA31494F74D5D48BB7172B40 /* SidebarViewModel.swift */; };
+		8F5B0570EB8A076AC086EC9F /* DirectoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B7D1F4ABF58AAD83B259308 /* DirectoryViewModel.swift */; };
+		9226176A2D15F0526F915471 /* FileListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12EAFD271C6916AEB7502E08 /* FileListView.swift */; };
+		A6805269E1AF7BDB5DA9A137 /* HelmUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2482F2EC1C49E60715BFAC4 /* HelmUITests.swift */; };
+		B364C73791D8E9D3D19784A9 /* FileMonitorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7409EF419141BD015EE93AE3 /* FileMonitorService.swift */; };
+		B54A6EA4A1BE60CE0FEC73E0 /* BreadcrumbBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AFF7096A0BE17C73046E8E5 /* BreadcrumbBar.swift */; };
+		CE9350409150CE91A7EC1E08 /* Tab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C929B8B6F87AF779C1A10DBD /* Tab.swift */; };
+		D5C4DF23CCACD6FCAAAC7766 /* StarredFilesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9003F805421E4781514FDAAA /* StarredFilesServiceTests.swift */; };
+		ECCA9696D22B37D1C9627C2F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 782AD8915485AB0E22E571CF /* AppDelegate.swift */; };
+		F86C397E5889230287E747F5 /* StarredFilesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2733CEABDB110AEC9F873218 /* StarredFilesService.swift */; };
+		FC1F08F9A87B3EAF6AE81F69 /* VolumeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB93B83831B96346923DD39 /* VolumeService.swift */; };
+		FC29EC93075BAE200FE2BF84 /* DirectoryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6253C421E27A7DBC902CDA95 /* DirectoryViewModelTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0E4602D7CA83DC215AC9869B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5945378979AE75AA69216F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99E4676A382CEA1F9A5AE6C1;
+			remoteInfo = Helm;
+		};
+		2FCBB00079764D83CEF0B600 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E5945378979AE75AA69216F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99E4676A382CEA1F9A5AE6C1;
+			remoteInfo = Helm;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		04567CF083B4C469EA782E32 /* HelmUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HelmUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0AFF7096A0BE17C73046E8E5 /* BreadcrumbBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbBar.swift; sourceTree = "<group>"; };
+		12EAFD271C6916AEB7502E08 /* FileListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileListView.swift; sourceTree = "<group>"; };
+		1D36771D151EEAE2791731BF /* Place.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Place.swift; sourceTree = "<group>"; };
+		1EE818B91A52BF8882247397 /* FileItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileItem.swift; sourceTree = "<group>"; };
+		2733CEABDB110AEC9F873218 /* StarredFilesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarredFilesService.swift; sourceTree = "<group>"; };
+		2D12430E3AA837FFAB0F171C /* FileGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileGridView.swift; sourceTree = "<group>"; };
+		509384CB5342E9626425AA11 /* ViewMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewMode.swift; sourceTree = "<group>"; };
+		519C9CB0F00AAE7B97CA5149 /* NavigationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationState.swift; sourceTree = "<group>"; };
+		5FB93B83831B96346923DD39 /* VolumeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeService.swift; sourceTree = "<group>"; };
+		6253C421E27A7DBC902CDA95 /* DirectoryViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryViewModelTests.swift; sourceTree = "<group>"; };
+		658A6D6FBE6AEA167F08CA91 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6842AE7354A14075E46213B0 /* FileListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileListViewController.swift; sourceTree = "<group>"; };
+		6AB102C914D14F5DB4277171 /* MainSplitViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainSplitViewController.swift; sourceTree = "<group>"; };
+		7409EF419141BD015EE93AE3 /* FileMonitorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileMonitorService.swift; sourceTree = "<group>"; };
+		782AD8915485AB0E22E571CF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		7B7D1F4ABF58AAD83B259308 /* DirectoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryViewModel.swift; sourceTree = "<group>"; };
+		8A751D32420326FBB201AC0E /* MainWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowController.swift; sourceTree = "<group>"; };
+		8D835BB050C165B2974D4A41 /* Helm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Helm.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9003F805421E4781514FDAAA /* StarredFilesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarredFilesServiceTests.swift; sourceTree = "<group>"; };
+		96C3B9930114A31AF6FC22F1 /* URL+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+Extensions.swift"; sourceTree = "<group>"; };
+		AAFCB9D9D764494508F10C71 /* FileSize+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FileSize+Formatting.swift"; sourceTree = "<group>"; };
+		AFE490BB33586AACBDEA44E2 /* HelmTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HelmTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B06AB0B5B4CB0DF3AF25F853 /* ContentViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewController.swift; sourceTree = "<group>"; };
+		BF7F1641A6ECAA5FE19CC0FE /* FileSystemServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemServiceTests.swift; sourceTree = "<group>"; };
+		C1107F8764CAEF727F29ABAA /* SidebarPlacesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarPlacesView.swift; sourceTree = "<group>"; };
+		C174949074DB6C49A1762E13 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C929B8B6F87AF779C1A10DBD /* Tab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tab.swift; sourceTree = "<group>"; };
+		D1ED1276FE3F04E11C6CB52A /* StatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBar.swift; sourceTree = "<group>"; };
+		D73F6766134FC45F9A93E9BC /* FileItemSort.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileItemSort.swift; sourceTree = "<group>"; };
+		DE5DE145ADC28B0AB416F4BA /* SidebarContainerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarContainerController.swift; sourceTree = "<group>"; };
+		E56B61D2E0AD42523F9EC7A5 /* FileSystemService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemService.swift; sourceTree = "<group>"; };
+		F2482F2EC1C49E60715BFAC4 /* HelmUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelmUITests.swift; sourceTree = "<group>"; };
+		FA31494F74D5D48BB7172B40 /* SidebarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarViewModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		39C1F0A55CE69D9DD23CBA21 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				BF7F1641A6ECAA5FE19CC0FE /* FileSystemServiceTests.swift */,
+				9003F805421E4781514FDAAA /* StarredFilesServiceTests.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		42EA3812BD80AC38A7A747E2 /* Windows */ = {
+			isa = PBXGroup;
+			children = (
+				6AB102C914D14F5DB4277171 /* MainSplitViewController.swift */,
+				8A751D32420326FBB201AC0E /* MainWindowController.swift */,
+			);
+			path = Windows;
+			sourceTree = "<group>";
+		};
+		494352EE369BB11D85D6FD93 /* Helm */ = {
+			isa = PBXGroup;
+			children = (
+				6FC5775A82BF6078BFDC85D3 /* App */,
+				BDDFD1AF9CE5CAE9D27CD1F1 /* Controllers */,
+				C38DBC6016F805BEA958DE24 /* Models */,
+				86ED87214AC200A9FDD5A1A6 /* Resources */,
+				DF0B1D16607A12DC7A720650 /* Services */,
+				58CE19844DCAC9CF224CA93F /* Utilities */,
+				EC4E7F096EFC8BB939AA05ED /* ViewModels */,
+				B7A0F28CB3C7B26CE29D052E /* Views */,
+				42EA3812BD80AC38A7A747E2 /* Windows */,
+			);
+			path = Helm;
+			sourceTree = "<group>";
+		};
+		58CE19844DCAC9CF224CA93F /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				AAFCB9D9D764494508F10C71 /* FileSize+Formatting.swift */,
+				96C3B9930114A31AF6FC22F1 /* URL+Extensions.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		6F4926D2E8424FCC3FD48E9B /* HelmUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F2482F2EC1C49E60715BFAC4 /* HelmUITests.swift */,
+			);
+			path = HelmUITests;
+			sourceTree = "<group>";
+		};
+		6FC5775A82BF6078BFDC85D3 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				782AD8915485AB0E22E571CF /* AppDelegate.swift */,
+				C174949074DB6C49A1762E13 /* Info.plist */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		86ED87214AC200A9FDD5A1A6 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				658A6D6FBE6AEA167F08CA91 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		8B6EFA6A622003CF4A34CB49 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8D835BB050C165B2974D4A41 /* Helm.app */,
+				AFE490BB33586AACBDEA44E2 /* HelmTests.xctest */,
+				04567CF083B4C469EA782E32 /* HelmUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8D638FB3C932D858EFE75FA7 /* SwiftUI */ = {
+			isa = PBXGroup;
+			children = (
+				C1107F8764CAEF727F29ABAA /* SidebarPlacesView.swift */,
+			);
+			path = SwiftUI;
+			sourceTree = "<group>";
+		};
+		9228DF5229727DEF4D02FEF7 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				6253C421E27A7DBC902CDA95 /* DirectoryViewModelTests.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		B7A0F28CB3C7B26CE29D052E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F415B7B3E0225E23ECCC3222 /* AppKit */,
+				8D638FB3C932D858EFE75FA7 /* SwiftUI */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		BDA4DACE326410DF3CFE0876 = {
+			isa = PBXGroup;
+			children = (
+				494352EE369BB11D85D6FD93 /* Helm */,
+				F2C4C096765F17C7869D4845 /* HelmTests */,
+				6F4926D2E8424FCC3FD48E9B /* HelmUITests */,
+				8B6EFA6A622003CF4A34CB49 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BDDFD1AF9CE5CAE9D27CD1F1 /* Controllers */ = {
+			isa = PBXGroup;
+			children = (
+				B06AB0B5B4CB0DF3AF25F853 /* ContentViewController.swift */,
+				6842AE7354A14075E46213B0 /* FileListViewController.swift */,
+				DE5DE145ADC28B0AB416F4BA /* SidebarContainerController.swift */,
+			);
+			path = Controllers;
+			sourceTree = "<group>";
+		};
+		C38DBC6016F805BEA958DE24 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				1EE818B91A52BF8882247397 /* FileItem.swift */,
+				D73F6766134FC45F9A93E9BC /* FileItemSort.swift */,
+				519C9CB0F00AAE7B97CA5149 /* NavigationState.swift */,
+				1D36771D151EEAE2791731BF /* Place.swift */,
+				C929B8B6F87AF779C1A10DBD /* Tab.swift */,
+				509384CB5342E9626425AA11 /* ViewMode.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		DF0B1D16607A12DC7A720650 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7409EF419141BD015EE93AE3 /* FileMonitorService.swift */,
+				E56B61D2E0AD42523F9EC7A5 /* FileSystemService.swift */,
+				2733CEABDB110AEC9F873218 /* StarredFilesService.swift */,
+				5FB93B83831B96346923DD39 /* VolumeService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EC4E7F096EFC8BB939AA05ED /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				7B7D1F4ABF58AAD83B259308 /* DirectoryViewModel.swift */,
+				FA31494F74D5D48BB7172B40 /* SidebarViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		F2C4C096765F17C7869D4845 /* HelmTests */ = {
+			isa = PBXGroup;
+			children = (
+				39C1F0A55CE69D9DD23CBA21 /* Services */,
+				9228DF5229727DEF4D02FEF7 /* ViewModels */,
+			);
+			path = HelmTests;
+			sourceTree = "<group>";
+		};
+		F415B7B3E0225E23ECCC3222 /* AppKit */ = {
+			isa = PBXGroup;
+			children = (
+				0AFF7096A0BE17C73046E8E5 /* BreadcrumbBar.swift */,
+				2D12430E3AA837FFAB0F171C /* FileGridView.swift */,
+				12EAFD271C6916AEB7502E08 /* FileListView.swift */,
+				D1ED1276FE3F04E11C6CB52A /* StatusBar.swift */,
+			);
+			path = AppKit;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		22A80A6D6529E47F0243F0BE /* HelmUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2856FE909638B8AD9777345D /* Build configuration list for PBXNativeTarget "HelmUITests" */;
+			buildPhases = (
+				A837AF1DB9FC75EC1A9950BA /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				954F8AD146932D72299EDA68 /* PBXTargetDependency */,
+			);
+			name = HelmUITests;
+			packageProductDependencies = (
+			);
+			productName = HelmUITests;
+			productReference = 04567CF083B4C469EA782E32 /* HelmUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		29A52200E570179E90B2DDAF /* HelmTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0806E165CB33F917763D5949 /* Build configuration list for PBXNativeTarget "HelmTests" */;
+			buildPhases = (
+				4E4F5877ED52B860AD92CCAE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1034283E3A0D0A92EAE76D4D /* PBXTargetDependency */,
+			);
+			name = HelmTests;
+			packageProductDependencies = (
+			);
+			productName = HelmTests;
+			productReference = AFE490BB33586AACBDEA44E2 /* HelmTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		99E4676A382CEA1F9A5AE6C1 /* Helm */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 90611137D8FBB59A950968FA /* Build configuration list for PBXNativeTarget "Helm" */;
+			buildPhases = (
+				444DAB170895784CF27DEA5D /* Sources */,
+				88A04A27B030E7AC82EA7871 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Helm;
+			packageProductDependencies = (
+			);
+			productName = Helm;
+			productReference = 8D835BB050C165B2974D4A41 /* Helm.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E5945378979AE75AA69216F7 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					22A80A6D6529E47F0243F0BE = {
+						TestTargetID = 99E4676A382CEA1F9A5AE6C1;
+					};
+					99E4676A382CEA1F9A5AE6C1 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7A052CCCA135773DE724008E /* Build configuration list for PBXProject "Helm" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BDA4DACE326410DF3CFE0876;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99E4676A382CEA1F9A5AE6C1 /* Helm */,
+				29A52200E570179E90B2DDAF /* HelmTests */,
+				22A80A6D6529E47F0243F0BE /* HelmUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		88A04A27B030E7AC82EA7871 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2B64290267CF0B6C9EC96058 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		444DAB170895784CF27DEA5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECCA9696D22B37D1C9627C2F /* AppDelegate.swift in Sources */,
+				B54A6EA4A1BE60CE0FEC73E0 /* BreadcrumbBar.swift in Sources */,
+				790C25A1E405879890681A46 /* ContentViewController.swift in Sources */,
+				8F5B0570EB8A076AC086EC9F /* DirectoryViewModel.swift in Sources */,
+				4EB38B993F02FC33AD126CA7 /* FileGridView.swift in Sources */,
+				5115D087826C6BD777EF1354 /* FileItem.swift in Sources */,
+				68EDBBF5E01317EB211E2B75 /* FileItemSort.swift in Sources */,
+				9226176A2D15F0526F915471 /* FileListView.swift in Sources */,
+				59752612BBA87A66DBEB0F1A /* FileListViewController.swift in Sources */,
+				B364C73791D8E9D3D19784A9 /* FileMonitorService.swift in Sources */,
+				65DFFB9A3E15725005D08EC9 /* FileSize+Formatting.swift in Sources */,
+				39315457D5D08C4CC1EAA02F /* FileSystemService.swift in Sources */,
+				4E0401E2AD92419855924118 /* MainSplitViewController.swift in Sources */,
+				7C24D7CCA4E79F18F21ABAB3 /* MainWindowController.swift in Sources */,
+				6F084069C09AA31B373D4B1F /* NavigationState.swift in Sources */,
+				60A663118FDBC44B8DBFD435 /* Place.swift in Sources */,
+				3303E2DEEBDFE77115183CD9 /* SidebarContainerController.swift in Sources */,
+				80173029AFBB0D4938BA195E /* SidebarPlacesView.swift in Sources */,
+				848CE7A39747C7D760E4A195 /* SidebarViewModel.swift in Sources */,
+				F86C397E5889230287E747F5 /* StarredFilesService.swift in Sources */,
+				2497E61B475B282E751241F3 /* StatusBar.swift in Sources */,
+				CE9350409150CE91A7EC1E08 /* Tab.swift in Sources */,
+				1B038CDEA6FAC7A3B380CFC6 /* URL+Extensions.swift in Sources */,
+				2821FD7CFCEA5F2D27B09EED /* ViewMode.swift in Sources */,
+				FC1F08F9A87B3EAF6AE81F69 /* VolumeService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E4F5877ED52B860AD92CCAE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FC29EC93075BAE200FE2BF84 /* DirectoryViewModelTests.swift in Sources */,
+				5E4D2C5A2EB76CB19EFD154A /* FileSystemServiceTests.swift in Sources */,
+				D5C4DF23CCACD6FCAAAC7766 /* StarredFilesServiceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A837AF1DB9FC75EC1A9950BA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A6805269E1AF7BDB5DA9A137 /* HelmUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1034283E3A0D0A92EAE76D4D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 99E4676A382CEA1F9A5AE6C1 /* Helm */;
+			targetProxy = 2FCBB00079764D83CEF0B600 /* PBXContainerItemProxy */;
+		};
+		954F8AD146932D72299EDA68 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 99E4676A382CEA1F9A5AE6C1 /* Helm */;
+			targetProxy = 0E4602D7CA83DC215AC9869B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0541A2A153D489C6172FC179 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Helm/Helm.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Helm/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager;
+				PRODUCT_NAME = Helm;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		089A9AA9D8062BE676BFA827 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Helm.app/Contents/MacOS/Helm";
+			};
+			name = Release;
+		};
+		1556E957AF46BF016A0B4E73 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Helm.app/Contents/MacOS/Helm";
+			};
+			name = Debug;
+		};
+		27FE985DE457A258418B9760 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		44D04F34CFA5BB37B5BAE049 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager.uitests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = Helm;
+			};
+			name = Release;
+		};
+		543D6AA0358D9EA5F10CE252 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Helm/Helm.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Helm/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager;
+				PRODUCT_NAME = Helm;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		7FD100F4BF5C5011F6807F99 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		D861AEBE61D2BBC62365D4DD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.helm.filemanager.uitests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_TARGET_NAME = Helm;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0806E165CB33F917763D5949 /* Build configuration list for PBXNativeTarget "HelmTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1556E957AF46BF016A0B4E73 /* Debug */,
+				089A9AA9D8062BE676BFA827 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2856FE909638B8AD9777345D /* Build configuration list for PBXNativeTarget "HelmUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D861AEBE61D2BBC62365D4DD /* Debug */,
+				44D04F34CFA5BB37B5BAE049 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7A052CCCA135773DE724008E /* Build configuration list for PBXProject "Helm" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7FD100F4BF5C5011F6807F99 /* Debug */,
+				27FE985DE457A258418B9760 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		90611137D8FBB59A950968FA /* Build configuration list for PBXNativeTarget "Helm" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				543D6AA0358D9EA5F10CE252 /* Debug */,
+				0541A2A153D489C6172FC179 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E5945378979AE75AA69216F7 /* Project object */;
+}
