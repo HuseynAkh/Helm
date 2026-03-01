@@ -12,7 +12,8 @@ enum AppSettings {
         "helm.searchResultLimit": 300,
         "helm.searchDebounceMilliseconds": 180,
         "helm.sidebarLiquidGlass": false,
-        "helm.maxCachedThumbnails": 400
+        "helm.maxCachedThumbnails": 400,
+        "helm.completionDebounceMilliseconds": 100
     ]
 
     static func registerDefaults() {
@@ -64,5 +65,10 @@ enum AppSettings {
     static var maxCachedThumbnails: Int {
         let value = UserDefaults.standard.integer(forKey: "helm.maxCachedThumbnails")
         return max(50, value)
+    }
+
+    static var completionDebounceNanoseconds: UInt64 {
+        let milliseconds = max(30, UserDefaults.standard.integer(forKey: "helm.completionDebounceMilliseconds"))
+        return UInt64(milliseconds) * 1_000_000
     }
 }

@@ -21,6 +21,15 @@ class BreadcrumbBar: NSView {
     private var editField: NSTextField?
     private var isEditing = false
 
+    // Predictive completion
+    private var completionController: PathCompletionWindowController?
+    private let completionService = PathCompletionService()
+    private var completionTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
+    private var ghostTextField: NSTextField?
+    private var ghostLeadingConstraint: NSLayoutConstraint?
+    private var currentGhostSuffix: String = ""
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setup()
@@ -276,6 +285,7 @@ class BreadcrumbBar: NSView {
         guard isEditing else { return }
         isEditing = false
         editFieldReady = false
+        teardownCompletion()
 
         if navigate, let rawPath = editField?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), !rawPath.isEmpty {
             let expanded = NSString(string: rawPath).expandingTildeInPath
@@ -388,40 +398,154 @@ class BreadcrumbBar: NSView {
         return name.isEmpty ? url.path : name
     }
 
-    private func completions(for partialPath: String) -> [String] {
-        let expanded = NSString(string: partialPath).expandingTildeInPath
-        let url = URL(fileURLWithPath: expanded)
+    // MARK: - Path Completion
 
-        let parent: URL
-        let prefix: String
-        if expanded.hasSuffix("/") {
-            parent = url
-            prefix = ""
-        } else {
-            parent = url.deletingLastPathComponent()
-            prefix = url.lastPathComponent
+    private func requestCompletions(for text: String) {
+        completionTask?.cancel()
+
+        guard !text.isEmpty else {
+            completionController?.hide()
+            clearGhostText()
+            return
         }
 
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: parent,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
+        completionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.completionService.completions(for: text)
+
+            guard !Task.isCancelled,
+                  let field = self.editField,
+                  field.stringValue == text else { return }
+
+            self.displayCompletions(result)
+        }
+    }
+
+    private func displayCompletions(_ result: PathCompletionService.CompletionResult) {
+        guard editField != nil else { return }
+
+        if result.items.isEmpty {
+            completionController?.hide()
+            clearGhostText()
+            return
         }
 
-        return entries
-            .filter { candidate in
-                candidate.lastPathComponent.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil
-            }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            .map { candidate in
-                let path = candidate.path
-                if (try? candidate.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                    return "\(path)/"
+        if completionController == nil {
+            completionController = PathCompletionWindowController()
+            completionController?.onAccept = { [weak self] item in
+                guard let self, let field = self.editField else { return }
+                field.stringValue = item.fullPath
+                if let editor = field.currentEditor() {
+                    editor.selectedRange = NSRange(location: (editor.string as NSString).length, length: 0)
                 }
-                return path
+                self.clearGhostText()
+                if item.isDirectory {
+                    self.requestCompletions(for: item.fullPath)
+                } else {
+                    self.completionController?.hide()
+                }
             }
+        }
+
+        completionController?.show(below: self, items: result.items)
+        updateGhostTextFromSelection()
+    }
+
+    private func teardownCompletion() {
+        debounceTask?.cancel()
+        debounceTask = nil
+        completionTask?.cancel()
+        completionTask = nil
+        completionController?.teardown()
+        completionController = nil
+        clearGhostText()
+    }
+
+    // MARK: - Ghost Text
+
+    private func updateGhostText(with suffix: String) {
+        guard let field = editField, !suffix.isEmpty else {
+            clearGhostText()
+            return
+        }
+
+        // Only show ghost text when cursor is at the end
+        if let editor = field.currentEditor() {
+            let selectedRange = editor.selectedRange
+            let textLength = (editor.string as NSString).length
+            if selectedRange.location + selectedRange.length < textLength {
+                clearGhostText()
+                return
+            }
+        }
+
+        currentGhostSuffix = suffix
+
+        let ghost: NSTextField
+        if let existing = ghostTextField {
+            ghost = existing
+        } else {
+            ghost = NSTextField(labelWithString: "")
+            ghost.font = field.font
+            ghost.textColor = .tertiaryLabelColor
+            ghost.drawsBackground = false
+            ghost.isBordered = false
+            ghost.isEditable = false
+            ghost.isSelectable = false
+            ghost.translatesAutoresizingMaskIntoConstraints = false
+            ghost.lineBreakMode = .byClipping
+            addSubview(ghost)
+
+            let leading = ghost.leadingAnchor.constraint(equalTo: field.leadingAnchor, constant: 0)
+            ghostLeadingConstraint = leading
+            NSLayoutConstraint.activate([
+                leading,
+                ghost.centerYAnchor.constraint(equalTo: field.centerYAnchor),
+                ghost.trailingAnchor.constraint(lessThanOrEqualTo: field.trailingAnchor)
+            ])
+            ghostTextField = ghost
+        }
+
+        ghost.stringValue = suffix
+
+        // Calculate typed text width to position ghost after typed text
+        let attrs: [NSAttributedString.Key: Any] = [.font: field.font ?? NSFont.systemFont(ofSize: 13)]
+        let typedWidth = (field.stringValue as NSString).size(withAttributes: attrs).width
+        let fieldInset: CGFloat = field.cell?.titleRect(forBounds: field.bounds).origin.x ?? 2
+        ghostLeadingConstraint?.constant = fieldInset + typedWidth
+    }
+
+    private func clearGhostText() {
+        ghostTextField?.removeFromSuperview()
+        ghostTextField = nil
+        ghostLeadingConstraint = nil
+        currentGhostSuffix = ""
+    }
+
+    private func acceptGhostCompletion() {
+        guard let field = editField, !currentGhostSuffix.isEmpty else { return }
+        field.stringValue += currentGhostSuffix
+        if let editor = field.currentEditor() {
+            editor.selectedRange = NSRange(location: (editor.string as NSString).length, length: 0)
+        }
+        clearGhostText()
+        requestCompletions(for: field.stringValue)
+    }
+
+    private func updateGhostTextFromSelection() {
+        guard let field = editField,
+              let item = completionController?.selectedItem() else {
+            clearGhostText()
+            return
+        }
+        let typed = field.stringValue
+        let fullPath = item.fullPath
+        if fullPath.lowercased().hasPrefix(typed.lowercased()), fullPath.count > typed.count {
+            let suffix = String(fullPath.dropFirst(typed.count))
+            updateGhostText(with: suffix)
+        } else {
+            clearGhostText()
+        }
     }
 
     override func layout() {
@@ -437,14 +561,83 @@ class BreadcrumbBar: NSView {
 extension BreadcrumbBar: NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            // Accept dropdown selection into field before navigating
+            if let controller = completionController, controller.isVisible,
+               let item = controller.selectedItem() {
+                editField?.stringValue = item.fullPath
+                clearGhostText()
+                controller.hide()
+            }
             endEditing(navigate: true)
             return true
         }
+
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            endEditing(navigate: false)
+            if completionController?.isVisible == true {
+                // First Escape: dismiss dropdown, stay in edit mode
+                completionController?.hide()
+                clearGhostText()
+            } else {
+                // Second Escape (or no dropdown): exit edit mode
+                endEditing(navigate: false)
+            }
             return true
         }
+
+        if commandSelector == #selector(NSResponder.insertTab(_:)) {
+            if !currentGhostSuffix.isEmpty {
+                acceptGhostCompletion()
+                return true
+            }
+            return false
+        }
+
+        if commandSelector == #selector(NSResponder.moveDown(_:)) {
+            if completionController?.isVisible == true {
+                completionController?.moveSelectionDown()
+                updateGhostTextFromSelection()
+                return true
+            }
+            return false
+        }
+
+        if commandSelector == #selector(NSResponder.moveUp(_:)) {
+            if completionController?.isVisible == true {
+                completionController?.moveSelectionUp()
+                updateGhostTextFromSelection()
+                return true
+            }
+            return false
+        }
+
+        if commandSelector == #selector(NSResponder.moveRight(_:)) {
+            let range = textView.selectedRange
+            let textLength = (textView.string as NSString).length
+            if range.location == textLength && range.length == 0 && !currentGhostSuffix.isEmpty {
+                acceptGhostCompletion()
+                return true
+            }
+            return false
+        }
+
         return false
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard editFieldReady, let field = editField else { return }
+
+        clearGhostText()
+        debounceTask?.cancel()
+        let currentText = field.stringValue
+
+        debounceTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: AppSettings.completionDebounceNanoseconds)
+            } catch { return }
+
+            guard let self, self.editField?.stringValue == currentText else { return }
+            self.requestCompletions(for: currentText)
+        }
     }
 
     func control(
@@ -454,8 +647,8 @@ extension BreadcrumbBar: NSTextFieldDelegate {
         forPartialWordRange charRange: NSRange,
         indexOfSelectedItem index: UnsafeMutablePointer<Int>
     ) -> [String] {
-        guard let field = control as? NSTextField else { return words }
-        return completions(for: field.stringValue)
+        // Disabled — using custom completion dropdown instead
+        return []
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
