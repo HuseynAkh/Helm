@@ -225,7 +225,7 @@ class BreadcrumbBar: NSView {
                 // Show directory contents immediately (like terminal).
                 // Use the captured pathWithSlash — not editFieldText — because
                 // the field editor may not have synced its string yet.
-                self.requestCompletions(for: pathWithSlash)
+                self.showCompletionsForPath(pathWithSlash)
             } else {
                 // Focus failed — fall back to normal breadcrumb view.
                 self.endEditing(navigate: false)
@@ -240,17 +240,24 @@ class BreadcrumbBar: NSView {
         teardownCompletion()
 
         let rawPath = editFieldText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if navigate, !rawPath.isEmpty {
-            let expanded = NSString(string: rawPath).expandingTildeInPath
-            let targetURL = URL(fileURLWithPath: expanded).standardizedFileURL
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: targetURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
-                url = targetURL
-                onSegmentClicked?(targetURL)
+        if navigate {
+            if rawPath.isEmpty {
+                // Empty field + Enter → go home
+                let home = FileManager.default.homeDirectoryForCurrentUser
+                url = home
+                onSegmentClicked?(home)
             } else {
-                NSSound.beep()
-                shakeAnimation()
-                showTemporaryError("Invalid path or folder not accessible")
+                let expanded = NSString(string: rawPath).expandingTildeInPath
+                let targetURL = URL(fileURLWithPath: expanded).standardizedFileURL
+                var isDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: targetURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
+                    url = targetURL
+                    onSegmentClicked?(targetURL)
+                } else {
+                    NSSound.beep()
+                    shakeAnimation()
+                    showTemporaryError("Invalid path or folder not accessible")
+                }
             }
         }
 
@@ -437,6 +444,112 @@ class BreadcrumbBar: NSView {
         }
     }
 
+    /// Route to the right completion strategy based on whether the user has
+    /// typed a prefix after the last "/".
+    ///
+    /// - Path ends with "/" → synchronous directory listing (no async hops).
+    /// - Path has a partial name  → async filtered completion via the actor.
+    private func showCompletionsForPath(_ text: String) {
+        if text.hasSuffix("/") {
+            showAllDirectoryContents(for: text)
+        } else {
+            requestCompletions(for: text)
+        }
+    }
+
+    /// Directly enumerate and display all items in a directory.
+    ///
+    /// Used when the path ends with "/" — meaning the user wants to browse
+    /// the full directory contents rather than filter by a typed prefix.
+    /// This runs synchronously on the main thread, bypassing the async
+    /// completion service, debouncing, and Task cancellation machinery
+    /// that caused multi-level drilling to silently fail.
+    private func showAllDirectoryContents(for directoryPath: String) {
+        // Cancel any in-flight async work so it can't overwrite our results.
+        completionTask?.cancel()
+        completionTask = nil
+        debounceTask?.cancel()
+        debounceTask = nil
+
+        let expanded = NSString(string: directoryPath).expandingTildeInPath
+        let dirURL = URL(fileURLWithPath: expanded)
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: dirURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            completionController?.hide()
+            clearGhostText()
+            return
+        }
+
+        let items: [PathCompletionItem] = contents
+            .compactMap { fileURL -> PathCompletionItem? in
+                let isDir = (try? fileURL.resourceValues(
+                    forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                let icon = NSWorkspace.shared.icon(forFile: fileURL.path)
+                icon.size = NSSize(width: 16, height: 16)
+                return PathCompletionItem(
+                    name: fileURL.lastPathComponent,
+                    fullPath: isDir ? fileURL.path + "/" : fileURL.path,
+                    isDirectory: isDir,
+                    icon: icon
+                )
+            }
+            .sorted { a, b in
+                if a.isDirectory != b.isDirectory { return a.isDirectory }
+                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+
+        var finalItems: [PathCompletionItem] = []
+
+        // Prepend ".." (parent directory) unless we're already at root.
+        if expanded != "/" {
+            let parentURL = dirURL.deletingLastPathComponent()
+            let parentIcon = NSWorkspace.shared.icon(forFile: parentURL.path)
+            parentIcon.size = NSSize(width: 16, height: 16)
+            finalItems.append(PathCompletionItem(
+                name: "..",
+                fullPath: parentURL.path + "/",
+                isDirectory: true,
+                icon: parentIcon
+            ))
+        }
+
+        finalItems.append(contentsOf: items.prefix(50))
+
+        if finalItems.isEmpty {
+            completionController?.hide()
+            clearGhostText()
+            return
+        }
+
+        ensureCompletionController()
+        completionController?.show(below: self, items: finalItems)
+        // Don't show ghost text when ".." is the selected item — it
+        // doesn't extend the current path so ghost text makes no sense.
+        // Ghost text will naturally clear because ".." fullPath doesn't
+        // have the typed path as a prefix.
+        updateGhostTextFromSelection()
+    }
+
+    /// Lazily create the completion controller with the shared onAccept handler.
+    private func ensureCompletionController() {
+        guard completionController == nil else { return }
+        completionController = PathCompletionWindowController()
+        completionController?.onAccept = { [weak self] item in
+            guard let self else { return }
+            self.setEditFieldText(item.fullPath)
+            self.clearGhostText()
+            if item.isDirectory {
+                self.showCompletionsForPath(item.fullPath)
+            } else {
+                self.completionController?.hide()
+            }
+        }
+    }
+
     private func displayCompletions(_ result: PathCompletionService.CompletionResult) {
         guard editField != nil else { return }
 
@@ -446,22 +559,7 @@ class BreadcrumbBar: NSView {
             return
         }
 
-        if completionController == nil {
-            completionController = PathCompletionWindowController()
-            completionController?.onAccept = { [weak self] item in
-                guard let self else { return }
-                self.setEditFieldText(item.fullPath)
-                self.clearGhostText()
-                if item.isDirectory {
-                    // Use item.fullPath directly — not editFieldText — to
-                    // avoid reading stale text from the field editor.
-                    self.requestCompletions(for: item.fullPath)
-                } else {
-                    self.completionController?.hide()
-                }
-            }
-        }
-
+        ensureCompletionController()
         completionController?.show(below: self, items: result.items)
         updateGhostTextFromSelection()
     }
@@ -544,7 +642,7 @@ class BreadcrumbBar: NSView {
         clearGhostText()
         // Use captured newText — not editFieldText — because the field editor
         // may not have synced yet after setEditFieldText.
-        requestCompletions(for: newText)
+        showCompletionsForPath(newText)
     }
 
     private func updateGhostTextFromSelection() {
@@ -567,6 +665,22 @@ class BreadcrumbBar: NSView {
         super.layout()
         if !isEditing {
             resizeDocumentView()
+            // Keep the rightmost segments (current directory) visible
+            // when the window is resized and the path is long.
+            scrollToEnd()
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // When the toolbar temporarily removes and re-adds our view
+        // during relayout (e.g. window resize), re-establish the
+        // field editor so editing survives the transition.
+        if isEditing, editFieldReady, window != nil {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.isEditing else { return }
+                self.ensureFieldEditorActive()
+            }
         }
     }
 }
@@ -576,12 +690,22 @@ class BreadcrumbBar: NSView {
 extension BreadcrumbBar: NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-            // Accept dropdown selection into field before navigating
-            if let controller = completionController, controller.isVisible,
+            // When the user has typed a prefix (field text does NOT end
+            // with "/"), accept the selected dropdown item — this is the
+            // autocomplete-confirm gesture.  When the text ends with "/"
+            // we're in browse mode (e.g. just drilled into a folder and
+            // ".." is auto-selected), so Enter navigates to the path
+            // already in the field.
+            let currentText = editFieldText
+            if !currentText.hasSuffix("/"),
+               let controller = completionController, controller.isVisible,
                let item = controller.selectedItem() {
                 setEditFieldText(item.fullPath)
                 clearGhostText()
                 controller.hide()
+            } else {
+                completionController?.hide()
+                clearGhostText()
             }
             endEditing(navigate: true)
             return true
@@ -612,7 +736,7 @@ extension BreadcrumbBar: NSTextFieldDelegate {
                 if item.isDirectory {
                     // Use captured path — not editFieldText — to avoid
                     // reading stale text from the field editor.
-                    requestCompletions(for: path)
+                    showCompletionsForPath(path)
                 } else {
                     completionController?.hide()
                 }
@@ -621,7 +745,7 @@ extension BreadcrumbBar: NSTextFieldDelegate {
                 // Read text before requesting so there's no ambiguity.
                 let text = editFieldText
                 if !text.isEmpty {
-                    requestCompletions(for: text)
+                    showCompletionsForPath(text)
                 }
             }
             // Always consume Tab so focus never leaves the address bar.
@@ -671,9 +795,10 @@ extension BreadcrumbBar: NSTextFieldDelegate {
         debounceTask?.cancel()
         let currentText = editFieldText
 
-        // Typing "/" means the user wants to see directory contents immediately
+        // Typing "/" means the user wants to see directory contents immediately.
+        // Use the synchronous path — no async hops to get cancelled.
         if currentText.hasSuffix("/") {
-            requestCompletions(for: currentText)
+            showAllDirectoryContents(for: currentText)
             return
         }
 
@@ -705,17 +830,50 @@ extension BreadcrumbBar: NSTextFieldDelegate {
             ?? NSTextMovement.other.rawValue
         let didPressReturn = movement == NSTextMovement.return.rawValue
 
-        // During a programmatic text change (setEditFieldText), the suppress
-        // flag stays true until the next run-loop pass.  If end-editing fires
-        // inside that window it is almost certainly a side-effect of the text
-        // storage mutation — not a genuine focus-loss.  Re-establish the field
-        // editor and keep editing.
-        if !didPressReturn && suppressTextDidChange {
+        // Return → navigate to the path in the field.
+        if didPressReturn {
+            endEditing(navigate: true)
+            return
+        }
+
+        // During a programmatic text change the suppress flag is still true.
+        if suppressTextDidChange {
             ensureFieldEditorActive()
             return
         }
 
-        endEditing(navigate: didPressReturn)
+        // Distinguish "user clicked elsewhere" from "system stole focus"
+        // (toolbar relayout on window resize, etc.).  If a mouse-down
+        // occurred outside the breadcrumb bar, the user intentionally
+        // dismissed editing.  Otherwise, try to keep editing alive.
+        if let event = NSApp.currentEvent,
+           event.type == .leftMouseDown || event.type == .rightMouseDown {
+            let locationInBar = convert(event.locationInWindow, from: nil)
+            if !bounds.contains(locationInBar) {
+                endEditing(navigate: false)
+                return
+            }
+        }
+
+        // If the edit field was removed from the window (toolbar overflow
+        // or relayout), the toolbar may re-add it shortly.  Defer the
+        // decision — if the view comes back within 150ms, re-establish
+        // editing; otherwise clean up.
+        if editField?.window == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.isEditing else { return }
+                if self.editField?.window != nil {
+                    self.ensureFieldEditorActive()
+                } else {
+                    self.endEditing(navigate: false)
+                }
+            }
+            return
+        }
+
+        // System-triggered focus loss (window resize, toolbar relayout,
+        // etc.) — restore the field editor so editing continues.
+        ensureFieldEditorActive()
     }
 }
 

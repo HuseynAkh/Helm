@@ -160,9 +160,16 @@ class MainWindowController: NSWindowController, NSToolbarDelegate {
 
         item.view = bar
         item.label = "Path"
+        // Highest priority — never send to the overflow menu.
+        // Overflow yanks the view out of the hierarchy and kills any
+        // active editing session.  Other items (view mode, search)
+        // are set to .low so they collapse/overflow first.
+        item.visibilityPriority = .user
 
-        // Size constraints via auto layout on the bar view
-        bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
+        // Size constraints via auto layout on the bar view.
+        // Very small minimum so the toolbar can always fit us,
+        // preventing overflow even at narrow window sizes.
+        bar.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
         bar.widthAnchor.constraint(lessThanOrEqualToConstant: 1000).isActive = true
         bar.heightAnchor.constraint(equalToConstant: 34).isActive = true
 
@@ -173,6 +180,7 @@ class MainWindowController: NSWindowController, NSToolbarDelegate {
         let item = NSToolbarItem(itemIdentifier: Self.viewModeIdentifier)
         item.label = "View Mode"
         item.toolTip = "Change view mode"
+        item.visibilityPriority = .low  // Overflow before breadcrumb
 
         let segmented = NSSegmentedControl(images: [
             NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: "Grid")!,
@@ -189,6 +197,7 @@ class MainWindowController: NSWindowController, NSToolbarDelegate {
     private func makeSearchItem() -> NSToolbarItem {
         let item = NSSearchToolbarItem(itemIdentifier: Self.searchIdentifier)
         item.label = "Search"
+        item.visibilityPriority = .low  // Overflow before breadcrumb
         item.searchField.placeholderString = "Search files and folders"
         item.searchField.sendsSearchStringImmediately = true
         item.searchField.sendsWholeSearchString = false
