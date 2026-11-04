@@ -78,3 +78,9 @@ component depth/string comparison costs still apply. A 10k selection test report
 elapsed time diagnostically, without a platform-dependent latency assertion.
 Selection validation caching remains adapter/public-contract work: this stateless
 API has no drag-session lifetime. No global mutable cache was introduced.
+
+K29 adds DropSession for the deferred session cache. Construct once per native drag,
+retain across target/modifier updates, replaceSources when ordered source metadata
+changes, and end on termination. The session caches source path normalization and
+overlap validation, not target permissions or execution preconditions. End is
+terminal and releases source paths; no global cache or native drag owner exists.

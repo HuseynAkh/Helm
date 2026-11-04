@@ -10,12 +10,14 @@ public enum UndoPlanner {
         if result.outcomes.contains(where: \.requiresReconciliation) {
             return OperationPlan(command: .recovery, steps: [], issues: [.stopped])
         }
+        var expectedKinds: [URL: FileEntryKind] = [:]
         var expectedTokens: [URL: ChangeToken] = [:]
         for outcome in result.outcomes where outcome.succeeded && outcome.step.kind != .verifyCopy {
-            if outcome.step.kind == .move || outcome.step.kind == .trash, let source = outcome.step.source { expectedTokens[source] = nil }
+            if outcome.step.kind == .move || outcome.step.kind == .trash, let source = outcome.step.source { expectedTokens[source] = nil; expectedKinds[source] = nil }
             if let destination = outcome.destination, case .success(let token) = outcome.result {
                 guard let token else { return OperationPlan(command: .recovery, steps: [], issues: [.stopped]) }
                 expectedTokens[destination] = token
+                expectedKinds[destination] = outcome.destinationKind
             }
         }
         var steps: [PlannedStep] = []
@@ -39,7 +41,8 @@ public enum UndoPlanner {
             case .verifyCopy: break
             }
         }
-        return OperationPlan(command: .recovery, steps: steps, context: entry.plan.context, expectedTokens: expectedTokens)
+        return OperationPlan(command: .recovery, steps: steps, context: entry.plan.context, expectedTokens: expectedTokens,
+                             undoVerification: .leafOnly, expectedKinds: expectedKinds)
     }
     public static func inverse(of entry: JournalEntry, origins: any TrashOriginRecording) async -> OperationPlan {
         var recorded: [URL: URL] = [:]

@@ -5,6 +5,26 @@ import HelmCore
 @testable import HelmFileSystem
 
 final class F2FileSystemSafetyTests: XCTestCase {
+    func testK29MixedAuthorityPutBackOriginsRefuseInEitherOrder() throws {
+        let item = URL(fileURLWithPath: "/trash/item")
+        let local = PutBackOrigin(trashedURL: item, originalURL: URL(fileURLWithPath: "/original/item"))
+        for raw in ["file://remote/original/item", "https://remote/original/item"] {
+            let invalid = PutBackOrigin(trashedURL: item, originalURL: try XCTUnwrap(URL(string: raw)))
+            for records in [[local, invalid], [invalid, local]] {
+                XCTAssertEqual(PutBackPlanner.plan(item: item, origins: records, parent: .exists), .invalidPath)
+            }
+        }
+    }
+    func testK29PutBackValidDuplicatesAndAmbiguityRemainDistinct() {
+        let item = URL(fileURLWithPath: "/trash/item"), original = URL(fileURLWithPath: "/original/item")
+        let first = PutBackOrigin(trashedURL: item, originalURL: original)
+        XCTAssertEqual(PutBackPlanner.plan(item: item, origins: [first, first], parent: .exists),
+                       .restore(source: item, destination: original))
+        let other = PutBackOrigin(trashedURL: item, originalURL: URL(fileURLWithPath: "/other/item"))
+        for records in [[first, other], [other, first]] {
+            XCTAssertEqual(PutBackPlanner.plan(item: item, origins: records, parent: .exists), .ambiguousOrigin)
+        }
+    }
     func testCancellationAfterStartRetainsCompletion() async throws {
         let started = expectation(description: "Native body started")
         let gate = DispatchSemaphore(value: 0)

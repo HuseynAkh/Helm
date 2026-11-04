@@ -5,18 +5,16 @@ import XCTest
 
 final class F1ColumnGenerationTests: XCTestCase {
     func testReturningToSameDirectoryMustRejectOldReply() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["F1_RUN_DEFERRED_REGRESSIONS"] == "1",
-                          "P1-4: deferred public column request token and adapter migration; see docs/prereview/fixes-F1.md")
         let folder = FileEntry(url: URL(fileURLWithPath: "/a/folder"), kind: .directory)
         let other = FileEntry(url: URL(fileURLWithPath: "/a/other"), kind: .directory)
         var state = ColumnBrowserState(root: SnapshotBuilder.build(location: .directory(URL(fileURLWithPath: "/a")), entries: [folder, other]))
-        _ = state.select(folder.id, in: 0)
+        let oldRequest = try XCTUnwrap(state.select(folder.id, in: 0).loadRequest)
         _ = state.select(other.id, in: 0)
-        _ = state.select(folder.id, in: 0)
+        let newRequest = try XCTUnwrap(state.select(folder.id, in: 0).loadRequest)
         let fresh = FileEntry(url: folder.url.appendingPathComponent("new"))
         let stale = FileEntry(url: folder.url.appendingPathComponent("old"))
-        XCTAssertTrue(state.push(SnapshotBuilder.build(location: .directory(folder.url), entries: [fresh]), from: 0, directory: folder.id))
-        XCTAssertFalse(state.push(SnapshotBuilder.build(location: .directory(folder.url), entries: [stale]), from: 0, directory: folder.id))
+        XCTAssertTrue(state.push(SnapshotBuilder.build(location: .directory(folder.url), entries: [fresh]), request: newRequest))
+        XCTAssertFalse(state.push(SnapshotBuilder.build(location: .directory(folder.url), entries: [stale]), request: oldRequest))
         XCTAssertEqual(state.columns.last?.snapshot.sortedIDs, [fresh.id])
     }
 }

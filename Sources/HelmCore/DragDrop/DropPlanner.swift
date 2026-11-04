@@ -6,16 +6,21 @@ public enum DropPlanner {
     public static func proposal(sources: [DraggedItem], destination: DropDestination,
                                 modifiers: DropModifiers = [],
                                 allowedOperations: Set<DropOperation> = [.copy, .move, .alias, .moveToTrash]) -> DropProposal {
+        proposal(validation: DropSourceValidation(sources: sources), destination: destination,
+                 modifiers: modifiers, allowedOperations: allowedOperations)
+    }
+
+    static func proposal(validation: DropSourceValidation, destination: DropDestination,
+                         modifiers: DropModifiers, allowedOperations: Set<DropOperation>) -> DropProposal {
+        let sources = validation.sources
         func reject(_ reason: DropRejection) -> DropProposal {
             DropProposal(sources: sources, destination: destination, result: .failure(reason))
         }
-        guard !sources.isEmpty else { return reject(.emptySources) }
-        guard sources.allSatisfy({ $0.url.isFileURL }) else { return reject(.invalidFileURL) }
-        guard sources.allSatisfy({ $0.id == ItemID(url: $0.url) }) else { return reject(.identityMismatch) }
+        if let rejection = validation.rejection { return reject(rejection) }
         guard !destination.isSearchResults, destination.location != .recent else { return reject(.virtualDestination) }
         guard destination.isWritable else { return reject(.readOnlyDestination) }
-        let paths = sources.map { $0.url.standardizedFileURL.pathComponents }
-        if hasOverlappingPaths(paths) { return reject(.overlappingSources) }
+        let paths = validation.paths
+        if validation.overlaps { return reject(.overlappingSources) }
         let operation: DropOperation
         switch destination.location {
         case .recent: return reject(.virtualDestination)

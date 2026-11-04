@@ -54,6 +54,44 @@ final class ThumbnailCoordinatorTests: XCTestCase {
         var iterator = subscription.deliveries.makeAsyncIterator()
         return await iterator.next()
     }
+    func testK29ShutdownTerminatesFlightsAndRefusesFutureSubscriptions() async {
+        let cancelled = expectation(description: "shutdown cancels producer")
+        let probe = ImageProducerProbe(onCancel: { cancelled.fulfill() })
+        let coordinator = ThumbnailCoordinator<String>(costLimitBytes: 100) { try await probe.produce($0) }
+        let first = await coordinator.subscribe(to: key())
+        let second = await coordinator.subscribe(to: key())
+        await probe.waitForStart(1)
+        await coordinator.shutdown()
+        await coordinator.shutdown()
+        let firstEnd = await delivery(first), secondEnd = await delivery(second)
+        XCTAssertNil(firstEnd); XCTAssertNil(secondEnd)
+        await fulfillment(of: [cancelled], timeout: 1)
+        // Simulate an uncooperative producer completing successfully after shutdown.
+        await probe.finish(1, .success(ThumbnailImage(image: "late", costBytes: 10)))
+        let future = await coordinator.subscribe(to: key())
+        let futureEnd = await delivery(future)
+        XCTAssertNil(futureEnd)
+        let cost = await coordinator.cachedCostBytes, count = await coordinator.cachedEntryCount
+        XCTAssertEqual(cost, 0); XCTAssertEqual(count, 0)
+        let calls = await probe.counts()
+        XCTAssertEqual(calls.0, 1)
+    }
+    func testK29ShutdownClearsCompletedCacheAndRejectsHits() async {
+        let coordinator = ThumbnailCoordinator<String>(costLimitBytes: 100) { _ in
+            ThumbnailImage(image: "cached", costBytes: 10)
+        }
+        let first = await coordinator.subscribe(to: key())
+        let value = await delivery(first)
+        XCTAssertNotNil(value)
+        let before = await coordinator.cachedEntryCount
+        XCTAssertEqual(before, 1)
+        await coordinator.shutdown()
+        let after = await coordinator.cachedEntryCount
+        XCTAssertEqual(after, 0)
+        let future = await coordinator.subscribe(to: key())
+        let valueAfter = await delivery(future)
+        XCTAssertNil(valueAfter)
+    }
     func testF3OwnerReleaseCancelsProducerAndFinishesStream() async {
         let cancelled = expectation(description: "producer cancelled")
         let probe = ImageProducerProbe(onCancel: { cancelled.fulfill() })

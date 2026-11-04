@@ -19,3 +19,31 @@ Only collision errors that guarantee no mutation permit executor retries.
 Open questions/deviations: column/gallery and Starred Location remain deferred. macOS
 resource keys and UI/App targets require Xcode and Opus review. Full inventory, deferred
 integration requests and verification: docs/handoff/CONTRACT_INTEGRATION.md.
+
+## K29 deferred pre-review contracts
+
+BatchRenameIssue.overlappingSources blocks all standardized ancestor/descendant
+selections under the supplied case semantics, with previews retained (F-055/B-047).
+ColumnNavigation.load now carries ColumnLoadRequest: retain the entire value and
+return it to push(_:request:). A request is single-use and bound to its column UUID;
+new navigation, ancestor reload, pop and truncation invalidate earlier requests.
+There is deliberately no path-only acceptance overload (B-009).
+
+DropSession owns cached source validation for one drag. Keep it across destination
+and modifier updates; call replaceSources on payload/metadata changes and end on
+termination. End releases the paths and refuses later proposals. DropPlanner's
+stateless API remains available; neither API caches live filesystem permission.
+
+Await ThumbnailCoordinator.shutdown() on owner teardown. Shutdown is terminal and
+idempotent, cancels flights, finishes streams, clears cache, and returns empty
+streams for future subscriptions. Late cooperative or uncooperative producer
+completions cannot publish. The existing host has no thumbnail coordinator or
+native file-drag owner yet; those adapters must adopt these APIs when implemented.
+
+UndoVerificationPolicy.leafOnly records the conservative P2-3 deviation: root
+metadata never authorizes directory/package undo, even if unchanged. Operations
+records the post-mutation kind, validates kinds and tokens again immediately before
+inverses, and remaps them through internal moves. Complete no-follow descendant
+content/identity manifests and atomic native compare-and-mutate remain open;
+verificationUnavailable must be surfaced for reconciliation, without automatic retry.
+All new contracts remain drafts for Opus and macOS/Xcode verification.

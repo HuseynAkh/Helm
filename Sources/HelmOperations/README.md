@@ -147,3 +147,15 @@ Planning uses component-prefix indexes, cached normalized paths/names and aggreg
 manifest byte counts; journal duplicate checks use StepID sets. The 100k sibling
 copy/journal fixture reports elapsed time without machine-dependent timing gates.
 No public signature was changed. See docs/prereview/fixes-F2.md for all findings.
+
+## K29 automatic undo contract
+
+UndoPlanner emits OperationPlan.undoVerification = .leafOnly, with expectedKinds
+captured from ItemOutcome.destinationKind. The executor refuses missing kind/token
+evidence and directory/package inverses before starting any planned mutations,
+then rechecks each inverse immediately before mutation. Successful internal moves
+remap kinds and tokens. This extends F2's Trash-only guard to directory moves and
+restores as well. P2-3 is resolved by explicit conservative refusal, not by claiming
+root metadata verifies descendants: unchanged trees also require reconciliation.
+Source token comparison and native mutation are still separate calls; full tree
+manifests and atomic identity/content comparison remain future contract work.

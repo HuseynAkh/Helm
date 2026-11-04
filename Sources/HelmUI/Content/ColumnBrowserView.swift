@@ -5,7 +5,7 @@ import SwiftUI
 import HelmCore
 
 /// F-038 selection and P-043 column navigation bind directly to Core; loading/preview I/O stays outside.
-/// The parent must generation-check loads before calling ColumnBrowserState.push (B-009).
+/// The loader must retain ColumnNavigation.load's request and pass it unchanged to push (B-009).
 public struct ColumnBrowserView<Preview: View>: View {
     @Binding private var state: ColumnBrowserState
     private let columnWidth: CGFloat

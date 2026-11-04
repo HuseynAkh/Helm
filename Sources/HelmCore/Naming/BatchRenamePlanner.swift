@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pure F-055 preview, validation and swap planning (B-046/B-047).
@@ -35,6 +36,18 @@ public enum BatchRenamePlanner {
                                  issues initialIssues: [BatchRenameIssue], existingNames: [URL: Set<String>],
                                  caseSensitive: Bool) -> BatchRenamePlan {
         var issues = initialIssues
+        // Component ordering bounds overlap validation to adjacent sorted sources.
+        let ordered = previews.map { preview in
+            (url: preview.source, components: preview.source.standardizedFileURL.pathComponents.map {
+                FileNameComparison.key($0, caseSensitive: caseSensitive)
+            })
+        }.sorted { $0.components.lexicographicallyPrecedes($1.components) }
+        for (ancestor, descendant) in zip(ordered, ordered.dropFirst()) {
+            if descendant.components.count > ancestor.components.count,
+               descendant.components.starts(with: ancestor.components) {
+                issues.append(.overlappingSources(ancestor.url, descendant.url))
+            }
+        }
         func key(_ name: String) -> String { FileNameComparison.key(name, caseSensitive: caseSensitive) }
         func directoryKey(_ url: URL) -> URL {
             URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true)

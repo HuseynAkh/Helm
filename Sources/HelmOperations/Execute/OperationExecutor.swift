@@ -27,13 +27,15 @@ public actor OperationExecutor {
         let id = await journal.begin(plan)
         var outcomes: [ItemOutcome] = []
         var expectedTokens = plan.expectedTokens
+        var expectedKinds = plan.expectedKinds
         var failure: OperationError? = plan.isExecutable ? nil : .invalidPlan
         if failure == nil {
             for (url, token) in plan.expectedTokens {
                 do {
                     let current = try await fileSystem.entry(at: url)
+                    try validateUndoKind(current, expectedKind: expectedKinds[url], policy: plan.undoVerification)
                     if current.changeToken != token { failure = .sourceChanged(url); break }
-                } catch { failure = .sourceChanged(url); break }
+                } catch { failure = (error as? OperationError) ?? .sourceChanged(url); break }
             }
         }
         for step in plan.steps {
@@ -46,16 +48,21 @@ public actor OperationExecutor {
                                              currentName: step.source?.lastPathComponent ?? step.destination?.lastPathComponent))
             do {
                 try Task.checkCancellation()
-                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens)
+                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification)
                 // Mutation success must survive a metadata read failure or cancellation.
-                let token: ChangeToken?
-                if let destination { token = try? await fileSystem.entry(at: destination).changeToken } else { token = nil }
+                let metadata: FileEntry?
+                if let destination { metadata = try? await fileSystem.entry(at: destination) } else { metadata = nil }
+                let token = metadata?.changeToken
                 if let source = step.source, let expected = expectedTokens[source],
                    step.kind == .move || step.kind == .trash {
+                    let kind = expectedKinds.removeValue(forKey: source)
                     expectedTokens[source] = nil
-                    if let destination { expectedTokens[destination] = token ?? expected }
+                    if let destination {
+                        expectedTokens[destination] = token ?? expected
+                        expectedKinds[destination] = metadata?.kind ?? kind
+                    }
                 }
-                let outcome = ItemOutcome(step: step, destination: destination, result: .success(token))
+                let outcome = ItemOutcome(step: step, destination: destination, result: .success(token), destinationKind: metadata?.kind)
                 outcomes.append(outcome)
                 await journal.record(outcome, for: id)
             } catch {
@@ -86,7 +93,8 @@ public actor OperationExecutor {
         await progress(OperationProgress(id: id, itemsDone: outcomes.filter(\.succeeded).count, itemsTotal: plan.steps.count, currentName: nil))
         return result
     }
-    private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [URL: ChangeToken]) async throws -> URL? {
+    private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [URL: ChangeToken],
+                         expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy) async throws -> URL? {
         for url in [step.source, step.destination].compactMap({ $0 }) {
             guard url.isFileURL, url.standardizedFileURL.path != "/" else { throw OperationError.invalidPlan }
         }
@@ -120,7 +128,7 @@ public actor OperationExecutor {
                     throw OperationError.verificationUnavailable
                 }
             }
-            try await validateExpectedSource(step.source, tokens: expectedTokens)
+            try await validateExpectedSource(step.source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             let trashed: URL?
             do { trashed = try await fileSystem.trashItem(at: source) }
             catch { throw StepExecutionFailure(destination: nil, underlying: error) }
@@ -145,7 +153,7 @@ public actor OperationExecutor {
         for attempt in 0..<16 {
             do {
                 try Task.checkCancellation()
-                try await mutate(step, destination: destination, expectedTokens: expectedTokens)
+                try await mutate(step, destination: destination, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: undoVerification)
                 return destination
             } catch let error where error is ExclusiveDestinationConflict || (error as? FileSystemError) == .collision(noMutation: true) {
                 guard step.retryKeepBoth, attempt < 15 else {
@@ -159,13 +167,27 @@ public actor OperationExecutor {
         }
         throw OperationError.conflict
     }
-    private func validateExpectedSource(_ source: URL?, tokens: [URL: ChangeToken]) async throws {
-        guard let source, let token = tokens[source] else { return }
-        do {
-            guard try await fileSystem.entry(at: source).changeToken == token else {
-                throw OperationError.sourceChanged(source)
-            }
-        } catch { throw OperationError.sourceChanged(source) }
+    private func validateUndoKind(_ current: FileEntry, expectedKind: FileEntryKind?,
+                                  policy: UndoVerificationPolicy) throws {
+        guard policy == .leafOnly else { return }
+        guard current.kind != .directory, current.kind != .package,
+              let expectedKind, expectedKind != .directory, expectedKind != .package else {
+            throw OperationError.verificationUnavailable
+        }
+        guard current.kind == expectedKind else { throw OperationError.sourceChanged(current.url) }
+    }
+    private func validateExpectedSource(_ source: URL?, tokens: [URL: ChangeToken],
+                                        kinds: [URL: FileEntryKind], policy: UndoVerificationPolicy) async throws {
+        guard let source else { throw OperationError.invalidPlan }
+        guard let token = tokens[source] else {
+            if policy == .leafOnly { throw OperationError.verificationUnavailable }
+            return
+        }
+        let current: FileEntry
+        do { current = try await fileSystem.entry(at: source) }
+        catch { throw OperationError.sourceChanged(source) }
+        try validateUndoKind(current, expectedKind: kinds[source], policy: policy)
+        guard current.changeToken == token else { throw OperationError.sourceChanged(source) }
     }
     private func sensitivity(at directory: URL, context: PlanningContext) async -> Bool {
         if let declared = context.caseSensitive.first(where: { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }) {
@@ -183,7 +205,8 @@ public actor OperationExecutor {
         // Fable/Opus: K5 cannot atomically compare identity and retire a source; native coordination is still needed.
         try await verifier.verify(source: source, destination: destination)
     }
-    private func mutate(_ step: PlannedStep, destination: URL, expectedTokens: [URL: ChangeToken]) async throws {
+    private func mutate(_ step: PlannedStep, destination: URL, expectedTokens: [URL: ChangeToken],
+                        expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy) async throws {
         switch step.kind {
         case .copy:
             guard let source = step.source else { throw OperationError.invalidPlan }
@@ -193,7 +216,7 @@ public actor OperationExecutor {
             let sourceVolume = try await fileSystem.volumeIdentifier(for: source)
             let destinationVolume = try await fileSystem.volumeIdentifier(for: destination.deletingLastPathComponent())
             guard sourceVolume == destinationVolume else { throw OperationError.invalidPlan }
-            try await validateExpectedSource(source, tokens: expectedTokens)
+            try await validateExpectedSource(source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             try await fileSystem.moveItem(at: source, to: destination)
         case .createDirectory: try await fileSystem.createDirectory(at: destination)
         case .createFile: try await fileSystem.createFileExclusively(at: destination, contents: step.contents)

@@ -52,3 +52,8 @@ paths. Internal syscall/metadata seams are test-only injection points, not new
 public APIs. Archive root directory markers are accepted only with no payload;
 confined runners must ignore their metadata and continue enforcing runtime budgets.
 Native timeout recovery, coordinated mutations and macOS behavior need Opus review.
+
+K29 also closes T1-001: PutBackPlanner validates every matching origin URL before
+collapsing records to paths. A remote-authority record can no longer be hidden by
+an equivalent local pathname and record order. Valid duplicate origins still
+restore; distinct valid origins still report ambiguity (F-060).

@@ -88,3 +88,10 @@ first test build encountered a transient Volumes-lane compile error; the final
 run passed without modifying that lane. SwiftPM reports sandbox cache and
 unhandled README warnings. The manifest owner may exclude Content/README.md
 alongside the other module READMEs; no manifest edit was made in K24.
+
+K29 supersedes path-only column acceptance: ColumnNavigation.load carries a
+ColumnLoadRequest (owning column UUID plus request UUID, directory and index).
+Return that same request to push(_:request:); never manufacture one from the
+current state when a callback arrives. A successful push consumes the request.
+Repeated same-folder selections issue fresh requests; reload, pop and truncation
+invalidate pending requests. UI loading adapters should also cancel obsolete work.

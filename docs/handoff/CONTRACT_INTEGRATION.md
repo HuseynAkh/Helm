@@ -81,3 +81,73 @@ retries. No unrelated source workaround was applied.
 - Column/gallery, Starred Location, schema changes and host adapter work remain
   deferred as detailed in the table. No new view mode or Location case was introduced.
 
+
+## K29
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+
+- **P1-1:** Core `BatchRenameIssue.overlappingSources(URL, URL)` rejects selected
+  ancestor/descendant paths before any steps, including unchanged selected ancestors.
+  Uses standardized components and supplied volume case semantics; previews remain.
+  Non-nested rename and two-phase swap behavior are unchanged.
+- **P1-4:** Core `BrowserColumn.id` and `ColumnLoadRequest` bind each load to an
+  owning-column UUID and single-use request UUID. `ColumnNavigation.load(request)`
+  replaces the path/index-only case; adapters must retain that request and call
+  `push(snapshot, request: request)`. There is no unsafe compatibility overload.
+  New requests, selections, ancestor replacement and truncation/pop invalidate old
+  callbacks. ColumnBrowserView forwards the value unchanged; no concrete load host
+  exists in this tree. F1's A→B→A regression now runs unconditionally.
+- **P2-3:** Core `UndoVerificationPolicy.leafOnly`; Operations
+  `ItemOutcome.destinationKind`, `OperationPlan.expectedKinds` and `undoVerification`.
+  UndoPlanner always selects leaf-only verification. Executor refuses directory and
+  package inverses (including move/restore), missing evidence and kind changes,
+  checks the whole initial token set before mutation and rechecks immediately before
+  each inverse. Kinds/tokens follow actual internal moves. F2's edited-descendant
+  regression remains unconditional; new tests cover moves, absent evidence and kinds.
+  **Deliberate limitation:** all tree undo, even unchanged trees, reports
+  `verificationUnavailable`; no root-token-only tree authorization or purported
+  complete manifest is introduced. Full content/object-identity manifests and atomic
+  native compare-and-mutate remain future work. UI must report refusal, not retry it.
+- **F3:** `await ThumbnailCoordinator.shutdown()` is terminal/idempotent. It removes
+  flights, cancels producers, finishes streams and clears cache; future subscriptions
+  finish empty and late callbacks cannot publish/cache. Producers must cooperate to
+  stop native work. No thumbnail owner exists in HelmUI/App yet; its future teardown
+  must await this API. Deinit remains a synchronous safety net.
+- **F1:** Core `DropSession` caches normalized source paths and overlap validation
+  for one drag UUID. Keep it across target/modifier updates; `replaceSources` rebuilds
+  only when ordered source metadata changes; terminal `end()` releases all paths.
+  No global path cache. Existing stateless DropPlanner delegates to the same logic.
+  No native file-drag adapter exists yet; its lifecycle must adopt this session API.
+
+All new public Core signature types remain in Core. Existing manifest, scripts and
+legacy Helm sources are untouched. Portable verification results follow after runs;
+macOS native compilation and behavior remain pending Opus review.
+
+The full-suite gate also exposed T1-001: PutBackPlanner previously validated only
+the first origin after path-only deduplication. K29 now validates every matching
+origin before deduplication, refusing mixed local/remote authorities in either
+order. No public contract changed; valid duplicates and ambiguous valid origins
+retain their behavior. K29 adds unconditional regressions; T1's independently
+owned gated regression is exercised with `T1_RUN_BUGS=1` for final verification.
+
+### K29 verification
+
+- Linux Swift 6.0.3, Swift 5 language mode, scratch `/tmp/build-K29`.
+- Full portable XCTest suite with `T1_RUN_BUGS=1`: **650 executed, 0 failures,
+  0 skips** (`/tmp/K29-full-final.log`). F1 deferred regressions and the P2-3 live
+  edited-descendant regression run unconditionally. T1's separate Put Back gate
+  is enabled by the environment; the added K29 equivalents are unconditional.
+- All K29 source/test changes pass standalone static checks (**196 Swift files,
+  0 errors**) and scoped `git diff --check`.
+- Earlier attempts recorded T1's in-progress column-API compile errors and search
+  fixture ordering failures. T1 fixed its own files; K29 did not edit them. An
+  initial K29 test lookup used a differently directory-hinted URL; it now checks
+  the journal's actual destination URL and asserts the same path and expected kind.
+- macOS 14/Xcode type checking, native drag/thumbnail lifecycle integration and
+  Opus compile/behavior review remain outstanding. Automatic tree undo is
+  intentionally refused; descendant manifests and atomic native mutation are not
+  claimed. No network, commit, push or external action was performed.
+- Final `T1_RUN_BUGS=1 HELM_K11_SCRATCH=/tmp/build-K29 bash scripts/rebuild/run_all.sh`:
+  **PASS**, all six portable target builds, **650 tests / 0 failures / 0 skips**,
+  Python tests, static checks, UI syntax parse and report-only coverage; **0 failed
+  checks**. Summary `/tmp/K29-run-all-final.log`; detailed `/tmp/build-K29/logs/`.

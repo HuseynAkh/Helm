@@ -23,6 +23,7 @@ public actor ThumbnailCoordinator<Image: Sendable> {
     private var cache: [ThumbnailKey: Cached] = [:]
     private var recency: [ThumbnailKey] = [] // oldest first; bounded by cache cost (minimum one byte).
     private var totalCost: Int = 0
+    private var isShutdown: Bool = false
     private var flights: [ThumbnailKey: Flight] = [:]
 
     public init(costLimitBytes: Int, failureTTL: TimeInterval = 5,
@@ -46,7 +47,9 @@ public actor ThumbnailCoordinator<Image: Sendable> {
         pair.continuation.onTermination = { [weak self] _ in
             Task { await self?.cancel(token) }
         }
-        if let hit = cachedResult(for: key) {
+        if isShutdown {
+            pair.continuation.finish()
+        } else if let hit = cachedResult(for: key) {
             pair.continuation.yield(ThumbnailDelivery(token: token, result: hit))
             pair.continuation.finish()
         } else if var flight = flights[key] {
@@ -68,6 +71,20 @@ public actor ThumbnailCoordinator<Image: Sendable> {
             flights[key] = Flight(generation: generation, task: task, subscribers: [token: pair.continuation])
         }
         return ThumbnailSubscription(token: token, deliveries: pair.stream)
+    }
+
+    /// Terminal, idempotent teardown (F-048/B-055): finish streams, cancel producers and clear cache.
+    /// Await this before releasing the owning host. Future subscriptions finish without deliveries.
+    /// Cancellation is cooperative; a late producer cannot publish or repopulate the cache.
+    public func shutdown() {
+        isShutdown = true
+        let retired = flights
+        flights.removeAll()
+        cache.removeAll(); recency.removeAll(); totalCost = 0
+        for flight in retired.values {
+            flight.task.cancel()
+            for subscriber in flight.subscribers.values { subscriber.finish() }
+        }
     }
 
     public func cancel(_ token: ThumbnailRequestToken) {

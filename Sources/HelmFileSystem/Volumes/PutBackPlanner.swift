@@ -49,6 +49,14 @@ public enum PutBackPlanner {
         let source = item.standardizedFileURL
         let records = origins.filter { ArchivePlanner.validFileURL($0.trashedURL) && $0.trashedURL.standardizedFileURL.path == source.path }
         guard let record = records.first else { return .unknownOrigin }
+        // Validate every matching record before reducing URLs to paths; otherwise a remote
+        // authority can hide behind an equivalent local path depending on input order.
+        guard records.allSatisfy({ record in
+            let url = record.originalURL.standardizedFileURL
+            return ArchivePlanner.validFileURL(record.originalURL) && url.path != "/"
+                && !url.path.contains("\0") && url.path != source.path
+                && !url.path.hasPrefix(source.path + "/")
+        }) else { return .invalidPath }
         let destinations = Set(records.map { $0.originalURL.standardizedFileURL.path })
         guard destinations.count == 1 else { return .ambiguousOrigin }
         let original = record.originalURL.standardizedFileURL
