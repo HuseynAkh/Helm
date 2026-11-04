@@ -1,0 +1,180 @@
+import Foundation
+import HelmCore
+#if os(Linux)
+import Glibc
+#else
+import Darwin
+#endif
+
+/// FileManager implementation preserves nonrecursive listings and exclusive creation (F-035, B-039).
+public struct LiveFileSystem: FileSystem {
+    private let executor: IOExecutor
+    private let volumeRoots: [URL]
+    private let diagnostic: @Sendable (URL, FileSystemError) -> Void
+    public init(executor: IOExecutor = IOExecutor(), volumeRoots: [URL] = [],
+                diagnostic: @escaping @Sendable (URL, FileSystemError) -> Void = { _, _ in }) {
+        self.executor = executor; self.volumeRoots = volumeRoots
+        self.diagnostic = diagnostic
+    }
+    private func queueKey(_ url: URL) -> String {
+        let path = url.standardizedFileURL.path
+        if let root = volumeRoots.sorted(by: { $0.path.count > $1.path.count }).first(where: {
+            path == $0.path || path.hasPrefix($0.path + "/")
+        }) { return root.path }
+        let components = url.pathComponents
+        if components.count > 2 && components[1] == "Volumes" { return "/Volumes/" + components[2] }
+        return "/"
+    }
+    public func enumerate(_ directory: URL, options: EnumerationOptions = EnumerationOptions()) -> AsyncThrowingStream<[FileEntry], Error> {
+        AsyncThrowingStream { continuation in
+            let cancellation = EnumerationCancellation()
+            let task = Task {
+                do {
+                    try await executor.run(volume: queueKey(directory)) {
+                        try cancellation.check()
+                        // opendir provides an O(1) permission preflight without materializing 100k URLs.
+                        guard let handle = opendir(directory.path) else {
+                            throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(errno)))
+                        }
+                        closedir(handle)
+                        var failure: Error?
+                        let flags: FileManager.DirectoryEnumerationOptions = options.includeHidden
+                            ? [.skipsSubdirectoryDescendants] : [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
+                        guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil,
+                            options: flags, errorHandler: { _, error in failure = error; return false }) else {
+                            throw FileSystemError.notFound
+                        }
+                        var batch: [FileEntry] = []
+                        var lastDelivery = Date()
+                        let reader = MetadataReader()
+                        let attributes = try FileManager.default.attributesOfItem(atPath: directory.path)
+                        let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(directory)
+                        while let url = iterator.nextObject() as? URL {
+                            try cancellation.check()
+                            let value: FileEntry
+                            do {
+                                value = try AutoreleaseScope.run {
+                                    try reader.read(url, resolveSymlinkTargets: options.resolveSymlinkTargets, volumeIdentifier: volume)
+                                }
+                            } catch {
+                                diagnostic(url, FileSystemError.mapping(error))
+                                continue
+                            }
+                            if !options.includeHidden && value.isHidden { continue }
+                            batch.append(value)
+                            if batch.count >= max(1, options.batchSize) || Date().timeIntervalSince(lastDelivery) >= 0.05 {
+                                continuation.yield(batch); batch.removeAll(keepingCapacity: true); lastDelivery = Date()
+                            }
+                        }
+                        if let failure { throw FileSystemError.mapping(failure) }
+                        if !batch.isEmpty { continuation.yield(batch) }
+                    }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in cancellation.cancel(); task.cancel() }
+        }
+    }
+    public func makeMonitor(for directory: URL) -> any DirectoryMonitor {
+        FallbackMonitor(directory: directory, fileSystem: self)
+    }
+    public func entry(at url: URL) async throws -> FileEntry {
+        try await executor.run(volume: queueKey(url)) { try MetadataReader().read(url) }
+    }
+    public func exists(_ url: URL) async -> Bool { (try? await entry(at: url)) != nil }
+    private func perform(at url: URL, _ body: @escaping @Sendable (FileManager) throws -> Void) async throws {
+        try await executor.run(volume: queueKey(url)) {
+            do { try body(FileManager.default) } catch { throw FileSystemError.mapping(error) }
+        }
+    }
+    public func copyItem(at source: URL, to destination: URL) async throws {
+        try await perform(at: source) { try $0.copyItem(at: source, to: destination) }
+    }
+    public func moveItem(at source: URL, to destination: URL) async throws {
+        try await perform(at: source) { try $0.moveItem(at: source, to: destination) }
+    }
+    public func replaceItem(at destination: URL, with temporary: URL, backup: URL) async throws {
+        try await perform(at: destination) { manager in
+            try manager.moveItem(at: destination, to: backup)
+            do { try manager.moveItem(at: temporary, to: destination) }
+            catch {
+                do { try manager.moveItem(at: backup, to: destination) }
+                catch { throw FileSystemError.other("Replacement failed; original retained at \(backup.path)") }
+                throw error
+            }
+        }
+    }
+    public func applyDirectoryMetadata(from source: URL, to destination: URL) async throws {
+        try await perform(at: destination) { manager in
+            let sourceAttributes = try manager.attributesOfItem(atPath: source.path)
+            var attributes: [FileAttributeKey: Any] = [:]
+            for key: FileAttributeKey in [.posixPermissions, .modificationDate, .creationDate] {
+                attributes[key] = sourceAttributes[key]
+            }
+            try manager.setAttributes(attributes, ofItemAtPath: destination.path)
+        }
+    }
+    public func trashItem(at url: URL) async throws -> URL? {
+        #if os(macOS)
+        return try await executor.run(volume: queueKey(url)) {
+            var result: NSURL?
+            do { try FileManager.default.trashItem(at: url, resultingItemURL: &result); return result as URL? }
+            catch { throw FileSystemError.mapping(error) }
+        }
+        #else
+        throw FileSystemError.unsupported
+        #endif
+    }
+    public func removeItem(at url: URL) async throws { try await perform(at: url) { try $0.removeItem(at: url) } }
+    public func createDirectory(at url: URL) async throws {
+        try await perform(at: url) { try $0.createDirectory(at: url, withIntermediateDirectories: false) }
+    }
+    public func createFileExclusively(at url: URL, contents: Data) async throws {
+        try await executor.run(volume: queueKey(url)) {
+            let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o666))
+            guard descriptor >= 0 else { throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(errno))) }
+            defer { _ = close(descriptor) }
+            do {
+                try contents.withUnsafeBytes { bytes in
+                    var offset = 0
+                    while offset < bytes.count {
+                        guard let base = bytes.baseAddress else { return }
+                        let count = write(descriptor, base.advanced(by: offset), bytes.count - offset)
+                        if count < 0 && errno == EINTR { continue }
+                        guard count > 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                        offset += count
+                    }
+                }
+            } catch {
+                _ = unlink(url.path)
+                throw FileSystemError.mapping(error)
+            }
+        }
+    }
+    public func createSymbolicLink(at url: URL, destination: URL) async throws {
+        try await perform(at: url) { try $0.createSymbolicLink(at: url, withDestinationURL: destination) }
+    }
+    public func createAlias(for url: URL, at destination: URL) async throws {
+        #if os(macOS)
+        try await executor.run(volume: queueKey(url)) {
+            let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+            try URL.writeBookmarkData(data, to: destination)
+        }
+        #else
+        throw FileSystemError.unsupported
+        #endif
+    }
+    public func volumeIdentifier(for url: URL) async throws -> String {
+        try await executor.run(volume: queueKey(url)) {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            return (attributes[.systemNumber] as? NSNumber)?.stringValue ?? "/"
+        }
+    }
+    public func availableCapacity(of url: URL) async throws -> Int64 {
+        try await executor.run(volume: queueKey(url)) {
+            let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
+            guard let value = attributes[.systemFreeSize] as? NSNumber else { throw FileSystemError.unsupported }
+            return value.int64Value
+        }
+    }
+}
