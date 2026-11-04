@@ -18,9 +18,11 @@ public struct CompositeTagStorage: TagStorage {
         }
     }
     public func apply(_ edit: TagEdit, to item: ItemID) async throws {
+        try Task.checkCancellation()
         do { try await primary.apply(edit, to: item) }
         catch {
             guard isUnsupported(error), let fallback else { throw error }
+            try Task.checkCancellation()
             try await fallback.apply(edit, to: item)
         }
     }

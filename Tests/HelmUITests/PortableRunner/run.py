@@ -1,11 +1,24 @@
 # DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 # Run from the worktree root after sourcing /workspace/toolchains/env.sh.
 import pathlib, subprocess, re, os
-root=pathlib.Path.cwd(); build=pathlib.Path('/tmp/build-F4')
+root = pathlib.Path.cwd()
+configured = os.environ.get('HELM_UI_SCRATCH')
+if not configured:
+ raise SystemExit('HELM_UI_SCRATCH must name the scratch directory built for this run')
+build = pathlib.Path(configured).resolve()
+module_dir = build / 'debug' / 'Modules'
+if not module_dir.is_dir():
+ raise SystemExit(f'Missing Swift module directory: {module_dir}')
+os.environ['HELM_UI_SCRATCH'] = str(build)
 os.environ['LD_LIBRARY_PATH'] = str(build) + ':' + os.environ.get('LD_LIBRARY_PATH', '')
 def run(args): subprocess.run(args, check=True)
 modules=['HelmCore','HelmFileSystem','HelmPersistence','HelmOperations','HelmSearch','HelmTestKit']
 objects=[str(p) for m in modules for p in (build/'debug'/f'{m}.build').glob('*.swift.o')]
+for module in modules:
+ if not (module_dir / f'{module}.swiftmodule').is_file():
+  raise SystemExit(f'Missing Swift module: {module}')
+ if not list((build / 'debug' / f'{module}.build').glob('*.swift.o')):
+  raise SystemExit(f'Missing Swift objects: {module}')
 ui=[str(p) for p in (root/'Sources/HelmUI').rglob('*.swift') if not re.search(r'import (SwiftUI|AppKit)',p.read_text())]
 run(['swiftc','-emit-library',*objects,'-o',str(build/'libF4Dependencies.so')])
 for name,files in [('HelmUI',ui),('HelmApp',[str(p) for p in (root/'Sources/HelmApp').glob('*.swift')])]:

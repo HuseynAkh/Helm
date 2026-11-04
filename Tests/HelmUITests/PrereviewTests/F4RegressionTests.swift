@@ -7,10 +7,17 @@ import HelmCore
 final class F4RegressionTests: XCTestCase {
     func testSearchAdapterTypechecksAgainstCurrentCore() throws {
 #if os(Linux)
+        let scratch = try XCTUnwrap(ProcessInfo.processInfo.environment["HELM_UI_SCRATCH"],
+            "HELM_UI_SCRATCH must name the scratch directory built for this run")
+        let modules = URL(fileURLWithPath: scratch).appendingPathComponent("debug/Modules")
+        guard FileManager.default.fileExists(atPath: modules.appendingPathComponent("HelmCore.swiftmodule").path) else {
+            XCTFail("Missing HelmCore module in configured scratch directory: \(modules.path)")
+            return
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["swiftc", "-typecheck", "-swift-version", "5", "-I",
-            "/tmp/build-F4/debug/Modules", "Sources/HelmUI/SearchBar/SearchBarModel.swift"]
+            modules.path, "Sources/HelmUI/SearchBar/SearchBarModel.swift"]
         try process.run()
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)

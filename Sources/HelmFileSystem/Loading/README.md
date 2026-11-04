@@ -1,0 +1,48 @@
+<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
+
+K31 directory loading integration (M3/M5/M6)
+
+Use one DirectoryLoadPipeline per tab load lane. Feed TabEffect.load's Location,
+Generation and LoadOptions to load(), then dispatch each returned TabAction.
+Starting another request cancels and closes the prior stream; an internal UUID
+also gates late emissions. Cancellation finishes silently. The reducer remains
+responsible for rejecting already-buffered stale generations and allocating
+accepted snapshot IDs. The checked-in contracts have Generation + Location,
+not a distinct K29 LoadRequest type; no replacement Core contract is invented.
+
+Snapshots are cumulative, newest-buffered (one pending action), naturally sorted
+and directory-grouped through SnapshotBuilder/ItemSort on a detached worker.
+Progress publication grows geometrically to avoid sorting 100k rows every 512
+entries. Final completion always replaces pending progress. Entries are deduped
+by ItemID, retaining latest metadata. Cache is deliberately bypassed for access
+validation; useCache is accepted for effect compatibility. Sorting itself is
+synchronous and cannot be interrupted mid-sort; cancellation is checked around
+it and identity gates publication immediately.
+
+Use DirectoryReloadCoalescer.actions for the monitor lane; run consume(events)
+in a caller-owned task and cancel that task on replacement. Quiet/max deadlines
+use HelmClock; flush() supports FakeClock tests. Changed sets become rescan so
+bounded buffering never loses an affected path. Root/unmount/unavailable remain
+sticky for the watch lifetime until composition revalidates/replaces the watch.
+Handle reducer refreshPaths by using a SEPARATE pipeline's reload(), forwarding
+monitorSnapshot. It emits only a complete snapshot so the reducer preserves
+selection IDs absent from intermediate batches. Do not restart the navigation
+worker for monitor events. Composition owns monitor start/stop and cancellation.
+
+Needed changes elsewhere / deviations:
+- FileSystem.enumerate and both existing live/fake adapters have unbounded raw
+  batch buffers. This pipeline bounds its OUTPUT, not upstream producer memory;
+  lossless end-to-end backpressure needs a pull-based enumeration protocol or
+  acknowledged producer channel in their owned files. Dropping raw batches is
+  incorrect and is deliberately avoided.
+- LiveFileSystem currently throws on a child's metadata failure. Optional
+  RecoverableDirectoryEnumerating lets an adapter yield LoadEvent.warning and
+  continue after skipping that child. Wire that capability in the live adapter;
+  ordinary terminal stream errors cannot be resumed. The pipeline reports them
+  as failures, never claims a truncated listing is complete. isReadable=false
+  entries remain visible with diagnostics rather than disappearing.
+- TabAction/PresentationSnapshot has no partial-read warning field; diagnostics
+  use a synchronous Sendable callback. The composition root must surface these.
+- There is no independent grouping parameter on SnapshotBuilder; ItemSort's
+  directory grouping is preserved, not a second invented grouping contract.
+- macOS/Xcode and Opus review remain required. No external actions performed.

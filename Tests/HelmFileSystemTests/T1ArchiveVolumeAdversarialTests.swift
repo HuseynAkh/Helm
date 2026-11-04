@@ -145,7 +145,6 @@ final class T1ArchiveVolumeAdversarialTests: XCTestCase {
         }
     }
     func testPutBackMixedAuthorityOriginsFailClosedRegardlessOfOrder() throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["T1_RUN_BUGS"] == "1", "T1-001: mixed local/remote origins depend on record order")
         let item = URL(fileURLWithPath: "/trash/a")
         let local = PutBackOrigin(trashedURL: item, originalURL: URL(fileURLWithPath: "/original/a"))
         let remote = PutBackOrigin(trashedURL: item, originalURL: try XCTUnwrap(URL(string: "file://remote/original/a")))

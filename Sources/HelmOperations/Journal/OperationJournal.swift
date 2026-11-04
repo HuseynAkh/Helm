@@ -16,6 +16,7 @@ public actor OperationJournal {
     private var entries: [OperationID: JournalEntry] = [:]
     private var partial: [OperationID: [ItemOutcome]] = [:]
     private var recordedSteps: [OperationID: Set<StepID>] = [:]
+    private(set) var membershipChecks: Int = 0
     private var order: [OperationID] = []
     public init() {}
     public func begin(_ plan: OperationPlan) -> OperationID {
@@ -23,8 +24,12 @@ public actor OperationJournal {
     }
     public func record(_ outcome: ItemOutcome, for id: OperationID) {
         guard let entry = entries[id], entry.result == nil else { return }
-        guard recordedSteps[id, default: []].insert(outcome.step.id).inserted else { return }
+        guard insertStep(outcome.step.id, for: id) else { return }
         partial[id, default: []].append(outcome)
+    }
+    private func insertStep(_ step: StepID, for id: OperationID) -> Bool {
+        membershipChecks += 1
+        return recordedSteps[id, default: []].insert(step).inserted
     }
     @discardableResult public func complete(_ result: OperationResult) -> Bool {
         guard let entry = entries[result.id], entry.result == nil else { return false }

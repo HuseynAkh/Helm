@@ -7,14 +7,15 @@ public final class IOExecutor: @unchecked Sendable {
     private let lock = NSLock()
     private var queues: [String: OperationQueue] = [:]
     private var quarantined: Set<String> = []
+    private var queued: [String: [UUID: @Sendable () -> Void]] = [:]
     private let width: Int
     private let timeout: TimeInterval
     public init(maxConcurrentOperations: Int = 4, timeout: TimeInterval = 30) {
         width = max(1, maxConcurrentOperations)
         self.timeout = max(0.001, timeout.isFinite ? timeout : 30)
     }
+    // Caller holds the executor lock across registration and quarantine admission.
     private func queue(for volume: String) throws -> OperationQueue {
-        lock.lock(); defer { lock.unlock() }
         guard !quarantined.contains(volume) else { throw FileSystemError.timedOut }
         if let existing = queues[volume] { return existing }
         let queue = OperationQueue()
@@ -22,31 +23,55 @@ public final class IOExecutor: @unchecked Sendable {
         queues[volume] = queue
         return queue
     }
-    private func quarantine(_ volume: String) {
-        lock.lock(); quarantined.insert(volume); lock.unlock()
+    private func register<T>(_ state: IOResultState<T>, id: UUID, volume: String) throws -> OperationQueue {
+        lock.lock(); defer { lock.unlock() }
+        let queue = try queue(for: volume)
+        queued[volume, default: [:]][id] = { state.cancelIfQueued(error: FileSystemError.timedOut) }
+        return queue
+    }
+    private func begin<T>(_ state: IOResultState<T>, id: UUID, volume: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        queued[volume]?[id] = nil
+        guard !quarantined.contains(volume) else {
+            state.cancelIfQueued(error: FileSystemError.timedOut)
+            return false
+        }
+        return state.begin()
+    }
+    private func expire<T>(_ state: IOResultState<T>, volume: String) {
+        lock.lock(); defer { lock.unlock() }
+        // Shared lock makes timeout/quarantine indivisible with queued-to-running admission.
+        state.complete(.failure(FileSystemError.timedOut), onCompletion: {
+            quarantined.insert(volume)
+            let waiting = queued.removeValue(forKey: volume) ?? [:]
+            for reject in waiting.values { reject() }
+        })
     }
     /// The caller supplies a mount identity when known; unrelated queues survive a blocked mount.
     public func run<T: Sendable>(volume: String = "/", _ body: @escaping @Sendable () throws -> T) async throws -> T {
         try Task.checkCancellation()
-        let queue = try queue(for: volume)
         let state = IOResultState<T>()
+        let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 state.install(continuation)
+                let queue: OperationQueue
+                do { queue = try register(state, id: id, volume: volume) }
+                catch { state.complete(.failure(error)); return }
                 queue.addOperation {
-                    guard state.begin() else { return }
+                    guard self.begin(state, id: id, volume: volume) else { return }
                     do { state.complete(.success(try body())) }
                     catch { state.complete(.failure(error)) }
                 }
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { [weak self, weak state] in
-                    state?.complete(.failure(FileSystemError.timedOut), onCompletion: { self?.quarantine(volume) })
+                    if let state { self?.expire(state, volume: volume) }
                 }
             }
         } onCancel: { state.cancelIfQueued() }
     }
 }
 /// Lock covers continuation installation and exactly-once completion, including cancel-before-install.
-private final class IOResultState<T: Sendable>: @unchecked Sendable {
+final class IOResultState<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, Error>?
     private var result: Result<T, Error>?
@@ -57,10 +82,10 @@ private final class IOResultState<T: Sendable>: @unchecked Sendable {
         started = true
         return true
     }
-    func cancelIfQueued() {
+    func cancelIfQueued(error: Error = CancellationError()) {
         lock.lock()
         guard !started, result == nil else { lock.unlock(); return }
-        let result: Result<T, Error> = .failure(CancellationError())
+        let result: Result<T, Error> = .failure(error)
         self.result = result
         let continuation = self.continuation; self.continuation = nil
         lock.unlock()

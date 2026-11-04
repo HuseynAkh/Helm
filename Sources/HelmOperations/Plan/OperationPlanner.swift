@@ -23,7 +23,10 @@ public enum OperationPlanner {
             caseSensitive: c.caseSensitive, existingNames: c.existingNames, volumeIDs: c.volumeIDs, defaultPolicy: policy))
     }
     public static func plan(_ command: Command, context: PlanningContext) -> OperationPlan {
-        var builder = PlanAssembly(command: command, context: context)
+        plan(command, context: context, work: PlannerWork())
+    }
+    static func plan(_ command: Command, context: PlanningContext, work: PlannerWork) -> OperationPlan {
+        var builder = PlanAssembly(command: command, context: context, work: work)
         builder.build()
         return OperationPlan(command: command, steps: builder.issues.contains(where: \.isBlocking) ? [] : builder.steps,
                              issues: builder.issues, context: context)
@@ -33,6 +36,7 @@ public enum OperationPlanner {
 private struct PlanAssembly {
     let command: Command
     let context: PlanningContext
+    let work: PlannerWork
     var steps: [PlannedStep] = []
     var issues: [PlanningIssue] = []
     var reserved: [String: Set<String>] = [:]
@@ -40,8 +44,11 @@ private struct PlanAssembly {
     var manifestBytes: [String: Int64] = [:]
     var pathCache: [URL: String] = [:]
     mutating func build() {
-        for item in context.sourceManifest where item.kind != .directory && item.kind != .package {
+        for item in context.sourceManifest {
+            work.manifestVisits += 1
+            guard item.kind != .directory && item.kind != .package else { continue }
             for prefix in SourcePathIndex.prefixes(item.source.standardizedFileURL.path) {
+                work.manifestAggregations += 1
                 let sum = manifestBytes[prefix, default: 0].addingReportingOverflow(max(0, item.size))
                 manifestBytes[prefix] = sum.overflow ? Int64.max : sum.partialValue
             }
@@ -74,7 +81,7 @@ private struct PlanAssembly {
     }
     mutating func validateSources(_ sources: [URL]) -> Bool {
         for source in sources { _ = valid(source) }
-        let index = SourcePathIndex(paths: sources.map { path($0) })
+        let index = SourcePathIndex(paths: sources.map { path($0) }, work: work)
         if index.overlaps, let source = sources.first { issues.append(.overlappingSelection(source)) }
         return issues.isEmpty
     }
@@ -82,7 +89,7 @@ private struct PlanAssembly {
         guard validateSources(sources) else { return }
         let sensitive = context.sensitive(at: parent)
         let sourceKeys = sources.map { FileNameComparison.key($0.standardizedFileURL.path, caseSensitive: sensitive) }
-        let index = SourcePathIndex(paths: sourceKeys)
+        let index = SourcePathIndex(paths: sourceKeys, work: work)
         for (source, sourceKey) in zip(sources, sourceKeys) {
             let target = parent.appendingPathComponent(source.lastPathComponent)
             let targetKey = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
@@ -112,6 +119,7 @@ private struct PlanAssembly {
         return parent.appendingPathComponent(result.value)
     }
     mutating func checkSpace(source: URL, parent: URL) {
+        work.byteLookups += 1
         let bytes = manifestBytes[source.standardizedFileURL.path, default: 0]
         let sum = requiredBytes[parent.path, default: 0].addingReportingOverflow(bytes)
         let total = sum.overflow ? Int64.max : sum.partialValue
