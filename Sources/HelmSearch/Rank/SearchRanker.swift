@@ -25,12 +25,15 @@ public struct SearchRankingContext: Sendable {
 public enum SearchRanker {
     public enum NameMatch: Sendable { case exact, prefix, wordBoundary, substring, none }
     public static func nameMatch(_ name: String, query: String) -> NameMatch {
-        let name = name.lowercased(); let query = query.lowercased()
+        let name = folded(name); let query = folded(query)
         guard !query.isEmpty else { return .none }
         if name == query { return .exact }
         if name.hasPrefix(query) { return .prefix }
         if name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).contains(where: { $0.hasPrefix(query) }) { return .wordBoundary }
         return name.contains(query) ? .substring : .none
+    }
+    private static func folded(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
     public static func hardCap(limit: Int) -> Int {
         let product = max(0, limit).multipliedReportingOverflow(by: 3)
@@ -40,7 +43,7 @@ public enum SearchRanker {
         path == root || path.hasPrefix(root == "/" ? "/" : root + "/")
     }
     public static func score(_ candidate: SearchCandidate, context: SearchRankingContext, now: Date) -> Int {
-        let entry = candidate.entry; let query = context.query.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let entry = candidate.entry; let query = folded(context.query.text.trimmingCharacters(in: .whitespacesAndNewlines))
         let path = entry.url.standardizedFileURL.path.lowercased(); let home = context.query.homeDirectory.standardizedFileURL.path.lowercased()
         var total: Int
         switch nameMatch(entry.name, query: query) {
@@ -49,7 +52,7 @@ public enum SearchRanker {
         case .wordBoundary, .substring: total = 500 // Distinct classification; frozen legacy score.
         case .none: total = 0
         }
-        for token in query.split(whereSeparator: \.isWhitespace) where entry.name.lowercased().contains(token) { total += 100 }
+        for token in query.split(whereSeparator: \.isWhitespace) where folded(entry.name).contains(token) { total += 100 }
         if context.preferredRoots.contains(where: { contains(path, root: $0.standardizedFileURL.path.lowercased()) }) {
             let depth = max(0, candidate.relativeDepth ?? (path.split(separator: "/").count - home.split(separator: "/").count - 1))
             total += 380 + max(0, 150 - min(depth, 5) * 30)

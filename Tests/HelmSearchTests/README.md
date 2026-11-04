@@ -29,3 +29,30 @@ Search/parser/ranking/codecs 20, Search fallback 4, Persistence 11: 84 new tests
 One regression is skipped for the documented source defect; all remaining new tests pass.
 The manifest emits an unhandled README warning; excluding documentation from targets
 would require a manifest-owner change and is outside K13 ownership.
+
+## K26 search engine and criteria verification
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+Run `source /workspace/toolchains/env.sh`, then:
+
+```
+swift build --scratch-path /tmp/build-K26 --target HelmSearch
+swift test --scratch-path /tmp/build-K26 --filter HelmSearchTests
+bash scripts/static_checks.sh
+```
+
+K26 adds 17 XCTest cases (56 search cases total, all passing on Linux Swift 6.0.3).
+SearchEngineTests preserves F-043–F-046 and B-021/B-026/B-099: symbolic roots,
+filters, hidden/package policies, link cycles, deterministic delivery-order/budget
+behavior, denied-directory diagnostics, cancellation, cumulative batches, fallback
+reasons, metadata-only tags/Recents and scope boundaries. SearchListingFixture wraps
+InMemoryFileSystem to vary batch ordering and package metadata without real IO.
+CriteriaHardeningTests covers typed row edits, stale indices, opaque Finder bytes,
+Unicode folding, operators, quotes, escapes, bounds and 500 deterministic randomized
+codec/tokenizer round trips. A trailing-slash URL equality regression discovered by
+the traversal tests was fixed using standardized path comparison.
+
+The first build attempts were blocked by a transient FileSystem VolumeRegistry
+exclusivity error; no files outside K26 ownership were changed. Final build and tests
+passed after that lane's fix. Linux success does not verify the future Spotlight
+adapter or macOS behavior; those remain pending Opus review.

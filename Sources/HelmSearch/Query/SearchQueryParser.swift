@@ -25,13 +25,27 @@ public enum SearchQueryParser {
     }
     public static func compile(_ request: SearchRequest) throws -> SearchSpecification {
         var clauses = request.filters
+        for clause in clauses {
+            switch clause {
+            case .sizeLessThan(let size), .sizeGreaterThan(let size):
+                guard size >= 0 else { throw SearchParseError.invalidFilter("size") }
+            case .ext(let value):
+                guard !value.trimmingCharacters(in: CharacterSet(charactersIn: ".")).isEmpty,
+                      value.utf8.count <= 4096 else { throw SearchParseError.invalidFilter("extension") }
+            case .name(let value), .tag(let value):
+                guard !value.isEmpty, value.utf8.count <= 4096 else { throw SearchParseError.invalidFilter("empty or oversized literal") }
+            case .before(let date), .after(let date):
+                guard date.timeIntervalSince1970.isFinite else { throw SearchParseError.invalidFilter("date") }
+            case .kind: break
+            }
+        }
         for token in try tokenize(request.text) {
             let parts = token.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { clauses.append(.name(token)); continue }
             let key = parts[0].lowercased(); let value = String(parts[1])
             switch key {
             case "kind":
-                let kind = value == "folder" ? FileEntryKind.directory : FileEntryKind(rawValue: value)
+                let kind = value.lowercased() == "folder" ? FileEntryKind.directory : FileEntryKind.allSearchKinds.first { $0.rawValue.lowercased() == value.lowercased() }
                 guard let kind else { throw SearchParseError.invalidFilter(token) }; clauses.append(.kind(kind))
             case "ext", "tag":
                 guard !value.isEmpty, key != "ext" || !value.trimmingCharacters(in: CharacterSet(charactersIn: ".")).isEmpty else { throw SearchParseError.invalidFilter(token) }
@@ -56,4 +70,8 @@ public enum SearchQueryParser {
         guard let date = formatter.date(from: text), formatter.string(from: date) == text else { return nil }
         return date
     }
+}
+
+private extension FileEntryKind {
+    static let allSearchKinds: [FileEntryKind] = [.regular, .directory, .package, .symlinkToDirectory, .symlinkToFile, .danglingSymlink, .alias, .other]
 }
