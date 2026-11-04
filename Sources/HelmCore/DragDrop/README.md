@@ -70,3 +70,11 @@ These geometry constants are adapter-configurable choices, pending Mac review.
 
 Opus compile-correctness and behaviour-preservation review remains required after
 22:00 Toronto on 2026-11-04. macOS 14/Xcode validation remains outstanding.
+
+F1 prereview integration (draft): overlap validation sorts standardized component
+arrays and checks adjacent paths, retaining the original execution order (P1-2).
+The overlap scan performs at most n-1 prefix checks after O(n log n) sorting;
+component depth/string comparison costs still apply. A 10k selection test reports
+elapsed time diagnostically, without a platform-dependent latency assertion.
+Selection validation caching remains adapter/public-contract work: this stateless
+API has no drag-session lifetime. No global mutable cache was introduced.

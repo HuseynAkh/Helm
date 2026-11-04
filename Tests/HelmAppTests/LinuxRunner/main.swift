@@ -2,6 +2,7 @@
 import XCTest
 
 XCTMain([
+    testCase([("testRepairsReserveLaterValidFrameIdentities", FrameIdentityTests.testRepairsReserveLaterValidFrameIdentities)]),
     testCase([
         ("testColdRequestsWinAndReachFirstContents", LaunchTests.testColdRequestsWinAndReachFirstContents),
         ("testDefaultRestoreAndDisabledRestore", LaunchTests.testDefaultRestoreAndDisabledRestore),

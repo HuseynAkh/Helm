@@ -99,3 +99,12 @@ swiftc -swift-version 5 -I /tmp/build-K22 -I /tmp/build-K22/debug/Modules \
 LD_LIBRARY_PATH=/tmp/build-K22 /tmp/build-K22/HelmAppTests
 bash scripts/static_checks.sh
 ```
+
+## F4 frame identity repair
+
+SessionRestorePlan reserves all nonempty saved frame names before allocating any
+repair, so an earlier empty/duplicate name cannot steal a later window's frame.
+The first occurrence of a valid name is preserved; repairs remain unique. New
+FrameIdentityTests exercise both reported displacement sequences and tab ownership.
+The UI PortableRunner also runs these app tests without duplicate dependency type
+metadata. macOS frame restoration behaviour still requires hosted verification.

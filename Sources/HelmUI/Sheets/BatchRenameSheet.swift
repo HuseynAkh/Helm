@@ -5,6 +5,7 @@ import HelmCore
 /// F-055's three modes, tokens and 20-row preview; host executes and dismisses (B-117).
 public struct BatchRenameSheet: View {
     @Binding private var model: BatchRenameViewModel
+    @State private var displayed: BatchRenameEvaluation?
     private let rename: (BatchRenamePlan) -> Void
     private let cancel: () -> Void
     public init(model: Binding<BatchRenameViewModel>, rename: @escaping (BatchRenamePlan) -> Void,
@@ -23,7 +24,7 @@ public struct BatchRenameSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     // Index identity also tolerates invalid duplicate source inputs.
-                    ForEach(Array(model.preview.enumerated()), id: \.offset) { _, row in
+                    ForEach(Array((displayed?.revision == model.revision ? displayed?.preview ?? [] : []).enumerated()), id: \.offset) { _, row in
                         HStack {
                             Text(row.source.lastPathComponent).foregroundStyle(.secondary)
                             Image(systemName: "arrow.right").foregroundStyle(.tertiary)
@@ -34,7 +35,7 @@ public struct BatchRenameSheet: View {
                     if model.items.count > 20 {
                         Text("... and \(model.items.count - 20) more").foregroundStyle(.tertiary)
                     }
-                    ForEach(Array(model.validationMessages.enumerated()), id: \.offset) { _, message in
+                    ForEach(Array((displayed?.revision == model.revision ? displayed?.messages ?? [] : ["Updating preview…"]).enumerated()), id: \.offset) { _, message in
                         Text(message).foregroundStyle(.red).font(.caption)
                     }
                 }
@@ -43,10 +44,21 @@ public struct BatchRenameSheet: View {
                 Spacer()
                 Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
                 Button("Rename") {
-                    if let plan = model.plan, plan.canExecute { rename(plan) }
-                }.keyboardShortcut(.defaultAction).disabled(!model.canRename)
+                    if let plan = displayed?.executablePlan(for: model.revision) { rename(plan) }
+                }.keyboardShortcut(.defaultAction).disabled(displayed?.executablePlan(for: model.revision) == nil)
             }
         }.padding(20).frame(width: 500, height: 450)
+            .task(id: model.revision) {
+                let snapshot = model
+                do { try await Task.sleep(nanoseconds: 150_000_000) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                let evaluation = await Task.detached(priority: .userInitiated) {
+                    snapshot.evaluation
+                }.value
+                guard !Task.isCancelled, evaluation.revision == model.revision else { return }
+                displayed = evaluation
+            }
     }
     @ViewBuilder private var controls: some View {
         switch model.mode {

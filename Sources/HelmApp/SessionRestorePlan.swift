@@ -29,13 +29,14 @@ public struct WindowCreationRequest: Equatable, Sendable {
 public struct SessionRestorePlan: Equatable, Sendable {
     public let windows: [WindowCreationRequest]
     public init(windows: [SessionWindow], home: URL, isAvailableDirectory: (URL) -> Bool) {
+        let reservedNames = Set(windows.map(\.frameAutosaveName).filter { !$0.isEmpty })
         var usedNames: Set<String> = []
         self.windows = windows.enumerated().map { index, window in
             var name = window.frameAutosaveName
             if name.isEmpty || usedNames.contains(name) {
                 var ordinal = index + 1
                 name = Self.frameName(ordinal: ordinal)
-                while usedNames.contains(name) { ordinal += 1; name = Self.frameName(ordinal: ordinal) }
+                while reservedNames.contains(name) || usedNames.contains(name) { ordinal += 1; name = Self.frameName(ordinal: ordinal) }
             }
             usedNames.insert(name)
             let tabs = window.tabs.isEmpty ? [SessionTab(location: .directory(home))] : window.tabs

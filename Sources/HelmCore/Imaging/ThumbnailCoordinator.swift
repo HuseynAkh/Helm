@@ -32,6 +32,14 @@ public actor ThumbnailCoordinator<Image: Sendable> {
         self.now = now; self.producer = producer
     }
 
+    deinit {
+        // No asynchronous self capture: cancellation and stream termination are synchronous.
+        for flight in flights.values {
+            flight.task.cancel()
+            for continuation in flight.subscribers.values { continuation.finish() }
+        }
+    }
+
     public func subscribe(to key: ThumbnailKey) -> ThumbnailSubscription<Image> {
         let token = ThumbnailRequestToken()
         let pair = AsyncStream<ThumbnailDelivery<Image>>.makeStream(bufferingPolicy: .bufferingNewest(1))

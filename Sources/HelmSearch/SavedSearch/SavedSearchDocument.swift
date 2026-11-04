@@ -2,6 +2,8 @@
 import Foundation
 import HelmCore
 
+private let maximumSavedSearchBytes: Int = 1_048_576
+
 /// Versioned Helm search data extends F-043 without persisting executable predicates.
 public struct SavedSearchDocument: Sendable, Equatable, Codable {
     public let version: Int
@@ -17,10 +19,12 @@ public enum SavedSearchCodec {
         guard document.version == 1 else { throw SavedSearchError.unsupportedVersion(document.version) }
         _ = try SearchQueryParser.compile(document.request)
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(document)
+        let data = try encoder.encode(document)
+        guard data.count <= maximumSavedSearchBytes else { throw SavedSearchError.malformed }
+        return data
     }
     public static func decode(_ data: Data) throws -> SavedSearchDocument {
-        guard data.count <= 1_048_576 else { throw SavedSearchError.malformed }
+        guard data.count <= maximumSavedSearchBytes else { throw SavedSearchError.malformed }
         let document = try JSONDecoder().decode(SavedSearchDocument.self, from: data)
         guard document.version == 1 else { throw SavedSearchError.unsupportedVersion(document.version) }
         _ = try SearchQueryParser.compile(document.request)
@@ -38,7 +42,9 @@ public struct FinderSavedSearchDocument: Sendable {
     public init(rawQuery: String, searchScopes: [String]) throws {
         guard searchScopes.allSatisfy({ $0.hasPrefix("/") }) else { throw SavedSearchError.malformed }
         self.rawQuery = rawQuery; self.searchScopes = searchScopes; self.readOnlyReasons = []
-        self.original = try PropertyListSerialization.data(fromPropertyList: ["RawQuery": rawQuery, "SearchCriteria": ["FXScopeArrayOfPaths": searchScopes]], format: .xml, options: 0)
+        let data = try PropertyListSerialization.data(fromPropertyList: ["RawQuery": rawQuery, "SearchCriteria": ["FXScopeArrayOfPaths": searchScopes]], format: .xml, options: 0)
+        guard data.count <= maximumSavedSearchBytes else { throw SavedSearchError.malformed }
+        self.original = data
     }
     fileprivate init(rawQuery: String, searchScopes: [String], reasons: [String], original: Data) {
         self.rawQuery = rawQuery; self.searchScopes = searchScopes; self.readOnlyReasons = reasons; self.original = original
@@ -47,7 +53,7 @@ public struct FinderSavedSearchDocument: Sendable {
 /// Finder interchange supports RawQuery and SearchCriteria/FXScopeArrayOfPaths only (M23).
 public enum FinderSavedSearchCodec {
     public static func decode(_ data: Data) throws -> FinderSavedSearchDocument {
-        guard data.count <= 1_048_576,
+        guard data.count <= maximumSavedSearchBytes,
               let dictionary = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
               let raw = dictionary["RawQuery"] as? String,
               let criteria = dictionary["SearchCriteria"] as? [String: Any],

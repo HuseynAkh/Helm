@@ -37,7 +37,15 @@ private struct PlanAssembly {
     var issues: [PlanningIssue] = []
     var reserved: [String: Set<String>] = [:]
     var requiredBytes: [String: Int64] = [:]
+    var manifestBytes: [String: Int64] = [:]
+    var pathCache: [URL: String] = [:]
     mutating func build() {
+        for item in context.sourceManifest where item.kind != .directory && item.kind != .package {
+            for prefix in SourcePathIndex.prefixes(item.source.standardizedFileURL.path) {
+                let sum = manifestBytes[prefix, default: 0].addingReportingOverflow(max(0, item.size))
+                manifestBytes[prefix] = sum.overflow ? Int64.max : sum.partialValue
+            }
+        }
         switch command {
         case .copy(let sources, let parent): transfers(sources, parent: parent, moving: false)
         case .move(let sources, let parent): transfers(sources, parent: parent, moving: true)
@@ -54,52 +62,57 @@ private struct PlanAssembly {
         case .recovery: issues.append(.stopped)
         }
     }
-    func path(_ url: URL) -> String { FileNameComparison.key(url.standardizedFileURL.path, caseSensitive: context.sensitive(at: url.deletingLastPathComponent())) }
+    mutating func path(_ url: URL) -> String {
+        if let cached = pathCache[url] { return cached }
+        let value = FileNameComparison.key(url.standardizedFileURL.path, caseSensitive: context.sensitive(at: url.deletingLastPathComponent()))
+        pathCache[url] = value
+        return value
+    }
     mutating func valid(_ url: URL) -> Bool {
         guard url.isFileURL, url.path != "/", url.host == nil || url.host == "" || url.host == "localhost" else { issues.append(.invalidURL(url)); return false }
         return true
     }
     mutating func validateSources(_ sources: [URL]) -> Bool {
-        for (index, source) in sources.enumerated() {
-            _ = valid(source)
-            for other in sources.prefix(index) {
-                if path(source) == path(other) || path(source).hasPrefix(path(other) + "/") || path(other).hasPrefix(path(source) + "/") {
-                    issues.append(.overlappingSelection(source))
-                }
-            }
-        }
+        for source in sources { _ = valid(source) }
+        let index = SourcePathIndex(paths: sources.map { path($0) })
+        if index.overlaps, let source = sources.first { issues.append(.overlappingSelection(source)) }
         return issues.isEmpty
     }
     mutating func transfers(_ sources: [URL], parent: URL, moving: Bool) {
         guard validateSources(sources) else { return }
-        for source in sources {
+        let sensitive = context.sensitive(at: parent)
+        let sourceKeys = sources.map { FileNameComparison.key($0.standardizedFileURL.path, caseSensitive: sensitive) }
+        let index = SourcePathIndex(paths: sourceKeys)
+        for (source, sourceKey) in zip(sources, sourceKeys) {
             let target = parent.appendingPathComponent(source.lastPathComponent)
-            if sources.contains(where: { $0 != source && (path($0) == path(target) || path($0).hasPrefix(path(target) + "/")) }) {
+            let targetKey = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
+            if index.containsSelection(atOrBelow: targetKey, excluding: sourceKey) {
                 issues.append(.overlappingSelection(target)); return
             }
         }
         for source in sources { transfer(source, parent: parent, moving: moving) }
     }
-    mutating func names(_ parent: URL) -> Set<String>? {
-        guard parent.isFileURL else { issues.append(.invalidURL(parent)); return nil }
-        if let value = reserved[parent.standardizedFileURL.path] { return value }
-        guard let value = context.names(at: parent) else { issues.append(.missingSnapshot(parent)); return nil }
-        reserved[parent.standardizedFileURL.path] = value
-        return value
+    mutating func loadNames(_ parent: URL) -> Bool {
+        guard parent.isFileURL else { issues.append(.invalidURL(parent)); return false }
+        let key = parent.standardizedFileURL.path
+        if reserved[key] != nil { return true }
+        guard let value = context.names(at: parent) else { issues.append(.missingSnapshot(parent)); return false }
+        let sensitive = context.sensitive(at: parent)
+        reserved[key] = Set(value.map { FileNameComparison.key($0, caseSensitive: sensitive) })
+        return true
     }
-    mutating func reserve(_ name: String, parent: URL) { reserved[parent.standardizedFileURL.path, default: []].insert(name) }
     mutating func unique(_ name: String, parent: URL) -> URL? {
-        guard let occupied = names(parent), let result = try? UniqueNamer.name(for: name, existingNames: occupied, caseSensitive: context.sensitive(at: parent)) else {
-            issues.append(.invalidName); return nil
-        }
-        reserve(result.value, parent: parent)
+        guard loadNames(parent) else { return nil }
+        let key = parent.standardizedFileURL.path
+        let sensitive = context.sensitive(at: parent)
+        guard let result = try? UniqueNamer.name(for: name, exists: {
+            reserved[key, default: []].contains(FileNameComparison.key($0, caseSensitive: sensitive))
+        }) else { issues.append(.invalidName); return nil }
+        reserved[key, default: []].insert(FileNameComparison.key(result.value, caseSensitive: sensitive))
         return parent.appendingPathComponent(result.value)
     }
     mutating func checkSpace(source: URL, parent: URL) {
-        let bytes = context.sourceManifest.filter { $0.source == source || $0.source.path.hasPrefix(source.path + "/") }
-            .filter { $0.kind != .directory && $0.kind != .package }.reduce(Int64(0)) { total, item in
-                let sum = total.addingReportingOverflow(max(0, item.size)); return sum.overflow ? Int64.max : sum.partialValue
-            }
+        let bytes = manifestBytes[source.standardizedFileURL.path, default: 0]
         let sum = requiredBytes[parent.path, default: 0].addingReportingOverflow(bytes)
         let total = sum.overflow ? Int64.max : sum.partialValue
         requiredBytes[parent.path] = total
@@ -114,10 +127,10 @@ private struct PlanAssembly {
         if moving && path(source.deletingLastPathComponent()) == path(parent) {
             issues.append(.sameParentMove(source)); return
         }
-        guard let occupied = names(parent) else { return }
+        guard loadNames(parent) else { return }
         let target = parent.appendingPathComponent(source.lastPathComponent)
         let sensitive = context.sensitive(at: parent)
-        let collision = occupied.contains { FileNameComparison.key($0, caseSensitive: sensitive) == FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive) }
+        let collision = reserved[parent.standardizedFileURL.path, default: []].contains(FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive))
         let policy = context.defaultPolicy.resolution(for: source)
         if collision && policy == .skip { return }
         if collision && policy == .stop { issues.append(.stopped); return }
@@ -125,7 +138,12 @@ private struct PlanAssembly {
             checkSpace(source: source, parent: parent)
         }
         if collision && policy == .replace {
-            guard path(source) != path(target) else { issues.append(.sourceEqualsDestination(source)); return }
+            let sourceKey = FileNameComparison.key(source.standardizedFileURL.path, caseSensitive: sensitive)
+            let targetKey = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
+            guard sourceKey != targetKey else { issues.append(.sourceEqualsDestination(source)); return }
+            guard !sourceKey.hasPrefix(targetKey + "/") else {
+                issues.append(.overlappingSelection(target)); return
+            }
             replacement(source, target: target, moving: moving); return
         }
         guard let destination = unique(source.lastPathComponent, parent: parent) else { return }
@@ -166,7 +184,7 @@ private struct PlanAssembly {
     mutating func renames(_ pairs: [RenamePair]) {
         guard validateSources(pairs.map(\.source)) else { return }
         for parent in Set(pairs.map { $0.source.deletingLastPathComponent() }).sorted(by: { $0.path < $1.path }) {
-            guard names(parent) != nil else { return }
+            guard loadNames(parent) else { return }
             let group = pairs.filter { $0.source.deletingLastPathComponent() == parent }
             let result = BatchRenamePlanner.plan(renames: group, existingNames: context.existingNames, caseSensitive: context.sensitive(at: parent))
             if !result.issues.isEmpty { issues.append(.collision(parent)); return }

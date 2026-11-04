@@ -61,6 +61,8 @@ public actor InMemoryFileSystem: FileSystem {
                          size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: "memory")
     }
     public func entry(at url: URL) async throws -> FileEntry { try await delay(); return entry(try node(url)) }
+    // Internal fixture reader enables payload fidelity assertions without expanding FileSystem.
+    func storedContents(at url: URL) throws -> Data { try node(url).data }
     public func exists(_ url: URL) async -> Bool { (try? node(url)) != nil }
     private func listing(_ directory: URL, options: EnumerationOptions) throws -> [FileEntry] {
         let parent = try resolved(directory)

@@ -31,6 +31,9 @@ public struct EnumerationSearchService: Sendable {
         walk: while let (directory, depth) = pending.popLast() {
             try Task.checkCancellation()
             guard seen.insert(directory.path).inserted else { continue }
+            let rootEntry = try await fileSystem.entry(at: directory)
+            try Task.checkCancellation()
+            guard rootEntry.kind == .directory else { continue }
             for try await batch in fileSystem.enumerate(directory, options: EnumerationOptions(includeHidden: specification.includeHidden, resolveSymlinkTargets: false)) {
                 try Task.checkCancellation()
                 for entry in batch {

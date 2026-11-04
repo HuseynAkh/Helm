@@ -44,7 +44,13 @@ public enum ArchiveSafety {
                 throw ArchivePlanningError.unsafeMember(raw)
             }
             let clean = components.filter { !$0.isEmpty && $0 != "." }.joined(separator: "/")
-            guard !clean.isEmpty else { throw ArchivePlanningError.unsafeMember(raw) }
+            if clean.isEmpty {
+                guard member.kind == .directory, member.expandedBytes == 0 else {
+                    throw ArchivePlanningError.unsafeMember(raw)
+                }
+                // Root markers carry no extraction metadata or payload authorization.
+                continue
+            }
             let key = FileNameComparison.key(clean, caseSensitive: caseSensitive)
             guard paths[key] == nil else { throw ArchivePlanningError.duplicateMember(raw) }
             paths[key] = member.kind

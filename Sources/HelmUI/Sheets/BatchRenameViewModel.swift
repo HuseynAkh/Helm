@@ -7,13 +7,13 @@ public struct BatchRenameViewModel: Sendable {
     public enum Mode: String, CaseIterable, Sendable {
         case addText = "Add Text", findReplace = "Find & Replace", template = "Template"
     }
-    public var mode: Mode = .addText
-    public var prepend: String = ""
-    public var append: String = ""
-    public var find: String = ""
-    public var replacement: String = ""
-    public var template: String = "[Original Name]-[Counter]"
-    public var counterStart: String = "1"
+    public var mode: Mode = .addText { didSet { cache = BatchRenameEvaluationCache() } }
+    public var prepend: String = "" { didSet { cache = BatchRenameEvaluationCache() } }
+    public var append: String = "" { didSet { cache = BatchRenameEvaluationCache() } }
+    public var find: String = "" { didSet { cache = BatchRenameEvaluationCache() } }
+    public var replacement: String = "" { didSet { cache = BatchRenameEvaluationCache() } }
+    public var template: String = "[Original Name]-[Counter]" { didSet { cache = BatchRenameEvaluationCache() } }
+    public var counterStart: String = "1" { didSet { cache = BatchRenameEvaluationCache() } }
     public let items: [URL]
     private let existingNames: [URL: Set<String>]
     private let caseSensitive: Bool
@@ -24,7 +24,12 @@ public struct BatchRenameViewModel: Sendable {
         self.items = items; self.existingNames = existingNames; self.caseSensitive = caseSensitive
         self.date = date; self.timeZone = timeZone
     }
-    public var plan: BatchRenamePlan? {
+    private var cache = BatchRenameEvaluationCache()
+    var revision: UUID { cache.id }
+    var evaluationCount: Int { cache.count }
+    var evaluation: BatchRenameEvaluation { cache.value { makeEvaluation() } }
+    public var plan: BatchRenamePlan? { evaluation.plan }
+    private func makePlan() -> BatchRenamePlan? {
         let rule: BatchRenameRule
         switch mode {
         case .addText: rule = .addText(prepend: prepend, append: append)
@@ -36,11 +41,15 @@ public struct BatchRenameViewModel: Sendable {
         return BatchRenamePlanner.plan(items: items, rule: rule, existingNames: existingNames,
                                       caseSensitive: caseSensitive, date: date, timeZone: timeZone)
     }
-    public var preview: [RenamePreview] { Array((plan?.previews ?? []).prefix(20)) }
-    public var canRename: Bool { plan?.canExecute == true }
-    public var validationMessages: [String] {
-        guard let plan = plan else { return ["Enter a whole number for Start at."] }
-        return plan.issues.map { issue in
+    public var preview: [RenamePreview] { evaluation.preview }
+    public var canRename: Bool { evaluation.plan?.canExecute == true }
+    public var validationMessages: [String] { evaluation.messages }
+    private func makeEvaluation() -> BatchRenameEvaluation {
+        let plan = makePlan()
+        guard let plan else {
+            return BatchRenameEvaluation(revision: revision, plan: nil, messages: ["Enter a whole number for Start at."])
+        }
+        var messages = plan.issues.prefix(20).map { issue in
             switch issue {
             case let .invalidName(url, error): return "\(url.lastPathComponent): \(NewItemNameValidation.message(for: error))"
             case let .counterOverflow(url): return "\(url.lastPathComponent): Counter is too large."
@@ -48,5 +57,7 @@ public struct BatchRenameViewModel: Sendable {
             case let .collision(url): return "An item named “\(url.lastPathComponent)” already exists in \(url.deletingLastPathComponent().path)."
             }
         }
+        if plan.issues.count > 20 { messages.append("… and \(plan.issues.count - 20) more issues.") }
+        return BatchRenameEvaluation(revision: revision, plan: plan, messages: messages)
     }
 }

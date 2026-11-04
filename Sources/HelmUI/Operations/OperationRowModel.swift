@@ -9,6 +9,7 @@ public struct OperationRowModel: Sendable, Identifiable {
     public let title: String
     public let progress: OperationProgress?
     public let result: OperationResult?
+    private let detailCache = OperationDetailCache()
     public let cancellationRequested: Bool
     public init(id: OperationID, title: String, progress: OperationProgress? = nil,
                 result: OperationResult? = nil, cancellationRequested: Bool = false) {
@@ -32,9 +33,17 @@ public struct OperationRowModel: Sendable, Identifiable {
         guard let progress = progress, progress.itemsTotal > 0 else { return "Preparing…" }
         return "\(min(max(0, progress.itemsDone), progress.itemsTotal)) of \(progress.itemsTotal) steps"
     }
-    public var details: [String] {
-        guard let result = result else { return [] }
-        return result.outcomes.map { outcome in
+    var hasDetails: Bool { result?.outcomes.isEmpty == false }
+    var detailPageCount: Int { ((result?.outcomes.count ?? 0) + 49) / 50 }
+    var formattedDetailCount: Int { detailCache.count }
+    func detailPage(_ page: Int) -> [String] {
+        guard let result, page >= 0, page < detailPageCount else { return [] }
+        return detailCache.page(page) {
+            result.outcomes[(page * 50)..<min(page * 50 + 50, result.outcomes.count)].map(Self.detail)
+        }
+    }
+    public var details: [String] { result?.outcomes.map(Self.detail) ?? [] }
+    private static func detail(_ outcome: ItemOutcome) -> String {
             let source = outcome.step.source?.path ?? "New item"
             let destination = outcome.destination ?? outcome.step.destination
             let path = source + (destination.map { " → \($0.path)" } ?? "")
@@ -44,7 +53,6 @@ public struct OperationRowModel: Sendable, Identifiable {
             case .failure(let error): state = Self.message(for: error)
             }
             return path + ": " + state + (outcome.requiresReconciliation ? " — Check filesystem state before retrying." : "")
-        }
     }
     public static func message(for error: OperationError) -> String {
         switch error {

@@ -7,13 +7,15 @@ import HelmFileSystem
 struct SearchListingFixture: FileSystem {
     let base: InMemoryFileSystem
     let reversed: Bool
+    var onEnumerate: @Sendable (URL) -> Void = { _ in }
     func transform(_ entry: FileEntry) -> FileEntry {
         FileEntry(url: entry.url, kind: entry.url.pathExtension == "app" ? .package : entry.kind,
                   isHidden: entry.isHidden, size: entry.size, modificationDate: entry.modificationDate)
     }
     func entry(at url: URL) async throws -> FileEntry { transform(try await base.entry(at: url)) }
     func enumerate(_ directory: URL, options: EnumerationOptions) -> AsyncThrowingStream<[FileEntry], Error> {
-        AsyncThrowingStream { continuation in
+        onEnumerate(directory)
+        return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
                     var entries: [FileEntry] = []

@@ -77,3 +77,10 @@ uses a different event stream; its composition adapter belongs to the host lane.
 Actual NSMetadataQuery lifecycle, live updates and Finder interoperability require
 macOS/Opus review (M16/M23). Consider an explicit completion/error event in Core for
 consumers that need richer lifecycle than the requested plain batch AsyncStream.
+
+F3 pre-review fixes: typed and textual extension literals share final normalization
+and validation. Both JSON and constructed/replaced Finder documents reject encoded
+output over 1 MiB, matching decode limits. Original fallback traversal inspects every
+pending directory and refuses package/symlink roots while preserving throwing I/O
+errors. This does not eliminate filesystem TOCTOU changes between inspection and
+listing; descriptor-relative traversal would require a different filesystem contract.

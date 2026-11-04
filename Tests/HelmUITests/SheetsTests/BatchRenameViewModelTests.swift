@@ -27,6 +27,9 @@ final class BatchRenameViewModelTests: XCTestCase {
         XCTAssertEqual(value.preview.count, 20)
         XCTAssertEqual(value.plan?.renames.count, 25)
         XCTAssertEqual(value.plan?.steps.count, 50)
+        XCTAssertEqual(value.evaluationCount, 1)
+        _ = value.validationMessages; _ = value.canRename; _ = value.preview
+        XCTAssertEqual(value.evaluationCount, 1)
         value.mode = .template; value.template = "same"
         XCTAssertFalse(value.canRename)
         XCTAssertFalse(value.validationMessages.isEmpty)
@@ -62,4 +65,43 @@ final class BatchRenameViewModelTests: XCTestCase {
         }
         XCTAssertNil(NewItemNameValidation.message(for: " report: final.txt "))
     }
+    func testEditsInvalidateCopiesAndRejectObsoleteCompletion() {
+        var value = model(["a.txt"])
+        value.append = "-old"
+        let old = value
+        value.append = "-new"
+        let newest = value.evaluation
+        // Deliver the older computation after the newest one.
+        let obsolete = old.evaluation
+        XCTAssertNil(obsolete.executablePlan(for: value.revision))
+        XCTAssertNotNil(newest.executablePlan(for: value.revision))
+        XCTAssertEqual(value.preview.first?.proposedName, "a-new.txt")
+        XCTAssertEqual(old.preview.first?.proposedName, "a-old.txt")
+        XCTAssertEqual(old.evaluationCount, 1)
+        XCTAssertEqual(value.evaluationCount, 1)
+        let edits: [(inout BatchRenameViewModel) -> Void] = [
+            { $0.mode = .template }, { $0.prepend = "p" }, { $0.append = "a" },
+            { $0.find = "f" }, { $0.replacement = "r" }, { $0.template = "[Counter]" },
+            { $0.counterStart = "5" }
+        ]
+        for edit in edits {
+            let previous = value.revision
+            edit(&value)
+            XCTAssertNotEqual(value.revision, previous)
+            XCTAssertEqual(value.evaluationCount, 0)
+            _ = value.preview; _ = value.plan; _ = value.validationMessages
+            XCTAssertEqual(value.evaluationCount, 1)
+        }
+    }
+    func testConcurrentReadsShareOneEvaluation() async {
+        var value = model((0..<100).map { "file\($0).txt" })
+        value.append = "-new"
+        let snapshot = value
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<12 { group.addTask { _ = snapshot.evaluation } }
+        }
+        XCTAssertEqual(snapshot.evaluationCount, 1)
+        XCTAssertEqual(snapshot.plan?.renames.count, 100)
+    }
+
 }

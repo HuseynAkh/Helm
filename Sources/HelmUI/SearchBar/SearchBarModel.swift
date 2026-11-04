@@ -42,7 +42,7 @@ public struct SearchBarModel: Equatable, Sendable {
     public var request: SearchRequest? {
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return nil }
-        let domain: SearchDomain
+        let domain: HelmCore.SearchScope
         switch scope {
         case .thisFolder:
             guard let folder, folder.isFileURL else { return nil }

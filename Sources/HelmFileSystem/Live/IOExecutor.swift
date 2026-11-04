@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Bounded blocking queues isolate volumes; timeout quarantines a stalled queue (B-107).
@@ -33,7 +34,7 @@ public final class IOExecutor: @unchecked Sendable {
             try await withCheckedThrowingContinuation { continuation in
                 state.install(continuation)
                 queue.addOperation {
-                    guard !state.isFinished else { return }
+                    guard state.begin() else { return }
                     do { state.complete(.success(try body())) }
                     catch { state.complete(.failure(error)) }
                 }
@@ -41,7 +42,7 @@ public final class IOExecutor: @unchecked Sendable {
                     state?.complete(.failure(FileSystemError.timedOut), onCompletion: { self?.quarantine(volume) })
                 }
             }
-        } onCancel: { state.complete(.failure(CancellationError())) }
+        } onCancel: { state.cancelIfQueued() }
     }
 }
 /// Lock covers continuation installation and exactly-once completion, including cancel-before-install.
@@ -49,7 +50,22 @@ private final class IOResultState<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, Error>?
     private var result: Result<T, Error>?
-    var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return result != nil }
+    private var started = false
+    func begin() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard result == nil else { return false }
+        started = true
+        return true
+    }
+    func cancelIfQueued() {
+        lock.lock()
+        guard !started, result == nil else { lock.unlock(); return }
+        let result: Result<T, Error> = .failure(CancellationError())
+        self.result = result
+        let continuation = self.continuation; self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
     func install(_ continuation: CheckedContinuation<T, Error>) {
         lock.lock()
         if let result { lock.unlock(); continuation.resume(with: result) }

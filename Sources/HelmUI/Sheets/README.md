@@ -6,8 +6,8 @@ at/after 22:00 Toronto on November 4, 2026. This is not milestone closure.
 
 ## Integration
 
-The host owns models/bindings and all I/O. No view starts tasks, reads metadata,
-executes operations, accesses the workspace, changes sharing or dismisses itself.
+The host owns models/bindings and all I/O. Views do not read metadata, execute operations, access the workspace, change
+sharing or dismiss themselves. BatchRenameSheet starts only pure evaluation tasks.
 Present with the retained SheetPresenter hosting controller and dismiss that
 same controller from completion callbacks (B-117). Cancel and Done callbacks
 must also cancel any host-owned metadata/recursive-size work.
@@ -23,8 +23,12 @@ must also cancel any host-owned metadata/recursive-size work.
   refresh occupancy before execution, and use the operation engine's ordering;
   never execute raw preview strings or replay temporary steps as user commands.
   Core's raw preview can contain whitespace which ValidFileName trims; the
-  executable rename pair is authoritative. Model evaluation is synchronous;
-  large-selection debouncing/caching remains a host integration concern.
+  executable rename pair is authoritative. The model memoizes one immutable evaluation per input revision. The sheet
+  debounces edits for 150 ms, evaluates a captured model off the main actor and
+  rejects obsolete completions. Rename stays disabled until the displayed revision
+  matches the current model. Validation display is capped at 20 issues plus a
+  summary; the plan retains every issue. Direct model getters remain synchronous
+  for compatibility; hosts should not call them on the main actor for large inputs.
 - ConflictSheet returns a resolution and Apply to All flag. The host must retain
   that policy across conflicts and resume/cancel the suspended operation exactly
   once. Keep Both is Return; Stop is Escape. Replace never merges directories.
@@ -38,7 +42,9 @@ must also cancel any host-owned metadata/recursive-size work.
   mark cancellationRequested when accepting cancel and retain completed/failed
   rows until acknowledged. Counts represent executor steps (including temporary
   moves/verification), not files or bytes. Details include every outcome and
-  actual destination paths; failure reconciliation is explicit. This panel does
+  actual destination paths in 50-outcome pages; failure reconciliation is explicit.
+  Collapsed details do no formatting. Retain each immutable completed row model
+  across progress updates to preserve its current-page formatting cache. This panel does
   not create journal entries or retry operations.
 - PropertiesViewModel deduplicates ItemID and delegates aggregates to Core's
   PropertiesModel. PropertiesSupplement is single-item enrichment only; multi-

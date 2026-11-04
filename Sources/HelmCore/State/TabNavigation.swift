@@ -17,7 +17,9 @@ extension TabReducer {
     static func startLoad(_ state: inout TabState, useCache: Bool, effects: inout [TabEffect]) {
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
-        state.restorationIDs = state.search == nil ? state.selection : state.underlyingSelection
+        // Same-location restarts must retain history IDs absent from an early batch.
+        // Explicit selection and navigation commits replace this intent separately.
+        state.restorationIDs = state.restorationIDs ?? (state.search == nil ? state.selection : state.underlyingSelection)
         effects.append(.load(state.location, state.loadGeneration, options(state, useCache: useCache)))
     }
     static func restart(_ state: inout TabState, effects: inout [TabEffect]) {
@@ -37,7 +39,7 @@ extension TabReducer {
         if case .failed(let error, _) = snapshot.phase {
             let attempted: Location = state.pendingNavigation?.target ?? state.location
             state.pendingNavigation = nil; state.isLoading = false; state.restorationIDs = nil
-            let base: PresentationSnapshot = state.underlyingSnapshot ?? state.snapshot
+            let base: PresentationSnapshot = state.underlyingSnapshot ?? state.deferredSnapshot ?? state.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &state)
             return
         }

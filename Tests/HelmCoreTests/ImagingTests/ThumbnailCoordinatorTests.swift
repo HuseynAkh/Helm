@@ -6,6 +6,8 @@ import HelmTestKit
 
 private actor ImageProducerProbe {
     private var pending: [Int: CheckedContinuation<ThumbnailImage<String>, Error>] = [:]
+    private let onCancel: @Sendable () -> Void
+    init(onCancel: @escaping @Sendable () -> Void = {}) { self.onCancel = onCancel }
     private var starts: Int = 0
     private var cancelled: Set<Int> = []
     private var startWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
@@ -24,6 +26,7 @@ private actor ImageProducerProbe {
     }
     private func markCancelled(_ number: Int) {
         cancelled.insert(number)
+        onCancel()
         let ready = cancelWaiters.filter { $0.0 == number }
         cancelWaiters.removeAll { $0.0 == number }
         ready.forEach { $0.1.resume() }
@@ -50,6 +53,21 @@ final class ThumbnailCoordinatorTests: XCTestCase {
     private func delivery(_ subscription: ThumbnailSubscription<String>) async -> ThumbnailDelivery<String>? {
         var iterator = subscription.deliveries.makeAsyncIterator()
         return await iterator.next()
+    }
+    func testF3OwnerReleaseCancelsProducerAndFinishesStream() async {
+        let cancelled = expectation(description: "producer cancelled")
+        let probe = ImageProducerProbe(onCancel: { cancelled.fulfill() })
+        var coordinator: ThumbnailCoordinator<String>? = ThumbnailCoordinator(costLimitBytes: 10) { try await probe.produce($0) }
+        let subscription = await coordinator?.subscribe(to: key())
+        await probe.waitForStart(1)
+        weak var weakCoordinator = coordinator
+        coordinator = nil
+        XCTAssertNil(weakCoordinator)
+        let ended = expectation(description: "subscriber finished")
+        let consumer = Task { if let subscription { for await _ in subscription.deliveries {} }; ended.fulfill() }
+        await fulfillment(of: [cancelled, ended], timeout: 1)
+        consumer.cancel()
+        await probe.finish(1, .failure(CancellationError()))
     }
     func testCoalescingAndIndependentCancellation() async {
         let probe = ImageProducerProbe()

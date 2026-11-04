@@ -105,3 +105,35 @@ No visual or runtime behavior has been verified on this Linux machine.
 Needed changes elsewhere: manifest snippet and composition-root/hosting wiring
 above. No Core contract edits are required. Shared remote memory was not fetched
 because this session explicitly prohibits network access.
+
+## F4 pre-review fixes (draft)
+
+Search uses the current Core SearchScope. Rename evaluation is memoized per input
+revision, debounced and computed off the main actor by the sheet, with generation
+checks both on completion and execution. Details are formatted only when expanded,
+in cached pages of 50 outcomes. Keep completed OperationRowModel values stable when
+another operation publishes progress. Synchronous compatibility getters still
+exist; the sheet never uses them to plan during rendering. See Sheets/README.md.
+
+The sidebar locally excludes starred rows from highlight fallback, preserving its
+existing XCTest/legacy policy despite Core's broader candidate list. No shared
+contract was changed. Opus should confirm the intended common policy.
+
+Portable adapter/app XCTest execution (from repository root):
+
+```sh
+source /workspace/toolchains/env.sh
+HELM_K11_SCRATCH=/tmp/build-F4 bash scripts/rebuild/run_all.sh
+python3 Tests/HelmUITests/PortableRunner/run.py
+```
+
+The runner emits shared dependency libraries once to avoid duplicate Swift type
+metadata, then discovers XCTest methods in portable UI and app test classes.
+Exclude PortableRunner from the eventual macOS test target. SettingsBindingsTests
+and ContentNativeAdapterTests require SwiftUI/AppKit and remain macOS-only.
+P4's compile regression also invokes swiftc against /tmp/build-F4/debug/Modules.
+
+Open verification: Xcode/macOS 14 compilation, hosted debounce/cancellation,
+Return/Escape, VoiceOver pagination and frame-time/memory measurements with 100k
+items. Linux syntax checks cannot establish those. No public Core contracts or
+manifest entries changed; target activation remains the manifest owner's work.

@@ -39,7 +39,20 @@ public struct SidebarModel: Sendable {
         }
         result.append(SidebarSection(id: "trash", title: nil, rows: [places.trash]))
         sections = result
-        let candidate = places.selectedPlaceID(for: committedDestination)
+        var candidate = places.selectedPlaceID(for: committedDestination)
+        // Core includes starred destinations; this leaf preserves F-027's bookmark/
+        // favorite highlight policy until a shared policy is agreed by integration.
+        if places.starred.contains(where: { $0.id == candidate }),
+           case .directory(let url) = committedDestination {
+            let path = url.standardizedFileURL.path
+            let eligible = (places.favorites + places.bookmarks + places.devices).compactMap { place -> (String, String)? in
+                guard let url = place.url else { return nil }
+                return (place.id, url.standardizedFileURL.path)
+            } + [(places.trash.id, places.home.appendingPathComponent(".Trash").path)]
+            candidate = eligible.first { $0.1 == path }?.0 ?? eligible.filter {
+                path.hasPrefix($0.1.hasSuffix("/") ? $0.1 : $0.1 + "/")
+            }.max { $0.1.count < $1.1.count }?.0
+        }
         selectedPlaceID = result.flatMap(\.rows).contains { $0.id == candidate } ? candidate : nil
     }
     public func place(for id: String) -> Place? {

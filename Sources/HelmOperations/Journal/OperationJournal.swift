@@ -15,6 +15,7 @@ public struct JournalEntry: Sendable, Identifiable {
 public actor OperationJournal {
     private var entries: [OperationID: JournalEntry] = [:]
     private var partial: [OperationID: [ItemOutcome]] = [:]
+    private var recordedSteps: [OperationID: Set<StepID>] = [:]
     private var order: [OperationID] = []
     public init() {}
     public func begin(_ plan: OperationPlan) -> OperationID {
@@ -22,13 +23,14 @@ public actor OperationJournal {
     }
     public func record(_ outcome: ItemOutcome, for id: OperationID) {
         guard let entry = entries[id], entry.result == nil else { return }
-        guard !(partial[id] ?? []).contains(where: { $0.step.id == outcome.step.id }) else { return }
+        guard recordedSteps[id, default: []].insert(outcome.step.id).inserted else { return }
         partial[id, default: []].append(outcome)
     }
     @discardableResult public func complete(_ result: OperationResult) -> Bool {
         guard let entry = entries[result.id], entry.result == nil else { return false }
         entries[result.id] = JournalEntry(id: result.id, plan: entry.plan, result: result)
         partial[result.id] = result.outcomes
+        recordedSteps[result.id] = nil
         return true
     }
     public func entry(_ id: OperationID) -> JournalEntry? { entries[id] }

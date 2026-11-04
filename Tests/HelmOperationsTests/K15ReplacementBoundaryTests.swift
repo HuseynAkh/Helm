@@ -2,7 +2,7 @@
 import Foundation
 import XCTest
 import HelmCore
-import HelmFileSystem
+@testable import HelmFileSystem
 import HelmOperations
 
 final class K15ReplacementBoundaryTests: XCTestCase {
@@ -43,16 +43,19 @@ final class K15ReplacementBoundaryTests: XCTestCase {
         // No step may permanently remove either payload, even when the target has moved to backup/Trash.
         var pending = [URL(fileURLWithPath: "/")]
         var sizes: [Int64] = []
+        var payloads: [Data] = []
         while let directory = pending.popLast() {
             for try await batch in fs.enumerate(directory, options: EnumerationOptions(includeHidden: true)) {
                 for entry in batch {
                     if entry.kind == .directory { pending.append(entry.url) }
-                    else { sizes.append(entry.size) }
+                    else { sizes.append(entry.size); payloads.append(try await fs.storedContents(at: entry.url)) }
                 }
             }
         }
         XCTAssertTrue(sizes.contains(2), "Original target lost at boundary \(boundary)")
         XCTAssertTrue(sizes.contains(3), "Original source lost at boundary \(boundary)")
+        XCTAssertTrue(payloads.contains(Data([9, 8])), "Original target bytes lost at boundary \(boundary)")
+        XCTAssertTrue(payloads.contains(Data([1, 2, 3])), "Original source bytes lost at boundary \(boundary)")
         let original = try await fs.entry(at: source); XCTAssertEqual(original.size, 3)
         let journal = await executor.journal.outcomes(for: result.id)
         XCTAssertEqual(journal.count, 6)

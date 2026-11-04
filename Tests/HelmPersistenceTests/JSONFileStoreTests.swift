@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import XCTest
 import HelmCore
 import HelmPersistence
@@ -65,9 +66,9 @@ final class JSONFileStoreTests: XCTestCase {
         let document = try JSONDecoder().decode(VersionedDocument<[Int]>.self, from: Data(contentsOf: url))
         XCTAssertEqual(document.items, [2])
         let blocked = dir.appendingPathComponent("blocked")
-        try Data().write(to: blocked)
         let failing = JSONFileStore<[Int]>(url: blocked.appendingPathComponent("data.json"), empty: [])
         try await failing.load()
+        try Data().write(to: blocked)
         failing.replace(with: [1])
         do { try await failing.flush(); XCTFail("expected IO failure") } catch {}
         XCTAssertNotNil(failing.lastError)

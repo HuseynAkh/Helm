@@ -34,9 +34,18 @@ public struct TagEditResult: Sendable, Equatable {
     public static func apply(_ edit: TagEdit, to items: [ItemID], storage: any TagStorage) async -> TagEditResult {
         var seen: Set<ItemID> = []
         var results: [TagEditOutcome] = []
+        var cancelled = false
         for item in items where seen.insert(item).inserted {
+            if cancelled || Task.isCancelled {
+                cancelled = true
+                results.append(TagEditOutcome(item: item, failure: "Cancelled; not attempted"))
+                continue
+            }
             do { try await storage.apply(edit, to: item); results.append(TagEditOutcome(item: item)) }
-            catch { results.append(TagEditOutcome(item: item, failure: String(describing: error))) }
+            catch {
+                if error is CancellationError { cancelled = true }
+                results.append(TagEditOutcome(item: item, failure: String(describing: error)))
+            }
         }
         return TagEditResult(outcomes: results)
     }

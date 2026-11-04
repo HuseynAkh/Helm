@@ -39,7 +39,7 @@ public enum TabReducer {
             guard generation == next.loadGeneration, next.isLoading else { return (state, []) }
             let attempted: Location = next.pendingNavigation?.target ?? next.location
             next.pendingNavigation = nil; next.isLoading = false; next.restorationIDs = nil
-            let base: PresentationSnapshot = next.underlyingSnapshot ?? next.snapshot
+            let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &next)
         case .monitorSnapshot(let generation, let snapshot):
             guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil,
@@ -52,7 +52,7 @@ public enum TabReducer {
             case .rescan: effects.append(.refreshPaths([], generation))
             case .rootChanged, .volumeUnmounted: effects.append(.validateNavigation(next.location, generation))
             case .unavailable(let failure):
-                let base: PresentationSnapshot = next.underlyingSnapshot ?? next.snapshot
+                let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
                 publish(base.stamped(base.id, phase: .failed(.other(String(describing: failure)), attempted: next.location)), state: &next)
             }
         case .setSelection(let ids, let source):
@@ -64,7 +64,7 @@ public enum TabReducer {
             if next.search != nil {
                 present(SnapshotBuilder.resort(next.snapshot, sort: sort), state: &next)
                 if let base = next.underlyingSnapshot { next.underlyingSnapshot = SnapshotBuilder.resort(base, sort: sort) }
-            } else { publish(SnapshotBuilder.resort(next.snapshot, sort: sort), state: &next) }
+            } else { publish(SnapshotBuilder.resort(next.deferredSnapshot ?? next.snapshot, sort: sort), state: &next) }
         case .setViewMode(let mode): next.viewMode = mode
         case .toggleHidden:
             next.showHidden.toggle()

@@ -72,4 +72,29 @@ final class LeafPresentationTests: XCTestCase {
         XCTAssertEqual(empty.title, "0 Items"); XCTAssertEqual(empty.size, "Unknown")
         XCTAssertEqual(empty.location, "Unknown"); XCTAssertEqual(empty.modified, "Unknown")
     }
+    func testLargeOperationDetailsAreLazyBoundedAndCached() {
+        let id = OperationID()
+        let step = PlannedStep(kind: .copy, source: URL(fileURLWithPath: "/source"), destination: URL(fileURLWithPath: "/target"))
+        let outcome = ItemOutcome(step: step, destination: nil, result: .failure(.notAttempted))
+        let result = OperationResult(id: id, command: .recovery,
+            outcomes: Array(repeating: outcome, count: 100_001), error: nil)
+        let row = OperationRowModel(id: id, title: "Copy", result: result)
+        for _ in 0..<100 { XCTAssertTrue(row.hasDetails) }
+        XCTAssertEqual(row.formattedDetailCount, 0)
+        XCTAssertEqual(row.detailPageCount, 2_001)
+        XCTAssertEqual(row.detailPage(0).count, 50)
+        XCTAssertEqual(row.formattedDetailCount, 50)
+        for _ in 0..<100 { XCTAssertEqual(row.detailPage(0).count, 50) }
+        XCTAssertEqual(row.formattedDetailCount, 50)
+        XCTAssertEqual(row.detailPage(2_000).count, 1)
+        XCTAssertEqual(row.formattedDetailCount, 51)
+        XCTAssertTrue(row.detailPage(-1).isEmpty)
+        XCTAssertTrue(row.detailPage(Int.max).isEmpty)
+        XCTAssertEqual(row.formattedDetailCount, 51)
+        let empty = OperationRowModel(id: OperationID(), title: "Pending")
+        XCTAssertFalse(empty.hasDetails)
+        XCTAssertTrue(empty.detailPage(0).isEmpty)
+        XCTAssertEqual(empty.detailPageCount, 0)
+    }
+
 }

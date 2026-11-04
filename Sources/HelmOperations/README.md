@@ -125,3 +125,25 @@ K5 must expose collision semantics (including whether any mutation occurred)
 before this executor can safely map/retry them. No string-based translation was
 added. The existing typed local failure is OperationError.conflict (the current
 implementation's name for the proposed OperationFailure). Public API unchanged.
+
+## F2 safety pre-review fixes
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+Cancellation after a native primitive starts waits for its real completion (or
+existing timeout quarantine); completed mutations remain journaled. An adapter
+that throws cancellation during mutation quarantines this executor for reconciliation.
+Undo tokens are rechecked after progress and preflight immediately before move or
+Trash; successful internal moves remap the token to the actual output path.
+The residual native stat/mutate race needs a coordinated compare-and-mutate seam.
+
+Automatic undo refuses to Trash directories/packages with only root-token evidence,
+including unchanged copied trees and newly created folders. This deliberately does
+less until complete no-follow identity/content manifests can be added through a
+reviewed public contract (P2-3 DEFERRED, unsafe retirement mitigated). UI should
+surface verificationUnavailable as requiring review, never silently retry without
+preconditions. Ordinary user-requested Trash remains available.
+
+Planning uses component-prefix indexes, cached normalized paths/names and aggregate
+manifest byte counts; journal duplicate checks use StepID sets. The 100k sibling
+copy/journal fixture reports elapsed time without machine-dependent timing gates.
+No public signature was changed. See docs/prereview/fixes-F2.md for all findings.

@@ -6,7 +6,7 @@
 /// - DirectoryLoader.snapshot returns sorted FileEntry values; SnapshotStamp.loadAction wraps them
 ///   with their load generation. The tab reducer allocates accepted presentation IDs.
 /// - LiveFileSystem accepts mount roots for I/O queue isolation and a per-entry diagnostic callback.
-///   Wire diagnostics to UI partial-read warnings; directory-open failures are thrown.
+///   Wire diagnostics to UI read warnings; directory-open and child metadata failures are thrown.
 /// - ListingCache.startMemoryPressureObservation is an explicit composition-root lifecycle call.
 /// - A timed-out blocking kernel mutation may still complete. Reconcile before retrying; a quarantined
 ///   executor volume remains unavailable for that executor instance.

@@ -53,3 +53,9 @@ Deviations/open questions:
 
 Verification uses /tmp/build-K8, Swift 6.0.3 in Swift 5 language mode, XCTest and
 scripts/static_checks.sh. No network, commits, or external actions were used.
+
+F1 prereview integration (draft): sort changes and error metadata now republish the
+latest deferred listing during inline rename (P1-3). Same-location refresh/hidden
+restarts retain pending history selection until completion or explicit selection
+(P1-5). No action, effect, or public signature changes are required. See
+`docs/prereview/fixes-F1.md` for regression evidence and deferred contract work.

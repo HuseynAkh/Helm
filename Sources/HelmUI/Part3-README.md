@@ -30,7 +30,7 @@ query generations, debounce, cancellation, focus and sheet lifetime (B-117).
   SearchRequest keeps text literal; any advanced grammar must be explicitly
   parsed through HelmSearch before constructing a specification. Kind chips
   select regular files or directories, not all file-like/package kinds.
-  Recents maps to SearchDomain.recents, never Helm's private Recent location.
+  Recents maps to SearchScope.recents, never Helm's private Recent location.
   Denied, failed, cancelled, gathering and no-results are distinct. Empty results
   do not assert missing indexing or automatically start enumeration fallback.
   Feed the service's truncated flag. Install SearchLocationColumnView in the

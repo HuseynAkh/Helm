@@ -40,6 +40,7 @@ public struct TagBulkApplier: Sendable {
         var seen: Set<URL> = []
         var outcomes: [TagEditOutcome] = []
         var seenItems: Set<ItemID> = []
+        var cancelled = false
         for url in urls where seen.insert(url).inserted {
             let item = ItemID(url: url)
             guard url.isFileURL else {
@@ -47,10 +48,16 @@ public struct TagBulkApplier: Sendable {
                 continue
             }
             guard seenItems.insert(item).inserted else { continue }
+            if cancelled || Task.isCancelled {
+                cancelled = true
+                outcomes.append(TagEditOutcome(item: item, failure: "Cancelled; not attempted"))
+                continue
+            }
             do {
                 try await storage.apply(edit, to: item)
                 outcomes.append(TagEditOutcome(item: item))
             } catch {
+                if error is CancellationError { cancelled = true }
                 outcomes.append(TagEditOutcome(item: item, failure: String(describing: error)))
             }
         }

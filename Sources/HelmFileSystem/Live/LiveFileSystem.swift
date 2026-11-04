@@ -11,11 +11,18 @@ import Darwin
 public struct LiveFileSystem: FileSystem {
     private let executor: IOExecutor
     private let volumeRoots: [URL]
+    private var readMetadata: @Sendable (URL, Bool, String) throws -> FileEntry = {
+        try MetadataReader().read($0, resolveSymlinkTargets: $1, volumeIdentifier: $2)
+    }
     private let diagnostic: @Sendable (URL, FileSystemError) -> Void
     public init(executor: IOExecutor = IOExecutor(), volumeRoots: [URL] = [],
                 diagnostic: @escaping @Sendable (URL, FileSystemError) -> Void = { _, _ in }) {
         self.executor = executor; self.volumeRoots = volumeRoots
         self.diagnostic = diagnostic
+    }
+    init(readMetadata: @escaping @Sendable (URL, Bool, String) throws -> FileEntry) {
+        self.init()
+        self.readMetadata = readMetadata
     }
     private func queueKey(_ url: URL) -> String {
         let path = url.standardizedFileURL.path
@@ -47,7 +54,6 @@ public struct LiveFileSystem: FileSystem {
                         }
                         var batch: [FileEntry] = []
                         var lastDelivery = Date()
-                        let reader = MetadataReader()
                         let attributes = try FileManager.default.attributesOfItem(atPath: directory.path)
                         let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(directory)
                         while let url = iterator.nextObject() as? URL {
@@ -55,11 +61,11 @@ public struct LiveFileSystem: FileSystem {
                             let value: FileEntry
                             do {
                                 value = try AutoreleaseScope.run {
-                                    try reader.read(url, resolveSymlinkTargets: options.resolveSymlinkTargets, volumeIdentifier: volume)
+                                    try readMetadata(url, options.resolveSymlinkTargets, volume)
                                 }
                             } catch {
                                 diagnostic(url, FileSystemError.mapping(error))
-                                continue
+                                throw FileSystemError.mapping(error)
                             }
                             if !options.includeHidden && value.isHidden { continue }
                             batch.append(value)
@@ -138,28 +144,33 @@ public struct LiveFileSystem: FileSystem {
     }
     public func createFileExclusively(at url: URL, contents: Data) async throws {
         try await executor.run(volume: queueKey(url)) {
-            let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o666))
-            guard descriptor >= 0 else {
-                let code = errno
-                if code == EEXIST { throw FileSystemError.collision(noMutation: true) }
-                throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(code)))
-            }
-            defer { _ = close(descriptor) }
-            do {
-                try contents.withUnsafeBytes { bytes in
-                    var offset = 0
-                    while offset < bytes.count {
-                        guard let base = bytes.baseAddress else { return }
-                        let count = write(descriptor, base.advanced(by: offset), bytes.count - offset)
-                        if count < 0 && errno == EINTR { continue }
-                        guard count > 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
-                        offset += count
-                    }
+            try Self.writeExclusively(at: url, contents: contents)
+        }
+    }
+    // Internal syscall seam permits deterministic ownership-race regression tests.
+    static func writeExclusively(at url: URL, contents: Data,
+        writeBytes: (Int32, UnsafeRawPointer, Int) throws -> Int = { write($0, $1, $2) }) throws {
+        let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o666))
+        guard descriptor >= 0 else {
+            let code = errno
+            if code == EEXIST { throw FileSystemError.collision(noMutation: true) }
+            throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(code)))
+        }
+        defer { _ = close(descriptor) }
+        do {
+            try contents.withUnsafeBytes { bytes in
+                var offset = 0
+                while offset < bytes.count {
+                    guard let base = bytes.baseAddress else { return }
+                    let count = try writeBytes(descriptor, base.advanced(by: offset), bytes.count - offset)
+                    if count < 0 && errno == EINTR { continue }
+                    guard count > 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                    offset += count
                 }
-            } catch {
-                _ = unlink(url.path)
-                throw FileSystemError.mapping(error)
             }
+        } catch {
+            // Retain partial artifacts: the pathname may now belong to another writer.
+            throw FileSystemError.mapping(error)
         }
     }
     public func createSymbolicLink(at url: URL, destination: URL) async throws {
