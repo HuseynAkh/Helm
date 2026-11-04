@@ -40,7 +40,6 @@ final class K13PlacesTests: XCTestCase {
     }
     /// F-027, F-029: starred folders participate in deepest-ancestor selection.
     func testStarredFolderHighlight() throws {
-        try XCTSkipIf(true, "BUG-K13-1: starred folders are omitted from sidebar highlight candidates")
         let folder = URL(fileURLWithPath: "/offline/star")
         let model = PlacesModel(home: URL(fileURLWithPath: "/home"), starred: [folder])
         XCTAssertEqual(model.selectedPlaceID(for: .directory(folder.appendingPathComponent("child"))), model.starred.first?.id)

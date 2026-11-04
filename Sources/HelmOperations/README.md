@@ -103,3 +103,25 @@ round trips, partial cut, cancellation, stale output/source protection, reentran
 exclusive collision retries, timeout quarantine, no-follow manifests, nullable
 Trash origins, and real temporary-directory copying/creation. macOS 14/Xcode and
 native Trash remain unverified; all files require Opus review after 22:00 Toronto.
+
+## K17 fixes and integration
+
+BUG-K15-1: executor equality/ancestry checks now use the source parent's declared
+PlanningContext.caseSensitive value for both normalized paths. This tests whether
+the destination denotes the source or lies inside it in the source namespace;
+a different destination volume's semantics must not redefine that ancestry.
+Destination-name collision checks continue to use destination-parent semantics.
+Supply case sensitivity for source parents as well as destination parents; absent
+entries retain the conservative case-insensitive default. K5's FileSystem protocol
+currently has no sensitivity query, so the builder still requires caller input.
+
+K15's two regressions are enabled. K17 covers sensitive and insensitive same-item
+checks, recursive destinations, mixed declarations, component boundaries, and the
+unknown-sensitivity fallback for manually constructed plans.
+
+Needed changes elsewhere: K5's FileSystemError still has only notFound,
+permissionDenied, timedOut, unsupported and other(String), with no typed collision.
+K5 must expose collision semantics (including whether any mutation occurred)
+before this executor can safely map/retry them. No string-based translation was
+added. The existing typed local failure is OperationError.conflict (the current
+implementation's name for the proposed OperationFailure). Public API unchanged.

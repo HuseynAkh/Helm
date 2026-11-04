@@ -11,7 +11,6 @@ final class K15CaseSensitiveTransferTests: XCTestCase {
     /// F-052/B-039: same-volume moves must honor the volume's case sensitivity.
     func testMoveBetweenCaseDistinctDirectories() async throws { try await transfer(moving: true) }
     private func transfer(moving: Bool) async throws {
-        try XCTSkipIf(true, "BUG-K15-1: executor folds case even on case-sensitive volumes; see docs/test-findings/K15-findings.md")
         let fs = InMemoryFileSystem(caseSensitive: true)
         let a = URL(fileURLWithPath: "/a"), upper = URL(fileURLWithPath: "/A")
         let source = a.appendingPathComponent("file")

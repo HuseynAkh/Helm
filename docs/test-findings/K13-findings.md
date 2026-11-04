@@ -23,3 +23,13 @@ All findings and tests are DRAFT pending Opus compile-correctness and behavior-p
 - macOS/Xcode validation and the scheduled Opus review remain outstanding.
 - Final full-suite result: 260 tests executed, 1 intentionally skipped, 0 failures (8.285 seconds).
 - Final static checks: 122 Swift source files checked, 0 errors.
+
+## Resolved — K17 (2026-11-04, DRAFT pending Opus review after 22:00 Toronto)
+
+BUG-K13-1 is fixed: starred folders participate in exact/deepest-ancestor selection,
+with existing exact-match priority preserved. Removed the regression skip and
+updated the older test that explicitly expected starred exclusion. Added nested
+star, component-boundary and exact-priority coverage in K17PlacesHighlightTests.
+Linux Swift 6.0.3: HelmCore and HelmOperations target builds passed; full six-target
+portable suite passed (361 tests, zero failures, zero skips) in `/tmp/build-K17`.
+macOS/Xcode validation and Opus review remain pending.

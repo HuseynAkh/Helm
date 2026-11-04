@@ -30,13 +30,14 @@ final class PlacesTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(Place.self, from: encoded), model.favorites[0])
         XCTAssertEqual(Set([model.favorites[0], model.favorites[0]]).count, 1)
     }
-    func testHighlightExactThenDeepestExcludesStarred() {
+    /// F-027/F-029: starred folders participate without changing exact-match priority.
+    func testHighlightExactThenDeepestIncludesStarred() {
         let deep = home.appendingPathComponent("Documents/work")
         let model = PlacesModel(home: home, bookmarks: [deep, home],
                                 starred: [deep.appendingPathComponent("stars")])
         XCTAssertEqual(model.selectedPlaceID(for: .directory(home)), "home")
         XCTAssertEqual(model.selectedPlaceID(for: .directory(deep.appendingPathComponent("stars/child"))),
-                       "bookmark-/Users/test/Documents/work")
+                       "starred-/Users/test/Documents/work/stars")
         XCTAssertEqual(model.selectedPlaceID(for: .directory(home.appendingPathComponent("Documents2"))), "home")
         XCTAssertEqual(model.selectedPlaceID(for: .directory(home.appendingPathComponent(".Trash/item"))), "trash")
         XCTAssertNil(model.selectedPlaceID(for: .directory(URL(fileURLWithPath: "/Users/test2"))))

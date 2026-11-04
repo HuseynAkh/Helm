@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pure sidebar sections, drops and deepest-ancestor highlighting (F-027–F-031, B-029).
@@ -54,7 +55,9 @@ public struct PlacesModel: Sendable {
             let trashFolder = home.appendingPathComponent(".Trash")
             let candidates: [(Place, String)] = (favorites + bookmarks + devices).compactMap {
                 guard let url = $0.url else { return nil }; return ($0, url.standardizedFileURL.path)
-            } + [(trash, trashFolder.path)]
+            } + [(trash, trashFolder.path)] + starred.compactMap {
+                guard let url = $0.url else { return nil }; return ($0, url.standardizedFileURL.path)
+            }
             if let exact = candidates.first(where: { $0.1 == path }) { return exact.0.id }
             return candidates.filter { path.hasPrefix($0.1.hasSuffix("/") ? $0.1 : $0.1 + "/") }
                 .max { $0.1.count < $1.1.count }?.0.id

@@ -93,8 +93,11 @@ public actor OperationExecutor {
             }
         }
         if let source = step.source, let target = step.destination {
-            let sourcePath = FileNameComparison.key(source.standardizedFileURL.path, caseSensitive: false)
-            let targetPath = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: false)
+            // Equality and containment are interpreted in the source namespace. A destination
+            // on another volume must not change how the source's ancestors are compared.
+            let sensitive = context.sensitive(at: source.deletingLastPathComponent())
+            let sourcePath = FileNameComparison.key(source.standardizedFileURL.path, caseSensitive: sensitive)
+            let targetPath = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
             guard targetPath != sourcePath, !targetPath.hasPrefix(sourcePath + "/") else { throw OperationError.invalidPlan }
         }
         if step.kind == .trash {

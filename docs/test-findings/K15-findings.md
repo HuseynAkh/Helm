@@ -40,3 +40,21 @@ New files: `Tests/HelmCoreTests/AddressBarTests/K15AddressAdversarialTests.swift
 `Tests/HelmOperationsTests/README.md`, and this findings file.
 
 Limits: Opus compile/behaviour review after 22:00 Toronto and macOS 14/Xcode validation remain pending. The generated scenarios are deterministic and bounded, not exhaustive filesystem interleavings. In-memory payload preservation is checked by size and identity because the fake exposes no byte-reading API. Failure injection covers every primitive boundary of replacement moves and every item boundary of creation; it does not simulate every possible failure inside native kernel operations.
+
+## Resolved — K17 (2026-11-04, DRAFT pending Opus review after 22:00 Toronto)
+
+BUG-K15-1 is fixed: executor path equality and ancestry use the source parent's
+case sensitivity from PlanningContext for both paths, retaining same-item and
+recursive-destination guards. Both K15 skips are removed. K17PathGuardTests adds
+sensitive/insensitive copy and move checks, exact same-item rejection, recursion,
+mixed source/destination declarations, sibling boundaries and the unknown default.
+Linux Swift 6.0.3: HelmCore and HelmOperations target builds passed; full six-target
+portable suite passed (361 tests, zero failures, zero skips) in `/tmp/build-K17`.
+
+Needed changes elsewhere: K5 FileSystemError has no typed collision case, and its
+FileSystem protocol has no case-sensitivity query. Keep supplying source-parent
+and destination-parent sensitivity through PlanningContext. K5 must add typed
+collision semantics with a no-mutation guarantee before safe collision retry can
+be integrated; no generic error strings were interpreted. Local typed operation
+failures are named OperationError, rather than the spec's OperationFailure.
+macOS/Xcode validation and Opus review remain pending.
