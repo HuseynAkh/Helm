@@ -95,7 +95,7 @@ public actor OperationExecutor {
         if let source = step.source, let target = step.destination {
             // Equality and containment are interpreted in the source namespace. A destination
             // on another volume must not change how the source's ancestors are compared.
-            let sensitive = context.sensitive(at: source.deletingLastPathComponent())
+            let sensitive = await sensitivity(at: source.deletingLastPathComponent(), context: context)
             let sourcePath = FileNameComparison.key(source.standardizedFileURL.path, caseSensitive: sensitive)
             let targetPath = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
             guard targetPath != sourcePath, !targetPath.hasPrefix(sourcePath + "/") else { throw OperationError.invalidPlan }
@@ -120,7 +120,7 @@ public actor OperationExecutor {
         let parent = destination.deletingLastPathComponent()
         // Recheck complete no-follow names; exclusive FS mutations arbitrate subsequent races.
         let occupied = try await fileSystem.childNames(of: parent)
-        let sensitive = context.sensitive(at: parent)
+        let sensitive = await sensitivity(at: parent, context: context)
         if occupied.contains(where: { FileNameComparison.key($0, caseSensitive: sensitive) == FileNameComparison.key(destination.lastPathComponent, caseSensitive: sensitive) }) {
             guard step.retryKeepBoth else { throw OperationError.conflict }
             destination = parent.appendingPathComponent(try UniqueNamer.name(for: (step.collisionName ?? step.source?.lastPathComponent ?? destination.lastPathComponent),
@@ -131,7 +131,7 @@ public actor OperationExecutor {
                 try Task.checkCancellation()
                 try await mutate(step, destination: destination)
                 return destination
-            } catch is ExclusiveDestinationConflict {
+            } catch let error where error is ExclusiveDestinationConflict || (error as? FileSystemError) == .collision(noMutation: true) {
                 guard step.retryKeepBoth, attempt < 15 else {
                     throw StepExecutionFailure(destination: destination, underlying: OperationError.conflict)
                 }
@@ -142,6 +142,12 @@ public actor OperationExecutor {
             } catch { throw StepExecutionFailure(destination: destination, underlying: error) }
         }
         throw OperationError.conflict
+    }
+    private func sensitivity(at directory: URL, context: PlanningContext) async -> Bool {
+        if let declared = context.caseSensitive.first(where: { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }) {
+            return declared.value
+        }
+        return (try? await fileSystem.isCaseSensitive(at: directory)) ?? false
     }
     private func verify(source: URL, destination: URL, context: PlanningContext) async throws {
         let manifest = context.sourceManifest.filter { $0.source == source || $0.source.path.hasPrefix(source.path + "/") }

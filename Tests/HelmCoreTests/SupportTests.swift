@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import XCTest
 import HelmCore
@@ -96,9 +97,11 @@ final class SupportTests: XCTestCase {
         XCTAssertEqual(request.generation, Generation())
         XCTAssertEqual(request.prefix, "a")
         XCTAssertFalse(request.showHidden)
-        XCTAssertFalse(AddressBarState().isEditing)
-        let address = AddressBarState(text: "a", rows: [result.entry], selectedIndex: 0, isPopupVisible: true, isEditing: true)
-        XCTAssertEqual(address.rows, [result.entry])
+        XCTAssertFalse(AddressEditorState(currentDirectory: url, home: url).isEditing)
+        var address = AddressEditorState(currentDirectory: url, home: url)
+        address.text = "a"
+        address.selectedIndex = 0
+        XCTAssertEqual(address.text, "a")
         XCTAssertEqual(address.selectedIndex, 0)
         XCTAssertEqual(Limits.completionCount, 50)
         XCTAssertEqual(Limits.recentCount, 180)

@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 
@@ -13,15 +14,19 @@ public struct EnumerationOptions: Sendable, Equatable {
 }
 /// Portable failures distinguish inaccessible Trash from an empty listing (B-109).
 public enum FileSystemError: Error, Sendable, Equatable {
+    /// A collision permits retry only when the primitive guarantees it made no mutation (B-038).
+    case collision(noMutation: Bool)
     case notFound, permissionDenied, timedOut, unsupported, other(String)
     public static func mapping(_ error: Error) -> FileSystemError {
         if let error = error as? FileSystemError { return error }
         let value = error as NSError
         if value.domain == NSPOSIXErrorDomain {
+            if value.code == 17 { return .collision(noMutation: false) }
             if value.code == 2 { return .notFound }
             if value.code == 1 || value.code == 13 { return .permissionDenied }
         }
         if value.domain == NSCocoaErrorDomain {
+            if value.code == 516 { return .collision(noMutation: false) }
             if [4, 260].contains(value.code) { return .notFound }
             if [257, 513].contains(value.code) { return .permissionDenied }
         }
@@ -46,6 +51,7 @@ public protocol FileSystem: Sendable {
     func createFileExclusively(at url: URL, contents: Data) async throws
     func createSymbolicLink(at url: URL, destination: URL) async throws
     func createAlias(for url: URL, at destination: URL) async throws
+    func isCaseSensitive(at url: URL) async throws -> Bool
     func volumeIdentifier(for url: URL) async throws -> String
     func availableCapacity(of url: URL) async throws -> Int64
     func sizeOfTree(at url: URL) -> AsyncThrowingStream<Int64, Error>
@@ -69,6 +75,8 @@ public struct AccessGrant: Sendable {
 public protocol AccessBroker: Sendable { func access(_ url: URL) async -> AccessGrant }
 
 public extension FileSystem {
+    /// Unknown volume semantics are conservatively case-insensitive (F-052/B-039).
+    func isCaseSensitive(at url: URL) async throws -> Bool { false }
     func stat(_ url: URL) async throws -> FileEntry { try await entry(at: url) }
     func isDirectory(_ url: URL, resolvingSymlinks: Bool = true) async -> Bool {
         guard let value = try? await entry(at: url) else { return false }

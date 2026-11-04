@@ -21,16 +21,6 @@ public struct SearchRankingContext: Sendable {
         self.preferredRoots = preferredRoots ?? ["Documents", "Desktop", "Downloads", "Projects", "Work", "Pictures", "Movies", "Music", "Developer", "Sites", "Code", "Coding", "Applications", "Public"].map { query.homeDirectory.appendingPathComponent($0) }
     }
 }
-/// Visible bounds prevent claiming an older exact match was considered when it was not (B-026).
-public struct SearchRankedBatch: Sendable {
-    public let results: [SearchResult]
-    public let truncated: Bool
-    public let candidateLimitReached: Bool
-    public let consideredCount: Int
-    public init(results: [SearchResult], truncated: Bool, candidateLimitReached: Bool, consideredCount: Int) {
-        self.results = results; self.truncated = truncated; self.candidateLimitReached = candidateLimitReached; self.consideredCount = consideredCount
-    }
-}
 /// Frozen F-045 weights; stored ordinal relevance fixes B-022, deterministic final path fixes ties.
 public enum SearchRanker {
     public enum NameMatch: Sendable { case exact, prefix, wordBoundary, substring, none }

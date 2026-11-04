@@ -36,6 +36,7 @@ public struct PlanningContextBuilder: Sendable {
     public init(fileSystem: any FileSystem) { self.fileSystem = fileSystem }
     public func build(sources: [URL], destinations: [URL], caseSensitive: [URL: Bool] = [:],
                       policy: ConflictPolicy = ConflictPolicy()) async throws -> PlanningContext {
+        var sensitivity = caseSensitive
         var manifest: [SourceEntry] = []
         var names: [URL: Set<String>] = [:]
         var volumes: [URL: String] = [:]
@@ -55,11 +56,14 @@ public struct PlanningContextBuilder: Sendable {
             }
         }
         for directory in Set(destinations + sources.map { $0.deletingLastPathComponent() }) {
+            if !sensitivity.keys.contains(where: { $0.standardizedFileURL.path == directory.standardizedFileURL.path }) {
+                sensitivity[directory] = (try? await fileSystem.isCaseSensitive(at: directory)) ?? false
+            }
             names[directory] = try await fileSystem.childNames(of: directory)
             volumes[directory] = try await fileSystem.volumeIdentifier(for: directory)
             capacity[directory] = try await fileSystem.availableCapacity(of: directory)
         }
-        return PlanningContext(sourceManifest: manifest, availableBytes: capacity, caseSensitive: caseSensitive,
+        return PlanningContext(sourceManifest: manifest, availableBytes: capacity, caseSensitive: sensitivity,
                                existingNames: names, volumeIDs: volumes, defaultPolicy: policy)
     }
 }

@@ -1,7 +1,8 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
-/// Search scope is explicit: current folder, user folders, computer, or trash (F-043).
-public enum SearchScope: Hashable, Sendable, Codable { case currentFolder(URL), userFolders, computer, trash([URL]) }
+/// Symbolic scopes preserve Home/computer/Recents intent; legacy case spellings remain decodable (F-043).
+public enum SearchScope: Hashable, Sendable, Codable { case currentFolder(URL), home, thisMac, recents, userFolders, computer, trash([URL]) }
 /// Immutable inputs preserve bookmark ranking without reading defaults in the search module (F-044).
 public struct SearchQuery: Sendable, Equatable {
     public var text: String
@@ -10,12 +11,13 @@ public struct SearchQuery: Sendable, Equatable {
     public var homeDirectory: URL
     public var lastDirectory: URL?
     public var showHidden: Bool
+    public var filters: [SearchClause]
     public var limit: Int
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
-                lastDirectory: URL?, showHidden: Bool, limit: Int) {
+                lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = []) {
         self.text = text; self.scope = scope; self.bookmarkPaths = bookmarkPaths
         self.homeDirectory = homeDirectory; self.lastDirectory = lastDirectory
-        self.showHidden = showHidden; self.limit = limit
+        self.showHidden = showHidden; self.limit = limit; self.filters = filters
     }
 }
 /// Ranked metadata preserves search ordering (F-044); smaller ordinal ranks indicate stronger matches.
@@ -39,6 +41,6 @@ public struct SearchState: Sendable, Equatable {
     }
 }
 /// Search lifecycle keeps incremental results separate from indexing availability (F-046).
-public enum SearchEvent: Sendable, Equatable { case gathering, results([SearchResult], isFinal: Bool), notIndexed }
+public enum SearchEvent: Sendable, Equatable { case gathering, results(SearchRankedBatch, isFinal: Bool), notIndexed }
 /// Portable service boundary for Spotlight and enumeration fallback (F-046).
 public protocol SearchService: Sendable { func search(_ query: SearchQuery) -> AsyncThrowingStream<SearchEvent, Error> }

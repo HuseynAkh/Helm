@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 #if os(Linux)
@@ -127,12 +128,22 @@ public struct LiveFileSystem: FileSystem {
     }
     public func removeItem(at url: URL) async throws { try await perform(at: url) { try $0.removeItem(at: url) } }
     public func createDirectory(at url: URL) async throws {
-        try await perform(at: url) { try $0.createDirectory(at: url, withIntermediateDirectories: false) }
+        try await executor.run(volume: queueKey(url)) {
+            guard mkdir(url.path, mode_t(0o777)) == 0 else {
+                let code = errno
+                if code == EEXIST { throw FileSystemError.collision(noMutation: true) }
+                throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(code)))
+            }
+        }
     }
     public func createFileExclusively(at url: URL, contents: Data) async throws {
         try await executor.run(volume: queueKey(url)) {
             let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o666))
-            guard descriptor >= 0 else { throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(errno))) }
+            guard descriptor >= 0 else {
+                let code = errno
+                if code == EEXIST { throw FileSystemError.collision(noMutation: true) }
+                throw FileSystemError.mapping(NSError(domain: NSPOSIXErrorDomain, code: Int(code)))
+            }
             defer { _ = close(descriptor) }
             do {
                 try contents.withUnsafeBytes { bytes in
@@ -162,6 +173,16 @@ public struct LiveFileSystem: FileSystem {
         }
         #else
         throw FileSystemError.unsupported
+        #endif
+    }
+    /// Queries volume metadata only; Linux uses case-sensitive path semantics (F-052/B-039).
+    public func isCaseSensitive(at url: URL) async throws -> Bool {
+        #if os(macOS)
+        return try await executor.run(volume: queueKey(url)) {
+            try url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames ?? false
+        }
+        #else
+        return true
         #endif
     }
     public func volumeIdentifier(for url: URL) async throws -> String {

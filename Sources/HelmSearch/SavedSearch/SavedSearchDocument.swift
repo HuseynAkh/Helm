@@ -1,5 +1,6 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
+import HelmCore
 
 /// Versioned Helm search data extends F-043 without persisting executable predicates.
 public struct SavedSearchDocument: Sendable, Equatable, Codable {

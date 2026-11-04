@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 
@@ -93,7 +94,7 @@ public actor InMemoryFileSystem: FileSystem {
     }
     private func insert(_ url: URL, kind: FileEntryKind, data: Data = Data(), target: URL? = nil) throws {
         try check(url)
-        guard nodes[key(url)] == nil else { throw FileSystemError.other("Destination exists") }
+        guard nodes[key(url)] == nil else { throw FileSystemError.collision(noMutation: true) }
         let parent = try node(url.deletingLastPathComponent())
         guard parent.kind == .directory else { throw FileSystemError.other("Not a directory") }
         tick += 1
@@ -122,16 +123,25 @@ public actor InMemoryFileSystem: FileSystem {
         try insert(destination, kind: root.kind, data: root.data, target: root.target)
         for child in descendants.sorted(by: { $0.url.path.count < $1.url.path.count }) {
             let suffix = String(child.url.path.dropFirst(root.url.path.count + 1))
-            try insert(destination.appendingPathComponent(suffix), kind: child.kind, data: child.data, target: child.target)
+            do { try insert(destination.appendingPathComponent(suffix), kind: child.kind, data: child.data, target: child.target) }
+            catch FileSystemError.collision { throw FileSystemError.collision(noMutation: false) }
         }
     }
     public func moveItem(at source: URL, to destination: URL) async throws {
-        try await copyItem(at: source, to: destination); try await removeItem(at: source)
+        try await copyItem(at: source, to: destination)
+        do { try await removeItem(at: source) }
+        catch FileSystemError.collision { throw FileSystemError.collision(noMutation: false) }
     }
     public func replaceItem(at destination: URL, with temporary: URL, backup: URL) async throws {
         try await moveItem(at: destination, to: backup)
         do { try await moveItem(at: temporary, to: destination) }
-        catch { try await moveItem(at: backup, to: destination); throw error }
+        catch {
+            let original = error
+            do { try await moveItem(at: backup, to: destination) }
+            catch FileSystemError.collision { throw FileSystemError.collision(noMutation: false) }
+            if case FileSystemError.collision = original { throw FileSystemError.collision(noMutation: false) }
+            throw original
+        }
     }
     public func applyDirectoryMetadata(from source: URL, to destination: URL) async throws {
         let original = try node(source); _ = try node(destination)
@@ -148,6 +158,8 @@ public actor InMemoryFileSystem: FileSystem {
         try await moveItem(at: url, to: destination)
         return destination
     }
+    /// Fake volume capability matches its actual name lookup mode (F-052/B-039).
+    public func isCaseSensitive(at url: URL) async throws -> Bool { caseSensitive }
     public func volumeIdentifier(for url: URL) async throws -> String { _ = try node(url); return "memory" }
     public func availableCapacity(of url: URL) async throws -> Int64 { _ = try node(url); return Int64.max }
     /// Bulk fixture setup avoids actor hops while retaining ordinary collision checks (F-035).

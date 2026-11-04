@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 #if os(macOS)
@@ -40,7 +41,8 @@ public struct MetadataReader: Sendable {
                              modificationDate: attributes[.modificationDate] as? Date ?? .distantPast,
                              creationDate: attributes[.creationDate] as? Date ?? .distantPast,
                              contentTypeIdentifier: identifier, localizedKindDescription: description,
-                             volumeIdentifier: volumeIdentifier)
+                             volumeIdentifier: volumeIdentifier,
+                             cloudAvailability: (try? CloudAvailabilityReader.readMetadata(at: url)) ?? .unknown)
         } catch { throw FileSystemError.mapping(error) }
     }
 }

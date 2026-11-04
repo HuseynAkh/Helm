@@ -25,6 +25,28 @@ final class ProviderMetadataTests: XCTestCase {
         XCTAssertEqual(first, SnapshotStamp(id: first.id, loadGeneration: request))
     }
 
+    func testStampBridgeKeepsGenerationAndReducerOwnsAcceptance() {
+        let home = URL(fileURLWithPath: "/home")
+        let location = Location.directory(home)
+        let context = ReducerContext(now: .distantPast, homeDirectory: home)
+        let initial = TabState(location: location, homeDirectory: home)
+        let loading = TabReducer.reduce(initial, .refresh, context: context).0
+        let stamp = SnapshotStamp(id: Generation(rawValue: 900), loadGeneration: loading.loadGeneration)
+        let entry = FileEntry(url: home.appendingPathComponent("file"))
+        let progress = stamp.loadAction(location: location, sortedEntries: [entry], finished: false)
+        let partial = TabReducer.reduce(loading, progress, context: context).0
+        XCTAssertEqual(partial.snapshot.phase, .loading(loadedCount: 1))
+        XCTAssertTrue(partial.isLoading)
+        XCTAssertNotEqual(partial.snapshot.id, stamp.id)
+        let completed = TabReducer.reduce(partial, stamp.loadAction(location: location, sortedEntries: [entry]), context: context).0
+        XCTAssertFalse(completed.isLoading)
+        XCTAssertEqual(completed.snapshot.sortedEntries, [entry])
+        XCTAssertNotEqual(partial.snapshot.id, completed.snapshot.id)
+        let stale = SnapshotStamp(id: stamp.id, loadGeneration: loading.loadGeneration.next())
+        let ignored = TabReducer.reduce(loading, stale.loadAction(location: location, sortedEntries: [entry]), context: context).0
+        XCTAssertEqual(ignored, loading)
+    }
+
     #if os(Linux)
     func testLinuxVolumeFallbackAndProjection() async throws {
         let reader = VolumeReader()

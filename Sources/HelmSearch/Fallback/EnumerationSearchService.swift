@@ -21,8 +21,9 @@ public struct EnumerationSearchService: Sendable {
         let allowed: [URL]
         switch specification.scope {
         case .currentFolder(let root): allowed = [root]
-        case .home: allowed = [context.query.homeDirectory]
-        case .thisMac: allowed = roots // Explicit roots only; never invent broad filesystem scopes.
+        case .home, .userFolders: allowed = [context.query.homeDirectory]
+        case .thisMac, .computer: allowed = roots // Explicit roots only; never invent broad filesystem scopes.
+        case .trash(let directories): allowed = directories
         case .recents: allowed = []
         }
         var pending = allowed.map { ($0.standardizedFileURL, 0) }; var seen = Set<String>()
