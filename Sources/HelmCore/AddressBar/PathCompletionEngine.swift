@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-016–F-023 filtering and completion. Slash requests always enumerate anew (B-050/B-052).
@@ -33,13 +34,14 @@ public struct PathCompletionEngine: Sendable {
             let comparison: ComparisonResult = lhs.name.localizedStandardCompare(rhs.name)
             return comparison == .orderedSame ? lhs.path < rhs.path : comparison == .orderedAscending
         }
+        rows = Array(rows.prefix(limit))
         let parent: URL = request.parent.standardizedFileURL
         if request.isSlashBrowsing && parent.path != "/" {
             rows.insert(CompletionRow(name: "..", path: parent.deletingLastPathComponent().path,
                                       isDirectory: true, isParentLink: true), at: 0)
         }
-        // Review Fix 60 takes precedence: the parent row counts toward the cap.
-        return Array(rows.prefix(limit))
+        // F-017: cap children before prepending the separate parent navigation row.
+        return rows
     }
 
     public static func ghostSuffix(typed: String, selected: CompletionRow?, caretAtEnd: Bool) -> String? {

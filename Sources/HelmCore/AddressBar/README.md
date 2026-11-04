@@ -1,3 +1,4 @@
+<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K3 AddressBar draft
 
 Draft pending Opus compile-correctness and behaviour review after 22:00 Toronto,
@@ -27,16 +28,16 @@ Integration:
   as currentDirectory. Current-user '~' and '~/' are supported without I/O;
   named-user '~someone' lookup is not performed by this pure parser.
 
-Review conflict: review Fix 60 requires 50 total rows including '..', while the
-actual old source and revised architecture specify 50 children plus '..' (51).
-This implementation follows the user's explicit review-wins rule: 50 total.
-Tests pin that choice for Opus to resolve. Tilde is preserved on acceptance as
+K9 correction: F-017 caps sorted, filtered children at 50, then prepends '..'
+for slash browsing outside root (51 rows maximum). Root has no parent row.
+Nonpositive custom limits disable completion rows. The user's explicit correction
+supersedes review Fix 60's incorrect cap wording. Tilde is preserved on acceptance as
 requested by Fix 60/revised F-023; absolute/relative acceptance uses canonical
 candidate casing. The old app expanded tilde on acceptance.
 
 No network, external action, commit, push, or edits to the old Helm app.
 
-Final Linux verification (Swift 6.0.3, Swift 5 language mode):
+Prior K3 Linux verification (Swift 6.0.3, Swift 5 language mode):
 - `swift build --scratch-path /tmp/build-K3 --target HelmCore`: passed.
 - `swift test --scratch-path /tmp/build-K3 --filter HelmCoreTests`: 55 tests,
   zero failures, including all 24 K3 tests.
@@ -49,3 +50,9 @@ re-entry/hidden-setting test. The final root test run above is authoritative.
 SwiftPM warns that this handoff Markdown is unhandled; K3 cannot add a manifest
 exclusion because Package.swift is owned by K1. Cache-directory warnings reflect
 the restricted workspace permissions. Neither warning prevents build or tests.
+
+K9 verification: the full six-target XCTest selection passed 98 tests with zero
+failures using /tmp/build-K9; HelmFileSystem target build passed (including Core).
+Static checks passed for 98 production Swift files. AddressEditorState/Action
+remain unchanged: replacing the minimal contracts requires editing the explicitly
+out-of-lane Contracts/AddressContracts.swift. The orchestrator must integrate them.

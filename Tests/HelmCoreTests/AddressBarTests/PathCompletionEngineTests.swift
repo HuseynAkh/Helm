@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import XCTest
 @testable import HelmCore
@@ -47,13 +48,16 @@ final class AddressBarCompletionEngineTests: XCTestCase {
         XCTAssertTrue(PathCompletionEngine.rows(for: request("absent", slash: false), children: children).isEmpty)
     }
 
-    func testCapIncludesParentPerReviewFix60AndRootHasNoParent() {
+    func testCapAllowsFiftyChildrenPlusParentAndRootHasNoParent() {
         let children = (0..<80).map { candidate("file\($0)") }
-        XCTAssertEqual(PathCompletionEngine.rows(for: request(), children: children).count, 50)
-        XCTAssertEqual(PathCompletionEngine.rows(for: request(), children: children, limit: 1).map(\.name), [".."])
+        XCTAssertEqual(PathCompletionEngine.rows(for: request(), children: children).count, 51)
+        XCTAssertEqual(PathCompletionEngine.rows(for: request(), children: children, limit: 1).map(\.name), ["..", "file0"])
         XCTAssertTrue(PathCompletionEngine.rows(for: request(), children: children, limit: -1).isEmpty)
         let root = CompletionRequest(parent: URL(fileURLWithPath: "/../"), prefix: "", isSlashBrowsing: true,
                                      showHidden: false, generation: Generation())
+        XCTAssertEqual(PathCompletionEngine.rows(for: request(slash: false), children: children).count, 50)
+        XCTAssertTrue(PathCompletionEngine.rows(for: request(), children: children, limit: 0).isEmpty)
+        XCTAssertTrue(PathCompletionEngine.rows(for: root, children: children).allSatisfy { !$0.isParentLink })
         XCTAssertTrue(PathCompletionEngine.rows(for: root, children: []).isEmpty)
         XCTAssertEqual(PathCompletionEngine.rows(for: root, children: children).count, 50)
     }

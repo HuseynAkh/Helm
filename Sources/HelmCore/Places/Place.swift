@@ -1,8 +1,20 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Sidebar destinations distinguish Helm-owned collections from writable folders (F-027–F-030).
 public enum PlaceDestination: Hashable, Sendable, Codable {
     case directory(URL), recent, starred, trash
+    /// Lossless routing seam until Location can represent the Starred collection.
+    public var resolved: ResolvedPlace {
+        switch self {
+        case .directory(let url): return .directory(url)
+        case .recent: return .recentCollection
+        case .starred: return .starredCollection
+        case .trash: return .trashCollection
+        }
+    }
+
+    /// Compatibility projection; use resolved when routing virtual collections.
     public var location: Location? {
         switch self {
         case .directory(let url): return .directory(url)

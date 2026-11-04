@@ -1,8 +1,17 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import XCTest
 import HelmCore
 
 final class PlacesTests: XCTestCase {
     private let home = URL(fileURLWithPath: "/Users/test")
+    func testLosslessDestinationResolution() {
+        XCTAssertEqual(PlaceDestination.directory(home).resolved, .directory(home))
+        XCTAssertEqual(PlaceDestination.recent.resolved, .recentCollection)
+        XCTAssertEqual(PlaceDestination.starred.resolved, .starredCollection)
+        XCTAssertEqual(PlaceDestination.trash.resolved, .trashCollection)
+        let offline = URL(fileURLWithPath: "/Volumes/offline/folder")
+        XCTAssertEqual(PlaceDestination.directory(offline).resolved, .directory(offline))
+    }
     func testFavoritesAndVirtualDestinations() throws {
         let model = PlacesModel(home: home)
         XCTAssertEqual(model.favorites.map(\.name), ["Home", "Desktop", "Documents", "Downloads", "Applications"])
