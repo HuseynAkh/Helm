@@ -49,3 +49,12 @@ public struct GalleryPreviewRequest: Hashable, Sendable {
         self.generation = generation; self.key = key; self.changeToken = changeToken
     }
 }
+
+/// Stable F-048 cell demand survives selected-preview generations; content changes still reload.
+public struct GalleryFilmstripRequest: Hashable, Sendable {
+    public let key: ThumbnailKey
+    public let changeToken: ChangeToken
+    public init(key: ThumbnailKey, changeToken: ChangeToken) {
+        self.key = key; self.changeToken = changeToken
+    }
+}

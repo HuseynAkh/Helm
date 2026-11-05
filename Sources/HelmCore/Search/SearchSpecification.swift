@@ -32,11 +32,12 @@ public struct SearchSpecification: Sendable, Equatable, Codable {
     }
     public var rankingText: String { clauses.compactMap { if case .name(let text) = $0 { return text }; return nil }.joined(separator: " ") }
     public var requiresTags: Bool { clauses.contains { if case .tag = $0 { return true }; return false } }
+    private static let matchingLocale = Locale(identifier: "en_US_POSIX")
     public func matches(_ entry: FileEntry, tags: Set<String> = []) -> Bool {
         guard includeHidden || (!entry.isHidden && !entry.name.hasPrefix(".")) else { return false }
         return clauses.allSatisfy { clause in
             switch clause {
-            case .name(let text): return entry.name.range(of: text, options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")) != nil
+            case .name(let text): return entry.name.range(of: text, options: [.caseInsensitive, .diacriticInsensitive], locale: Self.matchingLocale) != nil
             case .kind(let kind): return entry.kind == kind
             case .ext(let ext): return entry.url.pathExtension.lowercased() == ext.lowercased()
             case .before(let date): return entry.modificationDate < date

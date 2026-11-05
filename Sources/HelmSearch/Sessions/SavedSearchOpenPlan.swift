@@ -14,7 +14,7 @@ public struct SavedSearchOpenPlan: Sendable {
     public let content: Content
     public init(definitionURL: URL, data: Data) {
         self.definitionURL = definitionURL
-        guard definitionURL.isFileURL, definitionURL.host == nil || definitionURL.host == "" || definitionURL.host == "localhost" else {
+        guard LocalFileURLAdmission.accepts(definitionURL) else {
             content = .rejected("Definition must be a local file URL"); return
         }
         if let document = try? SavedSearchCodec.decode(data) {
@@ -32,7 +32,7 @@ public struct SavedSearchOpenPlan: Sendable {
     }
     /// Value-only intent for a separately approved host operation; contains no result-file URLs.
     public var definitionRemovalIntent: URL? {
-        guard definitionURL.isFileURL, definitionURL.host == nil || definitionURL.host == "" || definitionURL.host == "localhost" else { return nil }
+        guard LocalFileURLAdmission.accepts(definitionURL) else { return nil }
         return definitionURL
     }
 }

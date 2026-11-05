@@ -101,7 +101,9 @@ final class T1DragAdversarialTests: XCTestCase {
     }
     func testDropModifierOverrides()  {
         XCTAssertEqual(DropPlanner.proposal(sources: [item("/a")], destination: destination, modifiers: .option).operation, .copy)
-        XCTAssertEqual(DropPlanner.proposal(sources: [item("/a")], destination: destination, modifiers: [.command, .option]).operation, .alias)
+        XCTAssertEqual(DropPlanner.proposal(sources: [item("/a")], destination: destination, modifiers: [.command, .option], allowedOperations: [.copy, .move, .alias]).operation, .alias)
+        // OK1-9: alias is not in the default mask, so the same modifiers are refused when the source does not allow it
+        XCTAssertNil(DropPlanner.proposal(sources: [item("/a")], destination: destination, modifiers: [.command, .option]).operation)
         XCTAssertEqual(DropPlanner.proposal(sources: [item("/a")], destination: destination, allowedOperations: []).rejection, .unsupportedOperation)
     }
     func testDropPrefixSiblingIsNotDescendant()  {

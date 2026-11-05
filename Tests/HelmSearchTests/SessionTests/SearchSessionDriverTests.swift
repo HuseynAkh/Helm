@@ -14,6 +14,7 @@ final class SearchSessionDriverTests: XCTestCase {
             if !state.isAcceptingEvents { return state }
             await Task.yield()
         }
+        XCTFail("Search session did not settle before the five-second deadline")
         return await driver.state
     }
     func testSourceCompletionRetainsTruncation() async {
@@ -29,10 +30,12 @@ final class SearchSessionDriverTests: XCTestCase {
         let driver = SearchSessionDriver(source: { _ in XCTFail("Invalid query reached source"); return AsyncThrowingStream { $0.finish() } })
         await driver.start(query("", filters: [.tag("")])); let state = await driver.state
         XCTAssertNotNil(state.error); XCTAssertFalse(state.isAcceptingEvents)
+        await driver.shutdown()
     }
     func testEmptyDoesNotInvokeSource() async {
         let driver = SearchSessionDriver(source: { _ in XCTFail("Empty query reached source"); return AsyncThrowingStream { $0.finish() } })
         let id = await driver.start(query(" ")); XCTAssertNil(id)
+        await driver.shutdown()
     }
     func testShutdownPreventsRestart() async {
         let driver = SearchSessionDriver(source: { _ in AsyncThrowingStream { _ in } })
@@ -68,6 +71,7 @@ final class SearchSessionDriverTests: XCTestCase {
         await driver.start(query("\"\""))
         let state = await driver.state
         XCTAssertNotNil(state.error); XCTAssertFalse(state.isAcceptingEvents)
+        await driver.shutdown()
     }
     func testTerminalEnvelopesTerminateRetainedStream() async {
         for event: SearchSessionEvent in [.finished, .failed("metadata unavailable")] {
@@ -86,6 +90,17 @@ final class SearchSessionDriverTests: XCTestCase {
     }
     func testOldTerminalCleanupCannotCancelReplacementAndFinalResultsStayLive() async {
         let old = AsyncThrowingStream<SearchSessionEvent, Error>.makeStream()
+        let releaseOldTerminal = SessionTerminalGate()
+        let oldTerminalAttempted = expectation(description: "old terminal attempted after replacement")
+        let oldTerminated = expectation(description: "old subscription terminated")
+        old.continuation.onTermination = { _ in oldTerminated.fulfill() }
+        let oldProducer = Task {
+            await releaseOldTerminal.wait()
+            // Intentionally late producer: the replacement must remain live.
+            old.continuation.yield(.failed("old failure"))
+            old.continuation.finish()
+            oldTerminalAttempted.fulfill()
+        }
         let next = AsyncThrowingStream<SearchSessionEvent, Error>.makeStream()
         let oldStarted = expectation(description: "old subscribed")
         let nextStarted = expectation(description: "replacement subscribed")
@@ -97,9 +112,11 @@ final class SearchSessionDriverTests: XCTestCase {
         })
         await driver.start(query("A"))
         await fulfillment(of: [oldStarted], timeout: 2)
-        old.continuation.yield(.failed("old failure"))
         let latest = await driver.start(query("B"))
-        await fulfillment(of: [nextStarted], timeout: 2)
+        await fulfillment(of: [nextStarted, oldTerminated], timeout: 2)
+        await releaseOldTerminal.open()
+        await fulfillment(of: [oldTerminalAttempted], timeout: 2)
+        await oldProducer.value
         next.continuation.yield(.search(.results(.init(results: [], truncated: true,
             candidateLimitReached: false, consideredCount: 1), isFinal: true)))
         let batchDeadline = ContinuousClock.now.advanced(by: .seconds(5))
@@ -132,5 +149,19 @@ private enum SessionFailure: Error { case failed }
 private struct SessionServiceFixture: SearchService {
     func search(_ query: SearchQuery) -> AsyncThrowingStream<SearchEvent, Error> {
         AsyncThrowingStream { $0.yield(.notIndexed); $0.finish() }
+    }
+}
+
+/// Producer gate fixes the ordering without scheduler timing or sleeps.
+private actor SessionTerminalGate {
+    private var isOpen = false
+    private var waiter: CheckedContinuation<Void, Never>?
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiter = $0 }
+    }
+    func open() {
+        isOpen = true
+        waiter?.resume(); waiter = nil
     }
 }

@@ -32,8 +32,10 @@ public struct SearchSessionState: Sendable, Equatable {
     @discardableResult
     public mutating func start(_ query: SearchQuery) -> UUID? {
         guard !isShutdown else { return nil }
+        let previousBatch = batch
         self = SearchSessionState()
         guard !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !query.filters.isEmpty else { return nil }
+        batch = previousBatch
         self.query = query
         let request = UUID()
         generation = request; isGathering = true; isAcceptingEvents = true

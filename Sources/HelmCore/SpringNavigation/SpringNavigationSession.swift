@@ -62,10 +62,12 @@ public struct SpringNavigationSession: Sendable {
     }
     /// Host supplies fresh destination facts; this admits intent only, never executes a drop.
     public mutating func acceptDrop(target: FileEntry, destination: DropDestination,
-                                    modifiers: DropModifiers = []) -> SpringDropRequest? {
+                                    modifiers: DropModifiers = [], allowedOperations: Set<DropOperation>) -> SpringDropRequest? {
         guard !isEnded, sourcesAreLocal, acceptedDrop == nil, let path = LexicalLocalPath(target.url), !path.hasParent, target.isDirectoryLike,
-              destination.location == .directory(target.url) else { return nil }
-        let proposal = drag.proposal(destination: destination, modifiers: modifiers)
+              case .directory(let destinationURL) = destination.location,
+              let destinationPath = LexicalLocalPath(destinationURL), !destinationPath.hasParent,
+              destinationPath.key == path.key else { return nil }
+        let proposal = drag.proposal(destination: destination, modifiers: modifiers, allowedOperations: allowedOperations)
         guard proposal.operation != nil else { return nil }
         let request = SpringDropRequest(sessionID: id, proposal: proposal, target: target)
         acceptedDrop = request; leaveHover()

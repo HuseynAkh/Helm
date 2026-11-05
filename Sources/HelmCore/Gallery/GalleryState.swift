@@ -8,14 +8,17 @@ public struct GalleryState: Sendable {
     public private(set) var selection: SelectionModel
     public private(set) var viewport: GalleryViewport
     public private(set) var dimensions: ImageDimensions
+    public private(set) var filmstripDimensions: ImageDimensions
     public private(set) var generation: UUID = UUID()
     public private(set) var completedPreview: GalleryPreviewRequest?
     private var eligibleIDs: Set<ItemID>
     public init(snapshot: PresentationSnapshot, selection: Set<ItemID> = [],
                 eligibleIDs: Set<ItemID> = [], viewport: GalleryViewport = GalleryViewport(),
-                dimensions: ImageDimensions = ImageDimensions(widthPoints: 640, heightPoints: 480, backingScale: 1)) {
+                dimensions: ImageDimensions = ImageDimensions(widthPoints: 640, heightPoints: 480, backingScale: 1),
+                filmstripDimensions: ImageDimensions = ImageDimensions(widthPoints: 96, heightPoints: 96, backingScale: 1)) {
         self.snapshot = snapshot; self.viewport = viewport; self.dimensions = dimensions
         self.eligibleIDs = eligibleIDs
+        self.filmstripDimensions = filmstripDimensions
         let focus = snapshot.sortedEntries.first(where: { selection.contains($0.id) })?.id
         self.selection = SelectionModel(order: snapshot.sortedIDs, selected: selection, anchor: focus, focus: focus)
     }
@@ -25,8 +28,13 @@ public struct GalleryState: Sendable {
     }
     public var filmstripIndex: Int? { selectedEntry.flatMap { snapshot.index(of: $0.id) } }
     public var previewRequest: GalleryPreviewRequest? { selectedEntry.flatMap { request(for: $0) } }
-    public var filmstripRequests: [GalleryPreviewRequest] {
-        viewport.indices(count: snapshot.sortedEntries.count).compactMap { request(for: snapshot.sortedEntries[$0]) }
+    public var filmstripRequests: [GalleryFilmstripRequest] {
+        viewport.indices(count: snapshot.sortedEntries.count).compactMap { index in
+            let entry = snapshot.sortedEntries[index]
+            guard eligibleIDs.contains(entry.id) else { return nil }
+            return GalleryFilmstripRequest(key: ThumbnailKey(entry: entry, dimensions: filmstripDimensions),
+                                           changeToken: entry.changeToken)
+        }
     }
     public mutating func select(_ id: ItemID?) {
         if let id {
@@ -40,13 +48,18 @@ public struct GalleryState: Sendable {
         invalidate()
     }
     public mutating func replaceSnapshot(_ snapshot: PresentationSnapshot, eligibleIDs: Set<ItemID>) {
+        let previousRequest = previewRequest
         self.snapshot = snapshot; self.eligibleIDs = eligibleIDs
         selection.reconcile(order: snapshot.sortedIDs)
-        invalidate()
+        // Preserve finished and in-flight previews across unrelated monitor refreshes.
+        // Identity, eligibility and the full content token still retire stale completions.
+        if previewRequest != previousRequest { invalidate() }
     }
-    public mutating func updateViewport(_ viewport: GalleryViewport, dimensions: ImageDimensions) {
+    public mutating func updateViewport(_ viewport: GalleryViewport, dimensions: ImageDimensions,
+                                        filmstripDimensions: ImageDimensions? = nil) {
         if self.dimensions != dimensions { invalidate() }
         self.viewport = viewport; self.dimensions = dimensions
+        if let filmstripDimensions { self.filmstripDimensions = filmstripDimensions }
     }
     /// A completion is accepted once and only for the current selected metadata and dimensions.
     @discardableResult

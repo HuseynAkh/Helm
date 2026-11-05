@@ -44,8 +44,11 @@ pasteboard writes or operations execute here. Tests live in
 F-067 source URL semantics remain; P-118 replaces unconditional moves with same-volume
 moves and cross-volume copies. Unknown/empty IDs and mixed source volumes use one
 conservative copy proposal. Option forces copy, Command move, Option+Command alias;
-Control also aliases as explicitly requested by K25. Trash ignores these modifiers
-and proposes only moveToTrash (P-155/P-277). Search overlays and Recents reject drops.
+Control also selects alias intent as explicitly requested by K25, but default masks
+exclude alias until an executor exists. Spring acceptance requires the host's explicit
+source mask. Trash ignores these modifiers and rejects host-marked `isInTrash`
+sources (including mixed batches) as same-parent no-ops; hosts must supply this fact
+from their Trash context, never infer it from a path name. Otherwise Trash proposes only moveToTrash (P-155/P-277). Search overlays and Recents reject drops.
 Same-parent moves and unmodified same-parent drops (even with unknown volume IDs)
 reject the whole batch (B-040); explicit copy/alias remains allowed
 for intentional duplication. Self/descendant checks apply to all operation kinds

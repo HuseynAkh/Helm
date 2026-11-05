@@ -14,7 +14,7 @@ final class F21RegressionTests: XCTestCase {
         let identity = FileObjectIdentity(scope: "test", object: "one")
         let before = FileEntry(url: url, kind: .directory, childCount: 0, objectIdentity: identity)
         let after = FileEntry(url: url, kind: .directory, size: 100, modificationDate: Date(), childCount: 1, isStarred: true, objectIdentity: identity)
-        let request = try XCTUnwrap(state.acceptDrop(target: before, destination: DropDestination(location: .directory(url))))
+        let request = try XCTUnwrap(state.acceptDrop(target: before, destination: DropDestination(location: .directory(url)), allowedOperations: [.copy, .move]))
         XCTAssertEqual(state.dropCompleted(request: request, success: true, destination: after), [.commit(SpringNavigationContext(tabID: state.original.tabID, location: .directory(url)))])
     }
     func testUnsafeSpringURLsRefused() throws {
@@ -24,10 +24,10 @@ final class F21RegressionTests: XCTestCase {
             var state = session()
             state.beginHover(target)
             XCTAssertTrue(state.poll(openImmediately: true).isEmpty, raw)
-            XCTAssertNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url))), raw)
+            XCTAssertNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url)), allowedOperations: [.copy, .move]), raw)
             var badSource = session([DraggedItem(url: url)])
             let local = FileEntry(url: URL(fileURLWithPath: "/destination", isDirectory: true), kind: .directory)
-            XCTAssertNil(badSource.acceptDrop(target: local, destination: DropDestination(location: .directory(local.url))), raw)
+            XCTAssertNil(badSource.acceptDrop(target: local, destination: DropDestination(location: .directory(local.url)), allowedOperations: [.copy, .move]), raw)
         }
     }
     func testRealSymlinkSpellingAndShareActionArePreserved() throws {
@@ -86,7 +86,7 @@ final class F21RegressionTests: XCTestCase {
             var state = session()
             let original = FileEntry(url: url, kind: .directory, objectIdentity: known ? FileObjectIdentity(scope: "test", object: "one") : nil)
             let target = FileEntry(url: url, kind: .directory, objectIdentity: known ? FileObjectIdentity(scope: "test", object: "two") : nil)
-            let request = try XCTUnwrap(state.acceptDrop(target: original, destination: DropDestination(location: .directory(url))))
+            let request = try XCTUnwrap(state.acceptDrop(target: original, destination: DropDestination(location: .directory(url)), allowedOperations: [.copy, .move]))
             let expected: [SpringNavigationEffect] = known ? [.restore(state.original)] : [.destinationUnverified(request), .restore(state.original)]
             XCTAssertEqual(state.dropCompleted(request: request, success: true, destination: target), expected)
             XCTAssertTrue(state.dropCompleted(request: request, success: true, destination: target).isEmpty)
@@ -101,7 +101,7 @@ final class F21RegressionTests: XCTestCase {
         var state = session([DraggedItem(url: try XCTUnwrap(URL(string: "file://localhost/source/file")))])
         state.beginHover(target)
         XCTAssertEqual(state.poll(openImmediately: true).count, 1)
-        XCTAssertNotNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url))))
+        XCTAssertNotNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url)), allowedOperations: [.copy, .move]))
         let model = PathPresentation(location: .directory(root), selectedEntries: [])
         for hint in [true, false] {
             XCTAssertEqual(model.intent(.navigate, segmentID: URL(fileURLWithPath: root.path, isDirectory: hint)), .navigate(root))

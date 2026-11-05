@@ -6,9 +6,11 @@ All changes are drafts pending Opus compile/behaviour review after 22:00 Toronto
 network requests, predicate execution or platform UI imports.
 
 `SearchEngine` accepts a FileSystem, SearchScopeResolving and HelmClock. The supplied
-SearchRootResolver maps Home/current folder/Trash explicitly, requires allowed roots
-for computer scopes, and rejects Recents enumeration. Roots and directory entries
-are standardized and sorted before visit budgets apply. Each directory is collected
+SearchRootResolver maps Home/userFolders to the union of Home, injected bookmark roots,
+and injected browsable removable-volume roots (F-044). Hosts supply those lists; an
+empty default does not discover them. Current folder/Trash stay explicit, computer
+scopes require allowed roots, and Recents enumeration is rejected. Roots and directory entries
+are standardized and sorted before visit budgets apply; traversal is breadth-first. Each directory is collected
 before sorting; memory therefore includes one complete directory listing as well as
 at most visitLimit candidates. A future bounded listing adapter may be useful for
 extremely wide directories. The visit limit bounds examined entries, not underlying
@@ -18,7 +20,11 @@ Traversal never follows symlink entries, including explicit symlink roots. Packa
 are listed as results but not descended by default; SearchWalkOptions can explicitly
 permit their contents. Hidden directories are pruned unless requested. Permission
 failures skip that folder, issue SearchDiagnostic.unreadable and mark results partial;
-other failures throw from collect. No scope is expanded after failure.
+missing descendants or one missing root among multiple distinct roots also produce
+unreadable diagnostics and partial results. A lone missing root and other failures
+throw from collect. Skipped symlink/package roots emit rootNotSearchable; malformed
+non-child listings emit droppedEntry. Both mark results partial. No scope is expanded
+after failure. Explicit root following and Spotlight real-path aliases remain owner decisions.
 
 `search` returns AsyncStream<SearchRankedBatch>. It waits for global ranking, then
 emits cumulative prefixes of the final result in requested batch sizes. The last
@@ -51,15 +57,29 @@ current-folder +40. Name folding now uses case/diacritic-insensitive POSIX rules
 aligning Unicode matching and ranking. Paths retain their existing ranking policy.
 The candidate cap is max(limit*3,450), newest-first before scoring. An older exact
 match can remain outside the cap (B-026); truncation remains visible. Tie breaks use
-newer metadata, numeric POSIX name collation, then standardized path. The original
-EnumerationSearchService API and its throwing-permission behavior are preserved.
+newer metadata, numeric POSIX name collation, then standardized path. EnumerationSearchService delegates to SearchEngine, so its callers and tests exercise
+the same traversal and error policy. It retains its public call shape and adds an
+optional diagnostic callback; permission failures now return disclosed partial results.
+
+Hosts should await PreferredRoots.discover(home:fileSystem:) once per search and pass
+its result as SearchRankingContext.preferredRoots. It preserves standard roots and
+adds visible immediate Home directories except Library, with original casing. Reads
+and cancellation errors propagate; hosts may disclose those and use standard roots.
+Ranking itself does no enumeration (F-045, B-026). Host wiring is outside this lane.
 
 Grammar is bounded at 4096 UTF-8 bytes, 128 tokens, 256 total clauses; 10k-character
 queries reject explicitly. Double quotes and backslashes group/escape literal text.
-Clauses are ANDed; OR/NOT, contents:, wildcard and predicate punctuation are literal
+Any token containing quotes or escapes is a filename literal, including
+`"kind:folder"`, `kind\:folder`, and `tag:"Work Stuff"`. Use typed `.tag("Work Stuff")`
+criteria for tags containing spaces. Incomplete-input errors remain unchanged pending
+an owner decision. Clauses are ANDed; OR/NOT, contents:, wildcard and predicate punctuation are literal
 filename text, never executable operators or content searches. Known kind names are
 case-insensitive; dates are strict UTC days; size comparisons are exclusive and
-nonnegative. Injected filter rows receive validation too.
+nonnegative. Injected filter rows receive validation too. Explicit scope URLs and
+resolved roots must pass Core LocalFileURLAdmission, backed by the F24 lexical parser.
+Saved-definition open/removal intents and cloud actions share that same admission.
+SearchSessionState keeps its previous batch through a nonempty restart/refresh until
+the first replacement batch; an empty query still clears the session.
 
 SearchCriteriaEditor edits typed AND rows while preserving document text, name,
 scope and hidden policy, and uses SavedSearchDocument schema-v1 codecs. Finder
@@ -70,8 +90,8 @@ keys retain the codec's read-only reasons. No subprocess or predicate interprete
 used. Editing query text/scope/name can be done by constructing a new editor from an
 updated SavedSearchDocument; row append/replace/remove reject stale indices safely.
 
-Needed changes elsewhere / open questions: no Core changes are required for this
-portable slice. Host integration should retain batch truncation and diagnostics,
+Needed changes elsewhere / open questions: host integration should retain batch
+truncation and diagnostics,
 map fallback disclosure to visible UI, and supply allowed roots. Core SearchService
 uses a different event stream; its composition adapter belongs to the host lane.
 Actual NSMetadataQuery lifecycle, live updates and Finder interoperability require
@@ -81,6 +101,6 @@ consumers that need richer lifecycle than the requested plain batch AsyncStream.
 F3 pre-review fixes: typed and textual extension literals share final normalization
 and validation. Both JSON and constructed/replaced Finder documents reject encoded
 output over 1 MiB, matching decode limits. Original fallback traversal inspects every
-pending directory and refuses package/symlink roots while preserving throwing I/O
-errors. This does not eliminate filesystem TOCTOU changes between inspection and
+pending directory and refuses package/symlink roots with partial-result diagnostics.
+This does not eliminate filesystem TOCTOU changes between inspection and
 listing; descriptor-relative traversal would require a different filesystem contract.

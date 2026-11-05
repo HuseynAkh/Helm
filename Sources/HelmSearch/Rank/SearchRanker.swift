@@ -18,7 +18,7 @@ public struct SearchRankingContext: Sendable {
     public let includeSystemLocations: Bool
     public init(query: HelmCore.SearchQuery, preferredRoots: [URL]? = nil, includeSystemLocations: Bool = false) {
         self.query = query; self.includeSystemLocations = includeSystemLocations
-        self.preferredRoots = preferredRoots ?? ["Documents", "Desktop", "Downloads", "Projects", "Work", "Pictures", "Movies", "Music", "Developer", "Sites", "Code", "Coding", "Applications", "Public"].map { query.homeDirectory.appendingPathComponent($0) }
+        self.preferredRoots = preferredRoots ?? PreferredRoots.standard(home: query.homeDirectory)
     }
 }
 /// Frozen F-045 weights; stored ordinal relevance fixes B-022, deterministic final path fixes ties.

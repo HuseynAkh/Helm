@@ -35,10 +35,15 @@ final class F1DropWorkTests: XCTestCase {
         let sources = (0..<10_000).reversed().map {
             DraggedItem(url: URL(fileURLWithPath: "/source/file\($0)"), volumeID: "v")
         }
-        let start = Date()
+        let paths = sources.map { $0.url.standardizedFileURL.pathComponents }
+        var checks = 0
+        XCTAssertFalse(DropPlanner.hasOverlappingPaths(paths) { path, prefix in
+            checks += 1
+            return path.starts(with: prefix)
+        })
+        XCTAssertEqual(checks, sources.count - 1, "Only adjacent sorted paths require prefix checks")
         let proposal = DropPlanner.proposal(sources: sources,
             destination: DropDestination(location: .directory(URL(fileURLWithPath: "/target")), volumeID: "v"))
-        print("F1 diagnostic 10k drag seconds: \(Date().timeIntervalSince(start))")
         XCTAssertEqual(proposal.operation, .move)
         XCTAssertEqual(proposal.sources, sources)
     }

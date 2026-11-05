@@ -3,28 +3,9 @@ import Foundation
 import HelmCore
 import HelmFileSystem
 
-/// Explicit roots preserve symbolic scope intent without widening searches (F-043, B-099).
-public protocol SearchScopeResolving: Sendable {
-    func roots(for scope: SearchScope) async throws -> [URL]
-}
-/// Composition-root supplied locations; Recents requires metadata (F-043).
-public struct SearchRootResolver: SearchScopeResolving {
-    public let home: URL
-    public let computerRoots: [URL]
-    public init(home: URL, computerRoots: [URL] = []) { self.home = home; self.computerRoots = computerRoots }
-    public func roots(for scope: SearchScope) async throws -> [URL] {
-        switch scope {
-        case .currentFolder(let root): return [root]
-        case .home, .userFolders: return [home]
-        case .thisMac, .computer: return computerRoots
-        case .trash(let roots): return roots
-        case .recents: throw EnumerationSearchError.recentsRequireMetadataSource
-        }
-    }
-}
 /// Partial reads and terminal failures remain visible to presentation (F-046, B-099).
 public enum SearchDiagnostic: Sendable, Equatable {
-    case unreadable(URL), failed(String), cancelled
+    case unreadable(URL), rootNotSearchable(URL), droppedEntry(URL), failed(String), cancelled
 }
 /// Explicit bounded traversal never follows links or reads contents (F-044, B-026).
 public struct SearchWalkOptions: Sendable {
@@ -78,7 +59,9 @@ public struct SearchEngine: Sendable {
     }
     func metadataRoots(for scope: SearchScope) async throws -> [URL]? {
         if scope == .recents { return nil }
-        return try await resolver.roots(for: scope).map { $0.standardizedFileURL }
+        let roots = try await resolver.roots(for: scope)
+        try SearchQueryParser.validateRoots(roots)
+        return roots.map { $0.standardizedFileURL }
     }
     func rankingContext(_ request: SearchRequest, _ context: SearchRankingContext) -> SearchRankingContext {
         var query = context.query
@@ -92,39 +75,56 @@ public struct SearchEngine: Sendable {
         let specification = try SearchQueryParser.compile(request)
         guard !specification.requiresTags else { throw EnumerationSearchError.tagsUnavailable }
         let roots = try await resolver.roots(for: request.scope)
-        var pending = Array(Set(roots.map { $0.standardizedFileURL })).sorted { $0.path > $1.path }.map { ($0, 0) }
+        try SearchQueryParser.validateRoots(roots)
+        let uniqueRoots = Array(Set(roots.map { $0.standardizedFileURL }))
+        var pending = uniqueRoots.sorted { $0.path < $1.path }.map { ($0, 0) }
+        var nextDirectory = 0
         var seen = Set<String>(); var visited = Set<String>(); var values: [SearchCandidate] = []; var truncated = false
-        walk: while let (directory, depth) = pending.popLast() {
+        walk: while nextDirectory < pending.count {
+            let (directory, depth) = pending[nextDirectory]
+            nextDirectory += 1
             try Task.checkCancellation()
             guard seen.insert(directory.path).inserted else { continue }
             do {
                 let rootEntry = try await fileSystem.entry(at: directory)
-                guard rootEntry.kind == .directory || (rootEntry.kind == .package && options.includePackageContents) else { continue }
+                guard rootEntry.kind == .directory || (rootEntry.kind == .package && options.includePackageContents) else {
+                    diagnostic(.rootNotSearchable(directory)); truncated = true; continue
+                }
                 var entries: [FileEntry] = []
                 for try await batch in fileSystem.enumerate(directory, options: EnumerationOptions(includeHidden: request.includeHidden, resolveSymlinkTargets: false)) {
                     try Task.checkCancellation()
                     entries.append(contentsOf: batch)
                 }
                 try Task.checkCancellation()
-                for entry in entries.sorted(by: { $0.url.standardizedFileURL.path < $1.url.standardizedFileURL.path }) {
+                let keyedEntries = entries.map { (entry: $0, url: $0.url.standardizedFileURL) }
+                    .map { (entry: $0.entry, url: $0.url, path: $0.url.path, parent: $0.url.deletingLastPathComponent().path) }
+                    .sorted { $0.path < $1.path }
+                for keyed in keyedEntries {
+                    let entry = keyed.entry
                     try Task.checkCancellation()
-                    let path = entry.url.standardizedFileURL.path
-                    // Ignore malformed adapters that return non-children or duplicate entries.
-                    guard entry.url.standardizedFileURL.deletingLastPathComponent().path == directory.path,
-                          !visited.contains(path), request.includeHidden || (!entry.isHidden && !entry.name.hasPrefix(".")) else { continue }
+                    let path = keyed.path
+                    guard keyed.parent == directory.path else {
+                        diagnostic(.droppedEntry(entry.url)); truncated = true; continue
+                    }
+                    guard !visited.contains(path), request.includeHidden || (!entry.isHidden && !entry.name.hasPrefix(".")) else { continue }
                     guard visited.count < options.visitLimit else { truncated = true; break walk }
                     visited.insert(path)
                     if specification.matches(entry) { values.append(SearchCandidate(entry: entry)) }
                     if entry.kind == .directory || (entry.kind == .package && options.includePackageContents) {
                         if !entry.isReadable { diagnostic(.unreadable(entry.url)); truncated = true }
-                        else if depth < options.maxDepth { pending.append((entry.url.standardizedFileURL, depth + 1)) }
+                        else if depth < options.maxDepth { pending.append((keyed.url, depth + 1)) }
                         else { truncated = true }
                     }
                 }
             } catch {
                 try Task.checkCancellation()
-                if FileSystemError.mapping(error) == .permissionDenied { diagnostic(.unreadable(directory)); truncated = true }
-                else { throw error }
+                switch FileSystemError.mapping(error) {
+                case .permissionDenied:
+                    diagnostic(.unreadable(directory)); truncated = true
+                case .notFound where depth > 0 || uniqueRoots.count > 1:
+                    diagnostic(.unreadable(directory)); truncated = true
+                default: throw error
+                }
             }
         }
         try Task.checkCancellation()

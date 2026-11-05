@@ -22,7 +22,7 @@ public struct DropSession: Sendable {
         validation = DropSourceValidation(sources: [])
     }
     public func proposal(destination: DropDestination, modifiers: DropModifiers = [],
-                         allowedOperations: Set<DropOperation> = [.copy, .move, .alias, .moveToTrash]) -> DropProposal {
+                         allowedOperations: Set<DropOperation> = [.copy, .move, .moveToTrash]) -> DropProposal {
         // Ended sessions have no sources and cannot authorize a drop or retain user paths.
         DropPlanner.proposal(validation: validation, destination: destination,
                              modifiers: modifiers, allowedOperations: allowedOperations)

@@ -38,6 +38,7 @@ class ShellTests(unittest.TestCase):
             shutil.copyfile(SCRIPTS / 'run_all.sh', scripts / 'run_all.sh')
             (root / 'scripts/static_checks.sh').write_text('exit 0\n')
             (scripts / 'parse_check_ui.sh').write_text('exit 0\n')
+            (scripts / 'check_core_type_names.py').write_text('')
             (scripts / 'check_coverage.py').write_text('print("fixture coverage")\n')
             (scripts / 'test_fixture.py').write_text('import unittest\nclass Fixture(unittest.TestCase):\n def test_one(self): pass\n')
             for count, skipped, build_status, expected in ((2, 0, 0, 0), (0, 0, 0, 1), (2, 2, 0, 1), (2, 1, 0, 0), (2, 0, 1, 1)):

@@ -49,7 +49,7 @@ final class SearchTests: XCTestCase {
     }
     func testParserGrammarAndLiteralInjection() throws {
         XCTAssertEqual(try SearchQueryParser.tokenize(#"one "two three" four\ five"#), ["one", "two three", "four five"])
-        let spec = try SearchQueryParser.compile(SearchRequest(text: #""Quarter Report" kind:regular ext:pdf after:2026-01-01 before:2027-01-01 size:>5 size:<100 tag:"Work Stuff""#))
+        let spec = try SearchQueryParser.compile(SearchRequest(text: #""Quarter Report" kind:regular ext:pdf after:2026-01-01 before:2027-01-01 size:>5 size:<100"#, filters: [.tag("Work Stuff")]))
         XCTAssertEqual(spec.clauses.count, 8); XCTAssertTrue(spec.requiresTags)
         let entry = FileEntry(url: URL(fileURLWithPath: "/Quarter Report.pdf"), size: 10, modificationDate: Date(timeIntervalSince1970: 1_780_000_000))
         XCTAssertTrue(spec.matches(entry, tags: ["Work Stuff"])); XCTAssertFalse(spec.matches(entry))
@@ -129,10 +129,12 @@ final class SearchTests: XCTestCase {
         }
         let root = URL(fileURLWithPath: "/")
         await fs.setFailure(.permissionDenied, at: root)
-        do {
-            _ = try await service.search(SearchSpecification(scope: .currentFolder(root), clauses: [], includeHidden: false), roots: [], context: context())
-            XCTFail("Expected permission error")
-        } catch let error as FileSystemError { XCTAssertEqual(error, .permissionDenied) }
+        let warning = expectation(description: "permission diagnostic")
+        let denied = try await service.search(SearchSpecification(scope: .currentFolder(root), clauses: [], includeHidden: false), roots: [], context: context()) {
+            XCTAssertEqual($0, .unreadable(root)); warning.fulfill()
+        }
+        await fulfillment(of: [warning], timeout: 1)
+        XCTAssertTrue(denied.truncated); XCTAssertTrue(denied.results.isEmpty)
         let empty = try await service.search(SearchSpecification(scope: .thisMac, clauses: [], includeHidden: false), roots: [], context: context())
         XCTAssertTrue(empty.results.isEmpty)
     }

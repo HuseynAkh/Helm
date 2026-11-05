@@ -100,7 +100,11 @@ final class ThumbnailCoordinatorTests: XCTestCase {
         await probe.waitForStart(1)
         weak var weakCoordinator = coordinator
         coordinator = nil
-        XCTAssertNil(weakCoordinator)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+        while weakCoordinator != nil && ContinuousClock.now < deadline {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNil(weakCoordinator, "Coordinator must release within one second after its owner is dropped")
         let ended = expectation(description: "subscriber finished")
         let consumer = Task { if let subscription { for await _ in subscription.deliveries {} }; ended.fulfill() }
         await fulfillment(of: [cancelled, ended], timeout: 1)

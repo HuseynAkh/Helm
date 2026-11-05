@@ -25,10 +25,10 @@ final class F24LexicalPathTests: XCTestCase {
             let target = FileEntry(url: url, kind: .directory)
             state.beginHover(target)
             XCTAssertTrue(state.poll(openImmediately: true).isEmpty, spelling)
-            XCTAssertNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url))))
+            XCTAssertNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(url)), allowedOperations: [.copy, .move]))
             var sourceState = session(sources: [DraggedItem(url: url)])
             let local = FileEntry(url: URL(fileURLWithPath: "/destination", isDirectory: true), kind: .directory)
-            XCTAssertNil(sourceState.acceptDrop(target: local, destination: DropDestination(location: .directory(local.url))))
+            XCTAssertNil(sourceState.acceptDrop(target: local, destination: DropDestination(location: .directory(local.url)), allowedOperations: [.copy, .move]))
         }
     }
 
@@ -89,7 +89,7 @@ final class F24LexicalPathTests: XCTestCase {
         let load = try XCTUnwrap(state.pending)
         XCTAssertTrue(state.hoverOpened(request: load, target: nfd).isEmpty)
         var dropState = session(sources: [DraggedItem(url: URL(fileURLWithPath: "/source", isDirectory: false))])
-        let request = try XCTUnwrap(dropState.acceptDrop(target: nfc, destination: DropDestination(location: .directory(nfc.url))))
+        let request = try XCTUnwrap(dropState.acceptDrop(target: nfc, destination: DropDestination(location: .directory(nfc.url)), allowedOperations: [.copy, .move]))
         XCTAssertEqual(dropState.dropCompleted(request: request, success: true, destination: nfd), [.restore(dropState.original)])
     }
 }

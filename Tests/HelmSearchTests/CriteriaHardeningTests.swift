@@ -67,6 +67,7 @@ final class CriteriaHardeningTests: XCTestCase {
             }
             let quoted = "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
             XCTAssertEqual(try SearchQueryParser.tokenize(quoted), [text])
+            XCTAssertEqual(try SearchQueryParser.compile(SearchRequest(text: quoted)).clauses, [.name(text)])
             XCTAssertThrowsError(try SearchQueryParser.tokenize(quoted + "\\"))
             XCTAssertThrowsError(try SearchQueryParser.tokenize(quoted + "\""))
             let document = SavedSearchDocument(name: text, request: SearchRequest(text: "", filters: [.name(text)]))

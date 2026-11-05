@@ -41,8 +41,10 @@ public struct InspectorSessionRegistry: Equatable, Sendable {
             sessions[index].pendingSelection = nil; sessions[index].decisionID = nil
             return decision == .discardEdits ? replace(index, request) : []
         case .edit(let id, let attribute):
-            guard let index = sessions.firstIndex(where: { $0.id == id }),
-                  sessions[index].enrichedIDs.count == sessions[index].entries.count else { return [] }
+            guard let index = sessions.firstIndex(where: { $0.id == id }) else { return [] }
+            guard sessions[index].enrichedIDs.count == sessions[index].entries.count else {
+                return [.editRejectedAwaitingMetadata(sessionID: id)]
+            }
             sessions[index].edits.set(attribute)
             return []
         case .enriched(let request, let item):

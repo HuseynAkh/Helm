@@ -5,7 +5,7 @@ import Foundation
 public enum DropPlanner {
     public static func proposal(sources: [DraggedItem], destination: DropDestination,
                                 modifiers: DropModifiers = [],
-                                allowedOperations: Set<DropOperation> = [.copy, .move, .alias, .moveToTrash]) -> DropProposal {
+                                allowedOperations: Set<DropOperation> = [.copy, .move, .moveToTrash]) -> DropProposal {
         proposal(validation: DropSourceValidation(sources: sources), destination: destination,
                  modifiers: modifiers, allowedOperations: allowedOperations)
     }
@@ -24,7 +24,9 @@ public enum DropPlanner {
         let operation: DropOperation
         switch destination.location {
         case .recent: return reject(.virtualDestination)
-        case .trash: operation = .moveToTrash
+        case .trash:
+            guard !sources.contains(where: { $0.isInTrash }) else { return reject(.sameParentNoOp) }
+            operation = .moveToTrash
         case .directory(let url):
             guard url.isFileURL else { return reject(.invalidFileURL) }
             guard destination.isDirectory else { return reject(.notDirectory) }

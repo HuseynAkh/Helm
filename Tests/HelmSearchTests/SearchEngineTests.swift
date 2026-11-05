@@ -110,7 +110,7 @@ final class SearchEngineTests: XCTestCase {
         catch { XCTAssertEqual(error as? EnumerationSearchError, .recentsRequireMetadataSource) }
         let fs = try await fixture()
         let result = try await engine(fs).collect(SearchRequest(text: "", scope: .currentFolder(root.appendingPathComponent("loop"))), context: context())
-        XCTAssertTrue(result.results.isEmpty)
+        XCTAssertTrue(result.results.isEmpty); XCTAssertTrue(result.truncated)
     }
     func testCompositeMergeDisclosureAndTags() async throws {
         let fs = try await fixture()
@@ -156,7 +156,7 @@ final class SearchEngineTests: XCTestCase {
         }
         let packageRoot = SearchRequest(text: "report", scope: .currentFolder(package))
         let skipped = try await forward.collect(packageRoot, context: context())
-        XCTAssertTrue(skipped.results.isEmpty)
+        XCTAssertTrue(skipped.results.isEmpty); XCTAssertTrue(skipped.truncated)
         let included = try await forward.collect(packageRoot, context: context(), options: SearchWalkOptions(includePackageContents: true))
         XCTAssertEqual(included.results.count, 1)
     }

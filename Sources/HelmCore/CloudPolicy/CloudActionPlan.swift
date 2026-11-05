@@ -46,9 +46,7 @@ public enum CloudActionPlan: Equatable, Sendable {
     }
 
     private static func isLocalURL(_ url: URL) -> Bool {
-        url.isFileURL && (url.host == nil || url.host == "" || url.host?.lowercased() == "localhost")
-            && url.user == nil && url.password == nil && url.port == nil
-            && url.query == nil && url.fragment == nil && url.path.hasPrefix("/")
+        LocalFileURLAdmission.accepts(url)
     }
 }
 

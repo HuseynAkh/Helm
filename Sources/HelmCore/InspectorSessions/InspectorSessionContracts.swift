@@ -48,6 +48,8 @@ public enum InspectorSessionEffect: Equatable, Sendable {
     case confirmMany(UUID, InfoPresentationRequest)
     case decideSelection(sessionID: UUID, decisionID: UUID)
     case read(InspectorReadRequest), cancel(InspectorReadRequest)
+    /// F-050 edit was not applied because metadata is still loading; hosts can explain and retry.
+    case editRejectedAwaitingMetadata(sessionID: UUID)
 }
 
 /// F-050 session snapshot retains edits and separates computed contents from metadata (B-066).

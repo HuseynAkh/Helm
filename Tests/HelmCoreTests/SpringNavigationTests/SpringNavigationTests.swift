@@ -71,7 +71,7 @@ final class SpringNavigationTests: XCTestCase {
     func testSuccessfulDropCommitsOnlyAcceptedDestinationOnce() throws {
         var state = session(); _ = try open(entry("a"), in: &state)
         let target = entry("destination")
-        let request = try XCTUnwrap(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url))))
+        let request = try XCTUnwrap(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url)), allowedOperations: [.copy, .move]))
         XCTAssertTrue(state.retreat().isEmpty)
         XCTAssertEqual(state.dropCompleted(request: request, success: true, destination: target),
                        [.commit(SpringNavigationContext(tabID: state.original.tabID, location: .directory(target.url)))])
@@ -80,14 +80,14 @@ final class SpringNavigationTests: XCTestCase {
     func testFailedAndChangedDestinationDropsRestoreOriginal() throws {
         for success in [false, true] {
             var state = session(); let target = entry("destination")
-            let request = try XCTUnwrap(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url))))
+            let request = try XCTUnwrap(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url)), allowedOperations: [.copy, .move]))
             XCTAssertEqual(state.dropCompleted(request: request, success: success, destination: entry("destination", size: 1, identity: "replacement")), [.restore(state.original)])
         }
     }
     func testVirtualAndMismatchedDestinationsRejected() {
         var state = session()
         for location in [Location.recent, .trash, .directory(entry("other").url)] {
-            XCTAssertNil(state.acceptDrop(target: entry("a"), destination: DropDestination(location: location)))
+            XCTAssertNil(state.acceptDrop(target: entry("a"), destination: DropDestination(location: location), allowedOperations: [.copy, .move]))
         }
     }
     func testInvalidHoverAndScroll() {
@@ -97,7 +97,7 @@ final class SpringNavigationTests: XCTestCase {
     }
     func testDifferentSessionDropCallbackRejected() throws {
         var first = session(); var second = session(); let target = entry("destination")
-        let request = try XCTUnwrap(first.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url))))
+        let request = try XCTUnwrap(first.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url)), allowedOperations: [.copy, .move]))
         XCTAssertTrue(second.dropCompleted(request: request, success: true, destination: target).isEmpty)
     }
 }

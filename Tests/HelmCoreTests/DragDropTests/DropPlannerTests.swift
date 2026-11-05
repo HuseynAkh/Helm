@@ -13,7 +13,7 @@ final class DropPlannerTests: XCTestCase {
     func testAllModifierCombinationsAndFeedback() {
         let expected: [DropOperation] = [.move, .copy, .move, .alias, .alias, .alias, .alias, .alias]
         for raw in 0..<8 {
-            let proposal = DropPlanner.proposal(sources: [item()], destination: destination(), modifiers: DropModifiers(rawValue: raw))
+            let proposal = DropPlanner.proposal(sources: [item()], destination: destination(), modifiers: DropModifiers(rawValue: raw), allowedOperations: [.copy, .move, .alias, .moveToTrash])
             XCTAssertEqual(proposal.operation, expected[raw])
             XCTAssertNil(proposal.rejection)
             XCTAssertEqual(proposal.feedback.rawValue, expected[raw].rawValue)
@@ -48,7 +48,7 @@ final class DropPlannerTests: XCTestCase {
             XCTAssertEqual(DropPlanner.proposal(sources: [item(source)], destination: destination(target)).rejection, reason)
         }
         for modifiers: DropModifiers in [.option, .control, [.option, .command]] {
-            XCTAssertNotNil(DropPlanner.proposal(sources: [item("/a/b")], destination: destination("/a"), modifiers: modifiers).operation)
+            XCTAssertNotNil(DropPlanner.proposal(sources: [item("/a/b")], destination: destination("/a"), modifiers: modifiers, allowedOperations: [.copy, .move, .alias]).operation)
         }
         XCTAssertEqual(DropPlanner.proposal(sources: [item("/a/b"), item("/elsewhere")], destination: destination("/a")).rejection, .sameParentNoOp)
     }

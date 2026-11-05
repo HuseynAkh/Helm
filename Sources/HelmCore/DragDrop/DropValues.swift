@@ -26,11 +26,14 @@ public struct DraggedItem: Hashable, Sendable {
     public let url: URL
     public let id: ItemID
     public let volumeID: String?
-    public init(url: URL, id: ItemID? = nil, volumeID: String? = nil) {
+    /// Host-supplied Trash membership; never inferred from a folder's name (F-067, B-040).
+    public let isInTrash: Bool
+    public init(url: URL, id: ItemID? = nil, volumeID: String? = nil, isInTrash: Bool = false) {
         self.url = url; self.id = id ?? ItemID(url: url); self.volumeID = volumeID
+        self.isInTrash = isInTrash
     }
-    public init(entry: FileEntry) {
-        self.init(url: entry.url, id: entry.id, volumeID: entry.volumeIdentifier)
+    public init(entry: FileEntry, isInTrash: Bool = false) {
+        self.init(url: entry.url, id: entry.id, volumeID: entry.volumeIdentifier, isInTrash: isInTrash)
     }
 }
 /// Resolved target metadata for F-067; search is an overlay, never a mutation target (B-031).

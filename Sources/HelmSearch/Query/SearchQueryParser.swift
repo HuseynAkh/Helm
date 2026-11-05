@@ -3,29 +3,45 @@ import Foundation
 import HelmCore
 
 /// Invalid bounded grammar is reported instead of silently broadening a query (F-044).
-public enum SearchParseError: Error, Equatable { case tooLong, tooManyTokens, unterminatedQuote, danglingEscape, invalidFilter(String) }
+public enum SearchParseError: Error, Equatable { case tooLong, tooManyTokens, unterminatedQuote, danglingEscape, invalidFilter(String), nonLocalRoot(URL) }
 /// Filename grammar supports quoted phrases and backslash escapes; wildcards stay literal (F-044).
 public enum SearchQueryParser {
     public static func tokenize(_ text: String) throws -> [String] {
+        try literalTokens(text).map(\.text)
+    }
+    private struct Token {
+        let text: String
+        let isLiteral: Bool
+    }
+    private static func literalTokens(_ text: String) throws -> [Token] {
         guard text.utf8.count <= 4096 else { throw SearchParseError.tooLong }
-        var tokens: [String] = []; var token = ""; var quoted = false; var escaped = false
+        var tokens: [Token] = []; var token = ""; var quoted = false; var escaped = false; var literal = false
         for character in text {
             if escaped { token.append(character); escaped = false }
-            else if character == "\\" { escaped = true }
-            else if character == "\"" { quoted.toggle() }
+            else if character == "\\" { escaped = true; literal = true }
+            else if character == "\"" { quoted.toggle(); literal = true }
             else if character.isWhitespace && !quoted {
-                if !token.isEmpty { tokens.append(token); token = "" }
+                if !token.isEmpty { tokens.append(Token(text: token, isLiteral: literal)); token = "" }; literal = false
             } else { token.append(character) }
         }
         guard !escaped else { throw SearchParseError.danglingEscape }
         guard !quoted else { throw SearchParseError.unterminatedQuote }
-        if !token.isEmpty { tokens.append(token) }
+        if !token.isEmpty { tokens.append(Token(text: token, isLiteral: literal)) }
         guard tokens.count <= 128 else { throw SearchParseError.tooManyTokens }
         return tokens
     }
     public static func compile(_ request: SearchRequest) throws -> SearchSpecification {
+        let roots: [URL]
+        switch request.scope {
+        case .currentFolder(let root): roots = [root]
+        case .trash(let values): roots = values
+        default: roots = []
+        }
+        try validateRoots(roots)
         var clauses = request.filters
-        for token in try tokenize(request.text) {
+        for value in try literalTokens(request.text) {
+            let token = value.text
+            if value.isLiteral { clauses.append(.name(token)); continue }
             let parts = token.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { clauses.append(.name(token)); continue }
             let key = parts[0].lowercased(); let value = String(parts[1])
@@ -66,6 +82,11 @@ public enum SearchQueryParser {
         }
         guard clauses.count <= 256 else { throw SearchParseError.tooManyTokens }
         return SearchSpecification(scope: request.scope, clauses: clauses, includeHidden: request.includeHidden)
+    }
+    static func validateRoots(_ roots: [URL]) throws {
+        for root in roots where !LocalFileURLAdmission.accepts(root) {
+            throw SearchParseError.nonLocalRoot(root)
+        }
     }
     private static func date(_ text: String) -> Date? {
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")

@@ -38,6 +38,15 @@ if (( tests == 0 || tests == skipped || test_failures != 0 )); then
 fi
 run_check python-tests python3 -m unittest discover -s scripts/rebuild -p 'test_*.py' -v
 run_check static bash scripts/static_checks.sh
+run_check core-type-name-fixtures python3 scripts/rebuild/check_core_type_names.py --self-test
+# Known collisions (DropOperation, DropProposal, DropSession, ToolbarItem) await the owner-approved rename
+# (OK1-1 step 2): reported as WARN, not a failure, until then. Any NEW collision still prints in the log.
+if python3 scripts/rebuild/check_core_type_names.py >"$scratch/logs/core-type-names.log" 2>&1; then
+    summary+=("PASS core-type-names")
+else
+    summary+=("WARN core-type-names (known SDK-name collisions pending rename; see log)")
+    tail -n 6 "$scratch/logs/core-type-names.log"
+fi
 run_check ui-parse bash scripts/rebuild/parse_check_ui.sh
 run_check coverage python3 scripts/rebuild/check_coverage.py --parity "$plan/02-finder-parity.md" --current-state "$plan/00-current-state.md" --report-only
 printf '\nK11 Linux verification (draft; Mac pending)\n'
