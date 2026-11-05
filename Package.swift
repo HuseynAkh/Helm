@@ -32,6 +32,14 @@ targets += [
     .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmCore",
         "HelmOperations", "HelmSearch", "HelmTestKit"], exclude: ["PortableRunner"])
 ]
+products += [.library(name: "HelmApp", targets: ["HelmApp"])]
+targets += [
+    .target(name: "HelmApp", dependencies: ["HelmUI", "HelmCore",
+        "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch"],
+        exclude: ["README.md"]),
+    .testTarget(name: "HelmAppTests", dependencies: ["HelmApp", "HelmCore",
+        "HelmPersistence", "HelmTestKit"], exclude: ["LinuxRunner"])
+]
 #endif
 let package = Package(name: "Helm", platforms: [.macOS(.v14)], products: products,
                       targets: targets, swiftLanguageVersions: [.v5])

@@ -182,8 +182,8 @@ Accounting for the difference from Linux's 1,318: +6 macOS-only (`AF1DarwinRegre
 | 1 | `ContentNativeAdapterTests` discovered and executed | PASS: 2 tests |
 | 1 | `testSearchAdapterTypechecksAgainstCurrentCore` | Skipped by design on Mac; not evidence |
 | 1 | Portable filter rerun after `HelmUI` | FAIL: exit 1, same 12 failing `HelmCoreTests` cases and same B2 abort as Stage 0. No new failures |
-| 2 | `HelmApp` target, `swift build --target HelmApp` | NOT RUN |
-| 2 | `swift test --filter HelmAppTests` | NOT RUN |
+| 2 | `HelmApp` target, `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmApp` | PASS: exit 0, 0 errors, no compile fixes needed |
+| 2 | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmAppTests` | PASS: exit 0, 17 passed, 0 failed, 0 skipped. Composition glue only |
 | 3a | `HelmDev` scaffold build, `static_checks` | NOT RUN |
 | 3b | Xcode target through `xcodegen` and `xcodebuild` | NOT RUN |
 | 4 | `HelmDev --smoke-seconds 5` | NOT RUN |
