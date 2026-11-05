@@ -85,6 +85,13 @@ public struct LiveFileSystem: FileSystem {
     public func makeMonitor(for directory: URL) -> any DirectoryMonitor {
         FallbackMonitor(directory: directory, fileSystem: self)
     }
+    /// Native metadata supplies no-follow inode evidence; POSIX has no portable atomic compare/rename.
+    /// Conditional mutations inherit refusal, including on macOS; never emulate them with stat + rename.
+    public func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition {
+        let value = try await entry(at: source)
+        guard let identity = value.objectIdentity else { throw ConditionalMutationError.unsupported }
+        return FileMutationPrecondition(identity: identity, changeToken: value.changeToken, kind: value.kind)
+    }
     public func entry(at url: URL) async throws -> FileEntry {
         try await executor.run(volume: queueKey(url)) { try MetadataReader().read(url) }
     }

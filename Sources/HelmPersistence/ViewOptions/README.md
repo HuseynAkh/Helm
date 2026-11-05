@@ -27,3 +27,11 @@ Core's in-memory ViewOptionsStore cannot expose its records for restoration, so
 this adapter owns its serializable LRU rather than changing K10's shared contract.
 Reconcile global SettingsSchema icon limits (48–128) with Core folder options
 (16–512) in the owning lane. macOS/Xcode and Opus review remain outstanding.
+
+K34 reconciliation: folder defaults are Core's `ViewOptions.defaultIconSize = 96`
+for construction, missing decoded fields and nonfinite input. This store already
+inherits `ViewOptions()` and preserves explicit persisted values. Folder overrides
+retain 16–512; the separate legacy global SettingsSchema slider retains 48–128.
+No persisted value is silently migrated or clamped to the global slider range.
+Legacy PreferencesView's 64 fallback differs; the existing rebuild's 96 default
+is retained consistently rather than changing previously created folder options.

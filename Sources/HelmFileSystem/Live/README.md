@@ -40,3 +40,13 @@ Symbolic-link creation only writes its link directory and does not access its ta
 Share this LiveFileSystem/IOExecutor across windows. Quarantine remains per executor,
 not a process-global mount registry; do not recreate it to bypass reconciliation.
 Native macOS cross-volume completion and alias writes still require acceptance.
+
+K34: entry metadata now includes optional no-follow device/inode identity.
+mutationPrecondition returns identity/kind/change evidence; inode reuse means this
+observation is not an authorization token. LiveFileSystem deliberately inherits
+FileSystem's unsupported conditional-mutation default: portable POSIX supplies no
+atomic compare-source-identity + exclusive destination mutation. Native direct
+primitive APIs remain available for explicit callers, but OperationExecutor now
+refuses copy/move/Trash through this provider with verificationUnavailable. A
+reviewed native provider is needed to enable these operations safely. Do not
+implement the conditional API as a metadata read followed by a pathname mutation.

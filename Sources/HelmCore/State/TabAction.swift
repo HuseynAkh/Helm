@@ -9,6 +9,7 @@ public enum TabAction: Sendable {
     case goBack, goForward, goUp, refresh
     case loadProgress(Generation, PresentationSnapshot), loadFinished(Generation, PresentationSnapshot)
     case loadFailed(Generation, LoadError)
+    case monitorValidationFailed(Generation, LoadError)
     case monitorEvent(Generation, MonitorEvent), monitorSnapshot(Generation, PresentationSnapshot)
     case setSelection(Set<ItemID>, source: SelectionSource), setSort(ItemSort), setViewMode(ViewMode)
     case toggleHidden, settingsChanged(SettingsSnapshot)

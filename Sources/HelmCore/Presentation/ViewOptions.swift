@@ -12,6 +12,7 @@ public enum GroupBy: String, Sendable, Codable { case none, kind, dateModified, 
 /// Per-folder preferences preserve grid/list and sort defaults (F-036, F-040, F-065).
 /// Missing fields use defaults; future schema versions are rejected for safe retention by persistence.
 public struct ViewOptions: Equatable, Sendable, Codable {
+    public static let defaultIconSize: Double = 96
     public static let schemaVersion: Int = 1
     public let viewMode: ViewMode
     public let sort: ItemSort
@@ -20,10 +21,10 @@ public struct ViewOptions: Equatable, Sendable, Codable {
     public let showColumns: Set<ListColumn>
     public let textSize: Double
     public init(viewMode: ViewMode = .grid, sort: ItemSort = .defaultSort, groupBy: GroupBy = .none,
-                iconSize: Double = 96, showColumns: Set<ListColumn> = [.name, .size, .dateModified, .kind],
+                iconSize: Double = ViewOptions.defaultIconSize, showColumns: Set<ListColumn> = [.name, .size, .dateModified, .kind],
                 textSize: Double = 12) {
         self.viewMode = viewMode; self.sort = sort; self.groupBy = groupBy
-        self.iconSize = iconSize.isFinite ? min(512, max(16, iconSize)) : 96
+        self.iconSize = iconSize.isFinite ? min(512, max(16, iconSize)) : Self.defaultIconSize
         self.showColumns = showColumns.union([.name])
         self.textSize = textSize.isFinite ? min(32, max(9, textSize)) : 12
     }
@@ -39,7 +40,7 @@ public struct ViewOptions: Equatable, Sendable, Codable {
         self.init(viewMode: try values.decodeIfPresent(ViewMode.self, forKey: .viewMode) ?? .grid,
                   sort: try values.decodeIfPresent(ItemSort.self, forKey: .sort) ?? .defaultSort,
                   groupBy: try values.decodeIfPresent(GroupBy.self, forKey: .groupBy) ?? .none,
-                  iconSize: try values.decodeIfPresent(Double.self, forKey: .iconSize) ?? 96,
+                  iconSize: try values.decodeIfPresent(Double.self, forKey: .iconSize) ?? Self.defaultIconSize,
                   showColumns: try values.decodeIfPresent(Set<ListColumn>.self, forKey: .showColumns) ?? [.name, .size, .dateModified, .kind],
                   textSize: try values.decodeIfPresent(Double.self, forKey: .textSize) ?? 12)
     }

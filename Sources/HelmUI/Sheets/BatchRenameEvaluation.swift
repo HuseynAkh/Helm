@@ -27,10 +27,10 @@ final class BatchRenameEvaluationCache: @unchecked Sendable {
     private var evaluations = 0
     init() {}
     var count: Int { lock.lock(); defer { lock.unlock() }; return evaluations }
-    func value(_ create: () -> BatchRenameEvaluation) -> BatchRenameEvaluation {
+    func value(_ create: () throws -> BatchRenameEvaluation) rethrows -> BatchRenameEvaluation {
         lock.lock(); defer { lock.unlock() }
         if let stored { return stored }
-        let result = create()
+        let result = try create()
         stored = result; evaluations += 1
         return result
     }

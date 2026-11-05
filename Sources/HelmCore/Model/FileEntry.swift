@@ -29,6 +29,7 @@ public struct FileEntry: Hashable, Sendable, Identifiable, Codable {
     public let localizedKindDescription: String?
     public let volumeIdentifier: String?
     public let childCount: Int?
+    public let objectIdentity: FileObjectIdentity?
     public let cloudAvailability: CloudAvailability
     public var isStarred: Bool
     public init(url: URL, name: String? = nil, kind: FileEntryKind = .regular,
@@ -36,7 +37,8 @@ public struct FileEntry: Hashable, Sendable, Identifiable, Codable {
                 modificationDate: Date = .distantPast, creationDate: Date = .distantPast,
                 contentTypeIdentifier: String? = nil, localizedKindDescription: String? = nil,
                 volumeIdentifier: String? = nil, childCount: Int? = nil, isStarred: Bool = false,
-                cloudAvailability: CloudAvailability = .unknown) {
+                cloudAvailability: CloudAvailability = .unknown, objectIdentity: FileObjectIdentity? = nil) {
+        self.objectIdentity = objectIdentity
         self.cloudAvailability = cloudAvailability
         self.id = ItemID(url: url); self.url = url; self.name = name ?? url.lastPathComponent
         self.kind = kind; self.isHidden = isHidden; self.isReadable = isReadable; self.size = size
@@ -47,6 +49,7 @@ public struct FileEntry: Hashable, Sendable, Identifiable, Codable {
     /// Older metadata payloads predate cloud inspection and decode as unknown (F-035).
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.objectIdentity = try values.decodeIfPresent(FileObjectIdentity.self, forKey: .objectIdentity)
         self.id = try values.decode(ItemID.self, forKey: .id)
         self.url = try values.decode(URL.self, forKey: .url)
         self.name = try values.decode(String.self, forKey: .name)

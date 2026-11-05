@@ -9,8 +9,10 @@ public struct SourceEntry: Sendable, Hashable {
     public let relativePath: String
     public let kind: FileEntryKind
     public let size: Int64
+    public let objectIdentity: FileObjectIdentity?
     public let changeToken: ChangeToken
-    public init(source: URL, relativePath: String, kind: FileEntryKind, size: Int64, changeToken: ChangeToken) {
+    public init(source: URL, relativePath: String, kind: FileEntryKind, size: Int64, changeToken: ChangeToken, objectIdentity: FileObjectIdentity? = nil) {
+        self.objectIdentity = objectIdentity
         self.source = source; self.relativePath = relativePath; self.kind = kind; self.size = size; self.changeToken = changeToken
     }
 }
@@ -51,7 +53,7 @@ public struct PlanningContextBuilder: Sendable {
             while let (url, relative) = pending.popLast() {
                 try Task.checkCancellation()
                 let entry = try await fileSystem.entry(at: url)
-                manifest.append(SourceEntry(source: url, relativePath: relative, kind: entry.kind, size: entry.size, changeToken: entry.changeToken))
+                manifest.append(SourceEntry(source: url, relativePath: relative, kind: entry.kind, size: entry.size, changeToken: entry.changeToken, objectIdentity: entry.objectIdentity))
                 if entry.kind == .directory || entry.kind == .package {
                     for try await batch in fileSystem.enumerate(url, options: EnumerationOptions(includeHidden: true, resolveSymlinkTargets: false)) {
                         pending.append(contentsOf: batch.map { ($0.url, relative.isEmpty ? $0.name : relative + "/" + $0.name) })

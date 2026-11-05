@@ -186,3 +186,14 @@ Current kind/token checks do not close stat/mutate or post-mutation observation
 races, nor detect same-token content replacements. This portion of P6-1 is deferred;
 no atomic identity or content guarantee is claimed. Native macOS and Opus review
 remain required. See `docs/prereview/fixes-F7.md` for verification and residual risks.
+
+K34: forward evidence retains provider identity with kind/token; the executor uses
+conditional filesystem move/Trash and the conditional FileCopier overload. Legacy
+copiers compile but refuse the new overload until they implement the atomic
+contract. Confirmed conditional refusals do not request reconciliation; unknown
+I/O completion still does. InMemoryFileSystem provides the atomic boundary. Live
+conditional operations refuse, so native copy/move/Trash through this executor
+remain unavailable pending a reviewed native implementation. Exclusive creation
+is unaffected. Tree undo remains refused: root identity is not descendant proof.
+The output-mutation-to-metadata-read window remains a separate open limitation;
+no complete content proof or durable identity receipt is claimed by this change.

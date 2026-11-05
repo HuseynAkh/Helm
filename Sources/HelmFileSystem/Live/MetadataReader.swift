@@ -42,7 +42,14 @@ public struct MetadataReader: Sendable {
                              creationDate: attributes[.creationDate] as? Date ?? .distantPast,
                              contentTypeIdentifier: identifier, localizedKindDescription: description,
                              volumeIdentifier: volumeIdentifier,
-                             cloudAvailability: (try? CloudAvailabilityReader.readMetadata(at: url)) ?? .unknown)
+                             cloudAvailability: (try? CloudAvailabilityReader.readMetadata(at: url)) ?? .unknown,
+                             objectIdentity: Self.identity(attributes))
         } catch { throw FileSystemError.mapping(error) }
     }
+    private static func identity(_ attributes: [FileAttributeKey: Any]) -> FileObjectIdentity? {
+        guard let device = attributes[.systemNumber] as? NSNumber,
+              let inode = attributes[.systemFileNumber] as? NSNumber else { return nil }
+        return FileObjectIdentity(scope: "native:" + device.stringValue, object: inode.stringValue)
+    }
+
 }

@@ -151,3 +151,101 @@ owned gated regression is exercised with `T1_RUN_BUGS=1` for final verification.
   **PASS**, all six portable target builds, **650 tests / 0 failures / 0 skips**,
   Python tests, static checks, UI syntax parse and report-only coverage; **0 failed
   checks**. Summary `/tmp/K29-run-all-final.log`; detailed `/tmp/build-K29/logs/`.
+
+## K34
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+
+- **P7-2:** Core Naming adds throwing cancellation-hook overloads while retaining
+  both nonthrowing planner signatures. Checks cover generation, overlap map/sort
+  boundaries, occupied names, target/changed scans and temporary-name probing.
+  Hook errors propagate unchanged, including a one-shot non-CancellationError.
+  UI's BatchRenameWorker keeps one active detached calculation and one latest
+  pending revision; cancellation handlers, replacement, Cancel and disappearance
+  cancel work. No cancelled partial evaluation is cached or published. The sheet
+  is explicitly MainActor-isolated for Swift 5/macOS compatibility.
+- **P6-1:** Core owns FileObjectIdentity, FileMutationPrecondition,
+  ConditionalFileMutation and ConditionalMutationError. FileEntry and SourceEntry
+  carry optional identities with backwards-compatible initializer/decoding defaults.
+  FileSystem has default-refusing observation/mutation requirements. Preconditions
+  include identity, kind and root ChangeToken; destination admission is exclusive.
+  Conditional errors guarantee no mutation; ordinary errors retain uncertainty.
+  InMemoryFileSystem compares and mutates without an actor suspension, preserves
+  identities on move/Trash, and allocates new identities on copy. Live supplies
+  no-follow device/inode observations but deliberately inherits mutation refusal.
+  Inodes can be recycled; portable POSIX cannot atomically compare and mutate a
+  pathname against external writers. Executor copy/move/Trash use the conditional
+  seam, and unadopted FileCopier conformers refuse by default. Root evidence never
+  authorizes directory undo. Original timeout errors remain visible/quarantining.
+- **F6:** DirectoryEffectRunner composes with a host fallback for unrelated effects.
+  It handles monitor startup, refresh and root validation, returning cancellation
+  handles retained by WindowStore. Validation acknowledgement carries a coalescer
+  revision so an old successful validation cannot clear a newer root change.
+  Additive monitorValidationFailed publishes terminal failure without recursively
+  requesting validation. WindowStore cancels validation on replacement, monitor
+  retirement, tab disposal and shutdown. Full refresh intentionally subsumes path
+  deltas; current per-tab load options are injected by the host.
+- **K33:** Existing Persistence defaults already delegated to Core ViewOptions().
+  Core now names the shared 96-pixel default and uses it for construction, decode
+  fallback and nonfinite values. Persistence round-trip tests lock down this policy.
+  Folder range remains 16–512; global legacy slider range remains 48–128. Stored
+  overrides are not migrated. Legacy PreferencesView's 64 fallback is not adopted.
+- **F3:** Already completed in K29. Inspected existing terminal/idempotent shutdown,
+  stream finishing, producer cancellation, cache clearing and post-shutdown tests;
+  no duplicate implementation. No concrete thumbnail host exists to wire here.
+
+### K34 tests and compatibility changes
+
+API-first regressions failed compilation before the cancellation, atomic and
+revision-acknowledgement seams existed (`/tmp/K34-cancel-red.log`,
+`/tmp/K34-atomic-red.log`, `/tmp/K34-monitor-red.log`). No failing assertion is
+claimed for defaults/shutdown, which were already consistent/implemented. The
+full suite was invoked after the cancellation and atomic edits; concurrent T2
+partial-file errors interrupted initial runs. Those files were not edited; later
+runs proceeded after more than 60 seconds. A clean K34 scratch rebuild resolved
+stale FileEntry initializer link artifacts after the additive identity parameter.
+
+Existing injected copier fixtures now opt into conditional fake mutations while
+retaining their original collision, timeout and unreadable-output injection.
+The gated copier models an already-admitted uncancellable native operation in a
+detached task, retaining its original success-journaling assertions on cancellation.
+Native executor tests now assert explicit no-mutation refusal. The two native
+edited-descendant undo tests retain their real filesystem edits and all inverse
+refusal/content assertions: raw fixture copy/move seeds a journal after asserting
+forward refusal. No safety regression is skipped or disabled.
+
+### K34 needed changes elsewhere / limitations
+
+- Native conditional copy/move/Trash through OperationExecutor is intentionally
+  unavailable. A reviewed native coordination/identity provider must implement
+  the contract; stat-then-mutate is not an acceptable substitute. Direct filesystem
+  primitives remain available to explicit callers. This behavior change needs
+  particular attention in Opus review.
+- Root identity/change evidence is not content hashing or a complete descendant
+  manifest. Output mutation-to-metadata observation remains an open ownership
+  window; an atomic completion receipt is future work. Persistent object identity
+  across process restarts and durable Trash origin acknowledgement remain open.
+- Host composition must install DirectoryEffectRunner with current tab options and
+  its fallback; no runnable macOS host wiring is invented here. Thumbnail host
+  teardown must await the existing shutdown API when a host is introduced.
+- macOS 14/Xcode compile and behavior review remains pending. Linux validates
+  Foundation adapters and syntax only for SwiftUI; it cannot certify native views.
+- No network, external actions, old Helm edits, manifest/script edits, commit or push.
+
+Final verification results are appended below.
+
+### K34 final verification
+
+- Linux Swift 6.0.3, Swift 5 language mode, isolated `/tmp/build-K34`.
+- Full suite after integration: **874 tests, 0 failures, 0 skips**
+  (`/tmp/K34-full-final.log`). Final edge-case additions increase this to **877**.
+- `HELM_K11_SCRATCH=/tmp/build-K34 bash scripts/rebuild/run_all.sh`: all six
+  explicit portable module builds, **877 tests / 0 failures / 0 skips**, Python
+  checks, static checks, SwiftUI syntax parsing and report-only coverage pass.
+  Summary `/tmp/K34-run-all.log`; detailed logs `/tmp/build-K34/logs/`.
+- Portable Foundation UI/App runner: **53 tests / 0 failures / 0 skips**,
+  including the two worker cancellation regressions (`/tmp/K34-ui-final.log`).
+  This temporary runner links the K34-built modules and leaves Package.swift and
+  scripts unchanged; it does not type-check SwiftUI or AppKit against a Mac SDK.
+- Standalone static checks: **221 Swift files, 0 errors**. `git diff --check` passes.
+- All changes remain uncommitted drafts pending Opus review after 22:00 Toronto.

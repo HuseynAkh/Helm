@@ -17,9 +17,20 @@ final class K29UndoSafetyTests: XCTestCase {
         try Data([1]).write(to: nested)
         let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [original], destinations: [target])
-        let result = await executor.execute(OperationPlanner.plan(.move(sources: [original], destinationDirectory: target), context: context))
-        XCTAssertNil(result.error)
+        let plan = OperationPlanner.plan(.move(sources: [original], destinationDirectory: target), context: context)
+        let refused = await executor.execute(plan)
+        XCTAssertEqual(refused.error, .verificationUnavailable)
+        XCTAssertEqual(refused.succeededCount, 0)
         let output = target.appendingPathComponent("Project")
+        // Native fixture setup remains independent of the conditional executor contract.
+        try await fs.moveItem(at: original, to: output)
+        let metadata = try await fs.entry(at: output)
+        let operationID = await executor.journal.begin(plan)
+        let step = try XCTUnwrap(plan.steps.first)
+        let outcome = ItemOutcome(step: step, destination: output, result: .success(metadata.changeToken), destinationKind: metadata.kind)
+        await executor.journal.record(outcome, for: operationID)
+        let result = OperationResult(id: operationID, command: plan.command, outcomes: [outcome], error: nil)
+        await executor.journal.complete(result)
         let before = try await fs.entry(at: output).changeToken
         try Data([2, 3]).write(to: output.appendingPathComponent("sub/report.txt"))
         let after = try await fs.entry(at: output).changeToken

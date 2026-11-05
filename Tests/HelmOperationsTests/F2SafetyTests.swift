@@ -23,9 +23,20 @@ final class F2SafetyTests: XCTestCase {
         try Data([1]).write(to: nested)
         let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [target])
-        let copied = await executor.execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: target), context: context))
-        XCTAssertNil(copied.error)
+        let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: target), context: context)
+        let refused = await executor.execute(plan)
+        XCTAssertEqual(refused.error, .verificationUnavailable)
+        XCTAssertEqual(refused.succeededCount, 0)
         let output = target.appendingPathComponent("Project")
+        // Native fixture setup remains independent of the conditional executor contract.
+        try await fs.copyItem(at: source, to: output)
+        let metadata = try await fs.entry(at: output)
+        let operationID = await executor.journal.begin(plan)
+        let step = try XCTUnwrap(plan.steps.first)
+        let outcome = ItemOutcome(step: step, destination: output, result: .success(metadata.changeToken), destinationKind: metadata.kind)
+        await executor.journal.record(outcome, for: operationID)
+        let copied = OperationResult(id: operationID, command: plan.command, outcomes: [outcome], error: nil)
+        await executor.journal.complete(copied)
         let before = try await fs.entry(at: output).changeToken
         try Data([2, 3]).write(to: output.appendingPathComponent("sub/report.txt"))
         let after = try await fs.entry(at: output).changeToken
@@ -141,7 +152,13 @@ private struct F2GatedCopier: FileCopier {
     let gate: DispatchSemaphore
     let started: @Sendable () -> Void
     func copy(from source: URL, to destination: URL) async throws {
-        try await executor.run { started(); gate.wait() }
-        try await fileSystem.copyItem(at: source, to: destination)
+        try await copy(from: source, to: destination, requiring: fileSystem.mutationPrecondition(at: source))
+    }
+    func copy(from source: URL, to destination: URL, requiring precondition: FileMutationPrecondition) async throws {
+        // Once admitted, this fixture models a non-cancellable native body that completes.
+        try await Task.detached {
+            try await executor.run { started(); gate.wait() }
+            _ = try await fileSystem.mutate(.copy(to: destination), source: source, requiring: precondition)
+        }.value
     }
 }

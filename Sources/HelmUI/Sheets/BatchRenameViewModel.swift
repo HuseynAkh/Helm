@@ -27,9 +27,23 @@ public struct BatchRenameViewModel: Sendable {
     private var cache = BatchRenameEvaluationCache()
     var revision: UUID { cache.id }
     var evaluationCount: Int { cache.count }
-    var evaluation: BatchRenameEvaluation { cache.value { makeEvaluation() } }
+    var evaluation: BatchRenameEvaluation { cache.value { makeEvaluation(plan: makePlan()) } }
+    func cancellableEvaluation() throws -> BatchRenameEvaluation {
+        try Task.checkCancellation()
+        return try cache.value {
+            let plan = try makePlan(cancellationCheck: { try Task.checkCancellation() })
+            try Task.checkCancellation()
+            let evaluation = makeEvaluation(plan: plan)
+            try Task.checkCancellation()
+            return evaluation
+        }
+    }
     public var plan: BatchRenamePlan? { evaluation.plan }
     private func makePlan() -> BatchRenamePlan? {
+        // The compatibility path has no cancellation hook; rule errors are plan issues.
+        try? makePlan(cancellationCheck: {})
+    }
+    private func makePlan(cancellationCheck: () throws -> Void) throws -> BatchRenamePlan? {
         let rule: BatchRenameRule
         switch mode {
         case .addText: rule = .addText(prepend: prepend, append: append)
@@ -38,14 +52,13 @@ public struct BatchRenameViewModel: Sendable {
             guard let start = Int(counterStart) else { return nil }
             rule = .template(template, counterStart: start)
         }
-        return BatchRenamePlanner.plan(items: items, rule: rule, existingNames: existingNames,
-                                      caseSensitive: caseSensitive, date: date, timeZone: timeZone)
+        return try BatchRenamePlanner.plan(items: items, rule: rule, existingNames: existingNames,
+                                      caseSensitive: caseSensitive, date: date, timeZone: timeZone, cancellationCheck: cancellationCheck)
     }
     public var preview: [RenamePreview] { evaluation.preview }
     public var canRename: Bool { evaluation.plan?.canExecute == true }
     public var validationMessages: [String] { evaluation.messages }
-    private func makeEvaluation() -> BatchRenameEvaluation {
-        let plan = makePlan()
+    private func makeEvaluation(plan: BatchRenamePlan?) -> BatchRenameEvaluation {
         guard let plan else {
             return BatchRenameEvaluation(revision: revision, plan: nil, messages: ["Enter a whole number for Start at."])
         }

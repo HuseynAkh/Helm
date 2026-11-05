@@ -60,8 +60,11 @@ private actor CollisionCopier: FileCopier {
     var attempts = 0
     init(fileSystem: InMemoryFileSystem, safe: Bool) { self.fileSystem = fileSystem; self.safe = safe }
     func copy(from source: URL, to destination: URL) async throws {
+        try await copy(from: source, to: destination, requiring: fileSystem.mutationPrecondition(at: source))
+    }
+    func copy(from source: URL, to destination: URL, requiring precondition: FileMutationPrecondition) async throws {
         attempts += 1
         if attempts == 1 { throw FileSystemError.collision(noMutation: safe) }
-        try await fileSystem.copyItem(at: source, to: destination)
+        _ = try await fileSystem.mutate(.copy(to: destination), source: source, requiring: precondition)
     }
 }

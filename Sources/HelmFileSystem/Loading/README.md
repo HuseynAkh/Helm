@@ -54,3 +54,13 @@ return reload cancellation handles to WindowStore. Root acknowledgement belongs
 to the validation adapter (outside this lane); never acknowledge before consuming
 and successfully completing validation. Native macOS watcher behavior remains
 pending Opus/Xcode review. No public action contract changes were needed.
+
+K34 adds DirectoryEffectRunner for WindowStore startMonitor, refreshPaths and
+validateNavigation effects. Compose its fallback with the host's other effects;
+load/search/persistence remain with that fallback. Supply current per-tab options.
+WindowStore retains and cancels validation handles alongside watch/reload handles.
+Validation success acknowledges only the coalescer revision it inspected; a newer
+root event remains sticky. Validation failure emits monitorValidationFailed once,
+so the reducer reports failure without an unavailable/validate feedback loop.
+Full reloads intentionally subsume changed-path sets. No native watcher acceptance
+is claimed by the Linux adapter tests.

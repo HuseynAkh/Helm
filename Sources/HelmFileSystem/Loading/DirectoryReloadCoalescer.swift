@@ -9,6 +9,7 @@ public actor DirectoryReloadCoalescer {
     private let generation: Generation
     private let output: AsyncStream<TabAction>.Continuation
     public nonisolated let actions: AsyncStream<TabAction>
+    public private(set) var rootValidationRevision = UUID()
     private var revalidation: MonitorEvent?
     private var stopped = false
     private var pendingChanges = false
@@ -26,7 +27,8 @@ public actor DirectoryReloadCoalescer {
         // Revalidation cannot be overwritten by an ordinary changed event in a slow consumer's buffer.
         if case .changed = event { pendingChanges = true }
         switch event {
-        case .rootChanged, .volumeUnmounted: revalidation = event
+        case .rootChanged, .volumeUnmounted:
+            rootValidationRevision = UUID(); revalidation = event
         default: break
         }
         publish(coalescer.receive(event))
@@ -40,6 +42,12 @@ public actor DirectoryReloadCoalescer {
     public func acknowledgeRootValidation() {
         guard !stopped else { return }
         revalidation = nil
+    }
+    /// A validation started before another root change must not acknowledge that newer event.
+    @discardableResult public func acknowledgeRootValidation(revision: UUID) -> Bool {
+        guard !stopped, revision == rootValidationRevision else { return false }
+        revalidation = nil
+        return true
     }
     public func finish() { stopped = true; output.finish() }
 

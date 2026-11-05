@@ -73,6 +73,9 @@ public actor OperationExecutor {
                 let mapped: OperationError
                 if cause is CancellationError { mapped = .cancelled }
                 else if let value = cause as? OperationError { mapped = value }
+                else if let value = cause as? ConditionalMutationError {
+                    mapped = value == .unsupported ? .verificationUnavailable : (step.source.map(OperationError.sourceChanged) ?? .invalidPlan)
+                }
                 else if let value = cause as? FileSystemError, value == .timedOut { mapped = .timedOut }
                 else { mapped = .other(String(describing: cause)) }
                 // A thrown filesystem mutation may have partially completed. Never automatically retry it.
@@ -87,7 +90,7 @@ public actor OperationExecutor {
                 default: uncertain = true
                 }
                 let outcome = ItemOutcome(step: step, destination: executionFailure?.destination ?? step.destination,
-                                          result: .failure(mapped), requiresReconciliation: uncertain)
+                                          result: .failure(mapped), requiresReconciliation: cause is ConditionalMutationError ? false : uncertain)
                 outcomes.append(outcome); await journal.record(outcome, for: id)
             }
         }
@@ -134,7 +137,7 @@ public actor OperationExecutor {
             try await validateExpectedSource(step.source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             try await forward.validate(source, fileSystem: fileSystem)
             let trashed: URL?
-            do { trashed = try await fileSystem.trashItem(at: source) }
+            do { trashed = try await fileSystem.mutate(.trash, source: source, requiring: forward.precondition(for: source)) }
             catch { throw StepExecutionFailure(destination: nil, underlying: error) }
             if let trashed { await origins.record([TrashedItem(trashedURL: trashed, originalURL: source)]) }
             return trashed
@@ -218,7 +221,7 @@ public actor OperationExecutor {
         case .copy:
             guard let source = step.source else { throw OperationError.invalidPlan }
             try await forward.validate(source, fileSystem: fileSystem)
-            try await copier.copy(from: source, to: destination)
+            try await copier.copy(from: source, to: destination, requiring: forward.precondition(for: source))
         case .move:
             guard let source = step.source else { throw OperationError.invalidPlan }
             let sourceVolume = try await fileSystem.volumeIdentifier(for: source)
@@ -226,7 +229,7 @@ public actor OperationExecutor {
             guard sourceVolume == destinationVolume else { throw OperationError.invalidPlan }
             try await validateExpectedSource(source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             try await forward.validate(source, fileSystem: fileSystem)
-            try await fileSystem.moveItem(at: source, to: destination)
+            _ = try await fileSystem.mutate(.move(to: destination), source: source, requiring: forward.precondition(for: source))
         case .createDirectory: try await fileSystem.createDirectory(at: destination)
         case .createFile: try await fileSystem.createFileExclusively(at: destination, contents: step.contents)
         case .trash, .verifyCopy: throw OperationError.invalidPlan

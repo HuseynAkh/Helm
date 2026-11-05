@@ -3,8 +3,9 @@ import SwiftUI
 import HelmCore
 
 /// F-055's three modes, tokens and 20-row preview; host executes and dismisses (B-117).
-public struct BatchRenameSheet: View {
+@MainActor public struct BatchRenameSheet: View {
     @Binding private var model: BatchRenameViewModel
+    @State private var worker = BatchRenameWorker()
     @State private var displayed: BatchRenameEvaluation?
     private let rename: (BatchRenamePlan) -> Void
     private let cancel: () -> Void
@@ -42,7 +43,7 @@ public struct BatchRenameSheet: View {
             }.frame(maxHeight: 200)
             HStack {
                 Spacer()
-                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Cancel") { worker.cancelAll(); cancel() }.keyboardShortcut(.cancelAction)
                 Button("Rename") {
                     if let plan = displayed?.executablePlan(for: model.revision) { rename(plan) }
                 }.keyboardShortcut(.defaultAction).disabled(displayed?.executablePlan(for: model.revision) == nil)
@@ -53,12 +54,13 @@ public struct BatchRenameSheet: View {
                 do { try await Task.sleep(nanoseconds: 150_000_000) }
                 catch { return }
                 guard !Task.isCancelled else { return }
-                let evaluation = await Task.detached(priority: .userInitiated) {
-                    snapshot.evaluation
-                }.value
-                guard !Task.isCancelled, evaluation.revision == model.revision else { return }
-                displayed = evaluation
+                do {
+                    let evaluation = try await worker.evaluate { try snapshot.cancellableEvaluation() }
+                    guard !Task.isCancelled, evaluation.revision == model.revision else { return }
+                    displayed = evaluation
+                } catch { return }
             }
+            .onDisappear { worker.cancelAll() }
     }
     @ViewBuilder private var controls: some View {
         switch model.mode {

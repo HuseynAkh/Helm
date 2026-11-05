@@ -5,6 +5,7 @@ import HelmCore
 /// Deterministic fake supports case-insensitive collisions, access failures and link cycles (B-039, B-109).
 public actor InMemoryFileSystem: FileSystem {
     private struct Node: Sendable {
+        var identity = UUID()
         var url: URL
         var kind: FileEntryKind
         var data: Data
@@ -14,6 +15,7 @@ public actor InMemoryFileSystem: FileSystem {
     private var nodes: [String: Node] = [:]
     private var failures: [String: FileSystemError] = [:]
     private let caseSensitive: Bool
+    private let identityScope = UUID().uuidString
     private var tick: TimeInterval = 0
     private var latencyNanoseconds: UInt64 = 0
     public init(caseSensitive: Bool = true) {
@@ -58,7 +60,8 @@ public actor InMemoryFileSystem: FileSystem {
             } else { kind = .danglingSymlink }
         }
         return FileEntry(url: value.url, kind: kind, isHidden: value.url.lastPathComponent.hasPrefix("."),
-                         size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: "memory")
+                         size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: "memory",
+                         objectIdentity: FileObjectIdentity(scope: identityScope, object: value.identity.uuidString))
     }
     public func entry(at url: URL) async throws -> FileEntry { try await delay(); return entry(try node(url)) }
     // Internal fixture reader enables payload fidelity assertions without expanding FileSystem.
@@ -115,7 +118,8 @@ public actor InMemoryFileSystem: FileSystem {
         tick += 1
         nodes[key(url.deletingLastPathComponent())]?.modified = Date(timeIntervalSince1970: tick)
     }
-    public func copyItem(at source: URL, to destination: URL) async throws {
+    public func copyItem(at source: URL, to destination: URL) async throws { try copy(source, to: destination) }
+    private func copy(_ source: URL, to destination: URL) throws {
         let root = try node(source)
         let sourceKey = key(source)
         guard key(destination) != sourceKey && !key(destination).hasPrefix(sourceKey + "/") else {
@@ -130,9 +134,48 @@ public actor InMemoryFileSystem: FileSystem {
         }
     }
     public func moveItem(at source: URL, to destination: URL) async throws {
-        try await copyItem(at: source, to: destination)
-        do { try await removeItem(at: source) }
-        catch FileSystemError.collision { throw FileSystemError.collision(noMutation: false) }
+        try move(source, to: destination)
+    }
+    private func move(_ source: URL, to destination: URL) throws {
+        let root = try node(source); try check(destination)
+        let sourceKey = key(source), targetKey = key(destination)
+        guard sourceKey != "/", targetKey != sourceKey, !targetKey.hasPrefix(sourceKey + "/") else {
+            throw FileSystemError.other("Recursive destination")
+        }
+        guard nodes[targetKey] == nil else { throw FileSystemError.collision(noMutation: true) }
+        guard try node(destination.deletingLastPathComponent()).kind == .directory else {
+            throw FileSystemError.other("Not a directory")
+        }
+        let moved = nodes.filter { $0.key == sourceKey || $0.key.hasPrefix(sourceKey + "/") }
+        for (oldKey, var value) in moved {
+            nodes.removeValue(forKey: oldKey)
+            let suffix = String(value.url.path.dropFirst(root.url.path.count))
+            value.url = URL(fileURLWithPath: destination.path + suffix)
+            nodes[key(value.url)] = value
+        }
+        tick += 1
+        for parent in [source.deletingLastPathComponent(), destination.deletingLastPathComponent()] {
+            nodes[key(parent)]?.modified = Date(timeIntervalSince1970: tick)
+        }
+    }
+    public func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition {
+        try evidence(source)
+    }
+    private func evidence(_ source: URL) throws -> FileMutationPrecondition {
+        let value = try node(source), metadata = entry(try node(source))
+        return FileMutationPrecondition(identity: FileObjectIdentity(scope: identityScope, object: value.identity.uuidString),
+                                        changeToken: metadata.changeToken, kind: metadata.kind)
+    }
+    /// No await between comparison, destination admission and mutation: actor isolation is atomic here.
+    public func mutate(_ mutation: ConditionalFileMutation, source: URL,
+                       requiring precondition: FileMutationPrecondition) async throws -> URL? {
+        try Task.checkCancellation()
+        guard try evidence(source) == precondition else { throw ConditionalMutationError.sourceChanged }
+        switch mutation {
+        case .move(let destination): try move(source, to: destination); return destination
+        case .copy(let destination): try copy(source, to: destination); return destination
+        case .trash: return try trash(source)
+        }
     }
     public func replaceItem(at destination: URL, with temporary: URL, backup: URL) async throws {
         try await moveItem(at: destination, to: backup)
@@ -149,7 +192,8 @@ public actor InMemoryFileSystem: FileSystem {
         let original = try node(source); _ = try node(destination)
         nodes[key(destination)]?.modified = original.modified
     }
-    public func trashItem(at url: URL) async throws -> URL? {
+    public func trashItem(at url: URL) async throws -> URL? { try trash(url) }
+    private func trash(_ url: URL) throws -> URL {
         let trash = URL(fileURLWithPath: "/.Trash")
         if nodes[key(trash)] == nil { try insert(trash, kind: .directory) }
         var destination = trash.appendingPathComponent(url.lastPathComponent)
@@ -157,7 +201,7 @@ public actor InMemoryFileSystem: FileSystem {
         while nodes[key(destination)] != nil {
             destination = trash.appendingPathComponent(url.lastPathComponent + ".\(index)"); index += 1
         }
-        try await moveItem(at: url, to: destination)
+        try move(url, to: destination)
         return destination
     }
     /// Fake volume capability matches its actual name lookup mode (F-052/B-039).

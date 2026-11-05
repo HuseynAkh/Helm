@@ -14,6 +14,7 @@ import Foundation
     private var draining: Bool = false
     private var stopped: Bool = false
     private var running: [TabID: [GenerationLane: Running]] = [:]
+    private var monitorValidations: [TabID: Running] = [:]
     private var monitorReloads: [TabID: Running] = [:]
     private struct Running {
         let generation: Generation
@@ -118,6 +119,13 @@ import Foundation
            let reload = monitorReloads[id], reload.generation == generation {
             monitorReloads[id] = nil; reload.cancellation.cancel()
         }
+        if case .tab(let id, .cancel(.monitor, let generation)) = effect,
+           let validation = monitorValidations[id], validation.generation == generation {
+            monitorValidations[id] = nil; validation.cancellation.cancel()
+        }
+        if case .tab(let id, .validateNavigation) = effect {
+            monitorValidations.removeValue(forKey: id)?.cancellation.cancel()
+        }
         if case .tab(let id, .refreshPaths) = effect {
             let previous = monitorReloads.removeValue(forKey: id)
             previous?.cancellation.cancel()
@@ -128,6 +136,9 @@ import Foundation
             running[id]?[lane] = nil; previous?.cancellation.cancel()
         }
         let cancellation = runner.run(effect) { [weak self] action in self?.enqueue(action) }
+        if case .tab(let id, .validateNavigation(_, let generation)) = effect, let cancellation {
+            monitorValidations[id] = Running(generation: generation, cancellation: cancellation)
+        }
         if case .tab(let id, .refreshPaths(_, let generation)) = effect, let cancellation {
             monitorReloads[id] = Running(generation: generation, cancellation: cancellation)
         }
@@ -148,6 +159,7 @@ import Foundation
     }
 
     private func cancelTab(_ id: TabID) {
+        monitorValidations.removeValue(forKey: id)?.cancellation.cancel()
         monitorReloads.removeValue(forKey: id)?.cancellation.cancel()
         let handles = running.removeValue(forKey: id) ?? [:]
         // Fixed order avoids dictionary iteration influencing callback admission order.

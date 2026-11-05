@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Destination-volume comparison for F-054/F-055, including canonical Unicode and case (B-047).
@@ -19,9 +20,9 @@ public enum UniqueNamer {
         return try name(for: raw) { occupied.contains(FileNameComparison.key($0, caseSensitive: caseSensitive)) }
     }
     /// The closure checks occupancy using the destination's comparison rules.
-    public static func name(for raw: String, exists: (String) -> Bool) throws -> ValidFileName {
+    public static func name(for raw: String, exists: (String) throws -> Bool) throws -> ValidFileName {
         let original = try FileNameValidator.validate(raw).get()
-        if !exists(original.value) { return original }
+        if try exists(original.value) == false { return original }
         let base = (original.value as NSString).deletingPathExtension
         let ext = (original.value as NSString).pathExtension
         var counter = 2
@@ -30,7 +31,7 @@ public enum UniqueNamer {
             var stem = base
             while stem.utf8.count + suffix.utf8.count > 255 && !stem.isEmpty { stem.removeLast() }
             let candidate = try FileNameValidator.validate(stem + suffix).get()
-            if !exists(candidate.value) { return candidate }
+            if try exists(candidate.value) == false { return candidate }
             guard counter < Int.max else { throw FileNameError.tooLong }
             counter += 1
         }

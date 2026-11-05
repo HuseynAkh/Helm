@@ -41,6 +41,12 @@ public protocol FileSystem: Sendable {
     func exists(_ url: URL) async -> Bool
     func isDirectory(_ url: URL, resolvingSymlinks: Bool) async -> Bool
     func childNames(of directory: URL) async throws -> Set<String>
+    /// Observes no-follow identity and metadata together, or refuses unsupported evidence.
+    func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition
+    /// Compares source evidence and admits an absent destination in the same atomic mutation boundary.
+    /// A conformer must refuse if it cannot guarantee this against other filesystem writers.
+    func mutate(_ mutation: ConditionalFileMutation, source: URL,
+                requiring precondition: FileMutationPrecondition) async throws -> URL?
     func copyItem(at source: URL, to destination: URL) async throws
     func moveItem(at source: URL, to destination: URL) async throws
     func replaceItem(at destination: URL, with temporary: URL, backup: URL) async throws
@@ -75,6 +81,14 @@ public struct AccessGrant: Sendable {
 public protocol AccessBroker: Sendable { func access(_ url: URL) async -> AccessGrant }
 
 public extension FileSystem {
+    func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition {
+        throw ConditionalMutationError.unsupported
+    }
+    func mutate(_ mutation: ConditionalFileMutation, source: URL,
+                requiring precondition: FileMutationPrecondition) async throws -> URL? {
+        throw ConditionalMutationError.unsupported
+    }
+
     /// Unknown volume semantics are conservatively case-insensitive (F-052/B-039).
     func isCaseSensitive(at url: URL) async throws -> Bool { false }
     func stat(_ url: URL) async throws -> FileEntry { try await entry(at: url) }

@@ -209,7 +209,10 @@ extension F7RegressionTests {
 private struct F7UnreadableOutputCopier: FileCopier {
     let fileSystem: InMemoryFileSystem
     func copy(from source: URL, to destination: URL) async throws {
-        try await fileSystem.copyItem(at: source, to: destination)
+        try await copy(from: source, to: destination, requiring: fileSystem.mutationPrecondition(at: source))
+    }
+    func copy(from source: URL, to destination: URL, requiring precondition: FileMutationPrecondition) async throws {
+        _ = try await fileSystem.mutate(.copy(to: destination), source: source, requiring: precondition)
         await fileSystem.setFailure(.permissionDenied, at: destination)
     }
 }

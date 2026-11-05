@@ -158,7 +158,7 @@ final class ExecutorTests: XCTestCase {
         let first = await executor.execute(plan), second = await executor.execute(plan)
         XCTAssertEqual(first.error, .timedOut); XCTAssertEqual(second.error, .busy)
     }
-    func testLiveTemporaryDirectoryCopyAndCreate() async throws {
+    func testLiveConditionalCopyRefusesButExclusiveCreateRemainsAvailable() async throws {
         let temp = try TempDirectory()
         defer { try? temp.remove() }
         let fs = LiveFileSystem()
@@ -168,8 +168,10 @@ final class ExecutorTests: XCTestCase {
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
         let executor = OperationExecutor(fileSystem: fs)
         let result = await executor.execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
-        XCTAssertNil(result.error)
-        XCTAssertEqual(try Data(contentsOf: parent.appendingPathComponent("source")), Data("hello".utf8))
+        XCTAssertEqual(result.error, .verificationUnavailable)
+        XCTAssertEqual(result.succeededCount, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: parent.appendingPathComponent("source").path))
+        XCTAssertEqual(try Data(contentsOf: source), Data("hello".utf8))
         let name = try XCTUnwrap(ValidFileName("new.txt"))
         let created = await executor.execute(OperationPlanner.plan(.createFile(parent: parent, name: name, template: nil), context: context))
         XCTAssertNil(created.error)

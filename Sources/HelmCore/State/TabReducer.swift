@@ -42,6 +42,10 @@ public enum TabReducer {
             let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &next)
             replayMonitor(&next, effects: &effects)
+        case .monitorValidationFailed(let generation, let error):
+            guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil else { return (state, []) }
+            let base = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
+            publish(base.stamped(base.id, phase: .failed(error, attempted: next.location)), state: &next)
         case .monitorSnapshot(let generation, let snapshot):
             guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil,
                   snapshot.location == next.location else { return (state, []) }
