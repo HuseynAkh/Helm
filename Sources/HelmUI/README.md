@@ -7,14 +7,12 @@ P7-1: batch rename now explains Core's overlapping-source rejection using both
 full paths. A folder and descendant remain non-executable in either selection
 order; no Core validation or execution contract changed.
 
-P7-2 remains deferred: the synchronous Core planner has no cancellation seam.
-Its owner needs a throwing, cooperatively cancellable planning entry point with
-checks during generation, occupancy/target construction, temporary-step creation
-and around sorting. Cancellation must never yield a partial plan. Then the sheet
-can own one worker, forward cancellation on replacement/disappearance, retain
-only the latest pending revision and avoid caching cancelled evaluations.
-Current revision guards prevent stale execution but do not stop obsolete CPU
-work. Do not treat cancelling only a detached handle as a completed fix.
+K34 supersedes the F8 P7-2 deferral. Core Naming provides throwing cooperative
+cancellation hooks. BatchRenameWorker keeps one active calculation and only the
+latest pending revision; replacement, Cancel and disappearance cancel obsolete
+work. Cancelled evaluations do not populate the cache. Portable cancellation
+regressions pass; macOS SwiftUI isolation, hosted dismissal and large-selection
+responsiveness still require acceptance.
 
 F8 verification uses `/tmp/build-F8`; set `HELM_UI_SCRATCH=/tmp/build-F8`
 when invoking `Tests/HelmUITests/PortableRunner/run.py`. See
@@ -94,6 +92,10 @@ Core ViewOptions was inspected. This slice edits global defaults only; per-folde
 ViewOptions editing, toolbar customization and full accessibility milestone
 closure remain future M24 integration work. No broader M13/M24 completion claimed.
 
+Historical K12 slice results follow. Subsequent configured portable UI/App execution
+is recorded in docs/handoff/VERIFICATION.md; these old unexecuted-test statements
+do not describe the current portable harness.
+
 ## Verification and open questions
 
 Linux Swift 6.0.3, Swift 5 parse mode: all 10 source Swift files and 2 XCTest files
@@ -142,15 +144,17 @@ Portable adapter/app XCTest execution (from repository root):
 
 ```sh
 source /workspace/toolchains/env.sh
-HELM_K11_SCRATCH=/tmp/build-F4 bash scripts/rebuild/run_all.sh
-python3 Tests/HelmUITests/PortableRunner/run.py
+HELM_K11_SCRATCH=/tmp/build-UI-REVIEW bash scripts/rebuild/run_all.sh
+HELM_UI_SCRATCH=/tmp/build-UI-REVIEW python3 -B Tests/HelmUITests/PortableRunner/run.py
 ```
 
 The runner emits shared dependency libraries once to avoid duplicate Swift type
 metadata, then discovers XCTest methods in portable UI and app test classes.
 Exclude PortableRunner from the eventual macOS test target. SettingsBindingsTests
 and ContentNativeAdapterTests require SwiftUI/AppKit and remain macOS-only.
-P4's compile regression also invokes swiftc against /tmp/build-F4/debug/Modules.
+The runner and P4 compile regression both require HELM_UI_SCRATCH and use its
+freshly built debug/Modules. The configured runner exercises portable UI/App logic;
+SettingsBindingsTests and ContentNativeAdapterTests still require the Mac SDK.
 
 Open verification: Xcode/macOS 14 compilation, hosted debounce/cancellation,
 Return/Escape, VoiceOver pagination and frame-time/memory measurements with 100k

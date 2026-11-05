@@ -13,8 +13,8 @@ No notifications, commands, filesystem reads or external actions occur here.
   are local to each call, not shared mutable Foundation objects.
 - Give `RowDescription` the full FileEntry name, selected state and separately read
   TagSet. Brief speaks name/kind/selected; standard adds size, tags and known cloud
-  state; detailed adds modified date. Directory sizes are omitted because metadata
-  size is not recursive content size. Negative sizes and distantPast dates are unknown.
+  state; detailed adds modified date. Directory, directory-symlink and package sizes are omitted because metadata
+  size is not recursive content size. Package navigation classification is unchanged. Negative sizes and distantPast dates are unknown.
   Unknown cloud state makes no availability claim. Use localizedKindDescription
   supplied by the reader where present. Avoid duplicate icon/text accessibility children.
 - Selection byte totals must be computed by the snapshot consumer; nil omits an
@@ -54,3 +54,9 @@ No notifications, commands, filesystem reads or external actions occur here.
 Needed changes elsewhere: wire these values into HelmUI/AppKit and supply stable
 per-tab/window scopes, notification delivery and localization resources. No changes
 to shared contracts or Package.swift are needed.
+
+F11 verification uses an independent expected kind table in AccessibilityTests:
+standard/detailed package speech omits raw metadata bytes while regular-file speech
+retains them. T3AccessibilityTests adds row/formatting/announcement edge cases.
+English phrases remain a documented policy; portable string assertions do not
+establish native VoiceOver delivery, RTL layout or complete localization.

@@ -43,3 +43,10 @@ and preserve unknown keys; storage and window/inspector preference scope remain 
 Needed changes elsewhere: loader enrichment for editable attributes/capabilities,
 executor and journal wiring, UI bindings, cancellable size calculator, persistence
 adapter. No existing files changed. Mac/Xcode and Opus review remain pending.
+
+F11 verification: InspectorEditModelTests covers row → whole-mode → original-mode
+reversion, row/value/plan agreement, recursive-intent preservation and unknown
+permissions in both selection orders. Explicit drafts may be displayed even for
+unsupported items; planning still rejects them. T3InspectorTests and
+T3PermissionTests add plan/permission edge cases. These tests validate pure values
+and plans, not native permission changes or an enabled Inspector editing UI.

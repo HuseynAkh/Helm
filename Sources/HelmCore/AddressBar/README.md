@@ -5,9 +5,11 @@ Draft pending Opus compile-correctness and behaviour review after 22:00 Toronto,
 2026-11-04. Only this directory and Tests/HelmCoreTests/AddressBarTests are owned.
 
 Integration:
-- AddressEditorState / AddressEditorAction should replace K1's minimal
-  AddressBarState / AddressBarAction in Contracts/AddressContracts.swift when the
-  orchestrator integrates. CompletionRequest is reused unchanged.
+- K23 already replaced the minimal AddressBar contracts with
+  AddressEditorState/AddressEditorAction in HelmCore; Contracts/AddressContracts.swift
+  retains CompletionRequest. CompletionRequest is shared. Do not introduce duplicate
+  types; native address controller, completion debounce and IME/focus wiring remain
+  host work.
 - Execute requestCompletions via PathCompletionEngine and a DirectoryListing
   adapter. Return completions/completionFailed with the request generation.
   Prefix debounce belongs in the adapter; slash requests have zero debounce.
@@ -53,6 +55,5 @@ the restricted workspace permissions. Neither warning prevents build or tests.
 
 K9 verification: the full six-target XCTest selection passed 98 tests with zero
 failures using /tmp/build-K9; HelmFileSystem target build passed (including Core).
-Static checks passed for 98 production Swift files. AddressEditorState/Action
-remain unchanged: replacing the minimal contracts requires editing the explicitly
-out-of-lane Contracts/AddressContracts.swift. The orchestrator must integrate them.
+Static checks passed for 98 production Swift files. K23 subsequently completed the AddressEditor contract replacement described above;
+native controller/debounce/IME/focus integration remains host work.

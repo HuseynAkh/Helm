@@ -47,3 +47,20 @@ inverses, and remaps them through internal moves. Complete no-follow descendant
 content/identity manifests and atomic native compare-and-mutate remain open;
 verificationUnavailable must be surfaced for reconciliation, without automatic retry.
 All new contracts remain drafts for Opus and macOS/Xcode verification.
+
+## Waves 12–18 components
+
+[Store](Store/README.md) supplies the FIFO WindowStore and selection binder, with
+owned cancellation and shared monitor reply ordering. [Inspector](Inspector/README.md)
+supplies pure attribute/permission edit plans; [Accessibility](Accessibility/README.md)
+supplies formatting, row speech, identifiers and throttled operation announcements.
+[Naming](Naming/README.md) documents cooperative batch-rename cancellation.
+These components require native hosts; their existence does not close UI parity.
+
+Core owns FileObjectIdentity, FileMutationPrecondition and ConditionalMutationError,
+including cancelledBeforeMutation's zero-effects guarantee. Operations records undo
+ownership evidence and refuses missing identity or tree undo. FileSystem conditional
+support is provider-dependent; native live executor copy/move/Trash still refuse.
+Persistence's K33 tag catalogue/location-options stores are distinct from Core's
+in-memory values. See the module READMEs and docs/prereview/fixes-F15.md for current
+integration limits and verification of the 1001-test portable suite.

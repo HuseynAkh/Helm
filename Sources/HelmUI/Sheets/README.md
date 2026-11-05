@@ -118,3 +118,21 @@ constitute building the real HelmUI target or executing tests.
 No network, commits, pushes, sends, deletion, paid rendering, publication or
 sharing changes were performed. Remote shared memory was not fetched because
 network access is explicitly prohibited.
+
+## K34 batch rename cancellation
+
+BatchRenameSheet retains BatchRenameWorker across revisions. It runs at most one
+calculation, retaining only the latest pending request. Replacement, Cancel and
+disappearance cancel obsolete work; the outer task forwards cancellation by request
+identity. Core's throwing cancellation hook checks generation/occupancy/targets,
+temporary-name probes and sort boundaries, throwing without a partial plan.
+Cancelled evaluations do not fill the cache. Revision checks still guard display
+and execution independently of cancellation. Synchronous compatibility getters
+remain available and should not be used to plan large selections during rendering.
+
+K34BatchRenameWorkerTests checks cancellation delivery, maximum concurrency of one
+and empty cache after cancellation; K34CancellationTests covers planner interruption.
+The configured portable UI/App runner executes Foundation adapters and worker tests.
+The K16 parse/typecheck-only counts above are historical. SwiftUI task isolation,
+hosted dismissal/Return/Escape and large-selection responsiveness remain Mac checks.
+See ../README.md for the paired HELM_K11_SCRATCH/HELM_UI_SCRATCH recipe.

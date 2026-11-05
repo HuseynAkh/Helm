@@ -29,3 +29,9 @@ The helper lives here because K33 owns only Tags/ and ViewOptions/; both stores 
 it rather than JSONFileStore's more permissive corruption recovery. No changes to
 JSONFileStore or its F3 safety behavior were made. macOS/Xcode validation and Opus
 compile/behavior review remain outstanding after 22:00 Toronto, 2026-11-04.
+
+Verification evidence: K33TagCatalogTests asserts exact ordered round trips,
+Unicode merge identity, invalid edit refusal, v0 migration, unknown envelope refusal,
+byte-identical corrupt backup/original retention and concurrent merge/flush results.
+K33PreferenceDocumentTests checks stale-revision refusal and retry after save
+failure. These are local document tests, not Finder interoperability acceptance.

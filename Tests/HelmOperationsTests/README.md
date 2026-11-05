@@ -23,3 +23,15 @@ no byte-reading API, so this is not a content-hash integrity proof. Linux tests 
 not establish macOS filesystem, AppKit focus, or native Trash correctness. Native
 macOS validation remains open. The filesystem fake normalizes Unicode even when
 case-sensitive; tests intentionally document that fake contract.
+
+## F13 evidence and cancellation regressions
+
+F13ContractTests retains the formerly failing identity-substitution and clean
+admission-cancellation probes. F13UndoEvidenceTests covers create/copy/move
+substitution before planning/execution, installed/backup replacement, missing
+journal identity and valid move/Trash remapping. F13CancellationTests distinguishes
+gated pre-admission and read-only cancellation from uncertain primitive cancellation,
+checking reconciliation and whether the same executor can accept another operation.
+K29 tree refusal and K34 conditional-admission controls remain separate coverage.
+These tests do not prove atomic native mutation, complete content evidence or
+atomic output receipts. The K15 notes above are historical slice evidence.

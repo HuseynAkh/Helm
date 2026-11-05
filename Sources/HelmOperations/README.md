@@ -59,9 +59,10 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
   need Fable/Opus review. Parent symlinks are conservatively refused rather than
   silently redirecting writes; path checks cannot eliminate external TOCTOU races.
 - Runtime name rechecks reuse K2 numbering. Bounded retries require the explicit
-  ExclusiveDestinationConflict guarantee that NO mutation occurred. K5 currently
-  collapses EEXIST into a generic error, so ordinary live races stop and retain
-  their failure instead of guessing from an error string. Staged/dependent steps
+  ExclusiveDestinationConflict guarantee that NO mutation occurred. Live exclusive
+  creation maps EEXIST to collision(noMutation: true); generic
+  copy/move collisions retain noMutation: false. Ordinary uncertain races stop
+  instead of guessing from an error string. Staged/dependent steps
   never silently choose a different destination.
 - This journal is an in-memory begin/step/complete store, not durable storage or
   the complete menu-facing undo/redo stack/coordinator. Recovery is planned and
@@ -76,9 +77,9 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
 
 ## Needed changes elsewhere
 
-- K5: preserve a typed exclusive EEXIST/no-mutation guarantee for safe live retries;
-  expose content/link verification and conditional no-follow mutations for stronger
-  copy verification and race protection. No string matching is used here.
+- K23/K34 provide typed collision and conditional no-follow contracts. A native
+  conditional implementation, stronger content/link verification and atomic output
+  evidence remain needed. No string matching is used here.
 - Composition/UI: inject actual per-volume case sensitivity, retain journal/task
   lifetime, supply the pasteboard adapter and confirmation/conflict presentation.
 - Persistence: inject TrashOriginRecording; its current nonthrowing contract
@@ -112,19 +113,12 @@ the destination denotes the source or lies inside it in the source namespace;
 a different destination volume's semantics must not redefine that ancestry.
 Destination-name collision checks continue to use destination-parent semantics.
 Supply case sensitivity for source parents as well as destination parents; absent
-entries retain the conservative case-insensitive default. K5's FileSystem protocol
-currently has no sensitivity query, so the builder still requires caller input.
-
-K15's two regressions are enabled. K17 covers sensitive and insensitive same-item
-checks, recursive destinations, mixed declarations, component boundaries, and the
-unknown-sensitivity fallback for manually constructed plans.
-
-Needed changes elsewhere: K5's FileSystemError still has only notFound,
-permissionDenied, timedOut, unsupported and other(String), with no typed collision.
-K5 must expose collision semantics (including whether any mutation occurred)
-before this executor can safely map/retry them. No string-based translation was
-added. The existing typed local failure is OperationError.conflict (the current
-implementation's name for the proposed OperationFailure). Public API unchanged.
+entries retain the conservative case-insensitive default. K23 added
+FileSystem.isCaseSensitive and FileSystemError.collision(noMutation:).
+PlanningContextBuilder queries missing case capabilities; explicit inputs win.
+Only a collision with noMutation == true authorizes retry. Generic live copy/move
+collisions do not make that guarantee. The local failure remains OperationError.conflict.
+K15 regressions and K17 namespace-boundary tests cover these planning rules.
 
 ## F2 safety pre-review fixes
 
@@ -141,7 +135,8 @@ including unchanged copied trees and newly created folders. This deliberately do
 less until complete no-follow identity/content manifests can be added through a
 reviewed public contract (P2-3 DEFERRED, unsafe retirement mitigated). UI should
 surface verificationUnavailable as requiring review, never silently retry without
-preconditions. Ordinary user-requested Trash remains available.
+preconditions. Ordinary user-requested Trash requires a supporting conditional provider;
+LiveFileSystem executor Trash remains unavailable.
 
 Planning uses component-prefix indexes, cached normalized paths/names and aggregate
 manifest byte counts; journal duplicate checks use StepID sets. The 100k sibling
@@ -172,19 +167,24 @@ not at planning. Undo keeps its separate leaf-only policy and recorded output to
 Completed copies/moves capture stage and backup evidence before the next progress
 callback. Dependent mutations recheck it after preflight; missing metadata preserves
 the successful outcome and stops dependent work for reconciliation. Verification
-cannot replace an artifact's earlier ownership evidence. Ordinary directory Move and
-Trash remain supported; directory root evidence does not prove unchanged descendants.
+cannot replace an artifact's earlier ownership evidence.
+
+Directory Move and Trash are provider-dependent: InMemoryFileSystem supports the
+conditional boundary; LiveFileSystem inherits refusal, so live executor
+copy/move/Trash are unavailable. Exclusive creation remains available. Direct
+primitives are distinct from executor support. Directory root evidence does not
+prove unchanged descendants; see the K34 conditional contract below.
 
 Replacement tracks the actual original destination spelling separately from the
 incoming installed name, including case/Unicode equivalence. Undo restores that
 original spelling. Cut completion uses one outcome pass and one source pass; its
 internal visit hook tests the production extraction path at 100,000 sources.
 
-Needed changes elsewhere: HelmCore identity/entry types and the FileSystem contract
-need persistent no-follow object identity plus a native conditional mutation seam.
-Current kind/token checks do not close stat/mutate or post-mutation observation
-races, nor detect same-token content replacements. This portion of P6-1 is deferred;
-no atomic identity or content guarantee is claimed. Native macOS and Opus review
+K34 supersedes the missing-contract prerequisite: Core identity values and
+conditional FileSystem/FileCopier APIs now exist. A reviewed native conditional
+mutation provider and atomic output evidence remain needed. Root identity/token
+evidence is not complete content or descendant proof; post-mutation observation
+races remain open. Native macOS and Opus review
 remain required. See `docs/prereview/fixes-F7.md` for verification and residual risks.
 
 K34: forward evidence retains provider identity with kind/token; the executor uses
@@ -197,3 +197,23 @@ remain unavailable pending a reviewed native implementation. Exclusive creation
 is unaffected. Tree undo remains refused: root identity is not descendant proof.
 The output-mutation-to-metadata-read window remains a separate open limitation;
 no complete content proof or durable identity receipt is claimed by this change.
+
+## F13 recorded undo evidence and cancellation
+
+ItemOutcome.destinationEvidence records optional identity, kind and change token;
+UndoPlanner carries it into OperationPlan.expectedEvidence. Inverse execution seeds
+ownership only from the journal, checks all initial outputs before any inverse,
+and supplies evidence at each conditional mutation. Internal move/Trash paths
+remap evidence. Missing recorded identity refuses automatic leaf undo; a fresh
+pathname observation cannot supply it. Tree/package undo still refuses even when
+unchanged. Output metadata is observed after mutation, so the completion-to-read
+race and same-object/same-token content edits remain unproven.
+
+ConditionalMutationError.cancelledBeforeMutation guarantees zero effects and maps
+to cancelled without reconciliation or quarantine. Read-only validation cancellation
+also leaves the executor usable. Ordinary cancellation thrown by a potentially
+started primitive remains uncertain and quarantining; successful started work is
+journaled and timeout quarantine remains. Providers must not use the clean case
+for uncertain completion. F13ContractTests, F13UndoEvidenceTests and
+F13CancellationTests cover substitution, missing identity, remapping and both
+cancellation boundaries; native conditional support remains absent.

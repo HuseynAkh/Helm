@@ -17,14 +17,11 @@ SnapshotStamp is a standalone value for an accepted ID and a load generation.
 The reducer must allocate the per-tab accepted ID; it is not a presentation
 snapshot and does not change DirectoryLoader's array return contract.
 
-Needed changes elsewhere: K1 needs shared presentation-snapshot stamping integration
-and FileEntry cloud availability before these helpers can enter Core signatures.
-Core must own any such shared types; do not make Core depend on this module.
-Location still needs Starred; PlaceDestination.resolved preserves its intent now.
-AddressEditor contract replacement requires Contracts/AddressContracts.swift.
-
-No runtime integration of cloud metadata into listings is attempted in this fix
-lane. This avoids changing enumeration cost or the existing FileEntry contract.
+K23 completed Core-owned FileEntry cloud availability, metadata listing integration,
+snapshot stamping bridge and AddressEditor contract replacement. Metadata
+availability is unknown when unreported; Linux remains unknown. The reducer still
+allocates accepted snapshot IDs. Starred Location remains deferred to an owner
+decision; native cloud resource keys and provider behavior require Mac verification.
 
 Verification (Linux Swift 6.0.3, Swift 5 mode): HelmFileSystem target build passed;
 all six XCTest targets selected explicitly, 98 tests passed, zero failures;
@@ -57,3 +54,15 @@ K29 also closes T1-001: PutBackPlanner validates every matching origin URL befor
 collapsing records to paths. A remote-authority record can no longer be hidden by
 an equivalent local pathname and record order. Valid duplicate origins still
 restore; distinct valid origins still report ambiguity (F-060).
+
+## Waves 12–18 integration
+
+[Loading](Loading/README.md) documents DirectoryLoadPipeline, DirectoryEffectRunner,
+serial off-main snapshot indexing, cancellation and bounded watch recovery.
+[Monitor](Monitor/README.md) describes fallback selection and root revalidation.
+[Live](Live/README.md) documents shared multi-volume admission/quarantine and the
+conditional-mutation refusal: executor copy/move/Trash are unavailable with Live,
+while exclusive creation remains available. Direct primitives are separate APIs.
+Core owns identity/precondition types; InMemoryFileSystem implements conditional
+admission and clean cancelled-before-mutation refusal. Native support is still
+required, not established by fake-provider tests.

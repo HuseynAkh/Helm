@@ -63,13 +63,18 @@ Swift 5 language mode verified; macOS/Xcode has not been verified.
 
 UI must opt into the new StatusText overload, wire snapshot/selection/cached
 capacity, render groups by section and ItemID, implement keyboard fallback editors,
-and adapt the property aggregate. FS must implement TagStorage; persistence must
-own location-keyed view-option records. No changes to their files were made.
+and adapt the property aggregate. HelmFileSystem/Tags already supplies filesystem TagStorage adapters; native Finder
+interoperability remains unverified. K33 supplies HelmPersistence.LocationViewOptionsStore
+and TagCatalogStore. Core ViewOptionsStore remains an in-memory implementation.
+Choose one authoritative persistent owner per document, await initialization and
+explicit flush, and wire recovery/errors. Native option/tag UI and catalogue/listing
+integration remain pending.
 K1's ViewMode has grid/list only; column/gallery cannot be represented here until
 that shared contract is extended. Existing ItemSort keys are reused unchanged;
 new ListColumn values do not imply those fields are loaded or sortable yet.
-Global SettingsSchema currently clamps grid icons to 48–128, unlike M24's folder
-range 16–512; the settings/UI owners should reconcile this when wiring options.
+K34 retains separate ranges: global SettingsSchema icons 48–128, folder options
+16–512. Folder construction, missing decoded values and nonfinite inputs share
+ViewOptions.defaultIconSize = 96; explicit folder overrides remain intact.
 The 12-point text default and explicit date/size buckets need UI review.
 SwiftPM may warn that this required README is unhandled; manifest exclusions belong
 to the manifest owner and were not edited.

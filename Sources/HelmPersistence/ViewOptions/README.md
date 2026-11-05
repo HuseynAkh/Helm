@@ -25,8 +25,8 @@ Needed changes elsewhere: connect view-options UI to this store and explicit flu
 show recoveryBackupURL/isReadOnly, and handle thrown initialization/save errors.
 Core's in-memory ViewOptionsStore cannot expose its records for restoration, so
 this adapter owns its serializable LRU rather than changing K10's shared contract.
-Reconcile global SettingsSchema icon limits (48–128) with Core folder options
-(16–512) in the owning lane. macOS/Xcode and Opus review remain outstanding.
+K34 deliberately retains separate global SettingsSchema icon limits (48–128)
+and folder options (16–512), as detailed below. macOS/Xcode and Opus review remain outstanding.
 
 K34 reconciliation: folder defaults are Core's `ViewOptions.defaultIconSize = 96`
 for construction, missing decoded fields and nonfinite input. This store already
@@ -35,3 +35,10 @@ retain 16–512; the separate legacy global SettingsSchema slider retains 48–1
 No persisted value is silently migrated or clamped to the global slider range.
 Legacy PreferencesView's 64 fallback differs; the existing rebuild's 96 default
 is retained consistently rather than changing previously created folder options.
+
+Verification evidence: K33LocationViewOptionsTests checks exact restored options
+and LRU order, defaults inheritance, duplicate last-wins behavior, zero/negative
+capacity, offline-record retention and explicit removal. Corrupt/nested-future
+fixtures assert original and backup bytes plus refusal to mutate/flush. Unsupported
+envelopes and read errors throw. K34ViewDefaultsTests checks the shared default;
+no native view-options UI or multi-process coordination is established.

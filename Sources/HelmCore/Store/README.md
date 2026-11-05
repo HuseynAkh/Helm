@@ -23,14 +23,19 @@ Integration
   Cancellation during broadcast immediately suppresses later delivery to that
   subscriber; one subscriber cannot mutate another's delivered value.
 - Forward actual TabEffect/WindowEffect values to adapters. Return an idempotent
-  StoreEffectCancellation for load, monitor, search and completion-request work.
+  StoreEffectCancellation for asynchronous load, monitor, search, completion-request,
+  refreshPaths and validateNavigation work. Reload and validation handles have
+  independent ownership and retire on replacement, monitor retirement, tab disposal
+  and shutdown; see HelmFileSystem/Loading/DirectoryEffectRunner.swift.
   Store cancels matching retired generations before forwarding cancel descriptors,
   cancels superseded lane handles before starting new work, and cancels all handles
   on tab disposal. Tabs and lanes own independent handles. Fixed cancellation order
   avoids dictionary iteration affecting callback order. Completed handles may remain
   retained until replacement/disposal; their cancellation must be harmless.
-- Runners own one-shot work (Recent, validation, refreshPaths, openFile, persistence)
-  and should return nil for those descriptors. Runners must implement cancellation
+- Return nil only for synchronous work or explicitly host-owned work with its own
+  cancellation contract. Recent, openFile and persistence tasks require explicit
+  host lifetime management when asynchronous. Validation and refreshPaths tasks
+  return cancellation handles retained by WindowStore. Runners must implement cancellation
   descriptors for auxiliary work they spawn, and cancel all their tab work on
   .window(.dispose). Callbacks retain their original generations; cancellation does
   not substitute for reducer stale-generation guards. Weak store callback captures
@@ -53,8 +58,8 @@ Deviations / needed changes elsewhere
 - Lane instructions place the Foundation store in HelmCore/Store rather than the
   architecture's HelmUI/State. UI adapters should wrap/reuse this store, qualifying
   HelmCore.WindowStore if they already define a same-named wrapper.
-- Reducers already return effects, so no parallel diff-to-effect vocabulary was
-  introduced. No reducer changes are required for the implemented surface.
+- Reducers return effects; the store uses that vocabulary. F14 adds shared monitor
+  work ordering through monitorWorkGeneration and monitorWorkCompleted.
 - Persistence policy, service adapters and actual UI bindings remain integration
   work. Context star/settings values are fixed at construction; settingsChanged
   still reaches TabReducer, but app-wide context replacement needs a future action
@@ -69,3 +74,21 @@ F6: return a cancellation handle for refreshPaths work. WindowStore now retains
 that auxiliary handle independently of the watch, cancels it on monitor retirement,
 replacement, tab disposal and shutdown. Generation guards also reject already
 queued results. Adapters returning nil remain responsible for cancelling work.
+
+## F14 monitor reply ordering
+
+Always deliver replies through the callback supplied to EffectRunner.run.
+WindowStore captures monitorWorkGeneration at reload/validation admission and
+wraps legacy monitorSnapshot/monitorValidationFailed replies in monitorWorkCompleted.
+The reducer rejects retired watch or work identities, including already queued
+successes and failures. Directly injecting legacy replies bypasses that ordering.
+Validation cancels ordinary reload and prior validation; ordinary events during
+validation retain dirtiness. Successful validation starts a fresh watch generation;
+startup acknowledgement schedules reconciliation. Failed validation retains its
+priority for the next event. Staging and foreground loads retain reconciliation
+intent, and reactivation reconciles changes made while unwatched (F-008, B-014).
+
+F14MonitorOrderingTests checks held reload success/failure after successful and
+failed validation, snapshot identity, cancellation and validation priority.
+F10MonitorStateTests and F10SnapshotWorkerTests cover staging/reactivation.
+Native hosts still need to expose monitorDegraded/failure and own runner teardown.
