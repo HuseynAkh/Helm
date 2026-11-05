@@ -1,6 +1,6 @@
 # Mac run 1
 
-**Status: Stage 0 complete, with failures recorded. Later stages are in the Stages table.**
+**Status: in progress. See the Stages table.**
 
 ## Blockers and failures
 
@@ -12,7 +12,7 @@
 
 ### B2: crash in HelmFileSystemTests
 
-The process stops with `freed pointer was not the last allocation` and exits on signal 6 (`SIGABRT`). It happened in the full run, in the rerun on a new scratch path, and with the test run alone. This is the test the crash report's run stopped at; the 198 tests after it in the bundle never ran in those two full runs. The faulting stack is `swift_task_dealloc` called from `XCTSwiftErrorObservation._observeErrors`, with no Helm frames on it. The cause is not established: it could be the test, the code under it, or this XCTest and toolchain.
+The process stops with `freed pointer was not the last allocation` and exits on signal 6 (`SIGABRT`). It happened in the full run, in the rerun on a new scratch path, and with the test run alone. In the full runs, 35 tests passed before it and the 196 after it in the bundle never ran. The faulting stack is `swift_task_dealloc` called from `XCTSwiftErrorObservation._observeErrors`, with no Helm frames on it. The cause is not established: it could be the test, the code under it, or this XCTest and toolchain.
 
 To get results for the rest of the bundle, I ran it once with `--skip` on that one test. This was a diagnostic command only and nothing is committed that skips it. All 231 other tests passed.
 
@@ -140,9 +140,9 @@ Stage 0. "T/P/F" is tests executed, passed and failed. `run_all.sh` ran twice: f
 |---|---|---|---|---|
 | Portable baseline, overall | `HELM_K11_SCRATCH=/tmp/build-MAC-HANDOFF HELM_PLAN_DIR="$PWD/docs/rebuild" bash scripts/rebuild/run_all.sh` | 1 | see below | FAIL: 3 failed checks, not the expected 1 |
 | Six module builds | inside `run_all.sh` | 0 for each | n/a | PASS |
-| `tests` | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit)Tests'` | 1 | 1,123 executed | FAIL: B2 and B3 |
+| `tests` | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit)Tests'` | 1 | 1,124 completed | FAIL: B2 and B3 |
 | XCTest discovery and failure gate | inside `run_all.sh` | n/a | prints 706 executed, 31 failures | FAIL. Also misreports the total; see below |
-| Crash rerun, new scratch path | `swift test --scratch-path /tmp/build-MAC-HANDOFF-rerun --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit)Tests'` | 1 | 1,123 executed | FAIL: same B2 and B3 |
+| Crash rerun, new scratch path | `swift test --scratch-path /tmp/build-MAC-HANDOFF-rerun --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit)Tests'` | 1 | 1,124 completed | FAIL: same B2 and B3 |
 | Crashing test alone | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter 'F14MonitorRecoveryTests/testRecoveryThroughStoreRetainsReplacementThenReceivesChange'` | 1 | 0 completed | FAIL: B2 |
 | Rest of the FileSystem bundle, diagnostic | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmFileSystemTests --skip 'F14MonitorRecoveryTests/testRecoveryThroughStoreRetainsReplacementThenReceivesChange'` | 0 | 231/231/0 | PASS |
 | `python-tests` | `python3 -m unittest discover -s scripts/rebuild -p 'test_*.py' -v` | 0 | 15/15/0 | PASS |
@@ -160,7 +160,7 @@ SwiftPM here builds one `.xctest` bundle per test target. `run_all.sh` reads onl
 | Target | Listed | Passed | Failed | Skipped | Notes |
 |---|---|---|---|---|---|
 | `HelmCoreTests` | 706 | 694 | 12 | 0 | 31 assertion failures (B3) |
-| `HelmFileSystemTests` | 232 | 231 | 1 | 0 | B2 aborts the bundle after 34 results; 231 from the diagnostic run |
+| `HelmFileSystemTests` | 232 | 231 | 1 | 0 | B2 aborts the bundle after 35 results; 231 from the diagnostic run |
 | `HelmOperationsTests` | 179 | 179 | 0 | 0 | |
 | `HelmPersistenceTests` | 82 | 82 | 0 | 0 | |
 | `HelmSearchTests` | 121 | 121 | 0 | 0 | |
@@ -175,11 +175,13 @@ Accounting for the difference from Linux's 1,318: +6 macOS-only (`AF1DarwinRegre
 |---|---|---|
 | 0 | Preflight (S1, S2) and fixture audit | PASS |
 | 0 | Portable baseline | FAIL: B2 and B3. S3 (B1) resolved by approved fix |
-| 1 | `HelmUI` target, `swift build --target HelmUI` | NOT RUN |
-| 1 | `swift test --filter HelmUITests` | NOT RUN |
-| 1 | `SettingsBindingsTests` discovered and executed | NOT RUN |
-| 1 | `ContentNativeAdapterTests` discovered and executed | NOT RUN |
-| 1 | Portable filter rerun after `HelmUI` fixes | NOT RUN |
+| 1 | `swift package dump-package` | PASS: exit 0 |
+| 1 | `HelmUI` target, `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmUI` | PASS: exit 0, 36 Swift files, 0 errors, 0 warnings, no compile fixes needed |
+| 1 | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmUITests` | PASS: exit 0, 50 tests: 49 passed, 0 failed, 1 skipped by design |
+| 1 | `SettingsBindingsTests` discovered and executed | PASS: 2 tests |
+| 1 | `ContentNativeAdapterTests` discovered and executed | PASS: 2 tests |
+| 1 | `testSearchAdapterTypechecksAgainstCurrentCore` | Skipped by design on Mac; not evidence |
+| 1 | Portable filter rerun after `HelmUI` | FAIL: exit 1, same 12 failing `HelmCoreTests` cases and same B2 abort as Stage 0. No new failures |
 | 2 | `HelmApp` target, `swift build --target HelmApp` | NOT RUN |
 | 2 | `swift test --filter HelmAppTests` | NOT RUN |
 | 3a | `HelmDev` scaffold build, `static_checks` | NOT RUN |
@@ -225,7 +227,7 @@ This was a static read of the tests, not a runtime check. No test is held.
 
 **Temp leftovers.** Several tests do not remove their temp roots, including `AF1DarwinRegressionTests`, `OP2MonitorPathTests` and `OP1MonitorSelectionTests`. They left `helm-tests-*` and `helm-op1-*` under `$TMPDIR` and `OP2-events-*` under `/tmp`. The prompt allows only tests to remove their fixtures, so I left these in place.
 
-No privacy prompt was observed during the test runs, and all test runs finished without waiting on one.
+All test runs finished without hanging. I did not watch the screen during them, so a privacy prompt that did not block a test cannot be ruled out; please say if you saw one.
 
 ## Fixes
 

@@ -24,13 +24,14 @@ var targets: [Target] = [
     .testTarget(name: "HelmTestKitTests", dependencies: ["HelmTestKit"]),
 ]
 #if os(macOS)
-// The UI lane adds these targets once their source directories exist:
-// products += [.library(name: "HelmApp", targets: ["HelmApp"]),
-//              .executable(name: "Helm", targets: ["Helm"])]
-// targets += [.target(name: "HelmUI", dependencies: ["HelmCore", "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch"]),
-//             .target(name: "HelmApp", dependencies: ["HelmUI", "HelmCore", "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch"]),
-//             .executableTarget(name: "Helm", dependencies: ["HelmApp"]),
-//             .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmTestKit"])]
+targets += [
+    .target(name: "HelmUI", dependencies: ["HelmCore", "HelmFileSystem",
+        "HelmPersistence", "HelmOperations", "HelmSearch"],
+        exclude: ["README.md", "Part3-README.md", "Content/README.md",
+                  "Sheets/README.md", "ViewOptions/README.md"]),
+    .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmCore",
+        "HelmOperations", "HelmSearch", "HelmTestKit"], exclude: ["PortableRunner"])
+]
 #endif
 let package = Package(name: "Helm", platforms: [.macOS(.v14)], products: products,
                       targets: targets, swiftLanguageVersions: [.v5])
