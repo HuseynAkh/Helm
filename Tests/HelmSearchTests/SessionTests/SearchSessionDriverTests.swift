@@ -68,6 +68,58 @@ final class SearchSessionDriverTests: XCTestCase {
         let state = await driver.state
         XCTAssertNotNil(state.error); XCTAssertFalse(state.isAcceptingEvents)
     }
+    func testTerminalEnvelopesTerminateRetainedStream() async {
+        for event: SearchSessionEvent in [.finished, .failed("metadata unavailable")] {
+            let terminated = expectation(description: "terminal envelope releases subscription")
+            let retained = AsyncThrowingStream<SearchSessionEvent, Error>.makeStream()
+            retained.continuation.onTermination = { _ in terminated.fulfill() }
+            let driver = SearchSessionDriver(source: { _ in retained.stream })
+            await driver.start(query())
+            retained.continuation.yield(event)
+            await fulfillment(of: [terminated], timeout: 2)
+            let state = await driver.state
+            XCTAssertFalse(state.isAcceptingEvents)
+            if case .failed(let message) = event { XCTAssertEqual(state.error, message) }
+            await driver.shutdown()
+        }
+    }
+    func testOldTerminalCleanupCannotCancelReplacementAndFinalResultsStayLive() async {
+        let old = AsyncThrowingStream<SearchSessionEvent, Error>.makeStream()
+        let next = AsyncThrowingStream<SearchSessionEvent, Error>.makeStream()
+        let oldStarted = expectation(description: "old subscribed")
+        let nextStarted = expectation(description: "replacement subscribed")
+        let nextTerminated = expectation(description: "replacement explicitly cancelled")
+        next.continuation.onTermination = { _ in nextTerminated.fulfill() }
+        let driver = SearchSessionDriver(source: { query in
+            if query.text == "A" { oldStarted.fulfill(); return old.stream }
+            nextStarted.fulfill(); return next.stream
+        })
+        await driver.start(query("A"))
+        await fulfillment(of: [oldStarted], timeout: 2)
+        old.continuation.yield(.failed("old failure"))
+        let latest = await driver.start(query("B"))
+        await fulfillment(of: [nextStarted], timeout: 2)
+        next.continuation.yield(.search(.results(.init(results: [], truncated: true,
+            candidateLimitReached: false, consideredCount: 1), isFinal: true)))
+        for _ in 0..<1000 {
+            if await driver.state.batch != nil { break }
+            await Task.yield()
+        }
+        let state = await driver.state
+        XCTAssertEqual(state.generation, latest)
+        XCTAssertNil(state.error)
+        XCTAssertTrue(state.isAcceptingEvents)
+        XCTAssertEqual(state.batch?.truncated, true)
+        next.continuation.yield(.disclosure(index: .available, fallback: .none, unsupportedCriteria: false))
+        for _ in 0..<1000 {
+            if await driver.state.index == .available { break }
+            await Task.yield()
+        }
+        let updated = await driver.state
+        XCTAssertEqual(updated.index, .available)
+        await driver.cancel()
+        await fulfillment(of: [nextTerminated], timeout: 2)
+    }
     func testSourceFailureVisible() async {
         let driver = SearchSessionDriver(source: { _ in AsyncThrowingStream { $0.finish(throwing: SessionFailure.failed) } })
         await driver.start(query()); let state = await settled(driver); XCTAssertNotNil(state.error); XCTAssertFalse(state.isGathering)

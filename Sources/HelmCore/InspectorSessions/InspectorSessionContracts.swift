@@ -59,6 +59,7 @@ public struct InspectorSession: Equatable, Sendable {
     public internal(set) var generation: UUID
     public internal(set) var edits: InspectorEditModel
     public internal(set) var sizes: [ItemID: InspectorSizeState]
+    private let readURLs: [ItemID: URL]
     var enrichedItems: [ItemID: InspectorItem] = [:]
     var enrichedIDs: Set<ItemID> = []
     var finishedSizes: Set<ItemID> = []
@@ -68,6 +69,7 @@ public struct InspectorSession: Equatable, Sendable {
     public init(id: UUID = UUID(), request: InfoPresentationRequest) {
         self.id = id; ownerID = request.ownerID; mode = request.mode
         entries = request.entries; generation = UUID()
+        readURLs = Dictionary(uniqueKeysWithValues: request.entries.map { ($0.id, $0.url) })
         edits = InspectorEditModel(items: []); sizes = [:]
     }
     public var sizeProjection: InspectorSizeProjection {
@@ -76,5 +78,8 @@ public struct InspectorSession: Equatable, Sendable {
     var reads: [InspectorReadRequest] {
         entries.map { InspectorReadRequest(sessionID: id, generation: generation, itemID: $0.id, url: $0.url) }
     }
-    func accepts(_ request: InspectorReadRequest) -> Bool { reads.contains(request) }
+    // Admission does not materialize the selection's read effects for each progress event.
+    func accepts(_ request: InspectorReadRequest) -> Bool {
+        request.sessionID == id && request.generation == generation && readURLs[request.itemID] == request.url
+    }
 }

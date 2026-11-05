@@ -54,13 +54,13 @@ final class PathPresentationTests: XCTestCase {
             XCTAssertTrue(removed.segments.isEmpty)
             XCTAssertNil(removed.intent(.navigate, segmentID: URL(fileURLWithPath: "/missing")))
         }
-        let current = URL(fileURLWithPath: "/committed")
+        let current = URL(fileURLWithPath: "/committed", isDirectory: true)
         XCTAssertEqual(PathPresentation(location: .directory(current), selectedEntries: []).segments.last?.id, current)
     }
 
     func testSymlinkSpellingAndStandardizedIdentityWithoutIO() {
         let model = PathPresentation(location: .recent, selectedEntries: [entry("/link/folder", kind: .symlinkToDirectory)])
-        let url = URL(fileURLWithPath: "/link/folder")
+        let url = URL(fileURLWithPath: "/link/folder", isDirectory: true)
         XCTAssertEqual(model.segments.map(\.id.path), ["/", "/link", "/link/folder"])
         XCTAssertEqual(model.intent(.navigate, segmentID: url), .navigate(url))
         XCTAssertEqual(model.intent(.openTab, segmentID: url), .openTab(url))

@@ -1,7 +1,7 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Mac handoff — F12 / wave 17 refresh
+# Mac handoff — F22 / through wave 21
 
-Snapshot: 2026-11-04, root package on `forge/rebuild-build`. Parallel F9–F12 work can change this inventory; freeze revision plus dirty diff before review. All code is draft pending Opus review after 22:00 Toronto. No gate closes merely because time has elapsed. Final F12 runner: 889 portable cases, 0 skips, 0 failures (K34/P11 baseline: 877). Fresh results and historical counts are separated in VERIFICATION.md. See [VERIFICATION.md](VERIFICATION.md) for current evidence and historical counts; citation coverage is not feature acceptance.
+First read the [Opus/Fable review queue](REVIEW_QUEUE.md): P1–P19, R1 and fixes-F1–F21. Snapshot: 2026-11-04, root package on `forge/rebuild-build`. The verified K41 wave 21 baseline is 1,159 portable tests, zero failures/skips; F12’s 877/889 counts below are historical. [VERIFICATION.md](VERIFICATION.md) binds fresh evidence to revision and input hashes. Parallel F19–F21 changes require their own final dispositions. All work remains draft; no Mac gate closes from Linux tests or elapsed time.
 
 The root [Package.swift](../../Package.swift) is authoritative for actual membership. `Helm/` is the untouched legacy behavior reference. External planning files are under `/workspace/forge/helm-plan/docs/rebuild` on this machine; set `PLAN_DIR` to the owner's supplied local equivalent on Mac. `review-01-architecture.md` fixes win over `01-architecture.md`, especially public type homes, contracts, Linux guards and explicit public initializers (Fixes 1/5/8/9). No network fetch is authorized, including shared GitHub memory.
 
@@ -12,11 +12,11 @@ All directory names below are inventoried from `Sources/`; `(root)` means Swift 
 | Module | Actual source directories | Manifest status |
 |---|---|---|
 | [HelmApp](../../Sources/HelmApp/) | `(root)` | Disabled; Mac template only |
-| [HelmCore](../../Sources/HelmCore/) | `Accessibility`, `AddressBar`, `Commands`, `Content`, `Contracts`, `DragDrop`, `Identity`, `Imaging`, `Inspector`, `Model`, `Naming`, `OpenWith`, `Places`, `Presentation`, `Search`, `Settings`, `State`, `Store`, `Support`, `Text` | Enabled portable library + XCTest target |
+| [HelmCore](../../Sources/HelmCore/) | `Accessibility`, `AddressBar`, `CloudPolicy`, `Commands`, `Content`, `Contracts`, `DragDrop`, `Gallery`, `Identity`, `Imaging`, `Inspector`, `InspectorSessions`, `Model`, `Naming`, `OpenWith`, `OperationHistory`, `PathPresentation`, `Places`, `Presentation`, `Search`, `SearchSessions`, `Settings`, `Sharing`, `SpringNavigation`, `State`, `Store`, `Support`, `Text` | Enabled portable library + XCTest target |
 | [HelmFileSystem](../../Sources/HelmFileSystem/) | `(root)`, `Archive`, `Fake`, `Live`, `Loading`, `Monitor`, `Protocol`, `Providers`, `Tags`, `Virtual`, `Volumes` | Enabled portable library + XCTest target |
-| [HelmOperations](../../Sources/HelmOperations/) | `(root)`, `Clipboard`, `Execute`, `Journal`, `Plan`, `Undo` | Enabled portable library + XCTest target |
+| [HelmOperations](../../Sources/HelmOperations/) | `(root)`, `Clipboard`, `Execute`, `History`, `Journal`, `Plan`, `Undo` | Enabled portable library + XCTest target |
 | [HelmPersistence](../../Sources/HelmPersistence/) | `(root)`, `Tags`, `ViewOptions` | Enabled portable library + XCTest target |
-| [HelmSearch](../../Sources/HelmSearch/) | `(root)`, `Engine`, `Fallback`, `Query`, `Rank`, `SavedSearch` | Enabled portable library + XCTest target |
+| [HelmSearch](../../Sources/HelmSearch/) | `(root)`, `Engine`, `Fallback`, `Query`, `Rank`, `SavedSearch`, `Sessions` | Enabled portable library + XCTest target |
 | [HelmTestKit](../../Sources/HelmTestKit/) | `(root)`, `Fixtures` | Enabled portable library + XCTest target |
 | [HelmUI](../../Sources/HelmUI/) | `Content`, `Operations`, `Properties`, `SearchBar`, `Settings`, `Sheets`, `Sidebar`, `Status`, `TagDots`, `Tags`, `Toolbar`, `ViewOptions` | Disabled; Mac template only |
 
@@ -130,7 +130,7 @@ Source: `$PLAN_DIR/review-03-astra-selfcheck.md`, “As-built vs plan”, plus p
 | M5 filesystem | partial | partial — snapshot bridge/case-sensitive capability and collision guarantee now landed (CONTRACT_INTEGRATION.md); native identity coordination and Mac verification remain. |
 | M6 monitors | partial | FS Monitor: registry/coalescer/polling/FSEvents/vnode/fallback; tests in FS suite; remaining: Not future greenfield Fable work: review existing draft; actual FSEvents/vnode teardown, expanded watches, activation and UI reconciliation unverified on Mac. |
 | M7 plans | partial | partial — Core/DragDrop and filesystem capability integration now exist; native drag proposal and execution host remain (Sources/HelmCore/DragDrop/README.md). |
-| M8 execution | partial | Ops Execute/Journal; conditional fake mutations and live refusal tests; **live executor copy/move/Trash unavailable**, exclusive creation available, direct primitives distinct; remaining: In-memory journal is not menu undo/redo stack or durable recovery; whole-tree copier lacks byte cancellation/fidelity; app shares global journal contrary to per-window policy. |
+| M8 execution | partial | Ops Execute/Journal; conditional fake mutations and live refusal tests; **live executor copy/move/Trash unavailable**, exclusive creation available, direct primitives distinct; remaining: K38 adds portable per-window history reservations; native menu undo/redo and durable recovery remain absent; whole-tree copier lacks byte cancellation/fidelity; app shares global journal contrary to per-window policy. |
 | M9 search logic | done-draft | done-draft — Core query/filter/batch contracts reconciled; Engine/CompositeSearchSource now exist; preserve truncation through host/reducer and validate locale ranking (Sources/HelmSearch/README.md). |
 | M10 composition | partial | AppEnvironment, local store protocols/memory stores, LaunchRouter, WindowRegistry, SessionRestorePlan, QuitCoordinator; portable App tests; remaining: Core WindowStore exists but no AppKit launch host or wired windows/split/tab controllers, executable or target wiring. Portable runner is supplemental, not app acceptance. |
 | M11 grid/list | not started | partial (was not started) — Core/Content models and HelmUI/Content leaves exist; grid/list native widgets, selection binding and hosted timing remain missing (Sources/HelmUI/Content/README.md). |
@@ -150,7 +150,7 @@ Source: `$PLAN_DIR/review-03-astra-selfcheck.md`, “As-built vs plan”, plus p
 | M25 tabs/migration/integration | partial | Persistence LegacyDefaultsMigrator, Core WindowState, App launch/session primitives; remaining: No tab strip/reorder/transfer/overflow, external-open delegate/Services/default-handler adapter; session lacks selection/anchor/history/expansion/frame-clamp acceptance. |
 | M26 stability/handoff | partial | partial — current F12 evidence/ledger refreshed (VERIFICATION.md); missing mandatory features, Apple SDK/runtime review, G11 and GM remain open. |
 
-## Mac acceptance checklist (all NOT RUN by F12)
+## Mac acceptance checklist (all NOT RUN by F22)
 
 Use `$PLAN_DIR/00-current-state.md`, `00b-opus-review.md` (R-1–R-19), `02-finder-parity.md` and `03-build-plan.md` acceptance rows for exact expected behavior. Track each ID individually; F-033/F-058 deferred/dead behavior needs explicit disposition, not citation-based closure.
 
@@ -170,7 +170,7 @@ Do not publish or post anything (including TikTok), activate or change ads, or r
 
 You are performing Huseyn's local Mac compile-and-validation handoff for the Helm rebuild. All Astra code and plans remain DRAFT pending the applicable Opus review record. Claude work may begin only after 22:00 America/Toronto on November 4, 2026; time alone closes no gate. Do not use the network, install dependencies, purchase, publish, send, delete, change sharing, change OS defaults, commit or push. Exact-action approval comes only from Huseyn in chat. Prepare concrete module-sized fixes for the orchestrator within your explicitly assigned paths; do not assume this prompt grants ownership of all files.
 
-The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. Read local AGENTS, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
+The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. First read docs/handoff/REVIEW_QUEUE.md, including all P1–P19, R1 and fixes-F1–F21 reports. Then read local AGENTS, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
 
 Record revision plus dirty files, Xcode/compiler/SDK/XcodeGen versions and hardware. Require macOS 14+, full Xcode, tools 5.9 support and Swift 5 language mode. Report missing tools without installing them. Perform inventory from the rebuilt repository root:
 
@@ -272,7 +272,7 @@ Measure synthetic 100k snapshot/Select All and approved real directory timing se
 Finish with revision, commands/exit codes/test and skip counts, compile fixes, review gates, F/P/B evidence, R-1–R-19 outcomes, concurrency/performance results and exact remaining work. Mark each item PASS, FAIL, NOT RUN or BLOCKED. State separately whether G11 is ready for Mac validation and whether GM actually passes; neither permits release or external effects. Report any exact action requiring approval with its concrete target, effect and cost, then stop that action. No automatic commit, upload or publication follows.
 ````
 
-## Wave 12–17 integration inventory
+## Historical wave 12–17 integration inventory
 
 These are components inside the existing six portable libraries plus disabled UI/App
 modules, not new manifest targets. Lane IDs identify implementation records; this
@@ -287,7 +287,7 @@ inventory does not assign an undocumented individual wave number to each commit.
 | K35 Core/Inspector; `InspectorTests/InspectorEditModelTests.swift`, `InspectorPresentationTests.swift` | Mixed metadata, per-item permission/edit plans, capability defaults, section and size state | Enriched loader, verified mutation executor/journal, native inspector UI, cancellable recursive totals and preference persistence |
 | K36 Core/Accessibility; `AccessibilityTests/AccessibilityTests.swift` | Locale-aware descriptions, stable scoped IDs, throttled operation announcements and action descriptions | AppKit/SwiftUI roles, notification delivery, localization resources, VoiceOver/keyboard/device acceptance |
 | F5–F8 corrections; `docs/prereview/fixes-F5.md` through `fixes-F8.md` | Admission/cancellation, monitor generations, forward evidence/replacement checks and overlapping-source UI; K34 supersedes F8's cancellation deferral | Native race/fidelity/timeout recovery, per-window journal, UI hosting and Opus review remain open |
-| T2 adversarial tests and P8–P11 review; wave 17 F9–F12 fix lanes | Portable regression/review inputs; F12 documentation reconciles P11 | F9–F11 are concurrent source owners: consume their final reports and rerun against a frozen tree; F12 does not certify unfinished lane work |
+| T2 adversarial tests and P8–P11 review; wave 17 F9–F12 fix lanes | Portable regression/review inputs; F12 documentation reconciles P11 | Historical F12 snapshot; consume F9–F11 final reports and later F13–F18 corrections in the review queue |
 
 For every asynchronous `refreshPaths` or `validateNavigation` effect, return a
 `StoreEffectCancellation`. WindowStore retains separate reload/validation handles
@@ -295,3 +295,28 @@ and cancels them on replacement, monitor retirement, tab disposal and shutdown.
 `DirectoryEffectRunner` demonstrates this contract. Returning nil is suitable only
 for synchronous work or explicitly host-owned work with its own cancellation
 contract. Generation rejection alone does not stop a task.
+
+## Waves 18–21 additions and F13–F18 corrections — F22 inventory
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+These directories are components of existing targets, not new modules or native
+feature acceptance. Evidence below was checked against source APIs and XCTest
+assertions; known P16–P18 findings remain subject to F19–F21 and Opus review.
+
+| Component / source notes | Portable draft and test evidence | Deferred execution / review |
+| --- | --- | --- |
+| K37 [CloudPolicy](../../Sources/HelmCore/CloudPolicy/README.md) | Access/eviction admission, explicit request identity and provider-boundary warnings; `CloudPolicyTests` checks capability tables, stale progress and cancellation | Native materialization/eviction, trusted provider capabilities and uploaded-state validation; no cloud action is executed |
+| K37 [Sharing](../../Sources/HelmCore/Sharing/README.md) | Frozen selection and request lifecycle; `SharingTests` checks picker/provider stages and stale completion | Native picker/transport and exact-action approval; P18 URL normalization review, no sending code |
+| K37 [PathPresentation](../../Sources/HelmCore/PathPresentation/README.md) | Selected-result ancestry/common parent and action intents; `PathPresentationTests` checks component boundaries and selection context | Native path bar, navigation/reveal/drop; P18 lexical normalization and directory-hint membership fixes need review |
+| K38 [OperationHistory](../../Sources/HelmCore/OperationHistory/README.md), [Operations History](../../Sources/HelmOperations/History/README.md) | Per-window reservations, result mapping and inverse planning bridge; `OperationHistoryTests`, `WindowOperationHistoryTests`, `HistoryResultMappingTests` | P16 forward settlement and inverse-result identity; native responders, safe redo, reconciliation, durable storage and bounded retention. Existing tree/native mutation refusal remains |
+| K39 [SearchSessions](../../Sources/HelmCore/SearchSessions/README.md), [Search Sessions](../../Sources/HelmSearch/Sessions/README.md) | Generation-bound state, injected stream driver and saved-definition open plan; `SearchSessionStateTests`, `SearchSessionDriverTests`, `SavedSearchOpenPlanTests` | P17 terminal stream teardown; Spotlight lifecycle, host publication and full envelope-to-TabAction integration. Definition removal is only an intent |
+| K40 [InspectorSessions](../../Sources/HelmCore/InspectorSessions/README.md) | Owner/mode registry, confirmation/read tokens and size projection; `InspectorSessionRegistryTests`, `InspectorSizeProjectionTests` | P17 same-path reuse and enrichment scaling; native windows, reads/progress conversion, prompts and save execution. Supplied totals are not a recursive walker |
+| K41 [SpringNavigation](../../Sources/HelmCore/SpringNavigation/README.md) | Temporary navigation, restore context and commit intents; `SpringNavigationTests` checks ABA, cancellation and drop completion | P18 changed post-drop metadata and URL admission; native drag/load cancellation, live scroll and commit routing |
+| K41 [Gallery](../../Sources/HelmCore/Gallery/README.md) | Selection/preview identity and bounded thumbnail demand; `GalleryTests` checks stale preview and 100k demand bounds | P18 page step versus prefetch; ViewMode/menu activation, rendering and imaging lifetime. Bounded demand is not widget performance |
+| [F13](../prereview/fixes-F13.md), [F16](../prereview/fixes-F16.md) | Journal output evidence retained for leaf undo; clean cancellation versus uncertain mutation; `F13UndoEvidenceTests`, `F13CancellationTests`, `F16CancellationTests` | Native atomic receipts and tree evidence remain missing; F16's second-inverse identity-substitution interleaving coverage remains a disclosed gap |
+| [F14](../prereview/fixes-F14.md), [F17](../prereview/fixes-F17.md) | Monitor request stamping, bounded recovery, dirty replay and typed-filter-only search; `F14MonitorOrderingTests`, `F14MonitorRecoveryTests`, `F17SearchTests`; strengthened FIFO/cache/persistence oracles | Native watcher lifecycle/degraded UI and host wiring; F17 supersedes the synthetic retry rootChanged behavior in earlier F14 prose |
+| [F15](../prereview/fixes-F15.md) | Documentation aligns existing contracts and distinguishes portable policy from host integration | Documentation does not implement native capabilities or close review findings |
+| [F18](../prereview/fixes-F18.md) | `F18PropertiesSizeTests` and `F18PropertiesAdapterTests` independently cover package contents, trusted totals and partial states; stronger progress/rename-worker tests | P14-5 producer snapshot-construction bounds remain deferred; trusted totals require selection identity and native UI/size adapter acceptance |
+
+Review F19–F21's final reports for current P16–P18 dispositions; this inventory
+records the contracts and review obligations without duplicating their reports.

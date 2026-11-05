@@ -19,6 +19,7 @@ public actor WindowOperationHistory {
     private var entries: [OperationID: JournalEntry] = [:]
     private var seenOperations: Set<OperationID> = []
     private var forwardCommand: Command?
+    private var execution: (id: OperationID, plan: OperationPlan)?
     private var inverse: HistoryUndoRequest?
     private var completedInverses: [JournalEntry] = []
     public init() {}
@@ -38,18 +39,49 @@ public actor WindowOperationHistory {
         return request
     }
 
+    /// Bind from the executor admission callback, before any filesystem work (B-043/B-105).
+    /// A rejected binding must prevent that execution from mutating.
+    @discardableResult
+    public func bindExecution(request: HistoryRequestID, operation: OperationID, plan: OperationPlan) -> Bool {
+        guard state.pending?.request == request, execution == nil,
+              !seenOperations.contains(operation) else { return false }
+        if let command = forwardCommand {
+            guard plan.command == command else { return false }
+            OperationHistoryReducer.reduce(&state, .startForward(request, operation: operation))
+            guard state.executingOperation == operation else { return false }
+        } else {
+            guard let inverse, inverse.request == request,
+                  plan.command == inverse.plan.command, plan.steps == inverse.plan.steps else { return false }
+        }
+        execution = (operation, plan)
+        return true
+    }
+
+    /// Only reserved preparation can abort; cancellation after binding must await completion.
+    @discardableResult
+    public func abortForward(request: HistoryRequestID, failure: HistoryPreparationFailure) -> Bool {
+        guard case .forward(request, _) = state.pending, execution == nil else { return false }
+        OperationHistoryReducer.reduce(&state, .abortForward(request, failure: failure))
+        forwardCommand = nil
+        return true
+    }
+
     /// Accept only the original command's completed journal entry, once.
     @discardableResult
     public func completeForward(request: HistoryRequestID, entry: JournalEntry) -> Bool {
         guard case .forward(request, _) = state.pending, let command = forwardCommand,
+              let execution, execution.id == entry.id,
+              entry.plan.steps == execution.plan.steps,
               entry.plan.command == command, let result = entry.result,
+              result.outcomes.map(\.step) == execution.plan.steps,
               result.id == entry.id, result.command == command,
               !seenOperations.contains(entry.id) else { return false }
         seenOperations.insert(entry.id)
-        entries[entry.id] = entry
+        entries[entry.id] = JournalEntry(id: entry.id, plan: execution.plan, result: result)
         OperationHistoryReducer.reduce(&state, .finishForward(request, operation: entry.id,
             outcome: HistoryResultMapping.outcome(result, plan: entry.plan)))
         forwardCommand = nil
+        self.execution = nil
         return true
     }
 
@@ -77,12 +109,15 @@ public actor WindowOperationHistory {
     public func complete(request: HistoryRequestID, outcome: OperationResult) -> Bool {
         guard let pending = inverse, pending.request == request,
               state.pending?.request == request, outcome.command == pending.plan.command,
+              let execution, execution.id == outcome.id,
+              outcome.outcomes.map(\.step) == pending.plan.steps,
               !seenOperations.contains(outcome.id) else { return false }
         seenOperations.insert(outcome.id)
         completedInverses.append(JournalEntry(id: outcome.id, plan: pending.plan, result: outcome))
         OperationHistoryReducer.reduce(&state, .complete(request,
             outcome: HistoryResultMapping.outcome(outcome, plan: pending.plan)))
         inverse = nil
+        self.execution = nil
         return true
     }
 

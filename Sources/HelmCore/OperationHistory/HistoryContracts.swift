@@ -49,6 +49,8 @@ public enum HistoryReservation: Equatable, Sendable {
 /// Pure history inputs; hosts must route text editing before file undo (F-059/B-041).
 public enum HistoryAction: Sendable {
     case beginForward(HistoryRequestID, name: String)
+    case startForward(HistoryRequestID, operation: OperationID)
+    case abortForward(HistoryRequestID, failure: HistoryPreparationFailure)
     case finishForward(HistoryRequestID, operation: OperationID, outcome: HistoryOutcome)
     case beginUndo(HistoryRequestID)
     case complete(HistoryRequestID, outcome: HistoryOutcome)
@@ -58,4 +60,17 @@ public enum HistoryAction: Sendable {
 /// Intent only: the history reducer never performs file mutations (F-059/B-041).
 public enum HistoryEffect: Equatable, Sendable {
     case performUndo(HistoryRequestID, OperationID)
+}
+
+
+/// Pre-execution failure preserves visible errors without inventing mutation evidence (F-059/B-043).
+public enum HistoryPreparationFailure: Equatable, Sendable {
+    case cancelled
+    case failed(String)
+    public var outcome: HistoryOutcome {
+        switch self {
+        case .cancelled: return .failed("Cancelled before execution")
+        case .failed(let message): return .failed(message)
+        }
+    }
 }

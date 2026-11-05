@@ -4,8 +4,8 @@ import XCTest
 @testable import HelmCore
 
 final class SpringNavigationTests: XCTestCase {
-    private func entry(_ name: String, size: Int64 = 0) -> FileEntry {
-        FileEntry(url: URL(fileURLWithPath: "/" + name), kind: .directory, size: size)
+    private func entry(_ name: String, size: Int64 = 0, identity: String = "original") -> FileEntry {
+        FileEntry(url: URL(fileURLWithPath: "/" + name), kind: .directory, size: size, objectIdentity: FileObjectIdentity(scope: "test", object: identity))
     }
     private func session() -> SpringNavigationSession {
         SpringNavigationSession(original: SpringNavigationContext(tabID: TabID(), location: .recent,
@@ -45,7 +45,7 @@ final class SpringNavigationTests: XCTestCase {
     func testChangedLoadIdentityRejected() throws {
         var state = session(); state.beginHover(entry("a")); _ = state.poll(openImmediately: true)
         let request = try XCTUnwrap(state.pending)
-        XCTAssertTrue(state.hoverOpened(request: request, target: entry("a", size: 1)).isEmpty)
+        XCTAssertTrue(state.hoverOpened(request: request, target: entry("a", size: 1, identity: "replacement")).isEmpty)
         XCTAssertTrue(state.stack.isEmpty)
     }
     func testFailedLoadRestoresCurrentAndConsumesRequest() throws {
@@ -81,7 +81,7 @@ final class SpringNavigationTests: XCTestCase {
         for success in [false, true] {
             var state = session(); let target = entry("destination")
             let request = try XCTUnwrap(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url))))
-            XCTAssertEqual(state.dropCompleted(request: request, success: success, destination: entry("destination", size: 1)), [.restore(state.original)])
+            XCTAssertEqual(state.dropCompleted(request: request, success: success, destination: entry("destination", size: 1, identity: "replacement")), [.restore(state.original)])
         }
     }
     func testVirtualAndMismatchedDestinationsRejected() {

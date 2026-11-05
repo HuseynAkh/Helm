@@ -47,9 +47,18 @@ public actor SearchSessionDriver {
         task = Task { [weak self] in
             do {
                 try Task.checkCancellation()
-                for try await event in source(query) {
-                    try Task.checkCancellation()
-                    await self?.receive(event, generation: generation)
+                var iterator = source(query).makeAsyncIterator()
+                while let event = try await iterator.next() {
+                    if Task.isCancelled {
+                        _ = try? await iterator.next()
+                        return
+                    }
+                    guard await self?.receive(event, generation: generation) == true else {
+                        // AsyncThrowingStream observes cancellation inside next(), including when
+                        // the producer retains its continuation after a terminal envelope.
+                        _ = try? await iterator.next()
+                        return
+                    }
                 }
                 await self?.receive(.finished, generation: generation)
             } catch {
@@ -65,7 +74,14 @@ public actor SearchSessionDriver {
     }
     public func cancel() { state.cancel(); task?.cancel(); task = nil }
     public func shutdown() { state.shutdown(); task?.cancel(); task = nil }
-    private func receive(_ event: SearchSessionEvent, generation: UUID) {
-        state.receive(event, generation: generation)
+    @discardableResult
+    private func receive(_ event: SearchSessionEvent, generation: UUID) -> Bool {
+        guard state.receive(event, generation: generation) else { return false }
+        guard state.isAcceptingEvents else {
+            // No suspension between admission and cleanup: an obsolete task cannot cancel its successor.
+            task?.cancel(); task = nil
+            return false
+        }
+        return true
     }
 }

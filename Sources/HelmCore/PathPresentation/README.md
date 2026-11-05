@@ -16,7 +16,10 @@ Invalid selection URLs reject the whole projection; they are never silently
 filtered to a misleading valid subset. Disappeared entries must be removed by
 the caller supplying current metadata. No filesystem existence probing occurs.
 
-Standardized file URLs identify segments; symlinks are not resolved. Ancestors
+Lexical component keys identify segments independently of directory hints and localhost.
+Empty and dot components are removed; parent components remain literal and symlinks
+are not resolved. URLs use explicit directory hints. Segments containing `..` are
+copy-text-only until shared ItemID normalization is reconciled. Ancestors
 are directory intents; the selected leaf uses supplied isDirectoryLike metadata,
 so packages do not become navigation/drop destinations. Reveal carries parent
 and ItemID; root cannot reveal itself. Each intent must name a segment in this
@@ -33,3 +36,9 @@ Logs: /tmp/K37-focused.log, /tmp/K37-run-all-final.log, /tmp/build-K37/logs/.
 The first full run saw eight failures in two concurrently authored F16 cancellation
 cases outside this lane; their four-test retry and the final full run passed.
 macOS SDK compilation/native behavior and Opus review remain unverified.
+
+F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
+[current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
+Historical lane counts above are not current-suite certification; P16–P18 and
+concurrent F19–F21 dispositions require review. Native integration remains pending.

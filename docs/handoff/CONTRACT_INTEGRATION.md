@@ -1,5 +1,8 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# K23 contract integration
+# Contract integration — K23 history through F22
+
+First read the [Opus/Fable review queue](REVIEW_QUEUE.md). The F22 section below
+supersedes historical scope/count statements; K23 records are retained as history.
 
 Scope: the six authorized contract changes. Inventory includes every matching README
 under Sources, Tests, docs/test-findings and docs/handoff, K1_HANDOFF.md, plus all
@@ -250,7 +253,7 @@ Final verification results are appended below.
 - Standalone static checks: **221 Swift files, 0 errors**. `git diff --check` passes.
 - All changes remain uncommitted drafts pending Opus review after 22:00 Toronto.
 
-## F12 current disposition of historical deferrals
+## Historical F12 disposition of earlier deferrals
 
 DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 
@@ -278,7 +281,7 @@ K29/K34 and the current source supersede these specific earlier deferrals:
   discussion is historical.
 
 Current counts, logs and exact Mac SDK priorities are in [VERIFICATION.md](VERIFICATION.md).
-Wave 12–17 inventory and deferred integration are in [MAC_HANDOFF.md](MAC_HANDOFF.md).
+Inventory through wave 21 and deferred integration are in [MAC_HANDOFF.md](MAC_HANDOFF.md).
 No source contracts were changed by F12.
 
 ## F13
@@ -306,3 +309,39 @@ DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
   is not an atomic receipt. Root evidence is not descendant/content proof. macOS
   SDK compilation and behavior review remain pending Opus after 22:00 Toronto.
 - Verification and regression coverage: `docs/prereview/fixes-F13.md`.
+
+## F22 current contract pointers — through wave 21
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+First read the [full Opus/Fable queue](REVIEW_QUEUE.md). The K23/K29/K34/F12
+counts and deferrals above are historical; [VERIFICATION.md](VERIFICATION.md)
+records the K41 1,159-test baseline and separate current evidence. The
+[waves 18–21 inventory](MAC_HANDOFF.md#waves-1821-additions-and-f13f18-corrections--f22-inventory)
+links K37–K41 source READMEs and regression classes.
+
+- K38 adds Core history values and an Operations per-window reservation adapter.
+  Hosts retain reservations until work settles, preserve journal ownership evidence
+  and keep text undo routing separate. Redo/native mutation/tree undo remain
+  unsupported. P16 and the F19 report govern settlement and inverse-result fixes.
+- K39 adds Core search session values and Search stream/definition adapters.
+  Preserve request identities and result disclosure envelopes through the host;
+  TabAction projection and Spotlight lifecycle remain absent. P17/F20 cover stream
+  termination; do not infer producer teardown from state termination alone.
+- K40 adds Core Inspector session/registry/read tokens. Native windows execute
+  effects, return original tokens and bind trusted recursive totals to selection.
+  Existing PropertiesLoader remains the provider; save execution is not supplied.
+  P17/F20 cover same-path reuse and summary enrichment costs.
+- K37 CloudPolicy/Sharing/PathPresentation and K41 SpringNavigation/Gallery are
+  portable value policies, not service adapters. Retain immutable request identity;
+  spring temporary display/restore must bypass history and Recent, and only commit
+  records navigation. Gallery does not enable a ViewMode. P18/F21 cover path
+  admission, drop identity and paging; exact external actions still require approval.
+- F14 stamps monitor work at WindowStore callback admission and surfaces degraded
+  bounded recovery. F17 removes synthetic retry rootChanged, replays dirty failed
+  validation and admits criteria-only search. F13/F16 preserve output ownership
+  evidence and distinguish clean pre-mutation cancellation from uncertainty.
+  F18 separates contents size from legacy raw metadata and strengthens tests;
+  recursive measurement and snapshot-construction work bounds remain deferred.
+
+F22 changes documentation only. Core public signature types remain Core-owned;
+no manifest, Swift API, native capability or acceptance status is changed here.

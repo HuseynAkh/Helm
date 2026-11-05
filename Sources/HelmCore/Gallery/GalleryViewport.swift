@@ -16,6 +16,16 @@ public struct GalleryViewport: Equatable, Sendable {
         self.prefetch = min(max(0, prefetch), 128)
         self.requestLimit = min(max(0, requestLimit), 512)
     }
+    /// Visible F-041 page geometry, independent of thumbnail prefetch and budget.
+    public func visibleCellCount(count: Int) -> Int {
+        guard count > 0, width > 0 else { return 0 }
+        let start = floor(offset / itemExtent)
+        guard start.isFinite, start < Double(count) else { return 0 }
+        let remaining = count - Int(start)
+        let cells = ceil((offset.truncatingRemainder(dividingBy: itemExtent) + width) / itemExtent)
+        guard cells.isFinite, cells < Double(remaining) else { return remaining }
+        return max(0, Int(cells))
+    }
     public func indices(count: Int) -> Range<Int> {
         guard count > 0, width > 0, requestLimit > 0 else { return 0..<0 }
         let startValue = floor(offset / itemExtent)

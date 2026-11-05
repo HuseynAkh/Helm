@@ -36,7 +36,7 @@ public struct GalleryState: Sendable {
         invalidate()
     }
     public mutating func move(_ movement: ContentMovement) {
-        selection.move(movement, columns: max(1, selection.order.count), pageSize: max(1, viewport.indices(count: selection.order.count).count))
+        selection.move(movement, columns: max(1, selection.order.count), pageSize: max(1, viewport.visibleCellCount(count: selection.order.count)))
         invalidate()
     }
     public mutating func replaceSnapshot(_ snapshot: PresentationSnapshot, eligibleIDs: Set<ItemID>) {

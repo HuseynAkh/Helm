@@ -13,8 +13,8 @@ public struct SharingSelectionSnapshot: Equatable, Sendable {
                   url.fragment == nil, url.path.hasPrefix("/") else {
                 throw SharingFailure.nonLocalURL(url)
             }
-            let normalized = url.standardizedFileURL
-            if seen.insert(normalized.path).inserted { result.append(normalized) }
+            // Keep the first action URL verbatim; never collapse symlink/.. spellings.
+            if seen.insert(LexicalLocalPath.key(url)).inserted { result.append(url) }
         }
         self.urls = result
     }

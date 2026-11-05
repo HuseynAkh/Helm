@@ -33,16 +33,7 @@ public struct InspectorSessionRegistry: Equatable, Sendable {
                   sessions[index].mode == .followSelection else { return [] }
             let request = InfoPresentationRequest(ownerID: sessions[index].ownerID,
                                                   mode: .followSelection, entries: entries)
-            if sessions[index].entries == request.entries {
-                sessions[index].pendingSelection = nil; sessions[index].decisionID = nil
-                return []
-            }
-            if sessions[index].edits.isDirty {
-                let token = UUID()
-                sessions[index].pendingSelection = request; sessions[index].decisionID = token
-                return [.decideSelection(sessionID: id, decisionID: token)]
-            }
-            return replace(index, request)
+            return reconcile(index, request)
         case .decideSelection(let id, let token, let decision):
             guard let index = sessions.firstIndex(where: { $0.id == id }),
                   sessions[index].decisionID == token,
@@ -60,9 +51,12 @@ public struct InspectorSessionRegistry: Equatable, Sendable {
                   !sessions[index].enrichedIDs.contains(item.id) else { return [] }
             sessions[index].enrichedIDs.insert(item.id)
             sessions[index].enrichedItems[item.id] = item
-            sessions[index].edits = InspectorEditModel(items: sessions[index].entries.compactMap {
-                sessions[index].enrichedItems[$0.id]
-            })
+            // Editing waits for complete enrichment; build its ordered projection only once.
+            if sessions[index].enrichedIDs.count == sessions[index].entries.count {
+                sessions[index].edits = InspectorEditModel(items: sessions[index].entries.compactMap {
+                    sessions[index].enrichedItems[$0.id]
+                })
+            }
             return []
         case .size(let request, let state):
             guard let index = sessions.firstIndex(where: { $0.id == request.sessionID }),
@@ -82,14 +76,12 @@ public struct InspectorSessionRegistry: Equatable, Sendable {
         } : [request]
         var effects: [InspectorSessionEffect] = []
         for next in requests {
-            if let existing = sessions.first(where: {
+            if let index = sessions.firstIndex(where: {
                 $0.ownerID == next.ownerID && $0.mode == next.mode &&
                 (next.mode == .followSelection || $0.entries.map(\.id) == next.entries.map(\.id))
             }) {
-                effects.append(.reuse(existing.id))
-                if next.mode == .followSelection {
-                    effects += reduce(event: .selectionChanged(sessionID: existing.id, entries: next.entries))
-                }
+                effects.append(.reuse(sessions[index].id))
+                effects += reconcile(index, next)
             } else {
                 let session = InspectorSession(request: next)
                 sessions.append(session)
@@ -97,6 +89,18 @@ public struct InspectorSessionRegistry: Equatable, Sendable {
             }
         }
         return effects
+    }
+    private mutating func reconcile(_ index: Int, _ request: InfoPresentationRequest) -> [InspectorSessionEffect] {
+        if sessions[index].entries == request.entries {
+            sessions[index].pendingSelection = nil; sessions[index].decisionID = nil
+            return []
+        }
+        if sessions[index].edits.isDirty {
+            let token = UUID()
+            sessions[index].pendingSelection = request; sessions[index].decisionID = token
+            return [.decideSelection(sessionID: sessions[index].id, decisionID: token)]
+        }
+        return replace(index, request)
     }
     private mutating func replace(_ index: Int, _ request: InfoPresentationRequest) -> [InspectorSessionEffect] {
         let old = sessions[index]

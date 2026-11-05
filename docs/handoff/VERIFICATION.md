@@ -1,7 +1,103 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Verification record — F12 current, K30 history
+# Verification record — F22 current, earlier runs historical
 
-## Current F12 verification — wave 17
+## Current F22 verification — through wave 21
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+First read the [complete Opus/Fable queue](REVIEW_QUEUE.md). Linux Swift 6.0.3,
+tools 5.9 / Swift 5 mode. F22 changes documentation only; no Swift, manifest,
+scripts or legacy app changes, network, commits, pushes or external actions.
+
+- **Historical wave 21 baseline verified:** K41's `/tmp/build-K41/logs/tests.log`
+  ends with **1,159 executed, zero failures/skips**, selected suite passed at
+  `2026-11-04 20:45:21.850` (log timestamp, no timezone inferred).
+  `/tmp/K41-run-all.log` records all six explicit builds and all checks passing.
+  Test-log SHA-256: `7aa690321dfe0e8f471c7c05166cf76c2903934d36f095239db0ea1cc5e0f51a`.
+  This is historical execution evidence; no frozen K41 source identity is supplied.
+- Initial F22 moving-tree suite: **1,159 tests, zero failures/skips**, exit 0,
+  `/tmp/build-F22/logs/tests.log`; UI/App harness **58**, zero failures, `ui.log`.
+  Concurrent source edits made this unsuitable as a frozen current-source claim.
+- **Frozen committed wave 21 suite: 1159 tests, zero failures/skips**, exit 0, `wave21-tests.log`;
+  explicit `HelmCore` build PASS, `wave21-build.log`. Test compilation also builds
+  all six portable libraries and XCTest targets. Separate frozen UI/App portable
+  harness: **58 tests, zero failures/skips**, exit 0, `wave21-ui.log`.
+  These overlapping runs are not summed. UI/App portable execution does not
+  type-check SwiftUI/AppKit or establish native host behavior.
+- Standalone static checks PASS (**242 Swift files, zero errors**, `static.log`); ledger
+  strict audit **565 rows, zero gaps**. States: **408 planned,
+  86 drafted, 71 linux-tested**. Every row
+  retains its draft label. No Mac-passed state or feature acceptance is implied.
+
+### Frozen execution identity
+
+Local read-only verification copy: `/tmp/build-F22/wave21` (Package.swift,
+Sources, Tests and scripts); build artifacts: `/tmp/build-F22/wave21-build`.
+Recorded base revision: `30c826b1db39bf3613bdcd64abae1735ee49ec8f`.
+This copy was extracted from that local Git revision with `git ls-tree`/`git show`,
+including every tracked Package/Sources/Tests/scripts file. Its dirty diff is empty;
+untracked wave 23 tests and concurrent edits are excluded by revision selection,
+not by test filtering or disabled assertions. The manifest identifies all inputs.
+This certifies the requested committed baseline, not later F19–F21 fixes.
+
+A separate dirty snapshot `/tmp/build-F22/snapshot` captured unfinished concurrent
+work: **1,173 tests, 45 failures**, exit 1 (`frozen-tests.log`); its UI harness
+passed 58 tests (`frozen-ui.log`). Failures were in F21RegressionTests (5 cases), InspectorReuseRegressionTests
+(4 cases) and SearchSessionDriverTests (1 case); their owners were in progress. No foreign files were edited or tests weakened. This
+failed snapshot is retained with `frozen-inputs.json`, `frozen-dirty.patch` and
+`frozen-revision.txt`; it is not used to generate the passing baseline ledger.
+
+| Local evidence | SHA-256 |
+| --- | --- |
+| `/tmp/build-F22/wave21-inputs.json` (committed input files) | `cf19434437158c53b19b9f3a936b44a89eaa09ee344d78307734edb5da60c9dd` |
+| `/tmp/build-F22/wave21-dirty.patch` (Package/Sources/Tests/scripts) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `/tmp/build-F22/logs/wave21-tests.log` | `73828ab03538ed56cd9543edf3a9063347020fb0ab1c6fae5fc543ae977913f4` |
+| `/tmp/build-F22/logs/wave21-ui.log` | `429fde57a94c9b9a8fa21799c4f64f57c88ee388977fbe02fe54bb93ebdd5c9d` |
+| `docs/handoff/coverage-ledger.csv` | `6502ca1130a3a76edf97aaf0dc3ce8840e5a49e687760b569189df0b1274181e` |
+
+Logs and frozen inputs are local `/tmp` artifacts, not committed deliverables;
+preserve them before cleaning the workspace. Re-freeze the full dirty tree and rerun after final fix
+lanes for acceptance; these hashes do not certify a later shared worktree.
+
+### Reproduction and coverage attribution
+
+```sh
+source /workspace/toolchains/env.sh
+swift test --package-path /tmp/build-F22/wave21 --scratch-path /tmp/build-F22/wave21-build --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+swift build --package-path /tmp/build-F22/wave21 --scratch-path /tmp/build-F22/wave21-build --target HelmCore
+HELM_UI_SCRATCH=/tmp/build-F22/wave21-build python3 -B /tmp/build-F22/wave21/Tests/HelmUITests/PortableRunner/run.py
+bash scripts/static_checks.sh
+python3 -B scripts/rebuild/check_coverage.py \
+  --root /tmp/build-F22/wave21 \
+  --parity /workspace/forge/helm-plan/docs/rebuild/02-finder-parity.md \
+  --current-state /workspace/forge/helm-plan/docs/rebuild/00-current-state.md \
+  --build-plan /workspace/forge/helm-plan/docs/rebuild/03-build-plan.md \
+  --generate --test-log /tmp/build-F22/logs/wave21-tests.log \
+  --ledger /workspace/forge/helm-build/docs/handoff/coverage-ledger.csv
+```
+
+Normalize generated CSV to LF. The generator only discovers F/P/B comments and
+file/class-level names. F22 additionally inspected these tests, whose files lack
+those citation comments, and added their actually passed class methods and paths:
+
+| Ledger row | Supplemental portable test classes |
+| --- | --- |
+| F-050 | F18PropertiesSizeTests, InspectorSizeProjectionTests, InspectorSessionRegistryTests |
+| B-066 | F18PropertiesSizeTests, InspectorSizeProjectionTests |
+| F-063 | SharingTests |
+
+Preserve/reapply these audited attributions after generation; the local procedure
+is `/tmp/F22-enrich.py`. F18PropertiesAdapterTests has separate UI evidence above,
+not fabricated portable-suite passes. All CSV test names are checked against the
+frozen portable log. F-050 covers package unknown/partial totals and session tokens;
+F-063 covers immutable selection, picker lifecycle and stale callbacks, not delivery.
+Strict audit uses the same catalogue and ledger arguments without `--generate`.
+Catalogue/schema completeness and citations do not prove every associated feature.
+
+P16–P18/fixes-F19–F21 remain in the first reading list; native SDK compilation,
+conditional mutation receipts, safe redo, host integration and P14-5 producer
+construction bounds remain review/acceptance obligations. Historical records follow.
+
+## Historical F12 verification — wave 17
 
 DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 Linux Swift 6.0.3 / tools 5.9 / Swift 5 mode; isolated scratch `/tmp/build-F12`.
@@ -190,7 +286,7 @@ Final ledger states: 89 drafted, 61 linux-tested, 415 planned.
 - `/tmp/build-K30/logs/opt-in-coverage.log` SHA-256: `167c270889e38577a62a4a67490b440b2dc71da497ea5e5e0bde464024035e3d`
 - `docs/handoff/coverage-ledger.csv` SHA-256: `46440a2f823dcd6e043a6de989a4e334ee34856d36c69c1d6e458d11a1c6c438`
 
-## F12 final evidence identity
+## Historical F12 final evidence identity
 
 These hashes supersede historical K30 ledger hashes above. Local logs remain in
 `/tmp/build-F12`; no upload is authorized. Parallel dirty source files are not

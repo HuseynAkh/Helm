@@ -13,6 +13,7 @@ public struct SpringNavigationSession: Sendable {
     private var timing: SpringLoadingModel
     private var drag: DropSession
     private var hover: FileEntry?
+    private let sourcesAreLocal: Bool
     public var current: SpringNavigationContext { stack.last ?? original }
 
     public init(original: SpringNavigationContext, clock: any HelmClock,
@@ -20,11 +21,13 @@ public struct SpringNavigationSession: Sendable {
         self.id = UUID(); self.original = original
         self.timing = SpringLoadingModel(clock: clock, delay: delay)
         self.drag = DropSession(sources: sources)
+        self.sourcesAreLocal = sources.allSatisfy { LexicalLocalPath.isLocal($0.url) && !LexicalLocalPath.hasParent($0.url) }
     }
     public mutating func beginHover(_ target: FileEntry?) {
         guard !isEnded, acceptedDrop == nil else { return }
-        guard let target, target.url.isFileURL, target.isDirectoryLike else { leaveHover(); return }
-        if hover != target { leaveHover(); hover = target }
+        guard let target, LexicalLocalPath.isLocal(target.url), !LexicalLocalPath.hasParent(target.url), target.isDirectoryLike else { leaveHover(); return }
+        if let hover, !Self.sameTarget(hover, target) { leaveHover() }
+        hover = target
         timing.beginHover(id: target.id, isDirectory: true)
     }
     public mutating func leaveHover() {
@@ -41,7 +44,7 @@ public struct SpringNavigationSession: Sendable {
                                      target: FileEntry) -> [SpringNavigationEffect] {
         guard !isEnded, pending == request else { return [] }
         pending = nil
-        guard target == request.target else { return [] }
+        guard Self.sameTarget(target, request.target) else { return [] }
         let context = SpringNavigationContext(tabID: original.tabID, location: .directory(target.url))
         stack.append(context)
         return [.displayTemporary(context)]
@@ -60,7 +63,7 @@ public struct SpringNavigationSession: Sendable {
     /// Host supplies fresh destination facts; this admits intent only, never executes a drop.
     public mutating func acceptDrop(target: FileEntry, destination: DropDestination,
                                     modifiers: DropModifiers = []) -> SpringDropRequest? {
-        guard !isEnded, acceptedDrop == nil, target.url.isFileURL, target.isDirectoryLike,
+        guard !isEnded, sourcesAreLocal, acceptedDrop == nil, LexicalLocalPath.isLocal(target.url), !LexicalLocalPath.hasParent(target.url), target.isDirectoryLike,
               destination.location == .directory(target.url) else { return nil }
         let proposal = drag.proposal(destination: destination, modifiers: modifiers)
         guard proposal.operation != nil else { return nil }
@@ -71,7 +74,11 @@ public struct SpringNavigationSession: Sendable {
     public mutating func dropCompleted(request: SpringDropRequest, success: Bool,
                                        destination: FileEntry) -> [SpringNavigationEffect] {
         guard !isEnded, acceptedDrop == request else { return [] }
-        guard success, destination == request.target else { return cancel() }
+        guard success, Self.sameTarget(destination, request.target) else { return cancel() }
+        guard request.target.objectIdentity != nil, destination.objectIdentity != nil else {
+            let effects = cancel()
+            return [.destinationUnverified(request)] + effects
+        }
         let context = SpringNavigationContext(tabID: original.tabID, location: request.proposal.destination.location)
         finish()
         return [.commit(context)]
@@ -84,6 +91,12 @@ public struct SpringNavigationSession: Sendable {
     /// Closing the owner cancels silently: never reopen a closed tab to restore its context.
     public mutating func tabClosed(_ tabID: TabID) {
         if tabID == original.tabID { finish() }
+    }
+    private static func sameTarget(_ lhs: FileEntry, _ rhs: FileEntry) -> Bool {
+        LexicalLocalPath.isLocal(lhs.url) && LexicalLocalPath.isLocal(rhs.url)
+            && !LexicalLocalPath.hasParent(lhs.url) && !LexicalLocalPath.hasParent(rhs.url)
+            && LexicalLocalPath.key(lhs.url) == LexicalLocalPath.key(rhs.url)
+            && lhs.kind == rhs.kind && lhs.objectIdentity == rhs.objectIdentity
     }
     private mutating func finish() {
         isEnded = true; leaveHover(); acceptedDrop = nil; stack = []; drag.end()

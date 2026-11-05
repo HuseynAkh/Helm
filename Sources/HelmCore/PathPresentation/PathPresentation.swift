@@ -14,19 +14,19 @@ public struct PathPresentation: Equatable, Sendable {
             context = .invalidURL; segments = []; return
         }
         var seen: Set<String> = []
-        let entries = selectedEntries.filter { seen.insert($0.url.standardizedFileURL.path).inserted }
+        let entries = selectedEntries.filter { seen.insert(LexicalLocalPath.key($0.url)).inserted }
         if let entry = entries.first, entries.count == 1 {
             context = .selectedItem
             segments = Self.ancestry(entry.url, leafIsDirectory: entry.isDirectoryLike)
         } else if entries.count > 1 {
             context = .mixedSelection(count: entries.count)
-            let parents = entries.map { $0.url.standardizedFileURL.deletingLastPathComponent().pathComponents }
+            let parents = entries.map { Array(LexicalLocalPath.components($0.url).dropLast()) }
             var common = parents[0]
             for parent in parents.dropFirst() {
                 common = Array(zip(common, parent).prefix(while: { $0.0 == $0.1 }).map { $0.0 })
             }
             let path = common.dropFirst().joined(separator: "/")
-            segments = Self.ancestry(URL(fileURLWithPath: "/" + path), leafIsDirectory: true)
+            segments = Self.ancestry(URL(fileURLWithPath: "/" + path, isDirectory: true), leafIsDirectory: true)
         } else if case .directory(let url) = location {
             guard Self.isLocal(url) else { context = .invalidURL; segments = []; return }
             context = .directory
@@ -44,7 +44,9 @@ public struct PathPresentation: Equatable, Sendable {
     /// Only segments in this projection can produce intents. The host revalidates before acting.
     public func intent(_ action: PathSegmentAction, segmentID: URL) -> PathSegmentIntent? {
         guard Self.isLocal(segmentID),
-              let segment = segments.first(where: { $0.id == segmentID.standardizedFileURL }) else { return nil }
+              let segment = segments.first(where: { LexicalLocalPath.key($0.id) == LexicalLocalPath.key(segmentID) }) else { return nil }
+        // Parent spellings remain visible/copyable; shared ItemID still normalizes them.
+        guard action == .copyPath || !LexicalLocalPath.hasParent(segment.id) else { return nil }
         switch action {
         case .navigate: return segment.isDirectory ? .navigate(segment.id) : nil
         case .openTab: return segment.isDirectory ? .openTab(segment.id) : nil
@@ -57,31 +59,29 @@ public struct PathPresentation: Equatable, Sendable {
     }
 
     private static func isLocal(_ url: URL) -> Bool {
-        url.isFileURL && (url.host == nil || url.host == "" || url.host?.lowercased() == "localhost")
-            && url.user == nil && url.password == nil && url.port == nil
-            && url.query == nil && url.fragment == nil && url.path.hasPrefix("/")
+        LexicalLocalPath.isLocal(url)
     }
 
     private static func ancestry(_ url: URL, leafIsDirectory: Bool) -> [PathPresentationSegment] {
-        let components = url.standardizedFileURL.pathComponents
-        var current = URL(fileURLWithPath: "/")
+        let components = LexicalLocalPath.components(url)
         var result: [PathPresentationSegment] = []
-        for (index, component) in components.enumerated() {
-            if index > 0 { current.appendPathComponent(component) }
-            result.append(PathPresentationSegment(url: current,
-                isDirectory: index < components.count - 1 || leafIsDirectory))
+        for index in components.indices {
+            let path = "/" + components.prefix(index + 1).dropFirst().joined(separator: "/")
+            let directory = index < components.count - 1 || leafIsDirectory
+            result.append(PathPresentationSegment(url: URL(fileURLWithPath: path, isDirectory: directory),
+                                                  isDirectory: directory))
         }
         return result
     }
 }
 
-/// Standardized lexical URL identity preserves symlink spelling and F-012 root boundaries.
+/// Lexical URL identity (parent components remain literal) preserves symlink spelling and F-012 root boundaries.
 public struct PathPresentationSegment: Equatable, Sendable, Identifiable {
     public let id: URL
     public let title: String
     public let isDirectory: Bool
     public init(url: URL, isDirectory: Bool) {
-        self.id = url.standardizedFileURL
+        self.id = URL(fileURLWithPath: LexicalLocalPath.key(url), isDirectory: isDirectory)
         self.title = id.path == "/" ? "/" : id.lastPathComponent
         self.isDirectory = isDirectory
     }

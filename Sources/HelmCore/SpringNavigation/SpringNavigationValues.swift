@@ -31,6 +31,8 @@ public enum SpringNavigationEffect: Equatable, Sendable {
     case displayTemporary(SpringNavigationContext)
     case restore(SpringNavigationContext)
     case commit(SpringNavigationContext)
+    /// Completion lacks object evidence; restore without committing history.
+    case destinationUnverified(SpringDropRequest)
 }
 
 /// Accepted F-067 destination is frozen until execution reports completion.

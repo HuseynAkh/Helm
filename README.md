@@ -11,7 +11,9 @@ exists, but Mac targets, native host and executable remain unconfigured. Live
 executor copy/move/Trash currently refuse conditional mutations; exclusive creation
 remains available. In-memory operation tests do not establish live feature parity.
 
-Current baseline: 877+ portable tests. See [verification](docs/handoff/VERIFICATION.md)
+First read the [Opus/Fable review queue](docs/handoff/REVIEW_QUEUE.md), including P1–P19, R1 and fixes-F1–F21.
+
+Wave 21 baseline: **1,159 portable tests**, verified in the K41 execution log. See [verification](docs/handoff/VERIFICATION.md)
 for exact fresh counts and [Mac handoff](docs/handoff/MAC_HANDOFF.md) for implemented
 components, deferred work and SDK priorities. The 565-row ledger records citations,
 not feature acceptance. No Mac runtime acceptance or release is claimed.

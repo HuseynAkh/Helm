@@ -34,3 +34,9 @@ Logs: /tmp/K37-focused.log, /tmp/K37-run-all-final.log, /tmp/build-K37/logs/.
 The first full run saw eight failures in two concurrently authored F16 cancellation
 cases outside this lane; their four-test retry and the final full run passed.
 macOS SDK compilation/native behavior and Opus review remain unverified.
+
+F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
+[current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
+Historical lane counts above are not current-suite certification; P16–P18 and
+concurrent F19–F21 dispositions require review. Native integration remains pending.

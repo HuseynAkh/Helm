@@ -16,3 +16,9 @@ Integration: host must retain one driver per session and project its snapshots.
 Envelope-to-TabAction wiring is deferred; current TabAction cannot carry this full
 state. Native Spotlight lifecycle/debounce, publication and macOS SDK verification
 remain host/Opus follow-up. No I/O, service invocation or persistence occurs here.
+
+F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
+[current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
+Historical lane counts above are not current-suite certification; P16–P18 and
+concurrent F19–F21 dispositions require review. Native integration remains pending.

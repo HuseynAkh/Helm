@@ -10,8 +10,8 @@ final class SharingTests: XCTestCase {
     }
 
     func testOrderedDeduplicationAndRemoteRejection() throws {
-        let snapshot = try selection(["/b", "/a/../b", "/é space", "/a"])
-        XCTAssertEqual(snapshot.urls.map(\.path), ["/b", "/é space", "/a"])
+        let snapshot = try selection(["/b", "/a/../b", "/é space", "/a", "/./b"])
+        XCTAssertEqual(snapshot.urls.map(\.path), ["/b", "/a/../b", "/é space", "/a"])
         for value in ["https://example.com/a", "file://server/a", "file:///a?query", "file:///a#fragment"] {
             let url = try XCTUnwrap(URL(string: value))
             XCTAssertThrowsError(try SharingSelectionSnapshot(urls: [URL(fileURLWithPath: "/a"), url])) {

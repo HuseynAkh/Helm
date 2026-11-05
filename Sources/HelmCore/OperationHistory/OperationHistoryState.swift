@@ -9,6 +9,7 @@ public struct OperationHistoryState: Sendable {
     public internal(set) var pending: HistoryReservation?
     public internal(set) var lastOutcome: HistoryOutcome?
     public internal(set) var reconciliation: HistoryOutcome?
+    public internal(set) var executingOperation: OperationID?
     internal var usedRequests: Set<HistoryRequestID> = []
     internal var recordedOperations: Set<OperationID> = []
     public init() {}
@@ -37,9 +38,19 @@ public enum OperationHistoryReducer {
             state.redoEntries.removeAll()
             state.pending = .forward(request, name: name)
             state.lastOutcome = nil
+        case .startForward(let request, let operation):
+            guard case .forward(request, _) = state.pending, state.executingOperation == nil,
+                  !state.recordedOperations.contains(operation) else { return [] }
+            state.executingOperation = operation
+        case .abortForward(let request, let failure):
+            guard case .forward(request, _) = state.pending, state.executingOperation == nil else { return [] }
+            state.pending = nil
+            state.lastOutcome = failure.outcome
         case .finishForward(let request, let operation, let outcome):
             guard case .forward(request, let name) = state.pending,
+                  state.executingOperation == operation,
                   !state.recordedOperations.contains(operation) else { return [] }
+            state.executingOperation = nil
             state.recordedOperations.insert(operation)
             state.pending = nil
             state.lastOutcome = outcome

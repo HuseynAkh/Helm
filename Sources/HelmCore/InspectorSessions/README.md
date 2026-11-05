@@ -40,3 +40,9 @@ F18 already repaired PropertiesModel/UI; K40 does not change those consumers.
 Open integration questions: native window lifecycle and UI prompts, metadata-error
 presentation, save completion/revalidation, recursive progress conversion, and
 macOS SDK/behavior acceptance. No I/O, services, network, commits or publication.
+
+F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
+[current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
+Historical lane counts above are not current-suite certification; P16–P18 and
+concurrent F19–F21 dispositions require review. Native integration remains pending.

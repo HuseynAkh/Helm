@@ -11,7 +11,9 @@ final class OperationHistoryTests: XCTestCase {
     private func append(_ state: inout OperationHistoryState, outcome: HistoryOutcome = .succeeded) {
         let request = HistoryRequestID()
         OperationHistoryReducer.reduce(&state, .beginForward(request, name: "Copy"))
-        OperationHistoryReducer.reduce(&state, .finishForward(request, operation: OperationID(), outcome: outcome))
+        let operation = OperationID()
+        OperationHistoryReducer.reduce(&state, .startForward(request, operation: operation))
+        OperationHistoryReducer.reduce(&state, .finishForward(request, operation: operation, outcome: outcome))
     }
     func testEmptyAvailability() {
         let state = OperationHistoryState()
@@ -158,4 +160,40 @@ final class OperationHistoryTests: XCTestCase {
         XCTAssertEqual(state.redoEntries.last, last)
         XCTAssertEqual(state.undoEntries.count, 1)
     }
+    func testPreparationAbortCannotReleaseExecutingForward() {
+        var state = OperationHistoryState()
+        let request = HistoryRequestID(), operation = OperationID()
+        OperationHistoryReducer.reduce(&state, .beginForward(request, name: "Copy"))
+        OperationHistoryReducer.reduce(&state, .startForward(HistoryRequestID(), operation: operation))
+        XCTAssertNil(state.executingOperation)
+        OperationHistoryReducer.reduce(&state, .startForward(request, operation: operation))
+        OperationHistoryReducer.reduce(&state, .startForward(request, operation: OperationID()))
+        XCTAssertEqual(state.executingOperation, operation)
+        OperationHistoryReducer.reduce(&state, .abortForward(request, failure: .cancelled))
+        XCTAssertEqual(state.pending?.request, request)
+        OperationHistoryReducer.reduce(&state, .finishForward(request, operation: OperationID(), outcome: .succeeded))
+        XCTAssertEqual(state.pending?.request, request)
+        OperationHistoryReducer.reduce(&state, .finishForward(request, operation: operation, outcome: .failed("cancelled")))
+        XCTAssertNil(state.pending)
+        XCTAssertNil(state.executingOperation)
+    }
+
+    func testPreparationAbortPreservesRedoInvalidationAndRejectsStaleRequests() {
+        var state = populated()
+        let undo = HistoryRequestID()
+        OperationHistoryReducer.reduce(&state, .beginUndo(undo))
+        OperationHistoryReducer.reduce(&state, .complete(undo, outcome: .succeeded))
+        let request = HistoryRequestID()
+        OperationHistoryReducer.reduce(&state, .beginForward(request, name: "Copy"))
+        OperationHistoryReducer.reduce(&state, .abortForward(HistoryRequestID(), failure: .cancelled))
+        XCTAssertEqual(state.pending?.request, request)
+        OperationHistoryReducer.reduce(&state, .abortForward(request, failure: .failed("planning")))
+        XCTAssertNil(state.pending)
+        XCTAssertTrue(state.redoEntries.isEmpty)
+        OperationHistoryReducer.reduce(&state, .abortForward(request, failure: .cancelled))
+        XCTAssertEqual(state.lastOutcome, .failed("planning"))
+        OperationHistoryReducer.reduce(&state, .beginForward(request, name: "Copy"))
+        XCTAssertNil(state.pending)
+    }
+
 }

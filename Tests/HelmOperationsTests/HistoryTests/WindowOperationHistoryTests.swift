@@ -23,12 +23,17 @@ final class WindowOperationHistoryTests: XCTestCase {
         let value = entry ?? fixture()
         let request = await history.beginForward(value.plan.command)
         let id = try XCTUnwrap(request)
+        let bound = await history.bindExecution(request: id, operation: value.id, plan: value.plan)
+        XCTAssertTrue(bound)
         let accepted = await history.completeForward(request: id, entry: value)
         XCTAssertTrue(accepted)
         return history
     }
-    private func success(_ request: HistoryUndoRequest) -> OperationResult {
-        OperationResult(id: OperationID(), command: .recovery, outcomes: request.plan.steps.map {
+    private func success(_ request: HistoryUndoRequest, history: WindowOperationHistory) async -> OperationResult {
+        let id = OperationID()
+        let bound = await history.bindExecution(request: request.request, operation: id, plan: request.plan)
+        XCTAssertTrue(bound)
+        return OperationResult(id: id, command: .recovery, outcomes: request.plan.steps.map {
             ItemOutcome(step: $0, destination: $0.destination, result: .success(nil))
         })
     }
@@ -53,7 +58,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded()
         let value = await history.beginUndo()
         let request = try XCTUnwrap(value)
-        let accepted = await history.complete(request: request.request, outcome: success(request))
+        let accepted = await history.complete(request: request.request, outcome: await success(request, history: history))
         XCTAssertTrue(accepted)
         let state = await history.snapshot()
         XCTAssertTrue(state.undoEntries.isEmpty)
@@ -67,7 +72,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded()
         let value = await history.beginUndo()
         let request = try XCTUnwrap(value)
-        let accepted = await history.complete(request: HistoryRequestID(), outcome: success(request))
+        let accepted = await history.complete(request: HistoryRequestID(), outcome: await success(request, history: history))
         XCTAssertFalse(accepted)
         let state = await history.snapshot()
         XCTAssertEqual(state.undoAvailability, .busy)
@@ -76,7 +81,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded()
         let value = await history.beginUndo()
         let request = try XCTUnwrap(value)
-        let result = success(request)
+        let result = await success(request, history: history)
         let first = await history.complete(request: request.request, outcome: result)
         let duplicate = await history.complete(request: request.request, outcome: result)
         XCTAssertTrue(first)
@@ -112,6 +117,8 @@ final class WindowOperationHistoryTests: XCTestCase {
         let result = OperationResult(id: OperationID(), command: .recovery,
             outcomes: request.plan.steps.map { ItemOutcome(step: $0, destination: nil,
                 result: .failure(.notAttempted)) }, error: .verificationUnavailable)
+        let bound = await history.bindExecution(request: request.request, operation: result.id, plan: request.plan)
+        XCTAssertTrue(bound)
         let accepted = await history.complete(request: request.request, outcome: result)
         XCTAssertTrue(accepted)
         let state = await history.snapshot()
@@ -126,6 +133,8 @@ final class WindowOperationHistoryTests: XCTestCase {
         let step = try XCTUnwrap(request.plan.steps.first)
         let result = OperationResult(id: OperationID(), command: .recovery,
             outcomes: [ItemOutcome(step: step, destination: nil, result: .failure(.timedOut))], error: .timedOut)
+        let bound = await history.bindExecution(request: request.request, operation: result.id, plan: request.plan)
+        XCTAssertTrue(bound)
         _ = await history.complete(request: request.request, outcome: result)
         let state = await history.snapshot()
         XCTAssertEqual(state.undoAvailability, .reconciliationRequired)
@@ -140,7 +149,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded()
         let value = await history.beginUndo()
         let request = try XCTUnwrap(value)
-        _ = await history.complete(request: request.request, outcome: success(request))
+        _ = await history.complete(request: request.request, outcome: await success(request, history: history))
         let redo = await history.beginRedo()
         XCTAssertEqual(redo, .unsupported("Copy"))
         let state = await history.snapshot()
@@ -150,7 +159,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded()
         let value = await history.beginUndo()
         let request = try XCTUnwrap(value)
-        _ = await history.complete(request: request.request, outcome: success(request))
+        _ = await history.complete(request: request.request, outcome: await success(request, history: history))
         _ = await history.beginForward(fixture().plan.command)
         let state = await history.snapshot()
         XCTAssertTrue(state.redoEntries.isEmpty)
@@ -160,6 +169,8 @@ final class WindowOperationHistoryTests: XCTestCase {
         let entry = fixture()
         let value = await history.beginForward(entry.plan.command)
         let request = try XCTUnwrap(value)
+        let bound = await history.bindExecution(request: request, operation: entry.id, plan: entry.plan)
+        XCTAssertTrue(bound)
         let wrong = JournalEntry(id: OperationID(), plan: entry.plan, result: entry.result)
         let accepted = await history.completeForward(request: request, entry: wrong)
         XCTAssertFalse(accepted)
@@ -171,6 +182,8 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded(entry)
         let value = await history.beginForward(entry.plan.command)
         let request = try XCTUnwrap(value)
+        let binding = await history.bindExecution(request: request, operation: entry.id, plan: entry.plan)
+        XCTAssertFalse(binding)
         let accepted = await history.completeForward(request: request, entry: entry)
         XCTAssertFalse(accepted)
     }
@@ -179,6 +192,8 @@ final class WindowOperationHistoryTests: XCTestCase {
         let entry = fixture()
         let value = await history.beginForward(entry.plan.command)
         let request = try XCTUnwrap(value)
+        let bound = await history.bindExecution(request: request, operation: entry.id, plan: entry.plan)
+        XCTAssertTrue(bound)
         let wrong = JournalEntry(id: entry.id, plan: entry.plan,
             result: OperationResult(id: entry.id, command: .recovery, outcomes: []))
         let accepted = await history.completeForward(request: request, entry: wrong)
@@ -191,4 +206,32 @@ final class WindowOperationHistoryTests: XCTestCase {
         XCTAssertNil(undo)
         XCTAssertEqual(redo, .empty)
     }
+    func testForeignInverseDoesNotConsumeReservation() async throws {
+        let history = try await seeded()
+        let value = await history.beginUndo()
+        let request = try XCTUnwrap(value)
+        let genuine = await success(request, history: history)
+        let foreignStep = PlannedStep(kind: .trash, source: target)
+        let foreign = OperationResult(id: OperationID(), command: .recovery,
+            outcomes: [ItemOutcome(step: foreignStep, destination: nil, result: .success(nil))])
+        let accepted = await history.complete(request: request.request, outcome: foreign)
+        XCTAssertFalse(accepted)
+        let state = await history.snapshot()
+        XCTAssertEqual(state.pending?.request, request.request)
+        let attempts = await history.inverseAttempts()
+        XCTAssertTrue(attempts.isEmpty)
+        for error: OperationError? in [nil, .cancelled] {
+            let unrelated = OperationResult(id: genuine.id, command: .recovery,
+                outcomes: [ItemOutcome(step: foreignStep, destination: nil,
+                    result: error.map { .failure($0) } ?? .success(nil))], error: error)
+            let rejected = await history.complete(request: request.request, outcome: unrelated)
+            XCTAssertFalse(rejected)
+        }
+        let empty = await history.complete(request: request.request,
+            outcome: OperationResult(id: genuine.id, command: .recovery, outcomes: [], error: .busy))
+        XCTAssertFalse(empty)
+        let completed = await history.complete(request: request.request, outcome: genuine)
+        XCTAssertTrue(completed)
+    }
+
 }

@@ -4,7 +4,7 @@ DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 
 F-063's explicitly selected URLs become an immutable ordered snapshot. Validation
 rejects non-file URLs, remote file authorities and decorated URLs before deduping
-standardized paths. It performs no existence or readability checks. Capability
+lexical keys (without collapsing parent components). It performs no existence or readability checks. Capability
 facts separately gate Share and AirDrop; defaults are unsupported.
 
 Only invoke emits presentation intents. Empty selection asks for a file picker;
@@ -27,3 +27,14 @@ Logs: /tmp/K37-focused.log, /tmp/K37-run-all-final.log, /tmp/build-K37/logs/.
 The first full run saw eight failures in two concurrently authored F16 cancellation
 cases outside this lane; their four-test retry and the final full run passed.
 macOS SDK compilation/native behavior and Opus review remain unverified.
+
+F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
+[current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
+Historical lane counts above are not current-suite certification; P16–P18 and
+concurrent F19–F21 dispositions require review. Native integration remains pending.
+
+F21: captured action URLs retain the first validated supplied URL verbatim.
+Deduplication ignores empty/dot components and local directory hints/localhost,
+but retains parent components: `/link/../x` is never collapsed to `/x`.
+No normalization probes the filesystem or resolves symlinks.

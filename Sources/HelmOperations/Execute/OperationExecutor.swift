@@ -18,13 +18,21 @@ public actor OperationExecutor {
         self.fileSystem = fileSystem; self.copier = copier ?? FoundationFileCopier(fileSystem: fileSystem)
         self.verifier = verifier ?? TreeCopyVerifier(fileSystem: fileSystem); self.origins = origins; self.journal = journal
     }
+    /// Admission is awaited before filesystem access; false guarantees no mutation.
+    /// Busy refusals also have a genuine journal entry and an admission callback (B-043).
     public func execute(_ plan: OperationPlan,
+                        admission: @Sendable (OperationID) async -> Bool = { _ in true },
                         progress: @Sendable (OperationProgress) async -> Void = { _ in }) async -> OperationResult {
         // Actor reentrancy must not interleave two mutation sequences.
-        guard !running, !quarantined else { return OperationResult(id: OperationID(), command: plan.command, outcomes: [], error: .busy) }
+        guard !running, !quarantined else {
+            let id = await journal.begin(plan)
+            _ = await admission(id)
+            return await refuse(plan, id: id, error: .busy)
+        }
         running = true
         defer { running = false }
         let id = await journal.begin(plan)
+        guard await admission(id) else { return await refuse(plan, id: id, error: .invalidPlan) }
         var outcomes: [ItemOutcome] = []
         var expectedTokens = plan.expectedTokens
         var expectedKinds = plan.expectedKinds
@@ -113,6 +121,13 @@ public actor OperationExecutor {
         let result = OperationResult(id: id, command: plan.command, outcomes: outcomes, error: failure)
         await journal.complete(result)
         await progress(OperationProgress(id: id, itemsDone: outcomes.filter(\.succeeded).count, itemsTotal: plan.steps.count, currentName: nil))
+        return result
+    }
+    private func refuse(_ plan: OperationPlan, id: OperationID, error: OperationError) async -> OperationResult {
+        let result = OperationResult(id: id, command: plan.command, outcomes: plan.steps.map {
+            ItemOutcome(step: $0, destination: $0.destination, result: .failure(.notAttempted))
+        }, error: error)
+        await journal.complete(result)
         return result
     }
     private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [URL: ChangeToken],
