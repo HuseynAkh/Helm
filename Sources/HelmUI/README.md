@@ -24,18 +24,8 @@ No network, commits, pushes, sends, sharing changes or external actions.
 
 ## Integration
 
-Add these declarations to the root Package.swift's existing `#if os(macOS)` block
-(the K12 lane deliberately does not edit the manifest):
-
-```swift
-products += [.library(name: "HelmUI", targets: ["HelmUI"])]
-targets += [
-    .target(name: "HelmUI", dependencies: [
-        "HelmCore", "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch"
-    ]),
-    .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmCore"])
-]
-```
+Use the [staged Mac manifest patches](../../docs/handoff/MAC_HANDOFF.md) after explicit owner assignment.
+Tools 5.9, Swift 5 and macOS 14 remain required; this note grants no ownership.
 
 Keep macOS 14 and Swift 5 language mode. No package dependencies are added.
 The only imports used by this slice are Foundation, SwiftUI and HelmCore.
@@ -123,7 +113,7 @@ every setting's real consumer and live versus next-query behavior; settings
 scrolling; host-provided multi-window refresh, drop targets and error feedback.
 No visual or runtime behavior has been verified on this Linux machine.
 
-Needed changes elsewhere: manifest snippet and composition-root/hosting wiring
+Needed changes elsewhere: staged manifest patches and composition-root/hosting wiring
 above. No Core contract edits are required. Shared remote memory was not fetched
 because this session explicitly prohibits network access.
 

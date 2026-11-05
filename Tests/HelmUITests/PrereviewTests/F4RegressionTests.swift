@@ -5,6 +5,10 @@ import HelmCore
 @testable import HelmUI
 
 final class F4RegressionTests: XCTestCase {
+    private var repositoryRoot: URL {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+    }
     func testSearchAdapterTypechecksAgainstCurrentCore() throws {
 #if os(Linux)
         let scratch = try XCTUnwrap(ProcessInfo.processInfo.environment["HELM_UI_SCRATCH"],
@@ -17,10 +21,12 @@ final class F4RegressionTests: XCTestCase {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["swiftc", "-typecheck", "-swift-version", "5", "-I",
-            modules.path, "Sources/HelmUI/SearchBar/SearchBarModel.swift"]
+            modules.path, repositoryRoot.appendingPathComponent("Sources/HelmUI/SearchBar/SearchBarModel.swift").path]
         try process.run()
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
+#else
+        throw XCTSkip("Linux-only compiler subprocess; native HelmUI target compilation supplies Mac type-check evidence")
 #endif
     }
     func testValidationPresentationIsBoundedWithoutDiscardingIssues() {
@@ -34,7 +40,7 @@ final class F4RegressionTests: XCTestCase {
     // Source regression is intentional: SwiftUI cannot be hosted on Linux. Functional
     // paging/cache tests supplement this check; macOS rendering measurements remain required.
     func testCollapsedDisclosureDoesNotReadEagerDetails() throws {
-        let source = try String(contentsOfFile: "Sources/HelmUI/Operations/OperationsPanel.swift")
+        let source = try String(contentsOf: repositoryRoot.appendingPathComponent("Sources/HelmUI/Operations/OperationsPanel.swift"))
         XCTAssertFalse(source.contains("!row.details.isEmpty"))
         XCTAssertFalse(source.contains("Array(row.details.enumerated())"))
     }

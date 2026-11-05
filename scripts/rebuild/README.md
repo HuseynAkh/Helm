@@ -3,10 +3,16 @@
 
 Run `bash scripts/rebuild/run_all.sh` from any directory. It activates the installed
 toolchain, builds the six portable targets explicitly, runs all six XCTest targets,
-runs Python unit tests, K1 static checks, UI syntax checks and coverage report-only.
+runs rebuild and static-check Python unit tests, K1 static checks, SDK-name guards,
+UI syntax checks and coverage report-only.
 Logs and Swift artifacts remain in `/tmp/build-K11`; override with
-`HELM_K11_SCRATCH`. Override external plan paths with `HELM_PLAN_DIR`.
+`HELM_K11_SCRATCH`. Override external plan paths with `HELM_PLAN_DIR`, then `PLAN_DIR` as fallback.
+A missing plan directory fails explicitly before builds.
 The script returns nonzero on any failed command or zero discovered XCTest cases.
+The full SDK-name guard currently fails for four retained Core names pending an
+owner-approved rename. It scans all six portable libraries plus UI/App, and checks
+unqualified retained names in every SwiftUI-importing HelmUI file. New collisions
+are failures too; no blanket warning exception hides them.
 It does not install dependencies, access the network, commit or modify the ledger.
 Inspect test effects before running against a changed checkout; existing suites use
 fakes and temporary fixtures. No real user-data tests are authorized by this script.
@@ -54,6 +60,6 @@ Run tooling fixtures with `python3 -m unittest discover -s scripts/rebuild -p
  'test_*.py' -v` (one line). Python uses only the standard library.
 
 Needed changes elsewhere: manifest owner should exclude module README.md files;
-UI/App owners must instantiate and validate the commented macOS target template.
+UI/App owners must use the staged patches in the handoff, not uncomment the old template.
 See `docs/handoff/MAC_HANDOFF.md` for the aggregated contract gaps. No portable
 Swift implementation or legacy app was changed. Opus and Mac validation remain open.

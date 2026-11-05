@@ -3,6 +3,7 @@
 # Syntax only: does NOT validate SDK symbols, types, actors, linking or behaviour.
 set -uo pipefail
 root="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 if [[ -f /workspace/toolchains/env.sh ]]; then source /workspace/toolchains/env.sh; fi
 count=0
 failed=0
@@ -14,5 +15,5 @@ for module in HelmUI HelmApp Helm; do
     done < <(find "$root/Sources/$module" -type f -name '*.swift' -print0)
 done
 printf 'UI syntax only: %s files; %s failures. SDK type checking and runtime behaviour NOT verified.\n' "$count" "$failed"
-if (( count == 0 )); then echo 'NOT RUN: no UI/App/executable Swift sources exist.'; fi
+if (( count == 0 )); then echo 'NOT RUN: no UI/App/executable Swift sources exist.'; exit 1; fi
 (( failed == 0 ))

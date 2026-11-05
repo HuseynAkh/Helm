@@ -46,10 +46,8 @@ query generations, debounce, cancellation, focus and sheet lifetime (B-117).
 
 ## MAC-VERIFY and needed changes elsewhere
 
-The manifest owner must enable macOS-only HelmUI and HelmUITests, with HelmCore
-and HelmSearch dependencies (plus existing K12/K16 requirements), and exclude
-README files. No manifest or other lane changes were made. Tools 5.9, Swift 5,
-macOS 14 are required. No Core contract change is required.
+Use the [staged Mac manifest patches](../../docs/handoff/MAC_HANDOFF.md) after explicit owner assignment.
+Tools 5.9, Swift 5 and macOS 14 remain required; this note grants no ownership.
 
 MAC-VERIFY markers cover Form/popover sizing, sliders, tag Return/Escape,
 Cmd+F focus/select-all and IME composition, and String Transferable drag/drop.

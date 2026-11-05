@@ -36,7 +36,8 @@ final class Part3AdapterTests: XCTestCase {
         let added = FinderTag(name: "Work", colorIndex: 4)
         XCTAssertEqual(model.tags.tags, [unknown, added])
         XCTAssertEqual(model.name, "")
-        model.name = "Work"
+        model.name = " Work "
+        model.color = .red
         XCTAssertFalse(model.canAdd)
         model.add()
         XCTAssertEqual(model.tags.tags.count, 2)

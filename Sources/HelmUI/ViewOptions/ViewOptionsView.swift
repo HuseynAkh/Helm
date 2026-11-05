@@ -15,7 +15,7 @@ public struct ViewOptionsView: View {
                 ForEach(ViewMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
             }
             Picker("Sort By", selection: field(\.sortField)) {
-                ForEach(ItemSort.Field.allCases, id: \.self) { Text(ViewOptionsModel.label($0.rawValue)).tag($0) }
+                ForEach(ItemSort.Field.allCases.filter { $0 != .relevance }, id: \.self) { Text(ViewOptionsModel.label($0.rawValue)).tag($0) }
             }
             Toggle("Ascending", isOn: field(\.ascending))
             Toggle("Folders first", isOn: field(\.directoriesFirst))

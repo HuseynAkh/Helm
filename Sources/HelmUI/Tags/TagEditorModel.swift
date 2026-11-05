@@ -15,7 +15,9 @@ public struct TagEditorModel: Equatable, Sendable {
         guard !trimmed.isEmpty, trimmed.rangeOfCharacter(from: .controlCharacters) == nil else { return nil }
         return FinderTag(name: trimmed, colorIndex: color.rawValue)
     }
-    public var canAdd: Bool { proposedTag.map { !tags.tags.contains($0) } ?? false }
+    public var canAdd: Bool { proposedTag.map { proposed in
+        !tags.tags.contains { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == proposed.name }
+    } ?? false }
     public mutating func add() {
         guard canAdd, let tag = proposedTag else { return }
         tags.add(tag); name = ""

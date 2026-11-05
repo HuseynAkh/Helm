@@ -50,7 +50,7 @@ Cancellation during flushing is deliberately disabled to avoid stale completion.
 
 ## Needed changes elsewhere / review questions
 
-- Manifest owner adds HelmApp/HelmAppTests on macOS; snippet below. No manifest edits
+- Manifest owner adds HelmApp/HelmAppTests on macOS; staged patches linked below. No manifest edits
   were made by K22. The Linux runner directory must be excluded from the test target.
 - UI's proposed WindowDependencies uses concrete stores. Adopt these seams in the
   host adapter or pass the live concrete instances with a checked cast; do not create
@@ -64,15 +64,8 @@ Cancellation during flushing is deliberately disabled to avoid stale completion.
   termination replies remain macOS integration work. Do not call center after frame
   restoration. No macOS SDK/Xcode validation is claimed.
 
-```swift
-// Within the manifest's macOS conditional, once HelmUI is declared:
-products += [.library(name: "HelmApp", targets: ["HelmApp"])]
-targets += [
-    .target(name: "HelmApp", dependencies: ["HelmUI", "HelmCore", "HelmFileSystem",
-        "HelmPersistence", "HelmOperations", "HelmSearch"], exclude: ["README.md"]),
-    .testTarget(name: "HelmAppTests", dependencies: ["HelmApp"], exclude: ["LinuxRunner"])
-]
-```
+Use the [staged Mac manifest patches](../../docs/handoff/MAC_HANDOFF.md) after explicit owner assignment.
+Tools 5.9, Swift 5 and macOS 14 remain required; this note grants no ownership.
 
 ## Linux verification outside the manifest
 

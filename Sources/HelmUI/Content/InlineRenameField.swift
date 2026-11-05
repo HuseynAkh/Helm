@@ -48,6 +48,9 @@ struct RenameTextField: NSViewRepresentable {
         let field = RenameNativeField()
         field.isBordered = true; field.isBezeled = true; field.bezelStyle = .roundedBezel
         field.font = .systemFont(ofSize: 13); field.isEditable = true; field.isSelectable = true
+        field.usesSingleLineMode = true
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
         field.delegate = context.coordinator
         field.setAccessibilityLabel("Rename")
         return field

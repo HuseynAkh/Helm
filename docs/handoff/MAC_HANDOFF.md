@@ -1,13 +1,15 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Mac handoff — F25 / through wave 24
+# Mac handoff — DRAFT, NOT FINAL: blockers remain
 
-First read the [Opus/Fable review queue](REVIEW_QUEUE.md). Snapshot: `0021ac6`, 2026-11-04, root package on `forge/rebuild-build`. Wave 24 has 1,198 portable tests, zero failures/skips in F23/F24 logs; earlier wave counts below are historical. [VERIFICATION.md](VERIFICATION.md) records F25 checks. All work remains draft; no Mac gate closes from Linux tests or elapsed time.
+First read the [Opus/Fable review queue](REVIEW_QUEUE.md) and `docs/review-opus/` (O1, OK1, OK2 and fixes-AO/fixes-AK reports). Reviewed revision: `<HEAD at handoff>` on `forge/rebuild-build`; the orchestrator must fill this after review. Record dirty files and fresh test/skip/failure counts; the historical 1,198 count below is not a current baseline. See [fixes-AK3](../review-opus/fixes-AK3.md) for current Linux evidence. No Mac acceptance is claimed.
+
+OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
 
 The root [Package.swift](../../Package.swift) is authoritative for actual membership. `Helm/` is the untouched legacy behavior reference. External planning files are under `/workspace/forge/helm-plan/docs/rebuild` on this machine; set `PLAN_DIR` to the owner's supplied local equivalent on Mac. `review-01-architecture.md` fixes win over `01-architecture.md`, especially public type homes, contracts, Linux guards and explicit public initializers (Fixes 1/5/8/9). No network fetch is authorized, including shared GitHub memory.
 
 ## Waves 22–24: current draft dispositions
 
-Baseline `0021ac6` includes round-five P16–P19 review, F19–F22 integration,
+Historical F25 baseline `0021ac6` included round-five P16–P19 review, F19–F22 integration,
 P20/P21 follow-up reviews, F23/F24 corrections and T4 test hardening. The source
 and regression paths below were inspected by F25; passing tests do not replace
 Opus review. F22's earlier moving-tree concerns are historical, not current failures.
@@ -181,16 +183,23 @@ Use `$PLAN_DIR/00-current-state.md`, `00b-opus-review.md` (R-1–R-19), `02-find
 - UI integration: text-first clipboard/undo and responder routing; visible selection equals command targets; rename debounce/stale evaluation; lazy operation disclosure; sidebar policy; thumbnails/Quick Look reuse/cancellation; settings and location persistence; VoiceOver and keyboard access.
 - Runtime/performance: approved synthetic 100k selection/snapshot/planning fixtures separately from widget frame timing; ten tabs/two windows; monitor storms/teardown; offline/denied/disk-full cases; 30–60 minute soak with memory/latency/hardware and warm/cold context. Portable timing is not Mac acceptance.
 
-## Ready-to-paste owner Claude Code prompt
+## Draft owner Claude Code prompt — DRAFT, NOT FINAL: blockers remain
 
-The following is self-contained, with the staged manifest proposal and exact commands included. It assigns no additional file ownership and authorizes no external effect.
+OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
+
+The following is a draft, with the staged manifest proposal and exact commands included. It assigns no additional file ownership and authorizes no external effect.
 
 ````text
 Do not publish or post anything (including TikTok), activate or change ads, or run paid renders (e.g. Higgsfield) on your own; stop and report instead. Do not send, delete or change sharing.
 
+DRAFT, NOT FINAL: blockers remain. Reviewed revision: <HEAD at handoff>.
+OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
+
 You are performing Huseyn's local Mac compile-and-validation handoff for the Helm rebuild. All Astra code and plans remain DRAFT pending the applicable Opus review record. Claude work may begin only at or after 22:00 America/Toronto on November 4, 2026, with at most two Claude runs active at once; time alone closes no gate. Do not use the network, install dependencies, purchase, publish, send, delete, change sharing, change OS defaults, commit or push. Exact-action approval comes only from Huseyn in chat. Prepare concrete module-sized fixes for the orchestrator within your explicitly assigned paths; do not assume this prompt grants ownership of all files.
 
-The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. First read docs/handoff/REVIEW_QUEUE.md, including all P1–P21, R1 and fixes-F1–F24 reports. Then read local AGENTS, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
+The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. First read docs/handoff/REVIEW_QUEUE.md, including all P1–P21, R1 and fixes-F1–F24 reports. Then read docs/review-opus/ (O1, OK1, OK2 and fixes-AO/fixes-AK reports), AGENTS.md, if present, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
+
+First confirm ContentOverlays.swift uses HelmCore.DropProposal in both its property and initializer; otherwise stop and report a stale revision.
 
 Record revision plus dirty files, Xcode/compiler/SDK/XcodeGen versions and hardware. Require macOS 14+, full Xcode, tools 5.9 support and Swift 5 language mode. Report missing tools without installing them. Perform inventory from the rebuilt repository root:
 
@@ -205,8 +214,11 @@ xcodegen --version
 swift package dump-package
 bash scripts/static_checks.sh
 bash scripts/rebuild/parse_check_ui.sh
+python3 scripts/rebuild/check_core_type_names.py --self-test
 python3 scripts/rebuild/check_coverage.py --parity "$PLAN_DIR/02-finder-parity.md" --current-state "$PLAN_DIR/00-current-state.md"
 ```
+
+The full `python3 scripts/rebuild/check_core_type_names.py` guard is expected to exit 1 on four retained Core names until the owner authorizes the rename. Any additional collision is a new failure.
 
 Do not run --generate on the coverage ledger without assigned ownership. Source/test citations and counts are not acceptance. Historical K11 results do not cover subsequent waves. Audit fixture side effects before tests: no sending, deletion (including cleanup), mounts, downloads, sharing changes or real-default writes without exact approval. Split/hold affected cases and continue permitted checks; do not claim a filtered or skipped run is a complete passing suite.
 
@@ -221,7 +233,7 @@ swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmSearch
 swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmTestKit
 ```
 
-Run permitted suites with these commands after inspecting their fixtures. SwiftPM may compile all declared test dependencies even when filtered; record graph failures honestly.
+Run permitted suites with these commands after inspecting their fixtures. SwiftPM may compile all declared test dependencies even when filtered; record graph failures honestly. Complete this portable baseline BEFORE Stage 1: declaring HelmUI can make its SDK errors block all test filters.
 
 ```sh
 swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmCoreTests
@@ -231,10 +243,13 @@ swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmOperationsTests
 swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmSearchTests
 swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmTestKitTests
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/rebuild -p 'test_*.py' -v
+python3 -m unittest discover -s scripts -p 'test_static_checks.py' -v
 ```
 
-At the D2 snapshot the macOS target template was commented, HelmAppTests was undeclared, and there was no rebuilt executable, root project.yml, root Xcode project or UI automation target. Verify current state first. Missing targets/sources are implementation gaps, not an SDK error. Have the assigned manifest/host owner supply reviewed membership, README exclusions, one app entry point, plist/entitlements, explicit shared test action and HelmAppTests excluding LinuxRunner. Keep legacy project inputs untouched. Once those deliverables exist, build HelmUI, HelmApp and Helm with explicit --target and the same scratch path; run HelmUITests and HelmAppTests with --filter after fixture inspection. Do not run a nonexistent target or report zero tests as success.
+Verify current target/source inventory. Missing host deliverables constrain Stage 3 only; they do not prevent Stage 1 HelmUI or Stage 2 HelmApp builds after ownership is approved. Do not run nonexistent targets or report zero tests as success.
 
+OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
+Before any manifest edit, require Huseyn's written assignment of Package.swift, Sources/HelmUI, Sources/HelmApp, Tests/HelmUITests and Tests/HelmAppTests. Without it, stop and report after the portable baseline.
 
 Enable the Mac manifest in stages, only after explicit assignment of Package.swift/host ownership. This is a proposed patch, not an instruction to edit another lane's files. Do not simply uncomment the entire old template: Sources/Helm is absent and HelmAppTests is omitted there.
 
@@ -251,7 +266,7 @@ targets += [
 ]
 ```
 
-Run `swift package dump-package`, then `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmUI`. Once graph compilation succeeds, run `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmUITests` from the repository root (F4 structural tests read relative source paths). A library product for HelmUI is optional for target compilation.
+Run `swift package dump-package`, then `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmUI`. Once graph compilation succeeds, run `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmUITests` from the repository root (source regression paths now resolve from #filePath). Assert that SettingsBindingsTests and ContentNativeAdapterTests are discovered and execute; neither has Apple SDK compile evidence yet. The Linux compiler-subprocess regression explicitly skips on Mac and is not Mac type-check evidence. A library product for HelmUI is optional for target compilation.
 
 2. Add the existing portable composition module and its tests inside the same conditional:
 
@@ -268,22 +283,19 @@ targets += [
 
 Run `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmApp` and `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmAppTests`. This only validates current composition glue, not nonexistent AppKit controllers. Excluding LinuxRunner prevents its XCTMain/main.swift becoming a second entry point in XCTest. UI PortableRunner is Linux-only and requires HELM_UI_SCRATCH pointing to freshly built dependencies; use native XCTest targets on Mac.
 
-3. Assign and implement the missing native host and exactly one executable entry point under Sources/Helm. Only once those source files exist and the reviewed host can launch, add:
+3. Native host build-out is BLOCKED on owner decisions OK2-1/2/4. No entry-point name, project location or path ownership is assigned here. Review the architecture-aligned HelmDev / App/project.yml option and root fallback in OWNER_OPTIONS.md, including the proposed manifest patch and commands. Only after assignment and reviewed sources exist may the owner enable Stage 3. SwiftPM linking alone does not validate an app bundle.
 
-```swift
-products += [.executable(name: "Helm", targets: ["Helm"])]
-targets += [.executableTarget(name: "Helm", dependencies: ["HelmApp"])]
-```
+OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
 
-Run `swift build --scratch-path /tmp/build-MAC-HANDOFF --target Helm`. A successful SwiftPM executable link does not produce a complete Finder-replacement app bundle. Root project.yml/Info.plist/entitlements, app resources and shared scheme/test action remain separate assigned deliverables. Do not invent signing settings or reuse the legacy project as proof of rebuild acceptance. Re-inventory README paths before applying excludes; manifest warnings do not justify dropping actual source files.
+Expected first-compile failure classes (risks to investigate, not observed Mac errors): SDK type-name collisions (`X is ambiguous for type lookup`); missing target/source directory or duplicate XCTMain entry point; public initializer/access/type-home mismatches; Foundation resource-value mutability and Darwin ABI differences; SwiftUI generic/binding/API availability errors; MainActor protocol witnesses and deinit isolation; Sendable callback captures and native pointer lifetimes; link/bundle/entry point/resource membership errors. SwiftPM test filters still compile the declared graph. Fix the earliest underlying error, recompile its consumers, and preserve behavioral tests. Do not count skipped fixtures or zero discovered tests as success.
 
-Expected first-compile failure classes (risks to investigate, not observed Mac errors): missing target/source directory or duplicate XCTMain entry point; public initializer/access/type-home mismatches; Foundation resource-value mutability and Darwin ABI differences; SwiftUI generic/binding/API availability errors; MainActor protocol witnesses and deinit isolation; Sendable callback captures and native pointer lifetimes; link/bundle/entry point/resource membership errors. SwiftPM test filters still compile the declared graph. Fix the earliest underlying error, recompile its consumers, and preserve behavioral tests. Do not count skipped fixtures or zero discovered tests as success.
-
-Generate a rebuilt project only from its inspected, assigned root project.yml. Confirm source membership and selected signing configuration first; do not select credentials or enable provisioning updates. Run xcodegen generate, then xcodebuild -list -project Helm.xcodeproj only if that is the verified new project path. Inspect the actual shared scheme and automation target before running xcodebuild build/test; Helm and HelmUIAutomationTests remain proposals until inventory confirms them. Use -destination 'platform=macOS', local derived data and local result bundles. Unsigned compilation is separate from launch/privacy validation.
+Project generation is blocked on the host owner/location decision in OWNER_OPTIONS.md. After approval, inspect the assigned spec, source membership, shared test action and signing configuration; never select credentials or enable provisioning updates. Use local derived data/result bundles and `-destination 'platform=macOS'`. Unsigned compilation is separate from launch/privacy validation.
 
 Fix the first underlying module error in DAG order. Check accessible initializers, imported SDK signatures, delegate witnesses, MainActor/Sendable crossings, explicit teardown, selector arity and text-first routing. Review live mutation/quarantine, per-window journal retention, search/query generation and migration-before-default-registration against their closed contracts. Reopen the affected gate for any public-contract change and list all consumers. Never suppress a failing test or add blanket unchecked Sendable to obtain a pass.
 
 After ordinary compilation, rerun each existing target build with -Xswiftc -strict-concurrency=targeted, then separately with -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors. Apply the same diagnostics to the approved XCTest filters. Keep Swift 5 mode and distinguish targeted baseline from complete-strict acceptance. Xcode app settings do not configure Swift package targets. For the verified rebuilt app scheme, also inspect SWIFT_VERSION=5 and run its approved tests with SWIFT_STRICT_CONCURRENCY=complete and SWIFT_TREAT_WARNINGS_AS_ERRORS=YES. Record narrow SDK exceptions explicitly for review.
+
+Before host build-out, run an approved hosted spike for popover focus, IME composition and List(selection:) row gestures (OK2-11/12/13). Record actual Binding-closure and NSApp strict-concurrency diagnostics; OK2-37 remains unverified.
 
 Run the preserved-interaction and parity checklists in docs/handoff/MAC_HANDOFF.md, all 00b R-1 through R-19, and each mandatory ledger acceptance case against approved fixtures. Prioritize launch precedence, failed navigation/history, visible selection versus command targets, text-first clipboard/undo, address 50 children plus parent and rapid Tab/IME/focus, rename/sheet lifetime, operation partial/late outcomes, per-window undo, thumbnail reuse, search overlay isolation, multi-window persistence and cloud non-materialization. No Share/Services/AirDrop send or default-handler change is authorized. Missing implementations stay NOT RUN, not passed through a fake.
 

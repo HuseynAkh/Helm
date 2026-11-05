@@ -3,9 +3,11 @@
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 cd "$(dirname "$0")/../.." || exit 1
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 if [[ -f /workspace/toolchains/env.sh ]]; then source /workspace/toolchains/env.sh; fi
 scratch="${HELM_K11_SCRATCH:-/tmp/build-K11}"
-plan="${HELM_PLAN_DIR:-/workspace/forge/helm-plan/docs/rebuild}"
+plan="${HELM_PLAN_DIR:-${PLAN_DIR:-/workspace/forge/helm-plan/docs/rebuild}}"
+if [[ ! -d "$plan" ]]; then echo "NOT RUN: plan directory missing: $plan" >&2; exit 1; fi
 mkdir -p "$scratch/logs" || exit 1
 failures=0
 summary=()
@@ -37,16 +39,11 @@ if (( tests == 0 || tests == skipped || test_failures != 0 )); then
     failures=$((failures + 1))
 fi
 run_check python-tests python3 -m unittest discover -s scripts/rebuild -p 'test_*.py' -v
+run_check static-tests python3 -m unittest discover -s scripts -p 'test_static_checks.py' -v
 run_check static bash scripts/static_checks.sh
 run_check core-type-name-fixtures python3 scripts/rebuild/check_core_type_names.py --self-test
-# Known collisions (DropOperation, DropProposal, DropSession, ToolbarItem) await the owner-approved rename
-# (OK1-1 step 2): reported as WARN, not a failure, until then. Any NEW collision still prints in the log.
-if python3 scripts/rebuild/check_core_type_names.py >"$scratch/logs/core-type-names.log" 2>&1; then
-    summary+=("PASS core-type-names")
-else
-    summary+=("WARN core-type-names (known SDK-name collisions pending rename; see log)")
-    tail -n 6 "$scratch/logs/core-type-names.log"
-fi
+# Retained SDK collisions intentionally fail until the owner approves their rename.
+run_check core-type-names python3 scripts/rebuild/check_core_type_names.py
 run_check ui-parse bash scripts/rebuild/parse_check_ui.sh
 run_check coverage python3 scripts/rebuild/check_coverage.py --parity "$plan/02-finder-parity.md" --current-state "$plan/00-current-state.md" --report-only
 printf '\nK11 Linux verification (draft; Mac pending)\n'

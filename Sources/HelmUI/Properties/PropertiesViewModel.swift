@@ -47,7 +47,7 @@ public struct PropertiesViewModel: Sendable {
         }
     }
     private func sizeText(_ total: InspectorSizeTotal) -> String {
-        total.overflowed ? "Size exceeds supported total" : "\(total.bytes) bytes"
+        total.overflowed ? "Size exceeds supported total" : "\(ByteCountText.format(total.bytes)) (\(ByteCountText.formatExact(total.bytes)))"
     }
 
     public var location: String {

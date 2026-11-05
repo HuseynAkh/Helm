@@ -78,19 +78,25 @@ def main():
         self_test()
         return 0
     failures = []
-    core = args.root / 'Sources/HelmCore'
-    overlay = args.root / 'Sources/HelmUI/Content/ContentOverlays.swift'
+    libraries = ('HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'HelmUI', 'HelmApp')
     if not args.ui_only:
-        if not core.is_dir():
-            failures.append(f'Missing Core source directory: {core}')
-        for path in sorted(core.rglob('*.swift')):
-            for line, name in collisions(path.read_text()):
-                failures.append(f'{path.relative_to(args.root)}:{line}: public {name} collides with an SDK type')
-    if not overlay.is_file():
-        failures.append(f'Missing overlay source: {overlay}')
-    else:
-        for line in unqualified_drop_proposals(overlay.read_text()):
-            failures.append(f'{overlay.relative_to(args.root)}:{line}: qualify HelmCore.DropProposal')
+        for module in libraries:
+            folder = args.root / 'Sources' / module
+            if not folder.is_dir():
+                failures.append(f'Missing library source directory: {folder}')
+            for path in sorted(folder.rglob('*.swift')):
+                for line, name in collisions(path.read_text()):
+                    failures.append(f'{path.relative_to(args.root)}:{line}: public {name} collides with an SDK type')
+    ui = args.root / 'Sources/HelmUI'
+    if not ui.is_dir():
+        failures.append(f'Missing UI source directory: {ui}')
+    for path in sorted(ui.rglob('*.swift')):
+        code = code_only(path.read_text())
+        if not re.search(r'\bimport\s+SwiftUI\b', code):
+            continue
+        for match in re.finditer(r'(?<![\w.])(?:DropProposal|DropOperation|DropSession|ToolbarItem)\b', code):
+            line = code.count('\n', 0, match.start()) + 1
+            failures.append(f'{path.relative_to(args.root)}:{line}: qualify retained SDK name {match.group()} (e.g. HelmCore.{match.group()})')
     for failure in failures:
         print(failure, file=sys.stderr)
     return 1 if failures else 0

@@ -22,12 +22,12 @@ final class SidebarModelTests: XCTestCase {
         XCTAssertNil(model.place(for: "missing"))
     }
 
-    func testDeepestAncestorUsesPathBoundariesAndIgnoresStarredRows() {
+    func testDeepestAncestorUsesCorePolicyIncludingStarredRows() {
         let documents = home.appendingPathComponent("Documents")
         let project = documents.appendingPathComponent("Project")
         let places = PlacesModel(home: home, bookmarks: [project], starred: [project.appendingPathComponent("Child")])
         let nested = SidebarModel(places: places, committedDestination: .directory(project.appendingPathComponent("Child/file")))
-        XCTAssertEqual(nested.selectedPlaceID, places.bookmarks[0].id)
+        XCTAssertEqual(nested.selectedPlaceID, places.starred[0].id)
         let sibling = SidebarModel(places: places, committedDestination: .directory(documents.appendingPathComponent("ProjectOther")))
         XCTAssertEqual(sibling.selectedPlaceID, "documents")
         let exact = SidebarModel(places: places, committedDestination: .directory(project))

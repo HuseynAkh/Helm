@@ -33,6 +33,8 @@ public struct OperationRowModel: Sendable, Identifiable {
         guard let progress = progress, progress.itemsTotal > 0 else { return "Preparing…" }
         return "\(min(max(0, progress.itemsDone), progress.itemsTotal)) of \(progress.itemsTotal) steps"
     }
+    /// F-061 uncertain outcomes remain visible even when Details is collapsed (B-100).
+    public var requiresReconciliation: Bool { result?.outcomes.contains { $0.requiresReconciliation } ?? false }
     var hasDetails: Bool { result?.outcomes.isEmpty == false }
     var detailPageCount: Int { ((result?.outcomes.count ?? 0) + 49) / 50 }
     var formattedDetailCount: Int { detailCache.count }

@@ -19,7 +19,7 @@ struct BatchRenameEvaluation: Sendable {
 }
 
 /// Copies share immutable inputs until an edit replaces this cache. All mutable
-/// storage is lock-protected; the planner runs at most once for that revision.
+/// storage is lock-protected; racing planners may compute, but only one result is cached.
 final class BatchRenameEvaluationCache: @unchecked Sendable {
     let id = UUID()
     private let lock = NSLock()
@@ -28,9 +28,15 @@ final class BatchRenameEvaluationCache: @unchecked Sendable {
     init() {}
     var count: Int { lock.lock(); defer { lock.unlock() }; return evaluations }
     func value(_ create: () throws -> BatchRenameEvaluation) rethrows -> BatchRenameEvaluation {
-        lock.lock(); defer { lock.unlock() }
-        if let stored { return stored }
+        lock.lock()
+        let cached = stored
+        lock.unlock()
+        if let cached { return cached }
         let result = try create()
+        lock.lock(); defer { lock.unlock() }
+        // Edits create a new cache identity. Never publish an evaluation for another revision.
+        guard result.revision == id else { return result }
+        if let stored { return stored }
         stored = result; evaluations += 1
         return result
     }

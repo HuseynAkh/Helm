@@ -86,8 +86,12 @@ def passed_tests(log):
         raise ValueError('Test log has no nonempty successful XCTest summary')
     if not re.search(r"Test Suite '(?:All tests|Selected tests)' passed", text):
         raise ValueError('Test log is incomplete or unsuccessful')
-    passed = set(re.findall(r"Test Case '([^']+)' passed", text))
-    incomplete_classes = {name.rsplit('.', 1)[0] for name in re.findall(r"Test Case '([^']+)' (?:skipped|failed)", text)}
+    def normalized(name):
+        match = re.fullmatch(r'-\[([^ ]+) ([^ ]+)\]', name)
+        return f'{match[1]}.{match[2]}' if match else name
+
+    passed = set(map(normalized, re.findall(r"Test Case '([^']+)' passed", text)))
+    incomplete_classes = {normalized(name).rsplit('.', 1)[0] for name in re.findall(r"Test Case '([^']+)' (?:skipped|failed)", text)}
     return {name for name in passed if name.rsplit('.', 1)[0] not in incomplete_classes}
 
 

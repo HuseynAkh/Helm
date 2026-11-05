@@ -73,13 +73,8 @@ The leaf does not implement inline rename or New Folder dispatch.
 
 ## Manifest and target needs (changes elsewhere)
 
-The root manifest still comments out HelmUI/HelmUITests. Integration must add the
-macOS-only HelmUI target with dependencies HelmCore, HelmFileSystem,
-HelmPersistence, HelmOperations and HelmSearch; add HelmUITests depending on
-HelmUI, HelmCore and HelmOperations (plus HelmTestKit if other tests need it).
-Keep tools 5.9, Swift 5 language mode and macOS 14. Exclude README.md files from
-source targets to remove SwiftPM unhandled-file warnings. This lane does not
-edit the manifest or other lanes' files. No Core contract changes are required.
+Use the [staged Mac manifest patches](../../../docs/handoff/MAC_HANDOFF.md) after explicit owner assignment.
+Tools 5.9, Swift 5 and macOS 14 remain required; this note grants no ownership.
 
 On macOS, run:
 

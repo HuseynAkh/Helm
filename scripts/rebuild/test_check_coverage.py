@@ -25,6 +25,15 @@ class CoverageTests(unittest.TestCase):
         text = '/// F-001–F-003 B-001\nfunc test_P_002() {}\nlet s = "P-099"'
         self.assertEqual(coverage.citations(text), {'F-001', 'F-002', 'F-003', 'B-001', 'P-002'})
 
+    def test_darwin_names_keep_skips_local_to_class(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'log'
+            path.write_text("Test Case '-[HelmCoreTests.Good testOne]' passed.\n"
+                            "Test Case '-[HelmCoreTests.Other testTwo]' skipped.\n"
+                            "Test Suite 'Selected tests' passed.\n"
+                            "Executed 2 tests, with 1 test skipped and 0 failures\n")
+            self.assertEqual(coverage.passed_tests(path), {'HelmCoreTests.Good.testOne'})
+
     def test_success_log(self):
         self.assertEqual(coverage.passed_tests(FIXTURES / 'passing.log'), {'FeatureTests.test_F_001'})
         self.assertEqual(coverage.passed_tests(None), set())

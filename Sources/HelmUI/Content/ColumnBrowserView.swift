@@ -25,19 +25,23 @@ public struct ColumnBrowserView<Preview: View>: View {
         ScrollViewReader { reader in
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 0) {
-                    ForEach(state.columns.indices, id: \.self) { index in
-                        column(at: index).frame(width: columnWidth).id(index)
+                    ForEach(Array(state.columns.enumerated()), id: \.element.id) { index, column in
+                        self.column(at: index).frame(width: columnWidth).id(column.id)
                         Divider()
                     }
                     if let target = state.previewTarget {
                         preview(target).frame(minWidth: columnWidth, maxHeight: .infinity)
-                            .id("preview").accessibilityLabel("Preview")
+                            .id(target).accessibilityLabel("Preview")
                     }
                 }
             }
-            .onChange(of: state.activeColumn) { _, index in reader.scrollTo(index, anchor: .trailing) }
+            .onChange(of: state.activeColumn) { _, index in
+                if state.columns.indices.contains(index) {
+                    reader.scrollTo(state.columns[index].id, anchor: .trailing)
+                }
+            }
             .onChange(of: state.previewTarget) { _, target in
-                if target != nil { reader.scrollTo("preview", anchor: .trailing) }
+                if let target { reader.scrollTo(target, anchor: .trailing) }
             }
         }
         .onMoveCommand { direction in

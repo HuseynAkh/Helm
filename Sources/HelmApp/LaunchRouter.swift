@@ -52,6 +52,21 @@ public struct LaunchRouter: Sendable {
         return LaunchRoutingResult(windows: plan.windows)
     }
 
+    /// Reserve an autosave identity for every new window, including Cmd+N (F-001, B-018).
+    public mutating func allocateFrameName() -> String {
+        var ordinal = 1
+        var name = SessionRestorePlan.frameName(ordinal: ordinal)
+        while usedFrameNames.contains(name) {
+            ordinal += 1
+            name = SessionRestorePlan.frameName(ordinal: ordinal)
+        }
+        usedFrameNames.insert(name)
+        return name
+    }
+
+    /// Release only after the owning window closes; permits ordinal reuse (F-001, B-018).
+    public mutating func releaseFrameName(_ name: String) { usedFrameNames.remove(name) }
+
     private mutating func route(_ requests: [ExternalOpenRequest]) -> LaunchRoutingResult {
         var windows: [WindowCreationRequest] = []
         var rejected: [ExternalOpenRequest] = []
@@ -61,12 +76,7 @@ public struct LaunchRouter: Sendable {
             let folder = request.kind == .folder ? url : url.deletingLastPathComponent()
             let tab = TabCreationRequest(tab: SessionTab(location: .directory(folder)),
                 selectedURLs: request.kind == .file ? [url] : [])
-            var ordinal = 1
-            var frameName = SessionRestorePlan.frameName(ordinal: ordinal)
-            while usedFrameNames.contains(frameName) {
-                ordinal += 1; frameName = SessionRestorePlan.frameName(ordinal: ordinal)
-            }
-            usedFrameNames.insert(frameName)
+            let frameName = allocateFrameName()
             windows.append(WindowCreationRequest(frameAutosaveName: frameName, tabs: [tab]))
         }
         return LaunchRoutingResult(windows: windows, rejectedRequests: rejected)

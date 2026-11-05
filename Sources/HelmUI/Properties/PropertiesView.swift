@@ -1,20 +1,26 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import SwiftUI
+import HelmCore
 
 /// Read-only F-050 Properties; host owns enrichment, reveal and dismissal (B-066/B-117).
 public struct PropertiesView: View {
     private let model: PropertiesViewModel
+    private let icon: ([FileEntry]) -> Image
     private let reveal: ([URL]) -> Void
     private let dismiss: () -> Void
-    public init(model: PropertiesViewModel, reveal: @escaping ([URL]) -> Void, dismiss: @escaping () -> Void) {
-        self.model = model; self.reveal = reveal; self.dismiss = dismiss
+    public init(model: PropertiesViewModel, icon: @escaping ([FileEntry]) -> Image,
+                reveal: @escaping ([URL]) -> Void, dismiss: @escaping () -> Void) {
+        self.model = model; self.icon = icon; self.reveal = reveal; self.dismiss = dismiss
     }
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.title).font(.headline).lineLimit(2)
-                Text(model.kind).font(.subheadline).foregroundStyle(.secondary)
+            HStack {
+                icon(model.entries).resizable().scaledToFit().frame(width: 64, height: 64)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.title).font(.headline).lineLimit(2)
+                    Text(model.kind).font(.subheadline).foregroundStyle(.secondary)
+                }
             }.padding()
             Divider()
             ScrollView {

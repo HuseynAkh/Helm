@@ -5,6 +5,29 @@ import HelmCore
 @testable import HelmUI
 
 final class BatchRenameViewModelTests: XCTestCase {
+    func testCacheDoesNotHoldLockDuringPlanning() {
+        let cache = BatchRenameEvaluationCache()
+        let entered = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let finished = expectation(description: "evaluation finished")
+        DispatchQueue.global().async {
+            _ = cache.value {
+                entered.signal()
+                _ = release.wait(timeout: .now() + 2)
+                return BatchRenameEvaluation(revision: cache.id, plan: nil, messages: [])
+            }
+            finished.fulfill()
+        }
+        XCTAssertEqual(entered.wait(timeout: .now() + 2), .success)
+        let read = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { _ = cache.count; read.signal() }
+        let readResult = read.wait(timeout: .now() + 0.5)
+        release.signal()
+        XCTAssertEqual(readResult, .success, "A cached-count read must not wait for planning")
+        wait(for: [finished], timeout: 3)
+        XCTAssertEqual(cache.count, 1)
+    }
+
     private func model(_ names: [String]) -> BatchRenameViewModel {
         BatchRenameViewModel(items: names.map { URL(fileURLWithPath: "/fixtures/\($0)") },
                              existingNames: [:], caseSensitive: true, date: Date(timeIntervalSince1970: 0),

@@ -6,6 +6,16 @@ import HelmPersistence
 @testable import HelmApp
 
 final class FrameIdentityTests: XCTestCase {
+    func testAllocateAndReleaseFrameNames() {
+        var router = LaunchRouter()
+        let first = router.allocateFrameName()
+        let second = router.allocateFrameName()
+        XCTAssertNotEqual(first, second)
+        router.releaseFrameName(first)
+        XCTAssertEqual(router.allocateFrameName(), first)
+        let result = router.receive([])
+        XCTAssertNil(result)
+    }
     func testRepairsReserveLaterValidFrameIdentities() {
         for names in [["", "HelmMainWindow"], ["custom", "custom", "HelmMainWindow-2"]] {
             let windows = names.enumerated().map { index, name in

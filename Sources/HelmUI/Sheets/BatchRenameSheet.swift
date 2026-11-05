@@ -6,6 +6,7 @@ import HelmCore
 @MainActor public struct BatchRenameSheet: View {
     @Binding private var model: BatchRenameViewModel
     @State private var worker = BatchRenameWorker()
+    @State private var submitted = false
     @State private var displayed: BatchRenameEvaluation?
     private let rename: (BatchRenamePlan) -> Void
     private let cancel: () -> Void
@@ -25,7 +26,7 @@ import HelmCore
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     // Index identity also tolerates invalid duplicate source inputs.
-                    ForEach(Array((displayed?.revision == model.revision ? displayed?.preview ?? [] : []).enumerated()), id: \.offset) { _, row in
+                    ForEach(Array(previewRows.enumerated()), id: \.offset) { _, row in
                         HStack {
                             Text(row.source.lastPathComponent).foregroundStyle(.secondary)
                             Image(systemName: "arrow.right").foregroundStyle(.tertiary)
@@ -36,7 +37,7 @@ import HelmCore
                     if model.items.count > 20 {
                         Text("... and \(model.items.count - 20) more").foregroundStyle(.tertiary)
                     }
-                    ForEach(Array((displayed?.revision == model.revision ? displayed?.messages ?? [] : ["Updating preview…"]).enumerated()), id: \.offset) { _, message in
+                    ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
                         Text(message).foregroundStyle(.red).font(.caption)
                     }
                 }
@@ -45,8 +46,10 @@ import HelmCore
                 Spacer()
                 Button("Cancel") { worker.cancelAll(); cancel() }.keyboardShortcut(.cancelAction)
                 Button("Rename") {
-                    if let plan = displayed?.executablePlan(for: model.revision) { rename(plan) }
-                }.keyboardShortcut(.defaultAction).disabled(displayed?.executablePlan(for: model.revision) == nil)
+                    guard !submitted, let plan = executablePlan else { return }
+                    submitted = true
+                    rename(plan)
+                }.keyboardShortcut(.defaultAction).disabled(submitted || executablePlan == nil)
             }
         }.padding(20).frame(width: 500, height: 450)
             .task(id: model.revision) {
@@ -62,6 +65,13 @@ import HelmCore
             }
             .onDisappear { worker.cancelAll() }
     }
+    private var previewRows: [RenamePreview] {
+        displayed?.revision == model.revision ? displayed?.preview ?? [] : []
+    }
+    private var messages: [String] {
+        displayed?.revision == model.revision ? displayed?.messages ?? [] : ["Updating preview…"]
+    }
+    private var executablePlan: BatchRenamePlan? { displayed?.executablePlan(for: model.revision) }
     @ViewBuilder private var controls: some View {
         switch model.mode {
         case .addText:
