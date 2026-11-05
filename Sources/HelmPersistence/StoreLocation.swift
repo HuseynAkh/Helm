@@ -8,5 +8,7 @@ public struct StoreLocation: Sendable, Equatable {
     public var bookmarks: URL { directory.appendingPathComponent("bookmarks.json") }
     public var recent: URL { directory.appendingPathComponent("recent.json") }
     public var session: URL { directory.appendingPathComponent("session.json") }
+    public var tagCatalog: URL { directory.appendingPathComponent("tag-catalog.json") }
+    public var viewOptions: URL { directory.appendingPathComponent("view-options.json") }
     public var trashOrigins: URL { directory.appendingPathComponent("trash-origins.json") }
 }

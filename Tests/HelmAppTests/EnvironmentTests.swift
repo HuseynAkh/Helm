@@ -42,6 +42,14 @@ final class EnvironmentTests: XCTestCase {
         await first.trashOrigins.record([TrashedItem(trashedURL: trash, originalURL: home)])
         let origin = await first.trashOrigins.originalURL(forTrashed: trash)
         XCTAssertEqual(origin, home)
+        let custom = FinderTag(name: "AK3b", colorIndex: 4)
+        try first.tagCatalog.merge(discovered: [custom])
+        XCTAssertTrue(first.tagCatalog.tags.contains(custom))
+        XCTAssertFalse(second.tagCatalog.tags.contains(custom))
+        let options = ViewOptions(viewMode: .list, iconSize: 64)
+        try first.viewOptions.set(options, for: .recent)
+        XCTAssertEqual(first.viewOptions.options(for: .recent), options)
+        XCTAssertEqual(second.viewOptions.options(for: .recent), ViewOptions())
         let failures = await first.flushStores()
         XCTAssertTrue(failures.isEmpty)
     }
@@ -57,10 +65,19 @@ final class EnvironmentTests: XCTestCase {
         let saved = [SessionWindow(frameAutosaveName: "saved", tabs: [SessionTab(location: .recent)])]
         env.session.replace(windows: saved)
         env.stars.star(home, at: Date(timeIntervalSince1970: 10))
+        XCTAssertTrue(env.tagCatalog is TagCatalogStore)
+        XCTAssertTrue(env.viewOptions is LocationViewOptionsStore)
+        try env.tagCatalog.merge(discovered: [FinderTag(name: "AK3b", colorIndex: 4)])
+        try env.viewOptions.set(ViewOptions(viewMode: .list), for: .recent)
         let failures = await env.flushStores()
         XCTAssertTrue(failures.isEmpty)
+        let locations = StoreLocation(directory: root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: locations.tagCatalog.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: locations.viewOptions.path))
         let reloaded = try await AppEnvironment.live(directories: env.directories,
             settingsStorage: storage, legacyReader: EmptyLegacyReader())
+        XCTAssertEqual(reloaded.tagCatalog.tags, env.tagCatalog.tags)
+        XCTAssertEqual(reloaded.viewOptions.options(for: .recent), ViewOptions(viewMode: .list))
         XCTAssertEqual(reloaded.session.windows, saved)
         XCTAssertEqual(reloaded.stars.records, env.stars.records)
         // Keep this isolated /tmp fixture; the lane instruction forbids deletion.
@@ -84,7 +101,7 @@ final class EnvironmentTests: XCTestCase {
         let failing = FailingSession()
         let origins = CountingOrigins()
         let env = AppEnvironment(settings: base.settings, bookmarks: base.bookmarks, stars: base.stars,
-            recents: base.recents, session: failing, trashOrigins: origins, fileSystem: base.fileSystem,
+            recents: base.recents, session: failing, trashOrigins: origins, tagCatalog: base.tagCatalog, viewOptions: base.viewOptions, fileSystem: base.fileSystem,
             journal: base.journal, clock: base.clock, directories: base.directories)
         let errors = await env.flushStores()
         XCTAssertEqual(errors.map(\.document), ["session"])

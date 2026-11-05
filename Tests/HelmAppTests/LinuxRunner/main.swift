@@ -2,6 +2,7 @@
 import XCTest
 
 XCTMain([
+    testCase([("testSevenDocumentsFlushDespiteAnySingleFailure", asyncTest(SevenDocumentFlushTests.testSevenDocumentsFlushDespiteAnySingleFailure))]),
     testCase([("testAllocateAndReleaseFrameNames", FrameIdentityTests.testAllocateAndReleaseFrameNames), ("testRepairsReserveLaterValidFrameIdentities", FrameIdentityTests.testRepairsReserveLaterValidFrameIdentities)]),
     testCase([
         ("testColdRequestsWinAndReachFirstContents", LaunchTests.testColdRequestsWinAndReachFirstContents),
