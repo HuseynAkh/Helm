@@ -40,6 +40,8 @@ targets += [
     .testTarget(name: "HelmAppTests", dependencies: ["HelmApp", "HelmCore",
         "HelmPersistence", "HelmTestKit"], exclude: ["LinuxRunner"])
 ]
+products += [.executable(name: "HelmDev", targets: ["HelmDev"])]
+targets += [.executableTarget(name: "HelmDev", dependencies: ["HelmApp"], path: "Sources/Helm")]
 #endif
 let package = Package(name: "Helm", platforms: [.macOS(.v14)], products: products,
                       targets: targets, swiftLanguageVersions: [.v5])

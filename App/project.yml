@@ -1,0 +1,33 @@
+# TEMPORARY scaffold spec for the first Mac compile run (docs/handoff/MAC_HANDOFF.md, Stage 3b).
+# Deviations from architecture section 3.5 are listed in docs/handoff/MAC_RUN_1.md.
+name: Helm
+options:
+  bundleIdPrefix: com.helm
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+packages:
+  HelmPackage:
+    path: ..
+targets:
+  Helm:
+    type: application
+    platform: macOS
+    sources:
+      - path: main.swift
+    dependencies:
+      - package: HelmPackage
+        product: HelmApp
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: Helm.entitlements
+        PRODUCT_BUNDLE_IDENTIFIER: com.helm.filemanager.dev
+        PRODUCT_NAME: Helm
+        SWIFT_VERSION: "5"
+        SWIFT_STRICT_CONCURRENCY: targeted
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"

@@ -184,8 +184,12 @@ Accounting for the difference from Linux's 1,318: +6 macOS-only (`AF1DarwinRegre
 | 1 | Portable filter rerun after `HelmUI` | FAIL: exit 1, same 12 failing `HelmCoreTests` cases and same B2 abort as Stage 0. No new failures |
 | 2 | `HelmApp` target, `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmApp` | PASS: exit 0, 0 errors, no compile fixes needed |
 | 2 | `swift test --scratch-path /tmp/build-MAC-HANDOFF --filter HelmAppTests` | PASS: exit 0, 17 passed, 0 failed, 0 skipped. Composition glue only |
-| 3a | `HelmDev` scaffold build, `static_checks` | NOT RUN |
-| 3b | Xcode target through `xcodegen` and `xcodebuild` | NOT RUN |
+| 3a | `swift build --scratch-path /tmp/build-MAC-HANDOFF --target HelmDev` | PASS: exit 0. The first attempt failed on `main.swift` actor isolation; see Fixes |
+| 3a | `bash scripts/static_checks.sh` | PASS: exit 0, 251 Swift files, 0 errors |
+| 3b | `cmp Sources/Helm/main.swift App/main.swift` | PASS: identical |
+| 3b | `xcodegen generate --spec App/project.yml` | PASS: exit 0 |
+| 3b | `xcodebuild -list -project App/Helm.xcodeproj` | PASS: exit 0, `Helm` scheme listed. No `schemes:` block was needed |
+| 3b | `xcodebuild -project App/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/build-MAC-HANDOFF/dd build` | PASS: exit 0, `BUILD SUCCEEDED`. Ad hoc signature, no team, no identity selected |
 | 4 | `HelmDev --smoke-seconds 5` | NOT RUN |
 | 4 | `Helm.app` smoke run | NOT RUN |
 | 4 | Human visual check | NOT RUN |
@@ -235,16 +239,22 @@ All test runs finished without hanging. I did not watch the screen during them, 
 |---|---|---|
 | Portable compile fix, approved | `Sources/HelmCore/Content/GridGeometry.swift` | Guarded `import CoreGraphics` (`a2d1c4a`) |
 | Portable fixes proposed, not made | None | B2 and B3 are test failures, not compile errors, so they are recorded only |
+| Scaffold compile fix | `Sources/Helm/main.swift` | Wrapped top-level code in `MainActor.assumeIsolated`. The compiler rejected `call to main actor-isolated static method 'install(in:arguments:)' in a synchronous nonisolated context` at `main.swift:6:13` |
+| `HelmUI`, `HelmApp` existing sources | None | Both compiled with no fixes needed |
 
 ## Scaffold-only deviations
 
-None made, because Stage 3 did not start. If 3b runs, the handoff's listed deviations from architecture section 3.5 will apply:
+These apply to `App/` and the scaffold only, and are temporary:
 
-- `Helm` target only, without `HelmUIAutomationTests`.
-- Bundle ID `com.helm.filemanager.dev`.
-- Minimal `Info.plist`.
-- Empty entitlements.
-- No asset catalog or `ASSETCATALOG_COMPILER_APPICON_NAME`.
+- `Helm` target only, without `HelmUIAutomationTests`, because `UITests/` does not exist.
+- Bundle ID `com.helm.filemanager.dev`, not `com.helm.filemanager`.
+- Minimal `App/Info.plist`: no usage descriptions, `public.folder` viewer type, document types, URL types or Services.
+- `App/Helm.entitlements` is an empty dictionary, as architecture section 3.5 specifies.
+- No `Assets.xcassets` and no `ASSETCATALOG_COMPILER_APPICON_NAME`.
+- No `schemes:` block. `xcodebuild` auto-created the `Helm` scheme, so no package-test scheme entries exist.
+- The `App/main.swift` entry calls `DevScaffold`, not a real `AppDelegate` host.
+
+`App/Helm.xcodeproj` stays generated and unstaged, and `.gitignore` is unchanged (Q6). It therefore shows as untracked in `git status`.
 
 ## Decisions hit
 
