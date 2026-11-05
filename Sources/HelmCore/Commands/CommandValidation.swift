@@ -92,7 +92,9 @@ public enum CommandValidation {
         case .application: enabled = true
         case .window: enabled = true
         case .selection: enabled = selection
-        case .singleSelection: enabled = selection && context.selectionCount == 1
+        case .singleSelection:
+            enabled = (selection && context.selectionCount == 1) ||
+                (command == .properties && context.selectionCount == 0 && destination && !context.textFieldFocused)
         case .mutationSelection: enabled = mutation
         case .destination: enabled = destination && !context.textFieldFocused
         case .textOrSelection:
@@ -107,7 +109,7 @@ public enum CommandValidation {
         case .back: enabled = context.canGoBack
         case .forward: enabled = context.canGoForward
         case .up: enabled = context.canGoUp && context.locationKind == .directory
-        case .location: enabled = context.locationKind == .directory
+        case .location: enabled = !context.textFieldFocused
         case .trashSelection:
             guard context.locationKind == .trash else { return .hidden }
             enabled = selection

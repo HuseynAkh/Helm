@@ -8,6 +8,7 @@ public enum AddressEditor {
         if action == .beginEditing {
             guard !next.isEditing else { return (state, []) }
             next.isEditing = true
+            next.caretAtEnd = true
             next.text = PathEntry.directoryText(next.currentDirectory)
             refresh(&next, effects: &effects)
             return (next, effects)
@@ -88,7 +89,6 @@ public enum AddressEditor {
 
     private static func refresh(_ state: inout AddressEditorState, effects: inout [AddressEditorEffect]) {
         invalidate(&state, effects: &effects)
-        state.caretAtEnd = true
         if let request = PathCompletionEngine.request(for: state.text, currentDirectory: state.currentDirectory,
                                                        home: state.home, showHidden: state.showHidden, generation: state.generation) {
             effects.append(.requestCompletions(request))
@@ -96,6 +96,7 @@ public enum AddressEditor {
     }
 
     private static func accept(_ row: CompletionRow, state: inout AddressEditorState, effects: inout [AddressEditorEffect]) {
+        state.caretAtEnd = true
         state.text = PathCompletionEngine.acceptedText(row: row, typed: state.text, home: state.home)
         if row.isDirectory { refresh(&state, effects: &effects) }
         else { invalidate(&state, effects: &effects); state.caretAtEnd = true }

@@ -26,7 +26,7 @@ public enum TabReducer {
             if let url = next.location.mutationTarget {
                 let normalized: URL = url.standardizedFileURL
                 let parent: URL = normalized.deletingLastPathComponent()
-                if parent.path != normalized.path { stage(.directory(parent), intent: .up, state: &next, effects: &effects) }
+                if normalized.path != "/", parent.standardizedFileURL.path != normalized.path { stage(.directory(parent), intent: .up, state: &next, effects: &effects) }
             }
         case .refresh:
             guard next.pendingNavigation == nil else { return (state, []) }

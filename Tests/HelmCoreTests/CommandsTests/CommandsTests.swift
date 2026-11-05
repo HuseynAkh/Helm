@@ -37,7 +37,7 @@ final class CommandsTests: XCTestCase {
 
     func testDisplayAndUppercaseNormalization() {
         let fixture: [(String, KeyModifiers, String)] = [
-            ("N", [.command, .shift], "⌘⇧N"), ("H", .command, "⌘⇧H"),
+            ("N", [.command, .shift], "⇧⌘N"), ("H", .command, "⇧⌘H"),
             ("h", [.option, .command], "⌥⌘H"), ("s", [.control, .command], "⌃⌘S"),
             ("\r", [], "↩"), ("\u{8}", .command, "⌘⌫"), (" ", [], "Space"),
             ("\u{f700}", .command, "⌘↑"), ("\u{f701}", .command, "⌘↓"),

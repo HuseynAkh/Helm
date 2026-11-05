@@ -13,7 +13,7 @@ public struct PathEntry: Equatable, Sendable {
         if text == "~" { expanded = home.path }
         else if text.hasPrefix("~/") { expanded = home.path + String(text.dropFirst()) }
         else { expanded = text }
-        let absolute: String = expanded.hasPrefix("/") ? expanded : currentDirectory.path + "/" + expanded
+        let absolute: String = expanded.hasPrefix("/") ? expanded : (currentDirectory.path as NSString).appendingPathComponent(expanded)
         let resolved: URL = URL(fileURLWithPath: absolute, isDirectory: text.hasSuffix("/")).standardizedFileURL
         self.resolvedURL = resolved
         self.isSlashBrowsing = text.hasSuffix("/")

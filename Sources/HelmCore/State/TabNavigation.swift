@@ -4,6 +4,10 @@ import Foundation
 extension TabReducer {
     static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [],
                       state: inout TabState, effects: inout [TabEffect]) {
+        if state.pendingNavigation == nil, intent == .push,
+           case .directory(let targetURL) = target,
+           case .directory(let currentURL) = state.location,
+           targetURL.standardizedFileURL.path == currentURL.standardizedFileURL.path { return }
         endSearch(&state, effects: &effects)
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
@@ -66,7 +70,7 @@ extension TabReducer {
             if let url = pending.target.mutationTarget {
                 state.lastDirectory = url; state.addressBar.currentDirectory = url
                 if pending.intent != .restore { effects.append(.recordRecent(url)) }
-            }
+            } else { state.addressBar.currentDirectory = state.addressBar.home }
             // Completion requests are scoped to the old directory even if their prefix is unchanged.
             let (editor, _) = AddressEditor.reduce(state.addressBar, .cancel)
             effects.append(.cancel(.completion, state.completionGeneration)); state.addressBar = editor

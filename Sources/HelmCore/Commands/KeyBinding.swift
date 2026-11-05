@@ -28,7 +28,7 @@ public struct KeyBinding: Hashable, Sendable {
     public var displayString: String {
         guard !key.isEmpty else { return "" }
         let flags = effectiveModifiers
-        let prefix = [(KeyModifiers.control, "⌃"), (.option, "⌥"), (.command, "⌘"), (.shift, "⇧")]
+        let prefix = [(KeyModifiers.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
             .filter { flags.contains($0.0) }.map { $0.1 }.joined()
         let names: [String: String] = ["\r": "↩", "\u{8}": "⌫", " ": "Space",
             "\u{f700}": "↑", "\u{f701}": "↓", "\u{f702}": "←", "\u{f703}": "→",
