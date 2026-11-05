@@ -1,8 +1,13 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
+extension TabState {
+    /// A monitor read cannot be admitted now; the request is recorded and replayed when this clears.
+    var monitorIsBusy: Bool { isLoading || monitorValidationPending || monitorDegraded || monitorRetrying }
+}
+
 extension TabReducer {
-    static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [],
+    static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [], steps: Int = 1,
                       state: inout TabState, effects: inout [TabEffect]) {
         // F-005/B-019: typed and enumerated directories share one URL spelling.
         // The loader echoes this target, preserving strict acceptLoad matching.
@@ -15,7 +20,7 @@ extension TabReducer {
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
         state.pendingNavigation = PendingNavigation(target: target, intent: intent,
-                                                     restoredSelection: restoring, generation: state.loadGeneration)
+                                                     restoredSelection: restoring, generation: state.loadGeneration, steps: steps)
         effects.append(.load(target, state.loadGeneration, options(state, useCache: true)))
     }
     static func options(_ state: TabState, useCache: Bool) -> LoadOptions {
@@ -35,7 +40,7 @@ extension TabReducer {
     }
     static func restart(_ state: inout TabState, effects: inout [TabEffect]) {
         if let pending = state.pendingNavigation {
-            stage(pending.target, intent: pending.intent, restoring: pending.restoredSelection, state: &state, effects: &effects)
+            stage(pending.target, intent: pending.intent, restoring: pending.restoredSelection, steps: pending.steps, state: &state, effects: &effects)
         } else { startLoad(&state, useCache: false, effects: &effects) }
         if var query = state.search?.query {
             query.showHidden = state.showHidden
@@ -58,8 +63,16 @@ extension TabReducer {
         if let pending = state.pendingNavigation {
             let current = NavigationHistory.Entry(location: state.location, selection: state.selection)
             switch pending.intent {
-            case .back: _ = state.history.goBack(current: current)
-            case .forward: _ = state.history.goForward(current: current)
+            case .back:
+                var departing = current
+                for _ in 0..<pending.steps {
+                    if let entry = state.history.goBack(current: departing) { departing = entry }
+                }
+            case .forward:
+                var departing = current
+                for _ in 0..<pending.steps {
+                    if let entry = state.history.goForward(current: departing) { departing = entry }
+                }
             case .push, .up, .home: state.history.push(current: current, movingTo: pending.target)
             case .restore: break
             }
@@ -89,8 +102,7 @@ extension TabReducer {
     }
     static func replayMonitor(_ state: inout TabState, effects: inout [TabEffect]) {
         guard state.monitorDirty || state.monitorNeedsValidation,
-              state.isActive, !state.isLoading, !state.monitorValidationPending, !state.monitorDegraded,
-              state.pendingNavigation == nil else { return }
+              state.isActive, !state.monitorIsBusy, state.pendingNavigation == nil else { return }
         state.monitorDirty = false
         if state.monitorNeedsValidation {
             state.monitorNeedsValidation = false

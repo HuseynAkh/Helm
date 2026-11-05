@@ -14,6 +14,19 @@ final class GalleryTests: XCTestCase {
         let entries = [entry("a"), entry("b"), entry("c")]
         return GalleryState(snapshot: snapshot(entries), selection: [entries[0].id], eligibleIDs: Set(entries.map(\.id)), viewport: GalleryViewport(width: 192))
     }
+    func testChildrenExpandedInListViewStayOutOfGalleryOrder() {
+        let a = entry("a"), b = entry("b"), child = entry("a-child")
+        let expanded = PresentationSnapshot(location: .recent, sortedEntries: [a, b, child], rootCount: 2)
+        var value = GalleryState(snapshot: expanded, selection: [a.id, child.id], eligibleIDs: [a.id, b.id, child.id],
+                                 viewport: GalleryViewport(width: 500))
+        XCTAssertEqual(value.selection.order, [a.id, b.id])
+        XCTAssertFalse(value.selection.selected.contains(child.id))
+        XCTAssertFalse(value.filmstripRequests.contains { $0.key.itemID == child.id })
+        value.select(child.id)
+        XCTAssertEqual(value.selectedEntry, a, "A child is not selectable from the filmstrip")
+        value.replaceSnapshot(expanded, eligibleIDs: [a.id, b.id, child.id])
+        XCTAssertEqual(value.selection.order, [a.id, b.id])
+    }
     func testEmptyHasNoMetadataOrPreview() {
         let value = GalleryState(snapshot: snapshot([]))
         XCTAssertNil(value.selectedEntry); XCTAssertNil(value.previewRequest); XCTAssertTrue(value.filmstripRequests.isEmpty)

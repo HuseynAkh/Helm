@@ -19,8 +19,13 @@ public struct GalleryState: Sendable {
         self.snapshot = snapshot; self.viewport = viewport; self.dimensions = dimensions
         self.eligibleIDs = eligibleIDs
         self.filmstripDimensions = filmstripDimensions
-        let focus = snapshot.sortedEntries.first(where: { selection.contains($0.id) })?.id
-        self.selection = SelectionModel(order: snapshot.sortedIDs, selected: selection, anchor: focus, focus: focus)
+        let roots = Self.rootIDs(snapshot)
+        let focus = roots.first(where: { selection.contains($0) })
+        self.selection = SelectionModel(order: roots, selected: selection.intersection(roots), anchor: focus, focus: focus)
+    }
+    /// Gallery has no disclosure, so entries expanded in list view are outside its order (OK1-22).
+    private static func rootIDs(_ snapshot: PresentationSnapshot) -> [ItemID] {
+        Array(snapshot.sortedIDs.prefix(snapshot.rootCount))
     }
     public var selectedEntry: FileEntry? {
         guard let id = selection.focus, selection.selected.contains(id) else { return nil }
@@ -29,7 +34,7 @@ public struct GalleryState: Sendable {
     public var filmstripIndex: Int? { selectedEntry.flatMap { snapshot.index(of: $0.id) } }
     public var previewRequest: GalleryPreviewRequest? { selectedEntry.flatMap { request(for: $0) } }
     public var filmstripRequests: [GalleryFilmstripRequest] {
-        viewport.indices(count: snapshot.sortedEntries.count).compactMap { index in
+        viewport.indices(count: snapshot.rootCount).compactMap { index in
             let entry = snapshot.sortedEntries[index]
             guard eligibleIDs.contains(entry.id) else { return nil }
             return GalleryFilmstripRequest(key: ThumbnailKey(entry: entry, dimensions: filmstripDimensions),
@@ -38,7 +43,7 @@ public struct GalleryState: Sendable {
     }
     public mutating func select(_ id: ItemID?) {
         if let id {
-            guard snapshot.index(of: id) != nil else { return }
+            guard let index = snapshot.index(of: id), index < snapshot.rootCount else { return }
             selection.click(id)
         } else { selection.clear() }
         invalidate()
@@ -50,7 +55,7 @@ public struct GalleryState: Sendable {
     public mutating func replaceSnapshot(_ snapshot: PresentationSnapshot, eligibleIDs: Set<ItemID>) {
         let previousRequest = previewRequest
         self.snapshot = snapshot; self.eligibleIDs = eligibleIDs
-        selection.reconcile(order: snapshot.sortedIDs)
+        selection.reconcile(order: Self.rootIDs(snapshot))
         // Preserve finished and in-flight previews across unrelated monitor refreshes.
         // Identity, eligibility and the full content token still retire stale completions.
         if previewRequest != previousRequest { invalidate() }

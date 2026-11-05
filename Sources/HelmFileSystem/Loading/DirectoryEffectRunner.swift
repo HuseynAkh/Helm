@@ -38,9 +38,17 @@ import HelmCore
         guard case .tab(let tab, let action) = effect else { return fallback?.run(effect, send: send) }
         switch action {
         case .startMonitor(let location, let generation):
-            guard let monitor = monitorFactory(location) else { return nil }
             let initial = Watch(lifetime: UUID(), location: location, generation: generation,
                                 coalescer: DirectoryReloadCoalescer(generation: generation))
+            guard let monitor = monitorFactory(location) else {
+                // Virtual locations reload through the host's own path. A directory with no monitor still
+                // reconciles on request, so reactivation cannot strand a stale listing (FB2-11).
+                guard case .directory = location else { return nil }
+                watches[tab] = initial
+                return StoreEffectCancellation { [weak self] in
+                    if self?.watches[tab]?.lifetime == initial.lifetime { self?.watches[tab] = nil }
+                }
+            }
             watches[tab] = initial
             let task = Task {
                 defer { self.watchDidFinish?() }
@@ -122,7 +130,9 @@ import HelmCore
                 try Task.checkCancellation()
                 guard self.watches[tab]?.id == watch.id else { return }
                 if validate {
-                    guard await watch.coalescer.acknowledgeRootValidation(revision: revision) else { return }
+                    // A stale revision stays unacknowledged, but this read must still finish: returning
+                    // silently leaves the reducer's validation pending and blocks replay (FB2-8).
+                    await watch.coalescer.acknowledgeRootValidation(revision: revision)
                     try Task.checkCancellation()
                 }
                 let snapshot = try await snapshotWorker.build(location: watch.location, sortedEntries: entries, sort: loadOptions.sort)

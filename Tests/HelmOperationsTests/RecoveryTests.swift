@@ -58,6 +58,24 @@ final class RecoveryTests: XCTestCase {
         XCTAssertEqual(result.error, .invalidPlan)
         let names = try await fs.childNames(of: root); XCTAssertTrue(names.isEmpty)
     }
+    func testOnlyOSManagedSymlinkAncestorsPassTheWalk() async throws {
+        // The fake keys by standardizedFileURL, which folds /private/tmp into /tmp.
+        // Use a distinct target so creating the link does not collide with its target.
+        let fs = InMemoryFileSystem(), real = URL(fileURLWithPath: "/managed-temp-target")
+        try await fs.createDirectory(at: real)
+        try await fs.createSymbolicLink(at: URL(fileURLWithPath: "/tmp"), destination: real)
+        try await fs.createSymbolicLink(at: URL(fileURLWithPath: "/tmpx"), destination: real)
+        func outcome(_ path: String) async -> OperationError? {
+            let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
+            let step = PlannedStep(kind: .createFile, destination: URL(fileURLWithPath: path))
+            return await executor.execute(OperationPlan(command: .recovery, steps: [step])).error
+        }
+        let managed = await outcome("/tmp/new")
+        // The walk admits /tmp; the fake's insert then refuses a symlink parent.
+        XCTAssertEqual(managed, .other(String(describing: FileSystemError.other("Not a directory"))))
+        let lookalike = await outcome("/tmpx/new")
+        XCTAssertEqual(lookalike, .invalidPlan, "Allowlist matching is by exact path, not by prefix")
+    }
     func testReentrantExecutionIsRejected() async throws {
         let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: URL(fileURLWithPath: "/new"))])

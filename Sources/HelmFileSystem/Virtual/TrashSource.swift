@@ -20,14 +20,21 @@ public struct TrashSource: LocationSource {
             let task = Task {
                 do {
                     guard location == .trash else { throw FileSystemError.unsupported }
-                    for directory in directories {
+                    for (index, directory) in directories.enumerated() {
                         do {
                             for try await batch in fileSystem.enumerate(directory, options: EnumerationOptions(
                                 includeHidden: options.showHidden, batchSize: options.batchSize)) {
                                 try Task.checkCancellation(); continuation.yield(.batch(batch))
                             }
+                        } catch is CancellationError {
+                            throw CancellationError()
                         } catch {
-                            if FileSystemError.mapping(error) != .notFound { throw error }
+                            let mapped = FileSystemError.mapping(error)
+                            if mapped == .notFound { continue }
+                            // Home Trash failing fails the load; a volume's Trash failing stays visible
+                            // as a warning instead of hiding the user's own Trash (B-109).
+                            if index == 0 { throw error }
+                            continuation.yield(.warning("\(directory.path) unavailable: \(mapped)"))
                         }
                     }
                     continuation.yield(.finished); continuation.finish()

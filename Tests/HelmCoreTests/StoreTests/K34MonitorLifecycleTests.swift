@@ -14,6 +14,14 @@ final class K34MonitorLifecycleTests: XCTestCase {
         XCTAssertEqual(runner.cancelled, 1)
         let generation = store.state.tabs[tab.id]?.monitorGeneration ?? Generation()
         store.send(.tab(tab.id, .monitorEvent(generation, .rootChanged)))
+        // FB2-8: a foreground refresh defers validation until its load finishes.
+        XCTAssertEqual(runner.started, 1)
+        XCTAssertEqual(store.state.tabs[tab.id]?.monitorNeedsValidation, true)
+        let loading = store.state.tabs[tab.id]
+        store.send(.tab(tab.id, .loadFinished(loading?.loadGeneration ?? Generation(),
+                                             PresentationSnapshot(location: tab.location))))
+        XCTAssertEqual(runner.started, 2, "Deferred validation must start after refresh completes")
+        XCTAssertEqual(store.state.tabs[tab.id]?.monitorValidationPending, true)
         store.send(.shutdown)
         XCTAssertEqual(runner.cancelled, 2)
     }
@@ -32,8 +40,10 @@ final class K34MonitorLifecycleTests: XCTestCase {
 }
 @MainActor private final class K34ValidationRunner: EffectRunner {
     var cancelled = 0
+    var started = 0
     func run(_ effect: StoreEffect, send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation? {
         guard case .tab(_, .validateNavigation) = effect else { return nil }
+        started += 1
         return StoreEffectCancellation { self.cancelled += 1 }
     }
 }

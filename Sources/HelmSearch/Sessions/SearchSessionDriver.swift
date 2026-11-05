@@ -33,21 +33,23 @@ public actor SearchSessionDriver {
         guard !state.isShutdown else { return nil }
         task?.cancel(); task = nil
         guard let generation = state.start(query) else { return nil }
+        // State keeps what the user typed; only the search itself uses the normalized form.
+        let effective = SearchQueryParser.normalizedForTyping(query)
         do {
-            let specification = try SearchQueryParser.compile(SearchRequest(query: query))
+            let specification = try SearchQueryParser.compile(SearchRequest(query: effective))
             guard !specification.clauses.isEmpty else {
                 state.receive(.failed("Search requires at least one criterion"), generation: generation)
                 return generation
             }
         } catch {
-            state.receive(.failed(String(describing: error)), generation: generation)
+            state.receive(.failed((error as? SearchParseError)?.userMessage ?? String(describing: error)), generation: generation)
             return generation
         }
         let source = self.source
         task = Task { [weak self] in
             do {
                 try Task.checkCancellation()
-                var iterator = source(query).makeAsyncIterator()
+                var iterator = source(effective).makeAsyncIterator()
                 while let event = try await iterator.next() {
                     if Task.isCancelled {
                         _ = try? await iterator.next()

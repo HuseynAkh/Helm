@@ -26,6 +26,9 @@ public struct WindowCreationRequest: Equatable, Sendable {
 
 /// Pure restoration preserves tab preferences and reports missing folders (F-068, B-029).
 /// SessionStore currently persists [SessionWindow], rather than a SessionRecord wrapper.
+/// `isAvailableDirectory` runs synchronously for every saved tab and must not touch the disk: a stalled network
+/// volume would hang launch. Hosts resolve availability off the main actor with a timeout first, then pass a
+/// lookup of that result; an unanswered probe counts as unavailable (OK2-28).
 public struct SessionRestorePlan: Equatable, Sendable {
     public let windows: [WindowCreationRequest]
     public init(windows: [SessionWindow], home: URL, isAvailableDirectory: (URL) -> Bool) {

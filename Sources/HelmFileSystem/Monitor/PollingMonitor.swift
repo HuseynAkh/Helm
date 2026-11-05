@@ -31,11 +31,19 @@ public actor PollingMonitor: DirectoryMonitor {
         guard !stopped && task == nil else { return }
         let interval = self.interval
         task = Task { [weak self] in
+            var delay = interval
             while !Task.isCancelled {
-                do { try await Task.sleep(nanoseconds: interval) } catch { return }
+                do { try await Task.sleep(nanoseconds: delay) } catch { return }
+                let began = DispatchTime.now().uptimeNanoseconds
                 await self?.poll()
+                delay = PollingMonitor.nextDelay(interval: interval, lastRead: DispatchTime.now().uptimeNanoseconds &- began)
             }
         }
+    }
+    /// Keeps reads to about a fifth of wall time, so a large folder on a slow share is not listed nonstop (FB1-10).
+    static func nextDelay(interval: UInt64, lastRead: UInt64) -> UInt64 {
+        let scaled = lastRead.multipliedReportingOverflow(by: 4)
+        return scaled.overflow ? UInt64.max : max(interval, scaled.partialValue)
     }
     /// Deterministic tick for tests; production calls this at the configured interval.
     public func poll() async {

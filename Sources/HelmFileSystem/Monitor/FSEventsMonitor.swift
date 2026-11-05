@@ -2,13 +2,26 @@ import Foundation
 import HelmCore
 
 /// Direct-child mapping uses a canonical watched root, retaining the displayed symlink path (B-073).
+/// Purely lexical: FSEvents reports paths under the exact string registered at stream creation, while
+/// `standardizedFileURL` consults the disk, so a deleted child of `/private/...` would stop matching (FB1-3).
 public enum MonitorPathFilter {
     public static func displayedPath(for eventPath: String, canonicalRoot: URL, displayedRoot: URL) -> String? {
-        let event = URL(fileURLWithPath: eventPath).standardizedFileURL
-        let root = canonicalRoot.standardizedFileURL
-        if event.path == root.path { return displayedRoot.standardizedFileURL.path }
-        guard event.deletingLastPathComponent().path == root.path else { return nil }
-        return displayedRoot.appendingPathComponent(event.lastPathComponent).standardizedFileURL.path
+        let event = lexicalComponents(of: eventPath)
+        let root = lexicalComponents(of: canonicalRoot.path)
+        guard event.count >= root.count, event.prefix(root.count).elementsEqual(root) else { return nil }
+        let displayed = lexicalComponents(of: displayedRoot.path)
+        if event.count == root.count { return "/" + displayed.joined(separator: "/") }
+        guard event.count == root.count + 1 else { return nil }
+        return "/" + (displayed + [event[root.count]]).joined(separator: "/")
+    }
+    private static func lexicalComponents(of path: String) -> [String] {
+        var components: [String] = []
+        for component in path.split(separator: "/", omittingEmptySubsequences: true) {
+            if component == "." { continue }
+            if component == ".." { _ = components.popLast(); continue }
+            components.append(String(component))
+        }
+        return components
     }
 }
 

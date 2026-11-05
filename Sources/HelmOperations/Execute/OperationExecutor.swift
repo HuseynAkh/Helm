@@ -135,6 +135,9 @@ public actor OperationExecutor {
         await journal.complete(result)
         return result
     }
+    /// Root-owned macOS spellings of `/private/...`; without them every temp path is refused (FB1-11).
+    /// Any other symlinked ancestor stays refused so it cannot redirect a mutation (B-039).
+    private static let osManagedAncestorSymlinks: Set<String> = ["/tmp", "/var", "/etc"]
     private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [String: ChangeToken],
                          expectedKinds: [String: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence, cache: ExecutionCache) async throws -> URL? {
         for url in [step.source, step.destination].compactMap({ $0 }) {
@@ -144,7 +147,10 @@ public actor OperationExecutor {
             var parent = url.deletingLastPathComponent()
             while parent.path != "/" {
                 let entry = try await fileSystem.entry(at: parent)
-                guard entry.kind == .directory || entry.kind == .package else { throw OperationError.invalidPlan }
+                guard entry.kind == .directory || entry.kind == .package
+                    || (entry.kind == .symlinkToDirectory && Self.osManagedAncestorSymlinks.contains(parent.path)) else {
+                    throw OperationError.invalidPlan
+                }
                 parent.deleteLastPathComponent()
             }
         }

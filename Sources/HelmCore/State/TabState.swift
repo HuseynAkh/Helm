@@ -31,6 +31,8 @@ public struct TabState: Sendable, Equatable {
     public var monitorWorkGeneration: Generation = Generation()
     /// True after watch termination; manual refresh/reactivation can retry after exhaustion (B-013).
     public var monitorDegraded: Bool = false
+    /// The adapter is between attempts: no watch exists, so it would drop any read admitted now.
+    var monitorRetrying: Bool = false
     var monitorValidationPending: Bool = false
     public var searchGeneration: Generation = Generation()
     public var completionGeneration: Generation { addressBar.generation }

@@ -96,7 +96,7 @@ final class AO3SafetyTests: XCTestCase {
 
     func testLiveUnsupportedMutationMapsWithoutChangingDisk() async throws {
         let temp = try TempDirectory()
-        // Canonical fixture only; the production ancestor policy is deliberately not changed.
+        // Canonical fixture only; it isolates mutation mapping from the ancestor walk (see OP1 FB1-11).
         let root = temp.url.resolvingSymlinksInPath()
         let source = root.appendingPathComponent("source"), destination = root.appendingPathComponent("copy")
         try Data([1, 2]).write(to: source)

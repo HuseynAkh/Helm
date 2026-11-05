@@ -169,21 +169,26 @@ private final class AF1MonitorFactory: @unchecked Sendable {
 }
 
 extension AF1RegressionTests {
-    func testPrivateCanonicalRootMapsMissingChildToDisplayedPath() throws {
-        // Canary only: the production filter change is FB1-3 (JUDGEMENT), outside AF1.
-        #if os(macOS)
-        XCTExpectFailure("FB1-3: lexical filter correction belongs to the judgement lane")
-        #endif
+    func testPrivateCanonicalRootMapsMissingChildToDisplayedPath() {
         let name = "helm-af1-missing-" + UUID().uuidString
         let actual = MonitorPathFilter.displayedPath(for: "/private/tmp/" + name,
             canonicalRoot: URL(fileURLWithPath: "/private/tmp"),
             displayedRoot: URL(fileURLWithPath: "/tmp"))
-        #if os(Linux)
-        if actual != "/tmp/" + name {
-            throw XCTSkip("FB1-3 reproduced on corelibs Foundation too; correction is outside AF1 ownership scope")
-        }
-        #endif
         XCTAssertEqual(actual, "/tmp/" + name)
+    }
+    func testMonitorFilterIsLexicalForRootDescendantsAndSiblings() {
+        let canonical = URL(fileURLWithPath: "/private/tmp/w"), displayed = URL(fileURLWithPath: "/tmp/w")
+        func map(_ path: String) -> String? {
+            MonitorPathFilter.displayedPath(for: path, canonicalRoot: canonical, displayedRoot: displayed)
+        }
+        XCTAssertEqual(map("/private/tmp/w"), "/tmp/w")
+        XCTAssertEqual(map("/private/tmp/w/gone"), "/tmp/w/gone")
+        XCTAssertEqual(map("/private/tmp/w/./gone"), "/tmp/w/gone")
+        XCTAssertNil(map("/private/tmp/w/sub/gone"), "Only direct children are reported")
+        XCTAssertNil(map("/private/tmp/wider/gone"), "A sibling sharing a string prefix is not a child")
+        XCTAssertNil(map("/tmp/w/gone"), "Only the registered spelling matches")
+        XCTAssertEqual(MonitorPathFilter.displayedPath(for: "/gone", canonicalRoot: URL(fileURLWithPath: "/"),
+            displayedRoot: URL(fileURLWithPath: "/")), "/gone")
     }
 
     func testLiveConditionalMutationRefusesWithoutChangingDisk() async throws {

@@ -31,6 +31,30 @@ final class VirtualSourceTests: XCTestCase {
         }
         XCTAssertTrue(finished)
     }
+    func testDeniedVolumeTrashWarnsWithoutHidingHomeTrash() async throws {
+        let fs = InMemoryFileSystem()
+        let home = URL(fileURLWithPath: "/home"), usb = URL(fileURLWithPath: "/usb")
+        let homeTrash = home.appendingPathComponent(".Trash")
+        let usbTrash = usb.appendingPathComponent(".Trashes").appendingPathComponent("1000")
+        for directory in [home, homeTrash, usb, usb.appendingPathComponent(".Trashes"), usbTrash] {
+            try await fs.createDirectory(at: directory)
+        }
+        try await fs.createFileExclusively(at: homeTrash.appendingPathComponent("kept"), contents: Data())
+        await fs.setFailure(.permissionDenied, at: usbTrash)
+        let source = TrashSource(fileSystem: fs, origins: RecordsFixture(), home: home, volumeRoots: [usb], userID: "1000")
+        var names: [String] = [], warnings: [String] = [], finished = false
+        for try await event in source.load(.trash, options: LoadOptions()) {
+            switch event {
+            case .batch(let batch): names += batch.map(\.name)
+            case .warning(let message): warnings.append(message)
+            case .finished: finished = true
+            }
+        }
+        XCTAssertEqual(names, ["kept"])
+        XCTAssertEqual(warnings.count, 1)
+        XCTAssertTrue(warnings[0].contains(usbTrash.path), "The degraded volume must be named")
+        XCTAssertTrue(finished)
+    }
     func testLoaderSortingRefreshAndDeniedCachedDirectory() async throws {
         let fs = InMemoryFileSystem()
         let root = URL(fileURLWithPath: "/root")

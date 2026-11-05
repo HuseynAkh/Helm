@@ -48,7 +48,7 @@ public struct LiveFileSystem: FileSystem {
                         var failure: Error?
                         let flags: FileManager.DirectoryEnumerationOptions = options.includeHidden
                             ? [.skipsSubdirectoryDescendants] : [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
-                        guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil,
+                        guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: MetadataReader.listingPrefetchKeys,
                             options: flags, errorHandler: { _, error in failure = error; return false }) else {
                             throw FileSystemError.notFound
                         }
@@ -201,8 +201,13 @@ public struct LiveFileSystem: FileSystem {
     public func createAlias(for url: URL, at destination: URL) async throws {
         #if os(macOS)
         try await executor.run(volumes: [queueKey(url), queueKey(destination)]) {
-            let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
-            try URL.writeBookmarkData(data, to: destination)
+            do {
+                let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+                // writeBookmarkData replaces silently: reserve the name so EEXIST arbitrates keep-both (B-038).
+                // On a later write failure the placeholder is retained, like any partial exclusive write.
+                try Self.writeExclusively(at: destination, contents: Data())
+                try URL.writeBookmarkData(data, to: destination)
+            } catch { throw FileSystemError.mapping(error) }
         }
         #else
         throw FileSystemError.unsupported

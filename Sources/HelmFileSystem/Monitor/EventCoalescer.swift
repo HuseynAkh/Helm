@@ -23,6 +23,8 @@ public struct EventCoalescer: Sendable {
             return [event]
         }
     }
+    /// True while changed paths wait for their quiet or maximum deadline.
+    public var hasPending: Bool { first != nil }
     public mutating func flushIfDue() -> [MonitorEvent] {
         guard let first, let last else { return [] }
         let now = clock.now()

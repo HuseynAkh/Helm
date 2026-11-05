@@ -36,8 +36,10 @@ public struct PendingNavigation: Sendable, Equatable {
     public let intent: NavigationIntent
     public let restoredSelection: Set<ItemID>
     public let generation: Generation
-    public init(target: Location, intent: NavigationIntent, restoredSelection: Set<ItemID> = [], generation: Generation) {
+    /// History entries to consume on commit; repeated Back/Forward before the first batch accumulate (F-005).
+    public let steps: Int
+    public init(target: Location, intent: NavigationIntent, restoredSelection: Set<ItemID> = [], generation: Generation, steps: Int = 1) {
         self.target = target; self.intent = intent
-        self.restoredSelection = restoredSelection; self.generation = generation
+        self.restoredSelection = restoredSelection; self.generation = generation; self.steps = steps
     }
 }

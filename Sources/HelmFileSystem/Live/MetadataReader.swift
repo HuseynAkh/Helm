@@ -8,6 +8,14 @@ import UniformTypeIdentifiers
 /// Maps metadata without traversing links or hydrating file contents (F-035, F-048).
 public struct MetadataReader: Sendable {
     public init() {}
+    /// Handed to the directory enumerator so the kernel's bulk read serves `read`'s resource values (FB1-15).
+    static var listingPrefetchKeys: [URLResourceKey]? {
+        #if os(macOS)
+        return [.isHiddenKey, .isPackageKey, .isAliasFileKey, .contentTypeKey]
+        #else
+        return nil
+        #endif
+    }
     public func read(_ url: URL, resolveSymlinkTargets: Bool = true, volumeIdentifier: String? = nil) throws -> FileEntry {
         do {
             let manager = FileManager.default

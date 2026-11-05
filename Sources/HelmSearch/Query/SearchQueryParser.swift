@@ -3,7 +3,20 @@ import Foundation
 import HelmCore
 
 /// Invalid bounded grammar is reported instead of silently broadening a query (F-044).
-public enum SearchParseError: Error, Equatable { case tooLong, tooManyTokens, unterminatedQuote, danglingEscape, invalidFilter(String), nonLocalRoot(URL) }
+public enum SearchParseError: Error, Equatable {
+    case tooLong, tooManyTokens, unterminatedQuote, danglingEscape, invalidFilter(String), nonLocalRoot(URL)
+    /// Presentation text; the raw case name never reaches the user.
+    public var userMessage: String {
+        switch self {
+        case .tooLong: return "This search is too long."
+        case .tooManyTokens: return "This search has too many terms."
+        case .unterminatedQuote: return "This search has an unclosed quotation mark."
+        case .danglingEscape: return "This search ends with an unfinished escape."
+        case .invalidFilter(let filter): return "\"\(filter)\" is not a valid search filter."
+        case .nonLocalRoot: return "Search only covers local folders."
+        }
+    }
+}
 /// Filename grammar supports quoted phrases and backslash escapes; wildcards stay literal (F-044).
 public enum SearchQueryParser {
     public static func tokenize(_ text: String) throws -> [String] {
@@ -29,6 +42,23 @@ public enum SearchQueryParser {
         if !token.isEmpty { tokens.append(Token(text: token, isLiteral: literal)) }
         guard tokens.count <= 128 else { throw SearchParseError.tooManyTokens }
         return tokens
+    }
+    /// Live typing: `compile` stays strict for saved and programmatic requests, but text that does not parse
+    /// yet is the literal filename search legacy Helm always ran, so `"foo` or `kind:` never errors mid-word
+    /// and a file named `before:today.txt` stays findable (F-044, OK1-7).
+    public static func normalizedForTyping(_ query: SearchQuery) -> SearchQuery {
+        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return query }
+        do {
+            _ = try compile(SearchRequest(query: query))
+            return query
+        } catch SearchParseError.unterminatedQuote, SearchParseError.danglingEscape, SearchParseError.invalidFilter {
+            var literal = query
+            literal.text = ""
+            literal.filters = query.filters + [.name(text)]
+            // An invalid explicit filter or oversized literal must still surface, so keep the original.
+            return (try? compile(SearchRequest(query: literal))) == nil ? query : literal
+        } catch { return query }
     }
     public static func compile(_ request: SearchRequest) throws -> SearchSpecification {
         let roots: [URL]
