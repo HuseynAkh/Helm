@@ -190,9 +190,11 @@ Accounting for the difference from Linux's 1,318: +6 macOS-only (`AF1DarwinRegre
 | 3b | `xcodegen generate --spec App/project.yml` | PASS: exit 0 |
 | 3b | `xcodebuild -list -project App/Helm.xcodeproj` | PASS: exit 0, `Helm` scheme listed. No `schemes:` block was needed |
 | 3b | `xcodebuild -project App/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/build-MAC-HANDOFF/dd build` | PASS: exit 0, `BUILD SUCCEEDED`. Ad hoc signature, no team, no identity selected |
-| 4 | `HelmDev --smoke-seconds 5` | NOT RUN |
-| 4 | `Helm.app` smoke run | NOT RUN |
-| 4 | Human visual check | NOT RUN |
+| 4 | `"$(swift build --scratch-path /tmp/build-MAC-HANDOFF --show-bin-path)/HelmDev" --smoke-seconds 5` | PASS: exit 0, printed `HELMDEV_READY windows=1 env=in-memory`, empty stderr. Run directly, not with `open` |
+| 4 | `/tmp/build-MAC-HANDOFF/dd/Build/Products/Debug/Helm.app/Contents/MacOS/Helm --smoke-seconds 5`, bundle ID `com.helm.filemanager.dev` | PASS: exit 0, printed `HELMDEV_READY windows=1 env=in-memory`, empty stderr |
+| 4 | `~/Library/Preferences/HelmDev*`, `~/Library/Saved Application State/*HelmDev*` listed, not removed | Neither exists. `com.helm*` also absent from both, and from `Application Support` and `Containers`. `~/Library/Preferences/Helm.plist` still dated Mar 20 2026 |
+| 4 | Human visual check | NOT RUN. `windows=1` is the app's own count of visible windows; I did not look at the screen |
+| 4 | Real folder browsing | NOT RUN: blocked on OK2-1 and OK2-8 |
 | Optional | Strict-concurrency counts (OK2-37) | NOT RUN (needs Stages 1 to 4) |
 
 ### SC2a and SC2b
