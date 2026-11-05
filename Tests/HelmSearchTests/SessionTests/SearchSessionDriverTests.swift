@@ -8,7 +8,8 @@ final class SearchSessionDriverTests: XCTestCase {
         SearchQuery(text: text, scope: .home, bookmarkPaths: [], homeDirectory: URL(fileURLWithPath: "/home"), lastDirectory: nil, showHidden: false, limit: 30, filters: filters)
     }
     private func settled(_ driver: SearchSessionDriver) async -> SearchSessionState {
-        for _ in 0..<1000 {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while ContinuousClock.now < deadline {
             let state = await driver.state
             if !state.isAcceptingEvents { return state }
             await Task.yield()
@@ -101,7 +102,8 @@ final class SearchSessionDriverTests: XCTestCase {
         await fulfillment(of: [nextStarted], timeout: 2)
         next.continuation.yield(.search(.results(.init(results: [], truncated: true,
             candidateLimitReached: false, consideredCount: 1), isFinal: true)))
-        for _ in 0..<1000 {
+        let batchDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while ContinuousClock.now < batchDeadline {
             if await driver.state.batch != nil { break }
             await Task.yield()
         }
@@ -111,7 +113,8 @@ final class SearchSessionDriverTests: XCTestCase {
         XCTAssertTrue(state.isAcceptingEvents)
         XCTAssertEqual(state.batch?.truncated, true)
         next.continuation.yield(.disclosure(index: .available, fallback: .none, unsupportedCriteria: false))
-        for _ in 0..<1000 {
+        let disclosureDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while ContinuousClock.now < disclosureDeadline {
             if await driver.state.index == .available { break }
             await Task.yield()
         }

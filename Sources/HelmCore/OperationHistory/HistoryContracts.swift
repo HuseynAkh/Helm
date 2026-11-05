@@ -53,6 +53,8 @@ public enum HistoryAction: Sendable {
     case abortForward(HistoryRequestID, failure: HistoryPreparationFailure)
     case finishForward(HistoryRequestID, operation: OperationID, outcome: HistoryOutcome)
     case beginUndo(HistoryRequestID)
+    case startUndo(HistoryRequestID, operation: OperationID)
+    case abortUndo(HistoryRequestID, failure: HistoryPreparationFailure)
     case complete(HistoryRequestID, outcome: HistoryOutcome)
     case beginRedo
 }

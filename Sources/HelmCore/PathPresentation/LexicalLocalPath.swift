@@ -1,19 +1,27 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
-// Shared scoped policy: never collapse parent components across a possible symlink.
-// Explicit directory hints avoid Foundation existence inference during construction.
-enum LexicalLocalPath {
-    static func isLocal(_ url: URL) -> Bool {
-        url.isFileURL && (url.host == nil || url.host == "" || url.host?.lowercased() == "localhost")
-            && url.user == nil && url.password == nil && url.port == nil
-            && url.query == nil && url.fragment == nil && url.path.hasPrefix("/")
+// Scoped F-012/F-063/F-067 admission: decode once, never resolve symlinks or parents.
+// Byte keys deliberately avoid Swift String's canonical Unicode equivalence.
+struct LexicalLocalPath {
+    let components: [String]
+    var key: [[UInt8]] { components.map { Array($0.utf8) } }
+    var path: String { "/" + components.dropFirst().joined(separator: "/") }
+    var hasParent: Bool { components.contains("..") }
+
+    init?(_ url: URL) {
+        guard url.isFileURL,
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: true),
+              parts.host == nil || parts.host == "" || parts.host?.lowercased() == "localhost",
+              parts.user == nil, parts.password == nil, parts.port == nil,
+              parts.query == nil, parts.fragment == nil,
+              parts.percentEncodedPath.hasPrefix("/") else { return nil }
+        var decoded: [String] = ["/"]
+        for encoded in parts.percentEncodedPath.split(separator: "/") {
+            guard let component = String(encoded).removingPercentEncoding,
+                  !component.utf8.contains(0), !component.utf8.contains(47) else { return nil }
+            if component != "." { decoded.append(component) }
+        }
+        components = decoded
     }
-    static func components(_ url: URL) -> [String] {
-        ["/"] + url.path.split(separator: "/").filter { $0 != "." }.map(String.init)
-    }
-    static func key(_ url: URL) -> String {
-        "/" + components(url).dropFirst().joined(separator: "/")
-    }
-    static func hasParent(_ url: URL) -> Bool { components(url).contains("..") }
 }

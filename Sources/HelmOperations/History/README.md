@@ -33,3 +33,10 @@ Redo remains unsupported: no stale-plan replay. Open: native atomic receipts,
 safe redo, reconciliation resolution, durable storage, retention limits, host
 refresh/text-focus routing and macOS/Opus review. Host integration must adopt the
 admission callback; direct unbound completions now intentionally return false.
+
+F23: inverse admission compares the entire immutable plan, including verification,
+all ownership maps, issues and every planning context field. Reconstructing a plan
+with default fields is refused before filesystem access. If undo preparation is
+cancelled or fails before binding, call abortUndo(request:failure:); it preserves
+both stacks and records the failure. Abort and bind are serialized by the actor:
+a successful abort rejects late binding, and successful binding rejects abort.

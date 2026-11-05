@@ -62,7 +62,13 @@ final class JSONFileStoreTests: XCTestCase {
         let store = JSONFileStore<[Int]>(url: url, empty: [])
         try await store.load()
         store.replace(with: [1]); store.replace(with: [2])
-        try await Task.sleep(nanoseconds: 700_000_000)
+        // Observe the automatic write itself; flush() would bypass the debounce under test.
+        // The monotonic deadline bounds failure while allowing a busy executor to resume.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !FileManager.default.fileExists(atPath: url.path), ContinuousClock.now < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "Debounced save did not finish")
         let document = try JSONDecoder().decode(VersionedDocument<[Int]>.self, from: Data(contentsOf: url))
         XCTAssertEqual(document.items, [2])
         let blocked = dir.appendingPathComponent("blocked")

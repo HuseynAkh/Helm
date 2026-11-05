@@ -63,8 +63,17 @@ public enum OperationHistoryReducer {
             state.pending = .undo(request, entry)
             state.lastOutcome = nil
             return [.performUndo(request, entry.operationID)]
+        case .startUndo(let request, let operation):
+            guard case .undo(request, _) = state.pending, state.executingOperation == nil,
+                  !state.recordedOperations.contains(operation) else { return [] }
+            state.executingOperation = operation
+        case .abortUndo(let request, let failure):
+            guard case .undo(request, _) = state.pending, state.executingOperation == nil else { return [] }
+            state.pending = nil
+            state.lastOutcome = failure.outcome
         case .complete(let request, let outcome):
             guard case .undo(request, let entry) = state.pending else { return [] }
+            state.executingOperation = nil
             state.pending = nil
             state.lastOutcome = outcome
             if outcome == .succeeded {

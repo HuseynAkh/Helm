@@ -21,11 +21,11 @@ public struct SpringNavigationSession: Sendable {
         self.id = UUID(); self.original = original
         self.timing = SpringLoadingModel(clock: clock, delay: delay)
         self.drag = DropSession(sources: sources)
-        self.sourcesAreLocal = sources.allSatisfy { LexicalLocalPath.isLocal($0.url) && !LexicalLocalPath.hasParent($0.url) }
+        self.sourcesAreLocal = sources.allSatisfy { LexicalLocalPath($0.url).map { !$0.hasParent } ?? false }
     }
     public mutating func beginHover(_ target: FileEntry?) {
         guard !isEnded, acceptedDrop == nil else { return }
-        guard let target, LexicalLocalPath.isLocal(target.url), !LexicalLocalPath.hasParent(target.url), target.isDirectoryLike else { leaveHover(); return }
+        guard let target, let path = LexicalLocalPath(target.url), !path.hasParent, target.isDirectoryLike else { leaveHover(); return }
         if let hover, !Self.sameTarget(hover, target) { leaveHover() }
         hover = target
         timing.beginHover(id: target.id, isDirectory: true)
@@ -63,7 +63,7 @@ public struct SpringNavigationSession: Sendable {
     /// Host supplies fresh destination facts; this admits intent only, never executes a drop.
     public mutating func acceptDrop(target: FileEntry, destination: DropDestination,
                                     modifiers: DropModifiers = []) -> SpringDropRequest? {
-        guard !isEnded, sourcesAreLocal, acceptedDrop == nil, LexicalLocalPath.isLocal(target.url), !LexicalLocalPath.hasParent(target.url), target.isDirectoryLike,
+        guard !isEnded, sourcesAreLocal, acceptedDrop == nil, let path = LexicalLocalPath(target.url), !path.hasParent, target.isDirectoryLike,
               destination.location == .directory(target.url) else { return nil }
         let proposal = drag.proposal(destination: destination, modifiers: modifiers)
         guard proposal.operation != nil else { return nil }
@@ -93,10 +93,9 @@ public struct SpringNavigationSession: Sendable {
         if tabID == original.tabID { finish() }
     }
     private static func sameTarget(_ lhs: FileEntry, _ rhs: FileEntry) -> Bool {
-        LexicalLocalPath.isLocal(lhs.url) && LexicalLocalPath.isLocal(rhs.url)
-            && !LexicalLocalPath.hasParent(lhs.url) && !LexicalLocalPath.hasParent(rhs.url)
-            && LexicalLocalPath.key(lhs.url) == LexicalLocalPath.key(rhs.url)
-            && lhs.kind == rhs.kind && lhs.objectIdentity == rhs.objectIdentity
+        guard let left = LexicalLocalPath(lhs.url), let right = LexicalLocalPath(rhs.url),
+              !left.hasParent, !right.hasParent else { return false }
+        return left.key == right.key && lhs.kind == rhs.kind && lhs.objectIdentity == rhs.objectIdentity
     }
     private mutating func finish() {
         isEnded = true; leaveHover(); acceptedDrop = nil; stack = []; drag.end()

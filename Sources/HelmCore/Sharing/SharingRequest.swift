@@ -5,16 +5,14 @@ import Foundation
 public struct SharingSelectionSnapshot: Equatable, Sendable {
     public let urls: [URL]
     public init(urls: [URL]) throws {
-        var seen: Set<String> = []
+        var seen: Set<[[UInt8]]> = []
         var result: [URL] = []
         for url in urls {
-            guard url.isFileURL, url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
-                  url.user == nil, url.password == nil, url.port == nil, url.query == nil,
-                  url.fragment == nil, url.path.hasPrefix("/") else {
+            guard let path = LexicalLocalPath(url) else {
                 throw SharingFailure.nonLocalURL(url)
             }
             // Keep the first action URL verbatim; never collapse symlink/.. spellings.
-            if seen.insert(LexicalLocalPath.key(url)).inserted { result.append(url) }
+            if seen.insert(path.key).inserted { result.append(url) }
         }
         self.urls = result
     }

@@ -61,7 +61,7 @@ public struct PlannedStep: Hashable, Sendable, Identifiable {
     }
 }
 /// Immutable executable plan preserves exact source/destination pairing (B-042).
-public struct OperationPlan: Sendable {
+public struct OperationPlan: Equatable, Sendable {
     public let command: Command
     public let steps: [PlannedStep]
     public let issues: [PlanningIssue]

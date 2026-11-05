@@ -10,27 +10,27 @@ public struct PathPresentation: Equatable, Sendable {
     public let segments: [PathPresentationSegment]
 
     public init(location: Location, selectedEntries: [FileEntry]) {
-        guard selectedEntries.allSatisfy({ Self.isLocal($0.url) }) else {
+        let paths = selectedEntries.compactMap { LexicalLocalPath($0.url) }
+        guard paths.count == selectedEntries.count else {
             context = .invalidURL; segments = []; return
         }
-        var seen: Set<String> = []
-        let entries = selectedEntries.filter { seen.insert(LexicalLocalPath.key($0.url)).inserted }
-        if let entry = entries.first, entries.count == 1 {
+        var seen: Set<[[UInt8]]> = []
+        let entries = zip(selectedEntries, paths).filter { seen.insert($0.1.key).inserted }
+        if let (entry, path) = entries.first, entries.count == 1 {
             context = .selectedItem
-            segments = Self.ancestry(entry.url, leafIsDirectory: entry.isDirectoryLike)
+            segments = Self.ancestry(path.components, leafIsDirectory: entry.isDirectoryLike)
         } else if entries.count > 1 {
             context = .mixedSelection(count: entries.count)
-            let parents = entries.map { Array(LexicalLocalPath.components($0.url).dropLast()) }
+            let parents = entries.map { Array($0.1.components.dropLast()) }
             var common = parents[0]
             for parent in parents.dropFirst() {
-                common = Array(zip(common, parent).prefix(while: { $0.0 == $0.1 }).map { $0.0 })
+                common = Array(zip(common, parent).prefix(while: { $0.0.utf8.elementsEqual($0.1.utf8) }).map { $0.0 })
             }
-            let path = common.dropFirst().joined(separator: "/")
-            segments = Self.ancestry(URL(fileURLWithPath: "/" + path, isDirectory: true), leafIsDirectory: true)
+            segments = Self.ancestry(common, leafIsDirectory: true)
         } else if case .directory(let url) = location {
-            guard Self.isLocal(url) else { context = .invalidURL; segments = []; return }
+            guard let path = LexicalLocalPath(url) else { context = .invalidURL; segments = []; return }
             context = .directory
-            segments = Self.ancestry(url, leafIsDirectory: true)
+            segments = Self.ancestry(path.components, leafIsDirectory: true)
         } else {
             context = .virtual(location)
             segments = []
@@ -43,10 +43,11 @@ public struct PathPresentation: Equatable, Sendable {
 
     /// Only segments in this projection can produce intents. The host revalidates before acting.
     public func intent(_ action: PathSegmentAction, segmentID: URL) -> PathSegmentIntent? {
-        guard Self.isLocal(segmentID),
-              let segment = segments.first(where: { LexicalLocalPath.key($0.id) == LexicalLocalPath.key(segmentID) }) else { return nil }
+        guard let requested = LexicalLocalPath(segmentID),
+              let segment = segments.first(where: { LexicalLocalPath($0.id)?.key == requested.key }),
+              let path = LexicalLocalPath(segment.id) else { return nil }
         // Parent spellings remain visible/copyable; shared ItemID still normalizes them.
-        guard action == .copyPath || !LexicalLocalPath.hasParent(segment.id) else { return nil }
+        guard action == .copyPath || !path.hasParent else { return nil }
         switch action {
         case .navigate: return segment.isDirectory ? .navigate(segment.id) : nil
         case .openTab: return segment.isDirectory ? .openTab(segment.id) : nil
@@ -58,12 +59,7 @@ public struct PathPresentation: Equatable, Sendable {
         }
     }
 
-    private static func isLocal(_ url: URL) -> Bool {
-        LexicalLocalPath.isLocal(url)
-    }
-
-    private static func ancestry(_ url: URL, leafIsDirectory: Bool) -> [PathPresentationSegment] {
-        let components = LexicalLocalPath.components(url)
+    private static func ancestry(_ components: [String], leafIsDirectory: Bool) -> [PathPresentationSegment] {
         var result: [PathPresentationSegment] = []
         for index in components.indices {
             let path = "/" + components.prefix(index + 1).dropFirst().joined(separator: "/")
@@ -81,7 +77,12 @@ public struct PathPresentationSegment: Equatable, Sendable, Identifiable {
     public let title: String
     public let isDirectory: Bool
     public init(url: URL, isDirectory: Bool) {
-        self.id = URL(fileURLWithPath: LexicalLocalPath.key(url), isDirectory: isDirectory)
+        // Preserve invalid standalone inputs verbatim; projection admission refuses them.
+        if let path = LexicalLocalPath(url) {
+            self.id = URL(fileURLWithPath: path.path, isDirectory: isDirectory)
+        } else {
+            self.id = url
+        }
         self.title = id.path == "/" ? "/" : id.lastPathComponent
         self.isDirectory = isDirectory
     }

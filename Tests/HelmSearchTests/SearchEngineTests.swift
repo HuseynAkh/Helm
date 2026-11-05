@@ -76,10 +76,12 @@ final class SearchEngineTests: XCTestCase {
     }
     func testCancellationDuringEnumerationAndStreamFailure() async throws {
         let fs = try await fixture()
-        await fs.setLatency(nanoseconds: 5_000_000_000)
-        let service = engine(fs); let ctx = context()
+        let entered = expectation(description: "collect entered enumeration")
+        let service = engine(SearchListingFixture(base: fs, reversed: false,
+            onEnumerate: { _ in entered.fulfill() }, suspendEnumeration: true))
+        let ctx = context()
         let task = Task { try await service.collect(SearchRequest(text: ""), context: ctx) }
-        try await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [entered], timeout: 5)
         task.cancel()
         do { _ = try await task.value; XCTFail("expected cancellation") } catch is CancellationError {}
         let failure = expectation(description: "unsupported criteria diagnostic")
@@ -88,11 +90,14 @@ final class SearchEngineTests: XCTestCase {
         }) { XCTFail("failed queries must not emit success") }
         await fulfillment(of: [failure], timeout: 1)
         let cancelled = expectation(description: "stream worker stopped")
-        let stream = service.search(SearchRequest(text: ""), context: ctx, diagnostic: { value in
+        let streamEntered = expectation(description: "stream entered enumeration")
+        let streamService = engine(SearchListingFixture(base: fs, reversed: false,
+            onEnumerate: { _ in streamEntered.fulfill() }, suspendEnumeration: true))
+        let stream = streamService.search(SearchRequest(text: ""), context: ctx, diagnostic: { value in
             if value == .cancelled { cancelled.fulfill() }
         })
         let consumer = Task { for await _ in stream {} }
-        try await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [streamEntered], timeout: 5)
         consumer.cancel(); await consumer.value
         await fulfillment(of: [cancelled], timeout: 1)
     }

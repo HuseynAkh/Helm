@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import XCTest
 import Foundation
 import HelmCore
@@ -5,17 +6,26 @@ import HelmFileSystem
 
 final class ExecutorAndRegistryTests: XCTestCase {
     func testExecutorCancellationTimeoutAndIsolation() async throws {
-        let executor = IOExecutor(maxConcurrentOperations: 1, timeout: 0.03)
+        let executor = IOExecutor(maxConcurrentOperations: 1, timeout: 1)
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
         do {
-            let _: Int = try await executor.run(volume: "slow") { Thread.sleep(forTimeInterval: 0.15); return 1 }
+            let _: Int = try await executor.run(volume: "slow") { gate.wait(); return 1 }
             XCTFail("Timeout ignored")
         } catch { XCTAssertEqual(error as? FileSystemError, .timedOut) }
         do { let _: Int = try await executor.run(volume: "slow") { 2 }; XCTFail("Quarantine ignored") }
         catch { XCTAssertEqual(error as? FileSystemError, .timedOut) }
         let value = try await executor.run(volume: "other") { 3 }
         XCTAssertEqual(value, 3)
-        let task = Task { try await executor.run(volume: "cancel") { Thread.sleep(forTimeInterval: 0.1); return 4 } }
-        task.cancel()
+        let task = Task {
+            // Cancel before admission deterministically; parent scheduling must not
+            // accidentally turn this into cancellation of an admitted native call.
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await executor.run(volume: "cancel") {
+                XCTFail("Precancelled body entered")
+                return 4
+            }
+        }
         do { _ = try await task.value; XCTFail("Cancellation ignored") } catch is CancellationError {} catch { XCTFail("\(error)") }
     }
     func testRegistryFanoutAndFinalSubscriberTeardown() async throws {

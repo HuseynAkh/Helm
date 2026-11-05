@@ -51,7 +51,9 @@ public actor WindowOperationHistory {
             guard state.executingOperation == operation else { return false }
         } else {
             guard let inverse, inverse.request == request,
-                  plan.command == inverse.plan.command, plan.steps == inverse.plan.steps else { return false }
+                  plan == inverse.plan else { return false }
+            OperationHistoryReducer.reduce(&state, .startUndo(request, operation: operation))
+            guard state.executingOperation == operation else { return false }
         }
         execution = (operation, plan)
         return true
@@ -63,6 +65,17 @@ public actor WindowOperationHistory {
         guard case .forward(request, _) = state.pending, execution == nil else { return false }
         OperationHistoryReducer.reduce(&state, .abortForward(request, failure: failure))
         forwardCommand = nil
+        return true
+    }
+
+    /// Abort inverse preparation without consuming its original entry (F-059/B-043).
+    /// Once binding wins, the retained execution must settle through complete instead.
+    @discardableResult
+    public func abortUndo(request: HistoryRequestID, failure: HistoryPreparationFailure) -> Bool {
+        guard case .undo(request, _) = state.pending, inverse?.request == request,
+              execution == nil else { return false }
+        OperationHistoryReducer.reduce(&state, .abortUndo(request, failure: failure))
+        inverse = nil
         return true
     }
 

@@ -17,7 +17,7 @@ public struct SourceEntry: Sendable, Hashable {
     }
 }
 /// Explicit immutable inputs keep F-052 planning independent of disk and UI state (B-031).
-public struct PlanningContext: Sendable {
+public struct PlanningContext: Equatable, Sendable {
     public let sourceManifest: [SourceEntry]
     /// Destination metadata captured with names, preserving replacement evidence (F-052/B-042).
     public let existingEntries: [URL: FileEntry]
