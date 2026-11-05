@@ -1,9 +1,80 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# K30 verification record
+# Verification record — F12 current, K30 history
+
+## Current F12 verification — wave 17
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+Linux Swift 6.0.3 / tools 5.9 / Swift 5 mode; isolated scratch `/tmp/build-F12`.
+F12 changes handoff documentation, the top-level README and the explicitly requested fixes-F12 report.
+All counts below are executions, not declarations. Parallel source changes are
+outside F12 ownership; freeze revision plus dirty diff for final Mac acceptance.
+
+- Initial full portable suite: **877 tests, 0 failures, 0 skips**, exit 0,
+  `/tmp/build-F12/logs/full-suite.log`. The T1 environment flag was supplied for
+  historical compatibility; F5 already removed that test's gate.
+- Coverage regenerated from the final runner’s 889-test passing log: **565 rows / 0 gaps**; **411 planned,
+  88 drafted, 66 linux-tested**. Logs: `ledger-generate.log`, `ledger-audit.log`
+  in the same log directory. Historical K30 counts/hashes below do not describe
+  this regenerated CSV. Its increased citation evidence is not feature acceptance.
+- Final `run_all.sh`: **PASS, 889 tests, 0 failures, 0 skips; 0 failed checks**.
+  All six explicit target builds, 13 Python tooling tests, static checks, 43-file
+  UI/App syntax parse and report-only coverage pass. `/tmp/build-F12/run-all.log`
+  and `/tmp/build-F12/logs/`. The rise from 877 reflects concurrent source/test
+  additions; no source or test was changed by F12.
+- Standalone static checks: **222 Swift files, 0 errors**, `final-static.log`.
+  Portable harness configuration: **2 tests, PASS**, `ui-configuration.log`.
+- Configured portable UI/App harness: **53 tests, 0 failures, 0 skips**, exit 0,
+  `ui-app.log`. This exercises worker/adapter/App logic, excluding native SDK tests.
+- Documentation checks: all UI inventory paths present, 27 milestone rows,
+  Markdown links resolve, 565 unique ledger IDs retain draft labels, and all 291
+  named ledger tests passed in the final log. Scoped `git diff --check` passes.
+
+Commands (repository root; no bare swift build):
+
+```sh
+source /workspace/toolchains/env.sh
+T1_RUN_BUGS=1 swift test --scratch-path /tmp/build-F12 --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+HELM_K11_SCRATCH=/tmp/build-F12 bash scripts/rebuild/run_all.sh
+HELM_UI_SCRATCH=/tmp/build-F12 python3 -B Tests/HelmUITests/PortableRunner/run.py
+bash scripts/static_checks.sh
+python3 -B scripts/rebuild/check_coverage.py \
+  --parity /workspace/forge/helm-plan/docs/rebuild/02-finder-parity.md \
+  --current-state /workspace/forge/helm-plan/docs/rebuild/00-current-state.md \
+  --build-plan /workspace/forge/helm-plan/docs/rebuild/03-build-plan.md \
+  --generate --test-log /tmp/build-F12/logs/tests.log \
+  --ledger docs/handoff/coverage-ledger.csv
+```
+
+CSV is normalized to LF and audited again with the same catalogue/ledger arguments
+without `--generate` or `--test-log`. The ledger's header remains unchanged and all
+565 rows retain the DRAFT note. File/class-level citations do not assert every
+associated feature; B-009's broad class attribution remains an example of this
+limitation. Neither report-only coverage nor UI parsing closes a Mac gate.
+
+## First things to check on the Mac
+
+These are P11's exact C/compile-risk review sites, **not confirmed compile errors**.
+No new likely-to-fail SDK line was established by P11. Re-resolve line numbers after
+parallel source changes. Use Xcode 16 with macOS 14 deployment and Swift 5 mode.
+
+| P11 site | Required SDK / hosted check |
+| --- | --- |
+| `Package.swift:27–35` | Mac declarations remain commented. Assign manifest owner; add UI/App/test targets in stages, exclude PortableRunner/LinuxRunner. Do not uncomment the missing Sources/Helm executable template wholesale. |
+| `Sources/HelmUI/Content/InlineRenameField.swift:44`, `:72`, `:80`, `:98` | NSViewRepresentable/NSTextFieldDelegate witnesses and isolation, selectors, subclass overrides; real field-editor focus/IME lifecycle. Native tests are excluded on Linux. |
+| `Sources/HelmUI/Sheets/BatchRenameSheet.swift:8`, `:58`, `:63` | MainActor worker access from SwiftUI task/disappearance closures, cancellation and hosted dismissal under a large selection. Worker tests alone do not type-check view closures. |
+| `Sources/HelmUI/Content/ColumnBrowserView.swift:38`, `:58` | macOS 14 two-argument onChange and AppKit current-event access in the view builder; these APIs are not alleged unavailable. |
+| `Sources/HelmUI/Toolbar/ToolbarCustomizationView.swift:33` | String Transferable drag/drop overload inference and hosted behavior. |
+| `Sources/HelmApp/AppStoreContracts.swift:39` | MainActor persistence protocol witnesses under Apple Foundation annotations. App portable sources already compile on Linux; native SDK annotations remain unverified. |
+
+Also prioritize live executor capability UI (copy/move/Trash refusal), per-window
+journal ownership, WindowStore/DirectoryEffectRunner lifetime and one authoritative
+persistent store per document. See MAC_HANDOFF for the complete platform inventory.
+
+## Historical K30 record
 
 Linux Swift 6.0.3, Swift tools 5.9 manifest / Swift 5 language mode. Root package, branch `forge/rebuild-build`; dedicated scratch `/tmp/build-K30`. K30 edits only `docs/handoff/`. No network, commit, push or external action. The worktree changed during these checks: K29 edits production/existing tests and T1 adds tests. A git HEAD hash does not identify those dirty inputs. No Mac SDK compilation, hosted UI test, app launch or Opus gate closure is claimed.
 
-## Fresh K30 checks
+## Historical K30 checks
 
 | Check | Result and evidence |
 |---|---|
@@ -42,7 +113,7 @@ Actual executions redirected output to the logs above and stopped the build loop
 | `docs/prereview/fixes-F3.md` | 530 XCTest, 2 skips, 0 failures on final retry | Earlier failures/crash documented there; cause not conclusively proven. |
 | `docs/prereview/fixes-F4.md` | 492 baseline; 520 final portable tests, 2 skips; supplemental 50 UI/App portable tests, 0 failures | These overlapping runs must not be summed. UI/App targets remain undeclared; SDK-only tests excluded from Linux harness. |
 
-K30 did not rerun the F4 portable UI/App harness: `Tests/HelmUITests/PortableRunner/run.py` hardcodes `/tmp/build-F4`, and its F4RegressionTests Linux subprocess also hardcodes that scratch path. K30's private-scratch rule prevents using it unchanged. macOS XCTest declaration and commands are in MAC_HANDOFF.md. This is an unverified integration slice, not permission to modify those files.
+At the K30 snapshot, K30 did not rerun the F4 portable UI/App harness: `Tests/HelmUITests/PortableRunner/run.py` then hardcoded `/tmp/build-F4`, and its F4RegressionTests Linux subprocess also hardcoded that scratch path. K30's private-scratch rule prevents using it unchanged. macOS XCTest declaration and commands are in MAC_HANDOFF.md. F5 subsequently fixed both paths to require HELM_UI_SCRATCH; the current configured recipe is below. The K30 limitation is historical.
 
 ## Coverage interpretation
 
@@ -107,7 +178,7 @@ Local logs under `/tmp` are not repository artifacts. Preserve them with the han
 
 K29 appended `CONTRACT_INTEGRATION.md#k29` during final checks and added a PutBackPlanner origin-validation fix. K30 preserved that concurrent edit, updated its own table, and ran the opt-in T1 regression through another full suite rather than treating the existing skip as validation. The result is recorded below. The K23 397-test result remains historical.
 
-## Final opt-in verification (supersedes the standard-run ledger)
+## Historical K30 opt-in verification (superseded by F12 ledger)
 
 **PASS: 650 XCTest cases, 0 skips, 0 failures**, exit 0. Command: `T1_RUN_BUGS=1 swift test --scratch-path /tmp/build-K30 --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'`. Log: `/tmp/build-K30/logs/opt-in-tests.log`. This explicitly executes the formerly gated Put Back mixed-authority regression. It does not establish native Trash/Put Back behavior.
 
@@ -118,3 +189,14 @@ Final ledger states: 89 drafted, 61 linux-tested, 415 planned.
 - `/tmp/build-K30/logs/opt-in-tests.log` SHA-256: `fd92f23f8317801ff5df715607e3d39e2adf2997d711fdb56db1d95d3bf3c3aa`
 - `/tmp/build-K30/logs/opt-in-coverage.log` SHA-256: `167c270889e38577a62a4a67490b440b2dc71da497ea5e5e0bde464024035e3d`
 - `docs/handoff/coverage-ledger.csv` SHA-256: `46440a2f823dcd6e043a6de989a4e334ee34856d36c69c1d6e458d11a1c6c438`
+
+## F12 final evidence identity
+
+These hashes supersede historical K30 ledger hashes above. Local logs remain in
+`/tmp/build-F12`; no upload is authorized. Parallel dirty source files are not
+identified by HEAD alone; final Opus review must freeze the complete inputs.
+
+- `/tmp/build-F12/logs/tests.log` SHA-256: `50fd97c84f7fa6f67dedb6a793c893e70c7de354aec9c4b937f52e542deaab08`
+- `/tmp/build-F12/logs/ui-app.log` SHA-256: `125a01b3b7bb07db27815fa5471a22d554c9be8ea8f040e495fedefc16677dec`
+- `/tmp/build-F12/run-all.log` SHA-256: `d79b880729753b1af541e52c005ea77e721452d6365ad7b22d08564d71ad1267`
+- `docs/handoff/coverage-ledger.csv` SHA-256: `b755bafce667fd3c450d77e7b57736d09f7579e48dbc34181d8e93c350d9d3c5`

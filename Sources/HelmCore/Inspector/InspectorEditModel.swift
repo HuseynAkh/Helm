@@ -6,7 +6,21 @@ import Foundation
 public struct InspectorEditModel: Equatable, Sendable {
     public let originals: [InspectorItem]
     public private(set) var pending: [InspectorField: InspectorAttribute]
-    public var permissions: PermissionsModel
+    private var permissionRows: PermissionsModel
+    /// F-050 rows project the effective draft; subsequent row edits modify a whole-mode draft.
+    public var permissions: PermissionsModel {
+        get {
+            var rows = permissionRows
+            if case .permissions(let mode) = pending[.permissions] { rows.wholeMode = mode }
+            return rows
+        }
+        set {
+            permissionRows = newValue
+            permissionRows.wholeMode = nil
+            pending.removeValue(forKey: .permissions)
+            if let mode = newValue.wholeMode { set(.permissions(mode)) }
+        }
+    }
     public var applyPermissionsToEnclosedItems: Bool {
         get { permissions.applyToEnclosedItems }
         set { permissions.applyToEnclosedItems = newValue }
@@ -16,10 +30,11 @@ public struct InspectorEditModel: Equatable, Sendable {
         var seen: Set<ItemID> = []
         originals = items.filter { seen.insert($0.id).inserted }
         pending = [:]
-        permissions = PermissionsModel(modes: originals.compactMap { item in
+        permissionRows = PermissionsModel(modes: originals.compactMap { item in
             if case .permissions(let mode) = item.attributes[.permissions] { return mode }
             return nil
         })
+        permissionRows.metadataComplete = permissionRows.originalModes.count == originals.count
     }
     public func value(for field: InspectorField) -> InspectorValue<InspectorAttribute> {
         if let edit = pending[field] { return .value(edit) }
@@ -43,6 +58,11 @@ public struct InspectorEditModel: Equatable, Sendable {
         if case .name(let raw) = attribute, case .success(let name) = FileNameValidator.validate(raw) {
             normalized = .name(name.value)
         } else { normalized = attribute }
+        if normalized.field == .permissions {
+            let recursive = permissionRows.applyToEnclosedItems
+            permissionRows.reset()
+            permissionRows.applyToEnclosedItems = recursive
+        }
         if originals.allSatisfy({ $0.attributes[normalized.field] == normalized }) {
             pending.removeValue(forKey: normalized.field)
         } else { pending[normalized.field] = normalized }

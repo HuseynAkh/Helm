@@ -39,6 +39,7 @@ public struct TabState: Sendable, Equatable {
     public var isLoading: Bool = false
     // Kept independently so load/monitor callbacks cannot overwrite search presentation (B-009).
     var monitorDirty: Bool = false
+    var monitorNeedsValidation: Bool = false
     var underlyingSnapshot: PresentationSnapshot?
     var underlyingSelection: Set<ItemID> = []
     var restorationIDs: Set<ItemID>?

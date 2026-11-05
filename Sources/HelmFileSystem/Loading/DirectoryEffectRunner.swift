@@ -10,6 +10,7 @@ import HelmCore
         let generation: Generation
         let coalescer: DirectoryReloadCoalescer
     }
+    private let snapshotWorker = MonitorSnapshotWorker()
     private let loader: DirectoryLoader
     private let options: @MainActor (TabID) -> LoadOptions
     private let fallback: (any EffectRunner)?
@@ -63,6 +64,7 @@ import HelmCore
     private func reload(_ tab: TabID, watch: Watch, validate: Bool,
                         send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let loader = loader
+        let snapshotWorker = snapshotWorker
         let current = options(tab)
         let loadOptions = LoadOptions(showHidden: current.showHidden, sort: current.sort, useCache: false, batchSize: current.batchSize)
         let task = Task {
@@ -74,7 +76,8 @@ import HelmCore
                     guard await watch.coalescer.acknowledgeRootValidation(revision: revision) else { return }
                     try Task.checkCancellation()
                 }
-                let snapshot = SnapshotBuilder.build(location: watch.location, entries: entries, sort: loadOptions.sort)
+                let snapshot = try await snapshotWorker.build(location: watch.location, sortedEntries: entries, sort: loadOptions.sort)
+                try Task.checkCancellation()
                 send(.tab(tab, .monitorSnapshot(watch.generation, snapshot)))
             } catch {
                 guard !Task.isCancelled, !(error is CancellationError) else { return }

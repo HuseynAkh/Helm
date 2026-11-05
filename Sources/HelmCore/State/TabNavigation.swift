@@ -4,7 +4,6 @@ import Foundation
 extension TabReducer {
     static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [],
                       state: inout TabState, effects: inout [TabEffect]) {
-        if target != state.location { state.monitorDirty = false }
         endSearch(&state, effects: &effects)
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
@@ -57,6 +56,9 @@ extension TabReducer {
             case .push, .up, .home: state.history.push(current: current, movingTo: pending.target)
             case .restore: break
             }
+            if pending.target != state.location {
+                state.monitorDirty = false; state.monitorNeedsValidation = false
+            }
             state.location = pending.target; state.pendingNavigation = nil
             state.restorationIDs = pending.restoredSelection; state.selection = pending.restoredSelection
             state.selectionSource = .history; state.expandedIDs = []; state.anchorID = nil
@@ -79,9 +81,13 @@ extension TabReducer {
         }
     }
     static func replayMonitor(_ state: inout TabState, effects: inout [TabEffect]) {
-        guard state.monitorDirty, state.isActive, !state.isLoading, state.pendingNavigation == nil else { return }
+        guard state.monitorDirty || state.monitorNeedsValidation,
+              state.isActive, !state.isLoading, state.pendingNavigation == nil else { return }
         state.monitorDirty = false
-        effects.append(.refreshPaths([], state.monitorGeneration))
+        if state.monitorNeedsValidation {
+            state.monitorNeedsValidation = false
+            effects.append(.validateNavigation(state.location, state.monitorGeneration))
+        } else { effects.append(.refreshPaths([], state.monitorGeneration)) }
     }
     static func visibleSelection(_ ids: Set<ItemID>, snapshot: PresentationSnapshot, expanded: Set<ItemID>) -> Set<ItemID> {
         if snapshot.children.isEmpty {

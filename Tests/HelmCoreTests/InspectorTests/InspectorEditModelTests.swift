@@ -143,6 +143,58 @@ final class InspectorEditModelTests: XCTestCase {
         XCTAssertEqual(model.value(for: .permissions), .value(.permissions(0o644)))
         XCTAssertFalse(model.isDirty)
     }
+    func testWholeModeRevertClearsOlderRowsAndPreservesRecursiveIntent() throws {
+        for recursive in [false, true] {
+            var model = InspectorEditModel(items: [item(directory: true)])
+            model.permissions.set(PermissionAccess(bits: 7), for: .owner)
+            model.applyPermissionsToEnclosedItems = recursive
+            model.set(.permissions(0o600))
+            XCTAssertEqual(model.permissions.row(.owner), .value(PermissionAccess(bits: 6)))
+            XCTAssertEqual(model.permissions.row(.group), .value(PermissionAccess(bits: 0)))
+            model.set(.permissions(0o644))
+            XCTAssertEqual(model.value(for: .permissions), .value(.permissions(0o644)))
+            XCTAssertEqual(model.permissions.row(.owner), .value(PermissionAccess(bits: 6)))
+            XCTAssertEqual(model.permissions.row(.group), .value(PermissionAccess(bits: 4)))
+            XCTAssertEqual(model.isDirty, recursive)
+            XCTAssertEqual(try model.makePlan().isEmpty, !recursive)
+            XCTAssertEqual(model.applyPermissionsToEnclosedItems, recursive)
+        }
+    }
+    func testRowEditModifiesWholeModeAndResetClearsIt() throws {
+        var model = InspectorEditModel(items: [item(mode: 0o4644)])
+        model.set(.permissions(0o4600))
+        model.permissions.set(PermissionAccess(bits: 4), for: .group)
+        XCTAssertEqual(model.value(for: .permissions), .value(.permissions(0o4640)))
+        XCTAssertEqual(model.permissions.row(.group), .value(PermissionAccess(bits: 4)))
+        XCTAssertEqual(try model.makePlan().items[0].changes[0].proposed, .permissions(0o4640))
+        model.permissions.reset()
+        XCTAssertFalse(model.isDirty)
+        XCTAssertTrue(try model.makePlan().isEmpty)
+    }
+    func testUnknownPermissionsRemainUnavailableInEitherSelectionOrder() {
+        let known = item(directory: true)
+        let unknown = InspectorItem(url: URL(fileURLWithPath: "/unknown"), isDirectory: true,
+                                    attributes: [], editableFields: [.permissions])
+        for items in [[known, unknown], [unknown, known]] {
+            var model = InspectorEditModel(items: items)
+            XCTAssertEqual(model.value(for: .permissions), .unavailable)
+            XCTAssertFalse(model.canEdit(.permissions))
+            for subject in PermissionSubject.allCases {
+                XCTAssertEqual(model.permissions.row(subject), .unavailable)
+            }
+            model.permissions.set(PermissionAccess(bits: 7), for: .owner)
+            XCTAssertEqual(model.permissions.row(.owner), .unavailable)
+            assertError(model, .unsupported(unknown.id, .permissions))
+            model.reset()
+            model.applyPermissionsToEnclosedItems = true
+            assertError(model, .unsupported(unknown.id, .permissions))
+            model.set(.permissions(0o600))
+            XCTAssertEqual(model.permissions.row(.owner), .value(PermissionAccess(bits: 6)))
+            assertError(model, .unsupported(unknown.id, .permissions))
+        }
+        let mixed = InspectorEditModel(items: [known, item("/other", mode: 0o744)])
+        XCTAssertEqual(mixed.permissions.row(.owner), .mixed)
+    }
     func testClearingExistingValuesIsAnExplicitChange() throws {
         let original = InspectorItem(url: URL(fileURLWithPath: "/a"), attributes: [.tags(["Work"]), .comment("text"),
             .defaultApplication(URL(fileURLWithPath: "/A.app"))], editableFields: [.tags, .comment, .defaultApplication])

@@ -17,7 +17,10 @@ for undo. This lane supplies no executor or filesystem mutation authorization.
 
 PermissionsModel offers row edits with independent execute flags, preserving all other
 bits. Edit `InspectorEditModel.permissions` for per-row multi-item changes; each item keeps
-its untouched bits. An explicit `.permissions` draft overrides row edits for that item. Finder
+its untouched bits. An explicit `.permissions` draft clears earlier row edits, even when reverting to originals,
+while preserving recursive intent. Rows display that draft; later row edits modify it.
+Unknown original modes keep aggregate rows unavailable unless a whole mode is explicitly
+assigned; planning still rejects missing metadata. Finder
 labels describe read/write only; execute is a separate control. ACLs, ownership changes,
 and administrative authentication remain read-only/out of scope.
 

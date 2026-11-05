@@ -18,7 +18,7 @@ public struct RowDescription: Sendable {
         if selected { parts.append("selected") }
         if verbosity != .brief {
             // Directory metadata size is not the aggregate size of its contents.
-            if !entry.isDirectoryLike, let size = formatting.bytes(entry.size) { parts.append(size) }
+            if !entry.isDirectoryLike, entry.kind != .package, let size = formatting.bytes(entry.size) { parts.append(size) }
             var seen: Set<String> = []
             let names: [String] = tags.tags.map(\.name).filter {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && seen.insert($0).inserted

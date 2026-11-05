@@ -47,12 +47,20 @@ public enum TabReducer {
             let base = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: next.location)), state: &next)
         case .monitorSnapshot(let generation, let snapshot):
-            guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil,
+            guard next.isActive, generation == next.monitorGeneration,
                   snapshot.location == next.location else { return (state, []) }
-            if next.isLoading { next.monitorDirty = true; return (next, []) }
+            if next.isLoading || next.pendingNavigation != nil { next.monitorDirty = true; return (next, []) }
             publish(snapshot, state: &next)
         case .monitorEvent(let generation, let event):
-            guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil else { return (state, []) }
+            guard next.isActive, generation == next.monitorGeneration else { return (state, []) }
+            if next.pendingNavigation != nil {
+                next.monitorDirty = true
+                switch event {
+                case .rootChanged, .volumeUnmounted, .unavailable: next.monitorNeedsValidation = true
+                case .changed, .rescan: break
+                }
+                return (next, [])
+            }
             switch event {
             case .changed(let paths):
                 if next.isLoading { next.monitorDirty = true }
@@ -119,6 +127,8 @@ public enum TabReducer {
             }
         case .deactivated:
             if next.isActive {
+                // A replacement watcher cannot replay changes made while this tab is inactive.
+                next.monitorDirty = true
                 effects.append(.cancel(.monitor, next.monitorGeneration))
                 next.monitorGeneration = next.monitorGeneration.next(); next.isActive = false
             }

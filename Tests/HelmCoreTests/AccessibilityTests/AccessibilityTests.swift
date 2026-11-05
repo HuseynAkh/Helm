@@ -102,8 +102,18 @@ final class AccessibilityTests: XCTestCase {
             XCTAssertEqual(RowDescription(verbosity: .brief).label(for: entry, selected: false, formatting: formatting()),
                            "x, " + text)
             XCTAssertEqual(RowDescription().label(for: entry, selected: false, formatting: formatting()).contains("123 bytes"),
-                           !entry.isDirectoryLike)
+                           [FileEntryKind.regular, .symlinkToFile, .danglingSymlink, .alias, .other].contains(kind))
         }
+    }
+
+    func testPackageRawMetadataIsNotAnnouncedAsContentsSize() {
+        // The bundle may contain 200 MB; 4096 is only its directory metadata.
+        let package = FileEntry(url: URL(fileURLWithPath: "/App.app"), kind: .package, size: 4096)
+        for verbosity: RowDescription.Verbosity in [.standard, .detailed] {
+            XCTAssertEqual(RowDescription(verbosity: verbosity).label(for: package, selected: false,
+                           formatting: formatting()), "App.app, package")
+        }
+        XCTAssertFalse(package.isDirectoryLike)
     }
 
     func testLocalizedKindAndEmptyFallback() {

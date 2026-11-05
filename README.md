@@ -1,3 +1,40 @@
+<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
+# Helm rebuild status
+
+The rebuild lives at the repository root in `Package.swift`, `Sources/`, `Tests/`
+and `scripts/`. It is a draft pending Opus compile-correctness and behavior review
+after 22:00 Toronto on 2026-11-04. The existing app under `Helm/` is the unchanged
+behavior reference. The legacy description below is not a rebuild capability claim.
+
+The root package enables six portable libraries and XCTest targets. UI/App source
+exists, but Mac targets, native host and executable remain unconfigured. Live
+executor copy/move/Trash currently refuse conditional mutations; exclusive creation
+remains available. In-memory operation tests do not establish live feature parity.
+
+Current baseline: 877+ portable tests. See [verification](docs/handoff/VERIFICATION.md)
+for exact fresh counts and [Mac handoff](docs/handoff/MAC_HANDOFF.md) for implemented
+components, deferred work and SDK priorities. The 565-row ledger records citations,
+not feature acceptance. No Mac runtime acceptance or release is claimed.
+
+From the repository root, use explicit portable targets and a private scratch path:
+
+```sh
+source /workspace/toolchains/env.sh  # Linux workspace toolchain
+swift build --scratch-path /tmp/build-HELM-REVIEW --target HelmCore
+swift test --scratch-path /tmp/build-HELM-REVIEW --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+HELM_K11_SCRATCH=/tmp/build-HELM-REVIEW bash scripts/rebuild/run_all.sh
+HELM_UI_SCRATCH=/tmp/build-HELM-REVIEW python3 -B Tests/HelmUITests/PortableRunner/run.py
+```
+
+The supplemental runner is Linux-only portable UI/App logic; it does not type-check
+SwiftUI/AppKit. Use the staged Mac instructions in the handoff for SDK validation.
+No publishing, sending, sharing changes, paid renders, commits or pushes are part
+of this handoff.
+
+---
+
+## Legacy app README (historical)
+
 # Helm — A Nautilus-Inspired File Manager for macOS
 
 Helm brings the clean, focused file management experience of [GNOME Files](https://apps.gnome.org/Nautilus/) (Nautilus) to macOS. Built natively with AppKit and SwiftUI, it aims to be a fast, keyboard-driven alternative to Finder — without the clutter.

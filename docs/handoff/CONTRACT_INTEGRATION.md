@@ -249,3 +249,34 @@ Final verification results are appended below.
   scripts unchanged; it does not type-check SwiftUI or AppKit against a Mac SDK.
 - Standalone static checks: **221 Swift files, 0 errors**. `git diff --check` passes.
 - All changes remain uncommitted drafts pending Opus review after 22:00 Toronto.
+
+## F12 current disposition of historical deferrals
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+
+The K23 table and its verification counts above are a dated decision record.
+K29/K34 and the current source supersede these specific earlier deferrals:
+
+- Location-keyed option persistence now exists as Persistence
+  `LocationViewOptionsStore`; tag catalogue persistence exists as `TagCatalogStore`.
+  Native consumers, explicit flush/recovery composition and one-store ownership
+  remain deferred, not the portable storage implementation.
+- Core `WindowStore` supplies FIFO state publication, retained task handles and
+  `StoreSelectionBinder`; FileSystem `DirectoryEffectRunner` supplies monitor,
+  refresh and validation work. Application wiring remains deferred. Both refresh
+  and validation work must return cancellation handles.
+- Core's no-follow identity/conditional mutation values and provider seam exist.
+  Native atomic mutation remains deferred: the default LiveFileSystem executor
+  path refuses copy/move/Trash. Exclusive creation is available; direct primitive
+  APIs are not evidence of executor capability. Tree undo remains refused.
+- K34 cancellable Naming APIs and UI `BatchRenameWorker` supersede F8's P7-2
+  deferral. The bounded worker and cancellation checks exist; hosted Mac validation
+  is outstanding. K35 Inspector and K36 Accessibility provide portable values,
+  not native attribute execution or VoiceOver integration.
+- F5 removed the T1 Put Back opt-in gate and fixed both UI runner scratch inputs.
+  Use `HELM_UI_SCRATCH` with freshly built dependencies. The earlier K29 gated-run
+  discussion is historical.
+
+Current counts, logs and exact Mac SDK priorities are in [VERIFICATION.md](VERIFICATION.md).
+Wave 12–17 inventory and deferred integration are in [MAC_HANDOFF.md](MAC_HANDOFF.md).
+No source contracts were changed by F12.

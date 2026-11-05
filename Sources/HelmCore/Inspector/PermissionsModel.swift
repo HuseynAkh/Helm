@@ -32,25 +32,35 @@ public struct PermissionAccess: Equatable, Sendable, Codable {
 /// Recursive intent is a plan flag only; this type never enumerates files.
 public struct PermissionsModel: Equatable, Sendable {
     public let originalModes: [UInt16]
+    // Internal projection state supplied by the owning Inspector edit model.
+    var wholeMode: UInt16?
+    var metadataComplete: Bool = true
     public private(set) var edits: [PermissionSubject: PermissionAccess]
     public var applyToEnclosedItems: Bool
     public init(modes: [UInt16], applyToEnclosedItems: Bool = false) {
         originalModes = modes; edits = [:]; self.applyToEnclosedItems = applyToEnclosedItems
     }
     public func row(_ subject: PermissionSubject) -> InspectorValue<PermissionAccess> {
-        InspectorValue(values: originalModes.map { PermissionAccess(bits: applying(to: $0) >> subject.rawValue) })
+        if let mode = wholeMode { return .value(PermissionAccess(bits: mode >> subject.rawValue)) }
+        guard metadataComplete else { return .unavailable }
+        return InspectorValue(values: originalModes.map { PermissionAccess(bits: applying(to: $0) >> subject.rawValue) })
     }
     public mutating func set(_ access: PermissionAccess, for subject: PermissionSubject) {
+        if let mode = wholeMode {
+            let shift = subject.rawValue
+            wholeMode = (mode & ~(UInt16(7) << shift)) | (access.bits << shift)
+            return
+        }
         if originalModes.allSatisfy({ PermissionAccess(bits: $0 >> subject.rawValue) == access }) {
             edits.removeValue(forKey: subject)
         } else { edits[subject] = access }
     }
-    public mutating func reset() { edits = [:]; applyToEnclosedItems = false }
+    public mutating func reset() { edits = [:]; wholeMode = nil; applyToEnclosedItems = false }
     public func applying(to mode: UInt16) -> UInt16 {
-        edits.reduce(mode) { result, edit in
+        edits.reduce(wholeMode ?? mode) { result, edit in
             let shift = edit.key.rawValue
             return (result & ~(UInt16(7) << shift)) | (edit.value.bits << shift)
         }
     }
-    public var isDirty: Bool { !edits.isEmpty || applyToEnclosedItems }
+    public var isDirty: Bool { wholeMode != nil || !edits.isEmpty || applyToEnclosedItems }
 }
