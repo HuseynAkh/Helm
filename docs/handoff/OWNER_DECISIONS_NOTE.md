@@ -4,6 +4,8 @@ DRAFT: pending review, 2026-11-05
 
 For Huseyn. Every recommendation here is proposed, owner decision pending. Except for the explicitly disclosed FB1-11 symlink allowlist already implemented by OP1, these decisions remain unimplemented. No option authorizes a push, a release or any other external action. `OWNER_OPTIONS.md` (lane AK3) has fuller wording on paths and hosting; this note refers to it and does not replace it.
 
+First Mac run: options A of OK2-2 and OK2-4 are a scaffold-only working assumption. Every decision below remains open.
+
 Nothing in this rebuild has ever compiled on macOS, and pass OP1 did not compile anything on any platform (see `docs/review-opus/fixes-OP1.md`). Treat claims about Apple behaviour here as unconfirmed until a Mac run.
 
 ## Decide these first

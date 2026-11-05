@@ -17,7 +17,7 @@ It does not install dependencies, access the network, commit or modify the ledge
 Inspect test effects before running against a changed checkout; existing suites use
 fakes and temporary fixtures. No real user-data tests are authorized by this script.
 
-Coverage commands (paths are external inputs, never copied into this repository):
+Coverage commands (plan paths are external inputs; a snapshot for the Mac run is in docs/rebuild, see its README):
 
 ```sh
 python3 scripts/rebuild/check_coverage.py \

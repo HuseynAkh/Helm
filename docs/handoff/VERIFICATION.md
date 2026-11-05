@@ -1,11 +1,10 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Verification record — DRAFT, NOT FINAL: blockers remain
+# Verification record (Linux only; no Mac evidence)
 
 ## Current handoff pin
 
-DRAFT: pending review, 2026-11-05. Reviewed revision: `<HEAD at handoff>` (orchestrator fills after review). Current Linux commands and counts are in [fixes-AK3](../review-opus/fixes-AK3.md). Re-record counts on Mac; 1,198 and the clean-tree statement below describe only the historical F25 snapshot. OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md).
+Code pin 1c4f3fe on forge/rebuild-build; docs commit follows. Current Linux evidence: [fixes-OP2](../review-opus/fixes-OP2.md), 1,318 XCTest, 0 failures, 0 skips; run_all.sh exits 1 only for the four retained Core names. Re-record counts on Mac. Commands below that use /workspace or /tmp logs reproduce only on the build box.
 
-AK3 fresh Linux verification, 2026-11-05: `swift build --build-tests --scratch-path /tmp/build-AK3` and all six explicit target builds passed. The six-target XCTest filter completed 1,281 tests, 2 disclosed FileSystem skips, 0 failures. Portable UI/App runner: 60 passed; separate App runner: 14 passed (overlapping, not additive). Python: 15 rebuild + 4 static-check + 2 runner-configuration tests passed. Syntax parse: 43 files, 0 failures. `run_all.sh` exited 1 solely for the four retained Core SDK-name collisions pending owner-approved rename. Static checks: 246 Swift files, 0 errors. Report-only coverage still has 14 gaps (567 catalogue IDs, 565 ledger rows). No Mac compile/runtime evidence. The linked AK3 report preserves the earlier moving-tree step-count failure and incremental-build crash, both absent from the final fresh-build run.
+Historical: AK3 fresh Linux verification, 2026-11-05: `swift build --build-tests --scratch-path /tmp/build-AK3` and all six explicit target builds passed. The six-target XCTest filter completed 1,281 tests, 2 disclosed FileSystem skips, 0 failures. Portable UI/App runner: 60 passed; separate App runner: 14 passed (overlapping, not additive). Python: 15 rebuild + 4 static-check + 2 runner-configuration tests passed. Syntax parse: 43 files, 0 failures. `run_all.sh` exited 1 solely for the four retained Core SDK-name collisions pending owner-approved rename. Static checks: 246 Swift files, 0 errors. Report-only coverage still has 14 gaps (567 catalogue IDs, 565 ledger rows). No Mac compile/runtime evidence. The linked AK3 report preserves the earlier moving-tree step-count failure and incremental-build crash, both absent from the final fresh-build run.
 
 ## Historical F25 verification — through wave 24
 
@@ -226,6 +225,8 @@ associated feature; B-009's broad class attribution remains an example of this
 limitation. Neither report-only coverage nor UI parsing closes a Mac gate.
 
 ## First things to check on the Mac
+
+Run order and authority are in MAC_HANDOFF.md; this list only indexes review sites.
 
 These are P11's exact C/compile-risk review sites, **not confirmed compile errors**.
 **SUPERSEDED by OK2-3:** “No new likely-to-fail SDK line was established by P11.” The DropProposal ambiguity was subsequently identified; the qualifier is present in AK3-start HEAD and working tree. Verify it at handoff. Re-resolve line numbers after

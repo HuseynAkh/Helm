@@ -1,10 +1,10 @@
 # Owner options — no assignment or implementation authorization
 
-DRAFT: pending review, 2026-11-05
+Not yet reviewed by Huseyn, 2026-11-05
 
-OWNER ASSIGNMENT PENDING (see OWNER_OPTIONS.md)
+For the first Mac run only, options A of OK2-2 and OK2-4 are the working scaffold (see MAC_HANDOFF section 2). This is not a ruling on these options.
 
-These are options for Huseyn, not instructions to any lane. All host, manifest and contract work remains blocked until the exact ownership and policy are approved. The reviewed revision will be `<HEAD at handoff>`; the orchestrator fills it after review.
+These are options for Huseyn, not instructions to any lane. Apart from the scaffold-level work in MAC_CLAUDE_PROMPT.md, all host, manifest and contract work remains blocked until the exact ownership and policy are approved. Code pin 1c4f3fe; docs commit follows.
 
 ## Path ownership (OK2-2)
 

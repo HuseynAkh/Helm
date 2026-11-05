@@ -1,7 +1,21 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Handoff integration notes — F25 / through wave 24
+# Handoff notes
 
-Read the [Opus/Fable queue](REVIEW_QUEUE.md): P1–P21, R1, fixes-F1–F24 and
+Start at [MAC_HANDOFF.md](MAC_HANDOFF.md). Prompt: [MAC_CLAUDE_PROMPT.md](MAC_CLAUDE_PROMPT.md). Code pin 1c4f3fe; docs commit follows.
+
+## Mac steps for Huseyn
+
+These are Huseyn's own steps; Mac Claude does none of them. Pasting the block authorizes tests to remove only their own temp fixtures.
+
+1. Push `forge/rebuild-build`.
+2. Clone with the branch named, because the default branch `main` is legacy and has no handoff:
+   `git clone --branch forge/rebuild-build https://github.com/HuseynAkh/Helm.git Helm-rebuild`
+3. `cd Helm-rebuild`, start Claude Code, paste the block.
+
+Optional: to pre-authorize Darwin-only portable-module compile fixes, add this exact line to the prompt; otherwise S3 requires stopping and reporting:
+
+`Also compile-fix Darwin-only branches of portable modules, no contract changes.`
+
+Historical (F25): Read the [Opus/Fable queue](REVIEW_QUEUE.md): P1–P21, R1, fixes-F1–F24 and
 all test-findings reports. Latest committed baseline: `0021ac6`, wave 24;
 **1,198 portable tests, zero failures/skips** in F23/F24 logs. The separate T4
 five-run serial evidence covers 1,185 tests, not five passes of wave 24.
@@ -18,4 +32,4 @@ Mac SDK validation, safe redo and broader ItemID identity policy remain open.
 
 The [F25 disposition](fixes-F25.md) is kept in this owned directory because the
 requested `docs/prereview/fixes-F25.md` is outside the explicit lane boundary.
-No network, external actions, commits or pushes are authorized by this handoff.
+Permissions for the Mac run are only those in MAC_CLAUDE_PROMPT.md.

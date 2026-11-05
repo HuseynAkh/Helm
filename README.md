@@ -1,9 +1,7 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Helm rebuild status
 
 The rebuild lives at the repository root in `Package.swift`, `Sources/`, `Tests/`
-and `scripts/`. It is a draft pending Opus compile-correctness and behavior review
-after 22:00 Toronto on 2026-11-04. The existing app under `Helm/` is the unchanged
+and `scripts/`. It is a draft: nothing has compiled on macOS. The existing app under `Helm/` is the unchanged
 behavior reference. The legacy description below is not a rebuild capability claim.
 
 The root package enables six portable libraries and XCTest targets. UI/App source
@@ -11,16 +9,11 @@ exists, but Mac targets, native host and executable remain unconfigured. Live
 executor copy/move/Trash currently refuse conditional mutations; exclusive creation
 remains available. In-memory operation tests do not establish live feature parity.
 
-First read the [Opus/Fable review queue](docs/handoff/REVIEW_QUEUE.md), including P1–P21, R1 and fixes-F1–F24.
+On a Mac, start at [the Mac handoff](docs/handoff/MAC_HANDOFF.md); the prompt is [MAC_CLAUDE_PROMPT.md](docs/handoff/MAC_CLAUDE_PROMPT.md).
 
-Wave 24 (`0021ac6`) baseline: **1,198 portable tests, zero failures/skips**,
-verified in the F23/F24 execution logs. F19–F24 add history admission, session
-lifetime and lexical path fixes; T4 hardens asynchronous test synchronization. See [verification](docs/handoff/VERIFICATION.md)
-for exact fresh counts and [Mac handoff](docs/handoff/MAC_HANDOFF.md) for implemented
-components, deferred work and SDK priorities. The 565-row ledger records citations,
-not feature acceptance. No Mac runtime acceptance or release is claimed.
+Code pin `1c4f3fe` on `forge/rebuild-build`; the docs commit follows it. At the pin, on Linux: **1,318 XCTest, 0 failures, 0 skips**. `scripts/rebuild/run_all.sh` exits 1 only for four retained Core type names. Source: [fixes-OP2](docs/review-opus/fixes-OP2.md). The 565-row ledger records citations, not feature acceptance. No Mac runtime acceptance or release is claimed.
 
-From the repository root, use explicit portable targets and a private scratch path:
+On the Linux workspace, from the repository root, use explicit portable targets and a private scratch path:
 
 ```sh
 source /workspace/toolchains/env.sh  # Linux workspace toolchain
@@ -32,12 +25,13 @@ HELM_UI_SCRATCH=/tmp/build-HELM-REVIEW python3 -B Tests/HelmUITests/PortableRunn
 
 The supplemental runner is Linux-only portable UI/App logic; it does not type-check
 SwiftUI/AppKit. Use the staged Mac instructions in the handoff for SDK validation.
-No publishing, sending, sharing changes, paid renders, commits or pushes are part
-of this handoff.
+No publishing, sending, sharing changes, paid renders or pushes are part of this handoff. The Mac run commits only locally on `handoff/mac-fixups`.
 
 ---
 
 ## Legacy app README (historical)
+
+Its commands build the legacy package under `Helm/`, not the rebuild.
 
 # Helm — A Nautilus-Inspired File Manager for macOS
 

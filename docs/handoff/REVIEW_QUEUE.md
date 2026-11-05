@@ -1,6 +1,8 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Opus / Fable review queue — F25, through wave 24
 
+Historical F25 queue. Its start time and two-run limit do not apply to the Mac run, and its /workspace paths exist only on the build box. Use MAC_HANDOFF.md.
+
 Start no earlier than **22:00 America/Toronto, 2026-11-04**. Keep **at most two
 Claude runs active at once**, including Opus and Fable combined. This is a proposed
 owner/orchestrator queue, not a scheduled job or permission to launch agents.
