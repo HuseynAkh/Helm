@@ -19,3 +19,7 @@ xcuserdata/
 # Misc
 *.swp
 *~
+
+# Local Python verification caches
+__pycache__/
+*.pyc

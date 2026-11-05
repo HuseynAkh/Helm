@@ -1,3 +1,38 @@
+# Helm rebuild status
+
+The rebuild lives at the repository root in `Package.swift`, `Sources/`, `Tests/`
+and `scripts/`. It is a draft: nothing has compiled on macOS. The existing app under `Helm/` is the unchanged
+behavior reference. The legacy description below is not a rebuild capability claim.
+
+The root package enables six portable libraries and XCTest targets. UI/App source
+exists, but Mac targets, native host and executable remain unconfigured. Live
+executor copy/move/Trash currently refuse conditional mutations; exclusive creation
+remains available. In-memory operation tests do not establish live feature parity.
+
+On a Mac, start at [the Mac handoff](docs/handoff/MAC_HANDOFF.md); the prompt is [MAC_CLAUDE_PROMPT.md](docs/handoff/MAC_CLAUDE_PROMPT.md).
+
+Code pin `1c4f3fe` on `forge/rebuild-build`; the docs commit follows it. At the pin, on Linux: **1,318 XCTest, 0 failures, 0 skips**. `scripts/rebuild/run_all.sh` exits 1 only for four retained Core type names. Source: [fixes-OP2](docs/review-opus/fixes-OP2.md). The 565-row ledger records citations, not feature acceptance. No Mac runtime acceptance or release is claimed.
+
+On the Linux workspace, from the repository root, use explicit portable targets and a private scratch path:
+
+```sh
+source /workspace/toolchains/env.sh  # Linux workspace toolchain
+swift build --scratch-path /tmp/build-HELM-REVIEW --target HelmCore
+swift test --scratch-path /tmp/build-HELM-REVIEW --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+HELM_K11_SCRATCH=/tmp/build-HELM-REVIEW bash scripts/rebuild/run_all.sh
+HELM_UI_SCRATCH=/tmp/build-HELM-REVIEW python3 -B Tests/HelmUITests/PortableRunner/run.py
+```
+
+The supplemental runner is Linux-only portable UI/App logic; it does not type-check
+SwiftUI/AppKit. Use the staged Mac instructions in the handoff for SDK validation.
+No publishing, sending, sharing changes, paid renders or pushes are part of this handoff. The Mac run commits only locally on `handoff/mac-fixups`.
+
+---
+
+## Legacy app README (historical)
+
+Its commands build the legacy package under `Helm/`, not the rebuild.
+
 # Helm — A Nautilus-Inspired File Manager for macOS
 
 Helm brings the clean, focused file management experience of [GNOME Files](https://apps.gnome.org/Nautilus/) (Nautilus) to macOS. Built natively with AppKit and SwiftUI, it aims to be a fast, keyboard-driven alternative to Finder — without the clutter.
