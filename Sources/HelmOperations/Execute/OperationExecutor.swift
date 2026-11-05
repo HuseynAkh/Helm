@@ -69,7 +69,11 @@ public actor OperationExecutor {
                 let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification, forward: forward)
                 // Mutation success must survive a metadata read failure or cancellation.
                 let metadata: FileEntry?
-                if let destination { metadata = try? await fileSystem.entry(at: destination) } else { metadata = nil }
+                if let destination {
+                    let fs = fileSystem
+                    // Preserve completed output evidence even when the caller cancelled mid-primitive.
+                    metadata = await Task { try? await fs.entry(at: destination) }.value
+                } else { metadata = nil }
                 forward.completed(step, destination: destination, entry: metadata)
                 let token = metadata?.changeToken
                 if let source = step.source, let expected = expectedTokens[source],
@@ -106,15 +110,12 @@ public actor OperationExecutor {
                 // Timeout may finish late: this executor remains quarantined until external reconciliation.
                 if mapped == .timedOut || (mapped == .cancelled && executionFailure != nil && !(cause is ConditionalMutationError)) { quarantined = true }
                 failure = mapped
-                let uncertain: Bool
-                switch mapped {
-                case .cancelled: uncertain = executionFailure != nil
-                case .verificationUnavailable: uncertain = forward.isMissing(step.source) || forward.isMissing(step.destination)
-                case .invalidPlan, .conflict, .verificationFailed: uncertain = false
-                default: uncertain = true
-                }
+                // Read-only refusals cannot leave an uncertain mutation. Missing evidence for
+                // an earlier completed output still requires reconciliation (B-038/B-041).
+                let uncertain = (executionFailure != nil && !(cause is ConditionalMutationError) && mapped != .conflict)
+                    || (mapped == .verificationUnavailable && (forward.isMissing(step.source) || forward.isMissing(step.destination)))
                 let outcome = ItemOutcome(step: step, destination: executionFailure?.destination ?? step.destination,
-                                          result: .failure(mapped), requiresReconciliation: cause is ConditionalMutationError ? false : uncertain)
+                                          result: .failure(mapped), requiresReconciliation: uncertain)
                 outcomes.append(outcome); await journal.record(outcome, for: id)
             }
         }

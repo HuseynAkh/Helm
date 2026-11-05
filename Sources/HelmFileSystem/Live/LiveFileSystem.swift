@@ -64,8 +64,11 @@ public struct LiveFileSystem: FileSystem {
                                     try readMetadata(url, options.resolveSymlinkTargets, volume)
                                 }
                             } catch {
-                                diagnostic(url, FileSystemError.mapping(error))
-                                throw FileSystemError.mapping(error)
+                                let mapped = FileSystemError.mapping(error)
+                                // A vanished child is a removal, not an incomplete listing (F-035).
+                                if mapped == .notFound { continue }
+                                diagnostic(url, mapped)
+                                throw mapped
                             }
                             if !options.includeHidden && value.isHidden { continue }
                             batch.append(value)
@@ -140,8 +143,14 @@ public struct LiveFileSystem: FileSystem {
         #endif
     }
     public func removeItem(at url: URL) async throws { try await perform(at: url) { try $0.removeItem(at: url) } }
+    // These synchronous create bodies never throw CancellationError. IOExecutor only
+    // emits it before body admission, so callers can safely retain prefix undo (B-038).
+    private func runCreate(at url: URL, _ body: @escaping @Sendable () throws -> Void) async throws {
+        do { try await executor.run(volume: queueKey(url), body) }
+        catch is CancellationError { throw ConditionalMutationError.cancelledBeforeMutation }
+    }
     public func createDirectory(at url: URL) async throws {
-        try await executor.run(volume: queueKey(url)) {
+        try await runCreate(at: url) {
             guard mkdir(url.path, mode_t(0o777)) == 0 else {
                 let code = errno
                 if code == EEXIST { throw FileSystemError.collision(noMutation: true) }
@@ -150,7 +159,7 @@ public struct LiveFileSystem: FileSystem {
         }
     }
     public func createFileExclusively(at url: URL, contents: Data) async throws {
-        try await executor.run(volume: queueKey(url)) {
+        try await runCreate(at: url) {
             try Self.writeExclusively(at: url, contents: contents)
         }
     }

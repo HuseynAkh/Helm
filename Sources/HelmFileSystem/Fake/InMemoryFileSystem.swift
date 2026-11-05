@@ -106,8 +106,14 @@ public actor InMemoryFileSystem: FileSystem {
         nodes[key(url)] = Node(url: url, kind: kind, data: data, target: target, modified: Date(timeIntervalSince1970: tick))
         nodes[key(parent.url)]?.modified = Date(timeIntervalSince1970: tick)
     }
-    public func createDirectory(at url: URL) async throws { try insert(url, kind: .directory) }
-    public func createFileExclusively(at url: URL, contents: Data) async throws { try insert(url, kind: .regular, data: contents) }
+    public func createDirectory(at url: URL) async throws {
+        if Task.isCancelled { throw ConditionalMutationError.cancelledBeforeMutation }
+        try insert(url, kind: .directory)
+    }
+    public func createFileExclusively(at url: URL, contents: Data) async throws {
+        if Task.isCancelled { throw ConditionalMutationError.cancelledBeforeMutation }
+        try insert(url, kind: .regular, data: contents)
+    }
     public func createSymbolicLink(at url: URL, destination: URL) async throws { try insert(url, kind: .danglingSymlink, target: destination) }
     public func createAlias(for url: URL, at destination: URL) async throws { _ = try node(url); try insert(destination, kind: .alias) }
     public func removeItem(at url: URL) async throws {

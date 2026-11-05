@@ -71,11 +71,12 @@ public final class IOExecutor: @unchecked Sendable {
                 catch { state.complete(.failure(error)); return }
                 queue.addOperation {
                     guard self.begin(state, id: id, volumes: footprint) else { return }
+                    // Queue backlog is not a stalled native call (B-107).
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + self.timeout) { [weak self, weak state] in
+                        if let state { self?.expire(state, volumes: footprint) }
+                    }
                     do { state.complete(.success(try body())) }
                     catch { state.complete(.failure(error)) }
-                }
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { [weak self, weak state] in
-                    if let state { self?.expire(state, volumes: footprint) }
                 }
             }
         } onCancel: { state.cancelIfQueued() }

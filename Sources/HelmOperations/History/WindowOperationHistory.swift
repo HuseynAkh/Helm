@@ -134,6 +134,16 @@ public actor WindowOperationHistory {
         return true
     }
 
+    /// Retire blocked undo authority only after explicit user confirmation (F-059/B-038/B-043).
+    /// The host must first show original and inverse journal outcomes, including hidden stage/backup paths.
+    /// This does not repair files or verify recovery; all journal evidence remains available.
+    @discardableResult
+    public func acknowledgeReconciliation() -> Bool {
+        guard state.pending == nil, state.reconciliation != nil else { return false }
+        OperationHistoryReducer.reduce(&state, .acknowledgeReconciliation)
+        return true
+    }
+
     /// Explicitly unsupported: stale paths/steps are never used as redo authorization.
     public func beginRedo() -> HistoryAvailability {
         OperationHistoryReducer.reduce(&state, .beginRedo)

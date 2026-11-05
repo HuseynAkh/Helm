@@ -110,6 +110,13 @@ final class F2SafetyTests: XCTestCase {
         XCTAssertTrue(exists)
         let stored = await executor.journal.outcomes(for: result.id)
         XCTAssertTrue(stored[0].succeeded)
+        XCTAssertNotNil(stored[0].destinationEvidence)
+        let entry = await executor.journal.entry(result.id)
+        let inverse = UndoPlanner.inverse(of: try XCTUnwrap(entry), recordedOrigins: [:])
+        XCTAssertTrue(inverse.isExecutable)
+        let undone = await executor.execute(inverse)
+        XCTAssertNil(undone.error)
+        XCTAssertEqual(undone.succeededCount, 1)
     }
     func testReplaceAncestorUsesDestinationCaseSemantics() {
         let source = URL(fileURLWithPath: "/dest/A/sub/A"), parent = URL(fileURLWithPath: "/dest")

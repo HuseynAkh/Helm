@@ -93,7 +93,12 @@ final class ExecutorTests: XCTestCase {
         XCTAssertEqual(result.succeededCount, 1); XCTAssertEqual(result.failedCount, 1)
         XCTAssertEqual(result.outcomes[0].step.source, x); XCTAssertEqual(result.outcomes[0].destination, b.appendingPathComponent("x"))
         let stored = await executor.journal.entry(result.id)
-        XCTAssertFalse(UndoPlanner.inverse(of: try XCTUnwrap(stored), recordedOrigins: [:]).isExecutable)
+        let inverse = UndoPlanner.inverse(of: try XCTUnwrap(stored), recordedOrigins: [:])
+        XCTAssertFalse(result.outcomes[1].requiresReconciliation)
+        XCTAssertTrue(inverse.isExecutable)
+        let undone = await executor.execute(inverse)
+        XCTAssertNil(undone.error)
+        XCTAssertEqual(undone.succeededCount, 1)
     }
     func testExecutionTimeCollisionUsesNumbering() async throws {
         let fs = try await fixture(), source = a.appendingPathComponent("x")

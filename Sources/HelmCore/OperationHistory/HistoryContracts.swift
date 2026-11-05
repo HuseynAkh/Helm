@@ -21,6 +21,8 @@ public enum HistoryOutcome: Equatable, Sendable {
     case succeeded, noChange
     case failed(String), refused(String), unsupported(String)
     case partial(String), reconciliationRequired(String)
+    /// Conservative inverse policy: a partial undo cannot safely be replayed.
+    /// Forward completion latches only `reconciliationRequired`; a known prefix remains undoable.
     public var needsReconciliation: Bool {
         switch self {
         case .partial, .reconciliationRequired: return true
@@ -57,6 +59,8 @@ public enum HistoryAction: Sendable {
     case abortUndo(HistoryRequestID, failure: HistoryPreparationFailure)
     case complete(HistoryRequestID, outcome: HistoryOutcome)
     case beginRedo
+    /// Retire the blocked undo entry after the host presents journal evidence and gets user confirmation.
+    case acknowledgeReconciliation
 }
 
 /// Intent only: the history reducer never performs file mutations (F-059/B-041).

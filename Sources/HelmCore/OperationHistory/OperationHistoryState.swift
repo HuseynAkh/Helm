@@ -2,7 +2,7 @@
 import Foundation
 
 /// Window-owned named stacks survive tab closure (F-059/B-100/B-105).
-/// Partial/uncertain completion blocks further work until a future reconciliation owner intervenes.
+/// Uncertain forward work and partial undo block history until explicitly acknowledged.
 public struct OperationHistoryState: Sendable {
     public internal(set) var undoEntries: [HistoryEntry] = []
     public internal(set) var redoEntries: [HistoryEntry] = []
@@ -57,7 +57,7 @@ public enum OperationHistoryReducer {
             if outcome == .succeeded || outcome.needsReconciliation {
                 state.undoEntries.append(HistoryEntry(operationID: operation, name: name))
             }
-            if outcome.needsReconciliation { state.reconciliation = outcome }
+            if case .reconciliationRequired = outcome { state.reconciliation = outcome }
         case .beginUndo(let request):
             guard let entry = state.undoEntries.last, admit(&state, request) else { return [] }
             state.pending = .undo(request, entry)
@@ -81,6 +81,12 @@ public enum OperationHistoryReducer {
                 state.redoEntries.append(entry)
             }
             if outcome.needsReconciliation { state.reconciliation = outcome }
+        case .acknowledgeReconciliation:
+            guard state.pending == nil, state.reconciliation != nil else { return [] }
+            // Admission is blocked while latched, so only the top entry can be affected.
+            // Retire it without creating redo authority or discarding journal evidence.
+            if !state.undoEntries.isEmpty { state.undoEntries.removeLast() }
+            state.reconciliation = nil
         case .beginRedo:
             guard state.pending == nil, state.reconciliation == nil, !state.redoEntries.isEmpty else { return [] }
             state.lastOutcome = .unsupported("Redo requires fresh intent validation and ownership evidence")
