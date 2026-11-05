@@ -15,8 +15,8 @@ import Glibc
 struct NativeTagAttributes: TagAttributeAccess {
     private func get(_ path: String, _ name: String, _ pointer: UnsafeMutableRawPointer?, _ count: Int) -> Int {
         #if canImport(Darwin)
-        // Darwin position=0 and options=0 follow symlinks, as Foundation resource values do.
-        return Darwin.getxattr(path, name, pointer, count, 0, 0)
+        // Tag the displayed link itself, never its target (F-069/B-071).
+        return Darwin.getxattr(path, name, pointer, count, 0, XATTR_NOFOLLOW)
         #elseif canImport(Glibc)
         return linuxGet(path, name, pointer, count)
         #else
@@ -52,8 +52,8 @@ struct NativeTagAttributes: TagAttributeAccess {
     func write(path: String, name: String, data: Data) throws {
         let result: Int32 = data.withUnsafeBytes { buffer in
             #if canImport(Darwin)
-            // Position zero; options zero creates or replaces this attribute only.
-            return Darwin.setxattr(path, name, buffer.baseAddress, buffer.count, 0, 0)
+            // Position zero; no-follow keeps the target untouched for a symlink row.
+            return Darwin.setxattr(path, name, buffer.baseAddress, buffer.count, 0, XATTR_NOFOLLOW)
             #elseif canImport(Glibc)
             return linuxSet(path, name, buffer.baseAddress, buffer.count, 0)
             #else
@@ -65,7 +65,7 @@ struct NativeTagAttributes: TagAttributeAccess {
 
     func remove(path: String, name: String) throws {
         #if canImport(Darwin)
-        let result = Darwin.removexattr(path, name, 0) // options zero follows symlinks.
+        let result = Darwin.removexattr(path, name, XATTR_NOFOLLOW)
         #elseif canImport(Glibc)
         let result = linuxRemove(path, name)
         #else
@@ -77,7 +77,7 @@ struct NativeTagAttributes: TagAttributeAccess {
     func names(path: String) throws -> [String] {
         func list(_ pointer: UnsafeMutablePointer<CChar>?, _ size: Int) -> Int {
             #if canImport(Darwin)
-            return Darwin.listxattr(path, pointer, size, 0) // options zero follows symlinks.
+            return Darwin.listxattr(path, pointer, size, XATTR_NOFOLLOW)
             #elseif canImport(Glibc)
             return linuxList(path, pointer, size)
             #else

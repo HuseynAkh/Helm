@@ -31,7 +31,7 @@ public struct MetadataReader: Sendable {
             let values = try url.resourceValues(forKeys: [.isHiddenKey, .isPackageKey, .isAliasFileKey, .contentTypeKey])
             hidden = hidden || values.isHidden == true
             if kind == .directory && values.isPackage == true { kind = .package }
-            if values.isAliasFile == true { kind = .alias }
+            if values.isAliasFile == true && type != .typeSymbolicLink { kind = .alias }
             identifier = values.contentType?.identifier
             description = values.contentType?.localizedDescription
             #endif

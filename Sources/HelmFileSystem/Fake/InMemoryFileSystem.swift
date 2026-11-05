@@ -24,7 +24,9 @@ public actor InMemoryFileSystem: FileSystem {
     }
     private func key(_ url: URL) -> String {
         let path = url.standardizedFileURL.path.precomposedStringWithCanonicalMapping
-        return caseSensitive ? path : path.lowercased()
+        // Share planning's oracle; native filesystems can still differ, so EEXIST
+        // remains the final collision arbiter for live mutations (B-039).
+        return caseSensitive ? path : FileNameComparison.key(path, caseSensitive: false)
     }
     public func setLatency(nanoseconds: UInt64) { latencyNanoseconds = nanoseconds }
     private func delay() async throws {

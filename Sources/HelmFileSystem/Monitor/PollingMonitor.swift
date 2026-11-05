@@ -9,6 +9,7 @@ public actor PollingMonitor: DirectoryMonitor {
     private let fileSystem: any FileSystem
     private let interval: UInt64
     private var baseline: [String: ChangeToken]?
+    private var lastFailure: FileSystemError?
     private var task: Task<Void, Never>?
     private var stopped = false
     public init(directory: URL, fileSystem: any FileSystem, interval: TimeInterval = 3) {
@@ -42,14 +43,20 @@ public actor PollingMonitor: DirectoryMonitor {
         do {
             let next = try await read()
             guard !stopped else { return }
-            if let previous = baseline {
+            if lastFailure != nil {
+                // Recovery requires one full validation even when metadata did not change.
+                continuation.yield(.rescan)
+            } else if let previous = baseline {
                 let changed = Set(previous.keys).union(next.keys).filter { previous[$0] != next[$0] }
                 if !changed.isEmpty { continuation.yield(.changed(paths: Set(changed))) }
             }
             baseline = next
+            lastFailure = nil
         } catch {
             guard !stopped else { return }
             let failure = FileSystemError.mapping(error)
+            guard lastFailure != failure else { return }
+            lastFailure = failure
             if failure == .notFound { continuation.yield(.rootChanged) }
             else { continuation.yield(.unavailable(failure == .permissionDenied ? .permissionDenied : .unavailable)) }
         }

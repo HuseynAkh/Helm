@@ -20,7 +20,7 @@ public struct DirectoryLoader: LocationSource {
                     guard case .directory(let url) = location else { throw FileSystemError.unsupported }
                     let root = try await fileSystem.entry(at: url)
                     guard root.isReadable else { throw FileSystemError.permissionDenied }
-                    guard root.isDirectoryLike else { throw FileSystemError.other("Not a directory") }
+                    guard root.isDirectoryLike || root.kind == .package else { throw FileSystemError.other("Not a directory") }
                     // Validate open permission even when metadata and cache are available.
                     var entries: [FileEntry] = []
                     for try await batch in fileSystem.enumerate(url, options: EnumerationOptions(

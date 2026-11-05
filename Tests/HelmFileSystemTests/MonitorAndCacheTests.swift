@@ -100,18 +100,43 @@ extension MonitorAndCacheTests {
         XCTAssertEqual(missing, .rootChanged)
         await monitor.stop()
     }
-    func testFallbackStartsAndStopsOnLinux() async throws {
-        let fs = InMemoryFileSystem()
-        let monitor = FallbackMonitor(directory: URL(fileURLWithPath: "/"), fileSystem: fs)
+    func testFallbackStartsAndStopsOnEveryPlatform() async throws {
+        let temp = try TempDirectory()
+        let fs = LiveFileSystem()
+        let monitor = FallbackMonitor(directory: temp.url, fileSystem: fs)
         try await monitor.start()
-        #if os(Linux)
         let name = await monitor.mechanism
+        XCTAssertTrue(["FSEvents", "vnode", "polling"].contains(name))
+        #if os(Linux)
         XCTAssertEqual(name, "polling")
         #endif
+        #if os(macOS)
+        let changed = expectation(description: "Native monitor observes a child write")
+        let consumer = Task {
+            for await event in monitor.events {
+                switch event {
+                case .changed, .rescan: changed.fulfill(); return
+                default: continue
+                }
+            }
+        }
+        do {
+            try Data().write(to: temp.url.appendingPathComponent("new-child"))
+        } catch {
+            await monitor.stop()
+            consumer.cancel()
+            throw error
+        }
+        await fulfillment(of: [changed], timeout: 8)
+        await monitor.stop()
+        consumer.cancel()
+        await consumer.value
+        #else
         await monitor.stop()
         var events = monitor.events.makeAsyncIterator()
         let end = await events.next()
         XCTAssertNil(end)
+        #endif
     }
     func testCacheRejectsChangedTokenAndOversizedListing() async {
         let cache = ListingCache(capacity: 1)

@@ -96,7 +96,13 @@ public struct LiveFileSystem: FileSystem {
         return FileMutationPrecondition(identity: identity, changeToken: value.changeToken, kind: value.kind)
     }
     public func entry(at url: URL) async throws -> FileEntry {
-        try await executor.run(volume: queueKey(url)) { try MetadataReader().read(url) }
+        try await executor.run(volume: queueKey(url)) {
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(url)
+                return try readMetadata(url, true, volume)
+            } catch { throw FileSystemError.mapping(error) }
+        }
     }
     public func exists(_ url: URL) async -> Bool { (try? await entry(at: url)) != nil }
     private func perform(at url: URL, also others: [URL] = [], _ body: @escaping @Sendable (FileManager) throws -> Void) async throws {

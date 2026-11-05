@@ -28,7 +28,9 @@ public actor MonitorRegistry {
                     for await event in monitor.events {
                         await self?.broadcast(event, key: key, generation: token)
                     }
-                } catch { await self?.broadcast(.unavailable(.unavailable), key: key, generation: token) }
+                } catch {
+                    await self?.retire(key: key, generation: token)
+                }
             }
             subscriptions[key]?.task = task
         }
@@ -42,6 +44,16 @@ public actor MonitorRegistry {
     private func broadcast(_ event: MonitorEvent, key: String, generation: UInt64) {
         guard let subscription = subscriptions[key], subscription.generation == generation else { return }
         for listener in subscription.listeners.values { listener.yield(event) }
+    }
+    // Remove before suspending so a new subscriber always gets a fresh watcher (B-104).
+    private func retire(key: String, generation: UInt64) async {
+        guard let subscription = subscriptions[key], subscription.generation == generation else { return }
+        subscriptions.removeValue(forKey: key)
+        for listener in subscription.listeners.values {
+            listener.yield(.unavailable(.unavailable))
+            listener.finish()
+        }
+        await subscription.monitor.stop()
     }
     private func unsubscribe(key: String, id: UUID, generation: UInt64) async {
         guard var subscription = subscriptions[key], subscription.generation == generation else { return }

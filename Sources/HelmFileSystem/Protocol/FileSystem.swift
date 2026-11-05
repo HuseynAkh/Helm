@@ -1,6 +1,11 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Bounded listing batches preserve hidden-file preference (F-042).
 public struct EnumerationOptions: Sendable, Equatable {
@@ -23,12 +28,16 @@ public enum FileSystemError: Error, Sendable, Equatable {
         if value.domain == NSPOSIXErrorDomain {
             if value.code == 17 { return .collision(noMutation: false) }
             if value.code == 2 { return .notFound }
-            if value.code == 1 || value.code == 13 { return .permissionDenied }
+            if [Int(EPERM), Int(EACCES), Int(EROFS)].contains(value.code) { return .permissionDenied }
+            if [Int(ENOTSUP), Int(EXDEV)].contains(value.code) { return .unsupported }
+            if value.code == Int(ENOSPC) { return .other("No space") }
         }
         if value.domain == NSCocoaErrorDomain {
             if value.code == 516 { return .collision(noMutation: false) }
             if [4, 260].contains(value.code) { return .notFound }
-            if [257, 513].contains(value.code) { return .permissionDenied }
+            if [257, 513, 642].contains(value.code) { return .permissionDenied }
+            if value.code == 3328 { return .unsupported }
+            if value.code == 640 { return .other("No space") }
         }
         if let underlying = value.userInfo[NSUnderlyingErrorKey] as? Error { return mapping(underlying) }
         return .other(value.localizedDescription)
