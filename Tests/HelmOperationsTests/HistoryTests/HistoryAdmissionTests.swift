@@ -84,10 +84,12 @@ final class HistoryAdmissionTests: XCTestCase {
     func testCancelledPlanningDoesNotEnterExecutor() async throws {
         let history = WindowOperationHistory(), plan = try plan()
         let fs = InMemoryFileSystem(), journal = OperationJournal()
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins(), journal: journal)
         let value = await history.beginForward(plan.command)
         let request = try XCTUnwrap(value)
         do {
             try cancelledPlanning()
+            _ = await executor.execute(plan)
             XCTFail("Cancelled planning unexpectedly returned")
         } catch is CancellationError {
             let aborted = await history.abortForward(request: request, failure: .cancelled)

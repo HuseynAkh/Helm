@@ -16,12 +16,12 @@ final class AO3WorkBudgetTests: XCTestCase {
         XCTAssertNil(result.error)
         XCTAssertEqual(result.succeededCount, 128)
         let calls = await fs.nameCalls
-        XCTAssertLessThanOrEqual(calls, 1)
+        XCTAssertEqual(calls, 1)
         let next = await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: parent.appendingPathComponent("file0"), retryKeepBoth: true)]))
         XCTAssertNil(next.error)
         XCTAssertEqual(next.outcomes.first?.destination?.lastPathComponent, "file0 2")
         let finalCalls = await fs.nameCalls
-        XCTAssertLessThanOrEqual(finalCalls, 2)
+        XCTAssertEqual(finalCalls, 2)
     }
     func testExclusiveCollisionRefreshCostsOneAdditionalListing() async throws {
         let fs = AO3CountingFileSystem()

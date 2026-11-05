@@ -101,6 +101,8 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
         var failures: [AppFlushFailure] = []
         for (name, store) in stores {
             do { try await store.flush() }
+            // Recovery stores refuse all edits, so there is no pending user data to save.
+            catch PreferenceDocumentError.recoveryReadOnly { continue }
             catch { failures.append(AppFlushFailure(document: name, message: String(describing: error))) }
         }
         return failures

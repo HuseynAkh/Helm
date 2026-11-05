@@ -124,7 +124,7 @@ public enum TabReducer {
                 else if next.monitorNeedsValidation { effects.append(.validateNavigation(next.location, generation)) }
                 else { effects.append(.refreshPaths([], generation)) }
             case .rootChanged, .volumeUnmounted:
-                // The coalescer repeats an unacknowledged root event on every flush, so restarting here
+                // The coalescer substitutes an unacknowledged root event whenever it publishes, so restarting here
                 // would cancel a slow read forever. Record it; replay runs after the read ends (FB2-8).
                 if next.monitorIsBusy { next.monitorDirty = true; next.monitorNeedsValidation = true }
                 else { effects.append(.validateNavigation(next.location, generation)) }

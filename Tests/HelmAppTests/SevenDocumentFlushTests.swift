@@ -77,6 +77,8 @@ final class SevenDocumentFlushTests: XCTestCase {
     func flush() async throws { try log.flush("trash-origins") }
 }
 @MainActor private final class TagSpy: AppTagCatalogStoring {
+    let isReadOnly = false
+    let recoveryBackupURL: URL? = nil
     let log: FlushLog
     init(_ log: FlushLog) { self.log = log }
     var tags: [FinderTag] = []
@@ -88,6 +90,8 @@ final class SevenDocumentFlushTests: XCTestCase {
     func flush() async throws { try log.flush("tag-catalog") }
 }
 @MainActor private final class OptionsSpy: AppViewOptionsStoring {
+    let isReadOnly = false
+    let recoveryBackupURL: URL? = nil
     let log: FlushLog
     init(_ log: FlushLog) { self.log = log }
     var defaults = ViewOptions()

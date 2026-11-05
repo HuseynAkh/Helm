@@ -1,9 +1,12 @@
 // DRAFT: pending review, 2026-11-05
+import Foundation
 import HelmCore
 import HelmPersistence
 
 /// Shared catalogue edits and quit flushing preserve tag identity separately from stars (F-029, F-068).
 @MainActor public protocol AppTagCatalogStoring: AppFlushable {
+    var isReadOnly: Bool { get }
+    var recoveryBackupURL: URL? { get }
     var tags: [FinderTag] { get }
     func merge(discovered: [FinderTag]) throws
     func rename(_ name: String, to newName: String) throws
@@ -14,6 +17,8 @@ import HelmPersistence
 
 /// Shared per-location preferences and quit flushing preserve folder views (F-036, F-040, F-065).
 @MainActor public protocol AppViewOptionsStoring: AppFlushable {
+    var isReadOnly: Bool { get }
+    var recoveryBackupURL: URL? { get }
     var defaults: ViewOptions { get }
     func options(for location: Location) -> ViewOptions
     func set(_ options: ViewOptions, for location: Location) throws

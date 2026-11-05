@@ -15,6 +15,8 @@ XCTMain([
         ("testQuitWaitFlushFailureRetryAndCancel", LaunchTests.testQuitWaitFlushFailureRetryAndCancel)
     ]),
     testCase([
+        ("testCorruptPreferencesDoNotPreventQuitOrOverwriteRecovery", asyncTest(EnvironmentTests.testCorruptPreferencesDoNotPreventQuitOrOverwriteRecovery)),
+        ("testPreferenceIOFailuresKeepUnsavedEdits", asyncTest(EnvironmentTests.testPreferenceIOFailuresKeepUnsavedEdits)),
         ("testLiveMigrationPrecedesRegistrationAndRoundTrips", asyncTest(EnvironmentTests.testLiveMigrationPrecedesRegistrationAndRoundTrips)),
         ("testInvalidRootsAndMigrationFailureDoNotRegisterDefaults", asyncTest(EnvironmentTests.testInvalidRootsAndMigrationFailureDoNotRegisterDefaults)),
         ("testMemoryEnvironmentIsolationAndStoreBehaviour", asyncTest(EnvironmentTests.testMemoryEnvironmentIsolationAndStoreBehaviour)),

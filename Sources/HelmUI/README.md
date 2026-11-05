@@ -72,7 +72,7 @@ thumbnail cache, completion debounce and cross-volume drag controls expose
 existing Core keys; consumers must be wired by integration.
 
 Sidebar preserves Recent, Favorites, optional Bookmarks/Starred/Devices, Trash.
-Individual starred rows are not highlight candidates. The Core virtual Starred
+Individual starred rows participate in Core's exact/deepest highlight matching (OK2-14). The Core virtual Starred
 root is intentionally not inserted into the old layout; a committed virtual
 Starred destination has no highlighted row. Unavailable bookmarks are retained.
 The row uses a subtle accent background instead of owning native List selection;
@@ -91,12 +91,12 @@ do not describe the current portable harness.
 Linux Swift 6.0.3, Swift 5 parse mode: all 10 source Swift files and 2 XCTest files
 parsed with zero errors. `bash scripts/static_checks.sh`: zero errors.
 Seven XCTest cases are written for section projection, path boundaries, exact
-and deepest matching, starred exclusion, unavailable bookmarks, virtual routes,
+and deepest matching, starred candidates (updated by AK3), unavailable bookmarks, virtual routes,
 context actions, committed highlights and typed snapshot bindings.
 They have NOT run: HelmUI/HelmUITests are absent from the Linux manifest, and
 `swiftc -parse` does not resolve imports, types, SDK availability or actor isolation.
 
-On macOS, after adding the snippet:
+On macOS, after the assigned owner enables the staged manifest declarations in `docs/handoff/MAC_HANDOFF.md`:
 
 ```sh
 swift build --scratch-path /tmp/build-K12 --target HelmUI
@@ -126,9 +126,9 @@ in cached pages of 50 outcomes. Keep completed OperationRowModel values stable w
 another operation publishes progress. Synchronous compatibility getters still
 exist; the sheet never uses them to plan during rendering. See Sheets/README.md.
 
-The sidebar locally excludes starred rows from highlight fallback, preserving its
-existing XCTest/legacy policy despite Core's broader candidate list. No shared
-contract was changed. Opus should confirm the intended common policy.
+AK3 aligned sidebar highlight fallback with Core PlacesModel, including starred
+rows as exact/deepest candidates (OK2-14). SidebarModelTests covers the shared
+policy; native row selection and keyboard integration still require a Mac run.
 
 Portable adapter/app XCTest execution (from repository root):
 

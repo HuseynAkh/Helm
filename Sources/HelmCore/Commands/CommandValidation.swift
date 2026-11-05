@@ -109,7 +109,7 @@ public enum CommandValidation {
         case .back: enabled = context.canGoBack
         case .forward: enabled = context.canGoForward
         case .up: enabled = context.canGoUp && context.locationKind == .directory
-        case .location: enabled = !context.textFieldFocused
+        case .location: enabled = true
         case .trashSelection:
             guard context.locationKind == .trash else { return .hidden }
             enabled = selection

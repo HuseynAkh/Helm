@@ -82,6 +82,59 @@ final class EnvironmentTests: XCTestCase {
         XCTAssertEqual(reloaded.stars.records, env.stars.records)
         // Keep this isolated /tmp fixture; the lane instruction forbids deletion.
     }
+    @MainActor func testCorruptPreferencesDoNotPreventQuitOrOverwriteRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("OP2-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let locations = StoreLocation(directory: root)
+        let corrupt = Data("corrupt preferences".utf8)
+        try corrupt.write(to: locations.tagCatalog)
+        try corrupt.write(to: locations.viewOptions)
+        let env = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: MigrationSettings(), legacyReader: EmptyLegacyReader())
+        XCTAssertTrue(env.tagCatalog.isReadOnly)
+        XCTAssertTrue(env.viewOptions.isReadOnly)
+        XCTAssertNotNil(env.tagCatalog.recoveryBackupURL)
+        XCTAssertNotNil(env.viewOptions.recoveryBackupURL)
+        XCTAssertThrowsError(try env.tagCatalog.merge(discovered: [FinderTag(name: "refused", colorIndex: 4)]))
+        XCTAssertThrowsError(try env.viewOptions.set(ViewOptions(viewMode: .list), for: .recent))
+        for _ in 0..<2 {
+            let failures = await env.flushStores()
+            XCTAssertEqual(failures, [])
+        }
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            XCTAssertEqual(try Data(contentsOf: url), corrupt)
+            let backups = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                .filter { $0.lastPathComponent.hasPrefix(url.lastPathComponent + ".corrupt-") }
+            XCTAssertEqual(backups.count, 1)
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), corrupt)
+        }
+    }
+    @MainActor func testPreferenceIOFailuresKeepUnsavedEdits() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("OP2-io-" + UUID().uuidString)
+        let env = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: MigrationSettings(), legacyReader: EmptyLegacyReader())
+        let locations = StoreLocation(directory: root)
+        let tag = FinderTag(name: "Unsaved", colorIndex: 4)
+        let options = ViewOptions(viewMode: .list)
+        try env.tagCatalog.merge(discovered: [tag])
+        try env.viewOptions.set(options, for: .recent)
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let failures = await env.flushStores()
+        XCTAssertEqual(Set(failures.map(\.document)), ["tag-catalog", "view-options"])
+        XCTAssertTrue(env.tagCatalog.tags.contains(tag))
+        XCTAssertEqual(env.viewOptions.options(for: .recent), options)
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("obstruction"))
+        }
+        let retry = await env.flushStores()
+        XCTAssertEqual(retry, [])
+        let savedTags = try await TagCatalogStore(url: locations.tagCatalog)
+        let savedOptions = try await LocationViewOptionsStore(url: locations.viewOptions)
+        XCTAssertTrue(savedTags.tags.contains(tag))
+        XCTAssertEqual(savedOptions.options(for: .recent), options)
+    }
     @MainActor func testInvalidRootsAndMigrationFailureDoNotRegisterDefaults() async throws {
         let remote = try XCTUnwrap(URL(string: "https://example.invalid/home"))
         do {

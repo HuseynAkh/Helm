@@ -1,9 +1,12 @@
 // DRAFT: pending review, 2026-11-05
+import Foundation
 import HelmCore
 import HelmPersistence
 
 // In-memory counterpart of LocationViewOptionsStore; reads retain its LRU behavior (F-036, F-040, B-068).
 @MainActor final class AppMemoryViewOptions: AppViewOptionsStoring {
+    let isReadOnly = false
+    let recoveryBackupURL: URL? = nil
     private(set) var defaults = ViewOptions()
     private var records: [(key: String, options: ViewOptions)] = []
     private let capacity: Int = 256

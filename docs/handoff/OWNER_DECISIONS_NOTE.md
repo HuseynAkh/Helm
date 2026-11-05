@@ -2,7 +2,7 @@ DRAFT: pending review, 2026-11-05
 
 # Owner decisions note (OP1)
 
-For Huseyn. Every recommendation here is proposed, owner decision pending. Nothing below has been implemented, and no option authorizes a push, a release or any other external action. `OWNER_OPTIONS.md` (lane AK3) has fuller wording on paths and hosting; this note refers to it and does not replace it.
+For Huseyn. Every recommendation here is proposed, owner decision pending. Except for the explicitly disclosed FB1-11 symlink allowlist already implemented by OP1, these decisions remain unimplemented. No option authorizes a push, a release or any other external action. `OWNER_OPTIONS.md` (lane AK3) has fuller wording on paths and hosting; this note refers to it and does not replace it.
 
 Nothing in this rebuild has ever compiled on macOS, and pass OP1 did not compile anything on any platform (see `docs/review-opus/fixes-OP1.md`). Treat claims about Apple behaviour here as unconfirmed until a Mac run.
 
@@ -62,7 +62,7 @@ Nothing in this rebuild has ever compiled on macOS, and pass OP1 did not compile
 
 ### OK2-9: any store load failure prevents launch
 
-**Problem.** An unsupported schema or an unreadable `recent.json` makes `AppEnvironment.live` throw, so one optional document blocks all file browsing.
+**Problem.** An unsupported schema or an unreadable `recent.json` makes `AppEnvironment.live` throw, so one optional document blocks all file browsing. All seven JSON documents are now composed: bookmarks, stars, recent, session, trash-origins, tag-catalog and view-options. Any throwing load among these can block launch. Decodable corruption recovery in the last two is a separate read-only state: OP2 permits quit because edits are refused, preserves original bytes/backups, and still reports genuine save failures (OK2-29 remains open).
 
 **Options** (detail in `OWNER_OPTIONS.md`).
 - **A.** Non-throwing construction plus explicit load; failed stores read-only and shown to the user. Needs persistence API changes and recovery UI.
@@ -220,18 +220,18 @@ Nothing in this rebuild has ever compiled on macOS, and pass OP1 did not compile
 
 ## Safety residual
 
-### FB1-11: folders reached through a user's own symlink
+### FB1-11: implemented OS-managed symlink allowlist; ratification pending
 
-**Problem.** OP1 accepts only `/tmp`, `/var` and `/etc` as symlinked ancestors. A folder reached through any other symlink, such as `~/link/sub`, still refuses every operation, because `RecoveryTests.testSymlinkAncestorCannotRedirectMutation` pins that a symlink cannot redirect a mutation. I did not re-check what legacy Helm did here.
+**Current code.** `OperationExecutor.osManagedAncestorSymlinks` already admits exactly `/tmp`, `/var` and `/etc` when their entry kind is `.symlinkToDirectory`. OP1 implemented this reversible exception so normal macOS temporary/variable/configuration paths are not all refused as symlink ancestors. This is implemented code, not an approved owner ruling. OP2 leaves its semantics unchanged.
 
-**Options.**
-- **A.** Keep refusing. Safe, but those folders are read-only in Helm.
-- **B.** Resolve ancestors at plan time and verify the resolved path at execution. Allows them safely; needs new evidence fields, so it belongs with O1-1.
-- **C.** Allow any symlink ancestor. Weakens a safety test. Not recommended.
+**Dropped check.** The O1 alternative required each allowlisted link to resolve to `/private/<same>` (for example `/tmp` to `/private/tmp`). Execution currently checks only the exact path and entry kind, not the resolved target. The `FileSystem` protocol has no link-target read seam; the implementation instead relies on these being OS-managed paths. That assumption, including protection on the owner's system, is unverified and does not replace the required target check. Adding it needs an agreed filesystem/evidence contract; the monitor's new realpath helper does not validate mutation ancestors.
 
-**Recommendation: A for now, B with O1-1.**
+**Exact owner decision owed.** Choose one:
+- **Keep** the implemented exact-path/kind allowlist and explicitly accept its unchecked OS-managed-target assumption.
+- **Tighten** it to require resolution to `/private/<same>`, assigning the new read/evidence seam and execution revalidation tests.
+- **Revert** the exception and again refuse these symlinked ancestors, accepting unavailable operations beneath them until the broader identity contract is settled.
 
-**Blocked until decided:** mutations under user-made symlinks.
+**Separate residual.** User-created symlink ancestors still refuse operations; `RecoveryTests.testSymlinkAncestorCannotRedirectMutation` pins this. Supporting them needs plan-time resolved evidence and execution validation with O1-1. Nothing here authorizes relaxing that refusal.
 
 ## Plan questions
 

@@ -1,10 +1,28 @@
+// DRAFT: pending review, 2026-11-05
 import Foundation
 import HelmCore
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Direct-child mapping uses a canonical watched root, retaining the displayed symlink path (B-073).
-/// Purely lexical: FSEvents reports paths under the exact string registered at stream creation, while
-/// `standardizedFileURL` consults the disk, so a deleted child of `/private/...` would stop matching (FB1-3).
+/// Resolve the existing root with POSIX realpath, preserving `/private` on Darwin.
+/// Event matching stays lexical because a deleted child cannot be resolved (FB1-3).
 public enum MonitorPathFilter {
+    /// Resolve only the watched root, never a possibly deleted event path (B-073).
+    /// Refuse a missing or inaccessible root rather than registering a misleading spelling.
+    public static func canonicalRoot(for directory: URL) throws -> URL {
+        guard directory.isFileURL else { throw FileSystemError.unsupported }
+        let resolved: UnsafeMutablePointer<CChar>? = directory.path.withCString { realpath($0, nil) }
+        guard let resolved else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { free(resolved) }
+        return URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
+    }
+
     public static func displayedPath(for eventPath: String, canonicalRoot: URL, displayedRoot: URL) -> String? {
         let event = lexicalComponents(of: eventPath)
         let root = lexicalComponents(of: canonicalRoot.path)
@@ -33,8 +51,8 @@ private final class FSEventContext {
     let canonicalRoot: URL
     let displayedRoot: URL
     let continuation: AsyncStream<MonitorEvent>.Continuation
-    init(root: URL, continuation: AsyncStream<MonitorEvent>.Continuation) {
-        canonicalRoot = root.resolvingSymlinksInPath(); displayedRoot = root; self.continuation = continuation
+    init(root: URL, continuation: AsyncStream<MonitorEvent>.Continuation) throws {
+        canonicalRoot = try MonitorPathFilter.canonicalRoot(for: root); displayedRoot = root; self.continuation = continuation
     }
 }
 /// Native path-aware monitor filters recursive callbacks to direct children (B-073).
@@ -51,7 +69,7 @@ public actor FSEventsMonitor: DirectoryMonitor {
     }
     public func start() async throws {
         guard stream == nil else { return }
-        let owner = FSEventContext(root: directory, continuation: continuation)
+        let owner = try FSEventContext(root: directory, continuation: continuation)
         // FSEvents copies the context and balances these retain/release callbacks.
         // The local owner covers creation; the stream owns callback lifetime after creation.
         var info = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(owner).toOpaque(),

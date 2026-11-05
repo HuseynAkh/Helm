@@ -12,10 +12,16 @@ extension TabReducer {
         // F-005/B-019: typed and enumerated directories share one URL spelling.
         // The loader echoes this target, preserving strict acceptLoad matching.
         let target: Location = target.canonicalNavigationLocation
-        if state.pendingNavigation == nil, intent == .push,
+        let base: PresentationSnapshot = state.underlyingSnapshot ?? state.deferredSnapshot ?? state.snapshot
+        let failed: Bool
+        if case .failed = base.phase { failed = true } else { failed = false }
+        if state.pendingNavigation == nil, intent == .push, !failed,
            case .directory(let targetURL) = target,
            case .directory(let currentURL) = state.location,
-           targetURL.standardizedFileURL.path == currentURL.standardizedFileURL.path { return }
+           targetURL.standardizedFileURL.path == currentURL.standardizedFileURL.path {
+            endSearch(&state, effects: &effects)
+            return
+        }
         endSearch(&state, effects: &effects)
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true

@@ -38,7 +38,7 @@ final class K15ReplacementBoundaryTests: XCTestCase {
         await fs.setFailure(nil, at: injected)
         XCTAssertNotNil(result.error); XCTAssertEqual(result.outcomes.filter(\.succeeded).count, boundary)
         XCTAssertEqual(result.outcomes.count, 5)
-        // No step may permanently remove either payload, even when the target has moved to backup/Trash.
+        // No step may permanently remove either payload, even when the target has moved to Trash.
         var pending = [URL(fileURLWithPath: "/")]
         var sizes: [Int64] = []
         var payloads: [Data] = []

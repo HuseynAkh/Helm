@@ -2,7 +2,8 @@
 import Foundation
 import HelmCore
 
-/// Invalid bounded grammar is reported instead of silently broadening a query (F-044).
+/// Strict parsing reports invalid bounded grammar; the typing driver treats invalid grammar
+/// as literal name text while retaining query policy and limits (F-044).
 public enum SearchParseError: Error, Equatable {
     case tooLong, tooManyTokens, unterminatedQuote, danglingEscape, invalidFilter(String), nonLocalRoot(URL)
     /// Presentation text; the raw case name never reaches the user.

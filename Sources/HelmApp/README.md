@@ -42,7 +42,7 @@ Dock reopen visibility comes from AppKit; closing the last window does not quit.
 
 For quit, stop accepting operations and persistence edits, snapshot sessions, and
 feed the current in-flight count to `QuitCoordinator`. Wait for completion before
-`flushStores()`. That method attempts all five JSON stores, collecting failures.
+`flushStores()`. That method attempts all seven JSON stores (bookmarks, stars, recent, session, trash origins, tag catalogue and view options), collecting failures. Read-only corruption recovery refuses edits and has nothing to save, so that error alone is ignored at this application boundary; original bytes and backups remain intact. Both preference protocols expose `isReadOnly` and `recoveryBackupURL` for recovery UI. Real I/O failures remain quit blockers pending OK2-29.
 SettingsStore writes immediately and exposes no flush API. Reply terminate only
 after a successful flush; show errors and allow retry or cancellation otherwise.
 The host owns operation counts; journal entries do not establish executor liveness.

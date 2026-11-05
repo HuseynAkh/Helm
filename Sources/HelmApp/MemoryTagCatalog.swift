@@ -5,6 +5,8 @@ import HelmPersistence
 
 // In-memory counterpart of TagCatalogStore: same admission, identity and ordering (F-029, B-068).
 @MainActor final class AppMemoryTagCatalog: AppTagCatalogStoring {
+    let isReadOnly = false
+    let recoveryBackupURL: URL? = nil
     private(set) var tags: [FinderTag] = TagCatalogStore.defaultTags
     func merge(discovered: [FinderTag]) throws {
         tags = Self.unique(tags + discovered)

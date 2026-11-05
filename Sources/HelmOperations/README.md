@@ -217,3 +217,13 @@ journaled and timeout quarantine remains. Providers must not use the clean case
 for uncertain completion. F13ContractTests, F13UndoEvidenceTests and
 F13CancellationTests cover substitution, missing identity, remapping and both
 cancellation boundaries; native conditional support remains absent.
+
+## SC2b template evidence note
+
+Hosts must include a create-from-template source in `PlanningContextBuilder`'s
+`sources`, so the plan carries source evidence. A manually assembled plan without
+that evidence only snapshots its template when both `sourceManifest` and
+`existingEntries` are empty; a non-empty destination can therefore turn the same
+incomplete plan into a refusal. `ForwardEvidence.capture` deliberately refuses
+missing evidence rather than adopting a replaced object (O1-11). This note does
+not change the evidence contract or authorize native mutation.
