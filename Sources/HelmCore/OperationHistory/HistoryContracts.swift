@@ -1,0 +1,61 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
+import Foundation
+
+/// Single-use history reservation, independent of executor journal IDs (F-059/B-043).
+public struct HistoryRequestID: Hashable, Sendable {
+    public let rawValue: UUID
+    public init(rawValue: UUID = UUID()) { self.rawValue = rawValue }
+}
+
+/// Named original user operation; inverse attempts never create these entries (F-059).
+public struct HistoryEntry: Equatable, Sendable {
+    public let operationID: OperationID
+    public let name: String
+    public init(operationID: OperationID, name: String) {
+        self.operationID = operationID; self.name = name
+    }
+}
+
+/// Explicit completion distinguishes refusal from uncertain partial mutation (B-038/B-043).
+public enum HistoryOutcome: Equatable, Sendable {
+    case succeeded, noChange
+    case failed(String), refused(String), unsupported(String)
+    case partial(String), reconciliationRequired(String)
+    public var needsReconciliation: Bool {
+        switch self {
+        case .partial, .reconciliationRequired: return true
+        default: return false
+        }
+    }
+}
+
+/// Named menu admission; a redo stack does not imply safe redo support (F-059/B-041).
+public enum HistoryAvailability: Equatable, Sendable {
+    case empty, busy, reconciliationRequired
+    case available(String), unsupported(String)
+}
+
+/// Pending forward/undo request keeps the window busy across host suspension (B-100/B-105).
+public enum HistoryReservation: Equatable, Sendable {
+    case forward(HistoryRequestID, name: String)
+    case undo(HistoryRequestID, HistoryEntry)
+    public var request: HistoryRequestID {
+        switch self {
+        case .forward(let request, _), .undo(let request, _): return request
+        }
+    }
+}
+
+/// Pure history inputs; hosts must route text editing before file undo (F-059/B-041).
+public enum HistoryAction: Sendable {
+    case beginForward(HistoryRequestID, name: String)
+    case finishForward(HistoryRequestID, operation: OperationID, outcome: HistoryOutcome)
+    case beginUndo(HistoryRequestID)
+    case complete(HistoryRequestID, outcome: HistoryOutcome)
+    case beginRedo
+}
+
+/// Intent only: the history reducer never performs file mutations (F-059/B-041).
+public enum HistoryEffect: Equatable, Sendable {
+    case performUndo(HistoryRequestID, OperationID)
+}
