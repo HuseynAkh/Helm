@@ -1,5 +1,8 @@
 // DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
 
 /// Uniform grid preserves F-035 metrics and supports P-027/P-028/P-052 without scanning all items.
 /// Coordinates have a top-left origin. Empty space and spacing do not hit cells.
