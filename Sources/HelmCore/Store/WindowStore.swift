@@ -30,8 +30,9 @@ import Foundation
         for tab in tabs where values[tab.id] == nil { values[tab.id] = tab }
         var normalized: [TabID: TabState] = [:]
         for id in window.tabs {
-            var tab = values[id] ?? TabState(id: id, location: .directory(context.homeDirectory),
-                                            homeDirectory: context.homeDirectory, settings: context.settings)
+            var tab = values[id] ?? TabState(id: id,
+                location: Location.directory(context.homeDirectory).canonicalNavigationLocation,
+                homeDirectory: context.homeDirectory, settings: context.settings)
             tab.isActive = id == window.activeTabID
             normalized[id] = tab
         }
@@ -91,8 +92,9 @@ import Foundation
         case .window(let windowAction):
             // A bare add still needs a matching owned tab value.
             if case .add(let id, _) = windowAction, tabs[id] == nil {
-                var tab = TabState(id: id, location: .directory(context.homeDirectory),
-                                   homeDirectory: context.homeDirectory, settings: context.settings)
+                var tab = TabState(id: id,
+                    location: Location.directory(context.homeDirectory).canonicalNavigationLocation,
+                    homeDirectory: context.homeDirectory, settings: context.settings)
                 tab.isActive = false; tabs[id] = tab
             }
             reduceWindow(windowAction)

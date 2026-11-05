@@ -65,7 +65,7 @@ final class WindowStoreTests: XCTestCase {
                     sequenceDuringCallback = store.state.sequence
                 }
             }
-            let target = Location.directory(URL(fileURLWithPath: "/next"))
+            let target = Location.directory(URL(fileURLWithPath: "/next", isDirectory: true))
             store.send(.tab(id, .navigate(target, .push)))
             XCTAssertEqual(sequenceDuringCallback, 1)
             XCTAssertEqual(store.state.sequence, 2)
@@ -97,7 +97,7 @@ final class WindowStoreTests: XCTestCase {
         await MainActor.run {
             let (store, runner, id) = fixture()
             let old = Location.directory(URL(fileURLWithPath: "/old"))
-            let new = Location.directory(URL(fileURLWithPath: "/new"))
+            let new = Location.directory(URL(fileURLWithPath: "/new", isDirectory: true))
             store.send(.tab(id, .navigate(old, .push)))
             let generation = store.state.tabs[id]?.loadGeneration ?? Generation()
             store.send(.tab(id, .navigate(new, .push)))
@@ -199,8 +199,9 @@ final class WindowStoreTests: XCTestCase {
             }
             store.send(.tab(id, .refresh))
             store.send(.tab(id, .setSelection([entry.id], source: .user)))
-            let origin = store.state.tabs[id]?.location
-            let next = Location.directory(URL(fileURLWithPath: "/next"))
+            // Back stages the canonical spelling even for a supplied unslashed initial tab.
+            let origin = Location.directory(URL(fileURLWithPath: "/home/test", isDirectory: true))
+            let next = Location.directory(URL(fileURLWithPath: "/next", isDirectory: true))
             store.send(.tab(id, .navigate(next, .push)))
             store.send(.tab(id, .goBack))
             XCTAssertEqual(store.state.tabs[id]?.location, origin)
@@ -285,7 +286,8 @@ final class WindowStoreTests: XCTestCase {
             XCTAssertNil(store.state.tabs[extra.id])
             XCTAssertEqual(store.state.tabs[first.id]?.location, .recent)
             XCTAssertEqual(store.state.tabs[first.id]?.isActive, false)
-            XCTAssertEqual(store.state.tabs[missing]?.location, .directory(home))
+            XCTAssertEqual(store.state.tabs[missing]?.location,
+                           .directory(URL(fileURLWithPath: home.path, isDirectory: true)))
             XCTAssertEqual(store.state.tabs[missing]?.isActive, true)
             XCTAssertTrue(runner.effects.isEmpty)
         }

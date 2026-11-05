@@ -4,6 +4,9 @@ import Foundation
 extension TabReducer {
     static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [],
                       state: inout TabState, effects: inout [TabEffect]) {
+        // F-005/B-019: typed and enumerated directories share one URL spelling.
+        // The loader echoes this target, preserving strict acceptLoad matching.
+        let target: Location = target.canonicalNavigationLocation
         if state.pendingNavigation == nil, intent == .push,
            case .directory(let targetURL) = target,
            case .directory(let currentURL) = state.location,

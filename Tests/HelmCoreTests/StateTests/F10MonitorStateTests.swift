@@ -17,7 +17,7 @@ final class F10MonitorStateTests: XCTestCase {
                 var state = TabState(location: .directory(root), homeDirectory: root)
                 state.monitorDirty = alreadyDirty
                 let history = state.history
-                let target = Location.directory(URL(fileURLWithPath: "/b"))
+                let target = Location.directory(URL(fileURLWithPath: "/b", isDirectory: true))
                 send(.navigate(target, .push), &state)
                 if !alreadyDirty {
                     XCTAssertTrue(send(.monitorEvent(state.monitorGeneration, .rescan), &state).isEmpty)

@@ -4,7 +4,7 @@ import XCTest
 @testable import HelmCore
 
 final class F1StateRegressionTests: XCTestCase {
-    private let location: Location = .directory(URL(fileURLWithPath: "/a"))
+    private let location: Location = .directory(URL(fileURLWithPath: "/a", isDirectory: true))
     private let context = ReducerContext(now: .distantPast, homeDirectory: URL(fileURLWithPath: "/home"))
     private func entry(_ name: String) -> FileEntry { FileEntry(url: URL(fileURLWithPath: "/a/" + name)) }
     private func snapshot(_ names: [String]) -> PresentationSnapshot {

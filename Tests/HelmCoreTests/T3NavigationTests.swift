@@ -16,7 +16,7 @@ final class T3NavigationTests: XCTestCase {
         let original = FileEntry(url: root.appendingPathComponent("retained"))
         state.snapshot = SnapshotBuilder.build(location: state.location, entries: [original])
         let history = state.history
-        let target = Location.directory(URL(fileURLWithPath: "/unreadable"))
+        let target = Location.directory(URL(fileURLWithPath: "/unreadable", isDirectory: true))
         send(.navigate(target, .push), &state)
         for _ in 0..<50 { XCTAssertTrue(send(.monitorEvent(state.monitorGeneration, event), &state).isEmpty) }
         XCTAssertEqual(state.snapshot.sortedIDs, [original.id])

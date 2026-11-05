@@ -4,8 +4,8 @@ import XCTest
 @testable import HelmCore
 
 final class TabReducerTests: XCTestCase {
-    let a: Location = .directory(URL(fileURLWithPath: "/a"))
-    let b: Location = .directory(URL(fileURLWithPath: "/b"))
+    let a: Location = .directory(URL(fileURLWithPath: "/a", isDirectory: true))
+    let b: Location = .directory(URL(fileURLWithPath: "/b", isDirectory: true))
     let context = ReducerContext(now: .distantPast, homeDirectory: URL(fileURLWithPath: "/home"))
     func entry(_ path: String) -> FileEntry { FileEntry(url: URL(fileURLWithPath: path)) }
     func initial() -> TabState { TabState(location: a, homeDirectory: context.homeDirectory) }
