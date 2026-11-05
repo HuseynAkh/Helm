@@ -39,7 +39,7 @@ final class ExecutorTests: XCTestCase {
         let fs = try await fixture(), x = a.appendingPathComponent("x"), y = a.appendingPathComponent("y")
         let pairs = [RenamePair(source: x, newName: try XCTUnwrap(ValidFileName("y"))), RenamePair(source: y, newName: try XCTUnwrap(ValidFileName("x")))]
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [x, y], destinations: [a])
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlanner.plan(.batchRename(pairs), context: context))
         XCTAssertNil(result.error)
         let swapped = try await fs.entry(at: x); XCTAssertEqual(swapped.size, 1)
@@ -55,7 +55,7 @@ final class ExecutorTests: XCTestCase {
         let origins = InMemoryTrashOrigins(), executor = OperationExecutor(fileSystem: fs, origins: origins)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [b], policy: ConflictPolicy(defaultResolution: .replace))
         let result = await executor.execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: b), context: context))
-        XCTAssertNil(result.error); XCTAssertEqual(result.succeededCount, 5)
+        XCTAssertNil(result.error); XCTAssertEqual(result.succeededCount, 4)
         let replaced = try await fs.entry(at: target); XCTAssertEqual(replaced.size, 3)
         let stored = await executor.journal.entry(result.id)
         let undo = await UndoPlanner.inverse(of: try XCTUnwrap(stored), origins: origins)
@@ -64,31 +64,31 @@ final class ExecutorTests: XCTestCase {
         let names = try await fs.childNames(of: b); XCTAssertEqual(names, ["x"])
     }
     func testFailureAtEveryReplacementBoundaryKeepsOriginalOrBackup() async throws {
-        for index in 0..<5 {
+        for index in 0..<4 {
             let fs = try await fixture(), source = a.appendingPathComponent("x"), target = b.appendingPathComponent("x")
             try await fs.createFileExclusively(at: target, contents: Data([9]))
             let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [b], policy: ConflictPolicy(defaultResolution: .replace))
             let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: b), context: context)
             let failed = plan.steps[index]
             let failureURL = try XCTUnwrap(failed.kind == .verifyCopy || failed.kind == .trash ? failed.source : failed.destination)
-            let executor = OperationExecutor(fileSystem: fs)
+            let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
             let result = await executor.execute(plan) { progress in
                 if progress.itemsDone == index && progress.currentName != nil { await fs.setFailure(.permissionDenied, at: failureURL) }
             }
             XCTAssertNotNil(result.error, "boundary \(index)")
-            XCTAssertEqual(result.succeededCount, index); XCTAssertEqual(result.outcomes.count, 5)
+            XCTAssertEqual(result.succeededCount, index); XCTAssertEqual(result.outcomes.count, 4)
             await fs.setFailure(nil, at: failureURL)
             let sourceEntry = try await fs.entry(at: source); XCTAssertEqual(sourceEntry.size, 3)
-            let oldLocation = index >= 3 ? try XCTUnwrap(plan.steps[2].destination) : target
+            let oldLocation = index >= 3 ? try XCTUnwrap(result.outcomes[2].destination) : target
             let oldEntry = try await fs.entry(at: oldLocation); XCTAssertEqual(oldEntry.size, 1)
-            let logged = await executor.journal.outcomes(for: result.id); XCTAssertEqual(logged.count, 5)
+            let logged = await executor.journal.outcomes(for: result.id); XCTAssertEqual(logged.count, 4)
         }
     }
     func testFailureKeepsEarlierOutcomesAndStopsLaterItems() async throws {
         let fs = try await fixture(), x = a.appendingPathComponent("x"), y = a.appendingPathComponent("y")
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [x, y], destinations: [b])
         await fs.setFailure(.permissionDenied, at: y)
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlanner.plan(.copy(sources: [x, y], destinationDirectory: b), context: context))
         XCTAssertEqual(result.succeededCount, 1); XCTAssertEqual(result.failedCount, 1)
         XCTAssertEqual(result.outcomes[0].step.source, x); XCTAssertEqual(result.outcomes[0].destination, b.appendingPathComponent("x"))
@@ -105,7 +105,7 @@ final class ExecutorTests: XCTestCase {
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [b])
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: b), context: context)
         try await fs.createFileExclusively(at: b.appendingPathComponent("x"), contents: Data([8]))
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertNil(result.error); XCTAssertEqual(result.outcomes.first?.destination?.lastPathComponent, "x 2")
         let old = try await fs.entry(at: b.appendingPathComponent("x")); XCTAssertEqual(old.size, 1)
     }
@@ -126,7 +126,7 @@ final class ExecutorTests: XCTestCase {
         let fs = try await fixture(), source = a.appendingPathComponent("x")
         let built = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [b])
         let context = PlanningContext(sourceManifest: built.sourceManifest, existingNames: built.existingNames)
-        let executor = OperationExecutor(fileSystem: fs, verifier: UnavailableCopyVerifier())
+        let executor = OperationExecutor(fileSystem: fs, verifier: UnavailableCopyVerifier(), origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlanner.plan(.move(sources: [source], destinationDirectory: b), context: context))
         XCTAssertEqual(result.error, .verificationUnavailable); XCTAssertEqual(result.succeededCount, 1)
         let exists = await fs.exists(source); XCTAssertTrue(exists)
@@ -136,7 +136,7 @@ final class ExecutorTests: XCTestCase {
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [x, y], destinations: [b])
         let plan = OperationPlanner.plan(.copy(sources: [x, y], destinationDirectory: b), context: context)
         let task = Task {
-            await OperationExecutor(fileSystem: fs).execute(plan) { progress in
+            await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan) { progress in
                 if progress.itemsDone == 1 && progress.currentName != nil { withUnsafeCurrentTask { $0?.cancel() } }
             }
         }
@@ -146,7 +146,7 @@ final class ExecutorTests: XCTestCase {
     }
     func testCancellationBeforeStartAndInvalidPlanHaveNoMutations() async throws {
         let fs = try await fixture()
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: b.appendingPathComponent("new"))]))
@@ -158,7 +158,7 @@ final class ExecutorTests: XCTestCase {
     func testTimeoutQuarantinesExecutor() async throws {
         let fs = try await fixture(), source = a.appendingPathComponent("x")
         await fs.setFailure(.timedOut, at: source)
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: b.appendingPathComponent("x"))])
         let first = await executor.execute(plan), second = await executor.execute(plan)
         XCTAssertEqual(first.error, .timedOut); XCTAssertEqual(second.error, .busy)
@@ -171,7 +171,7 @@ final class ExecutorTests: XCTestCase {
         try await fs.createFileExclusively(at: source, contents: Data("hello".utf8))
         try await fs.createDirectory(at: parent)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
         XCTAssertEqual(result.error, .verificationUnavailable)
         XCTAssertEqual(result.succeededCount, 0)

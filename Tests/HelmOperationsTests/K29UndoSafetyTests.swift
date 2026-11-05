@@ -15,7 +15,7 @@ final class K29UndoSafetyTests: XCTestCase {
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data([1]).write(to: nested)
-        let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [original], destinations: [target])
         let plan = OperationPlanner.plan(.move(sources: [original], destinationDirectory: target), context: context)
         let refused = await executor.execute(plan)
@@ -55,7 +55,7 @@ final class K29UndoSafetyTests: XCTestCase {
             let metadata = try await fs.entry(at: path)
             let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .move, source: path, destination: URL(fileURLWithPath: "/restored"))],
                                      expectedTokens: [path: metadata.changeToken], undoVerification: .leafOnly, expectedKinds: [path: kind])
-            let result = await OperationExecutor(fileSystem: fs).execute(plan)
+            let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
             XCTAssertEqual(result.error, .verificationUnavailable)
             let stillPresent = try await fs.entry(at: path)
             XCTAssertEqual(stillPresent.kind, .directory)
@@ -69,7 +69,7 @@ final class K29UndoSafetyTests: XCTestCase {
             let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .trash, source: path)],
                                      expectedTokens: missingKind ? [path: entry.changeToken] : [:], undoVerification: .leafOnly,
                                      expectedKinds: missingKind ? [:] : [path: .regular])
-            let result = await OperationExecutor(fileSystem: fs).execute(plan)
+            let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
             XCTAssertEqual(result.error, .verificationUnavailable)
             let retained = try await fs.entry(at: path)
             XCTAssertEqual(retained.size, 1)
@@ -82,7 +82,7 @@ final class K29UndoSafetyTests: XCTestCase {
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .trash, source: path)],
                                  expectedTokens: [path: entry.changeToken], undoVerification: .leafOnly,
                                  expectedKinds: [path: .symlinkToFile])
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertEqual(result.error, .sourceChanged(path))
     }
 }

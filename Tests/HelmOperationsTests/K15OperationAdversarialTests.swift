@@ -9,7 +9,7 @@ final class K15OperationAdversarialTests: XCTestCase {
     private let root = URL(fileURLWithPath: "/")
     private func boundary(_ index: Int, cancel: Bool) async throws {
         let fs = InMemoryFileSystem()
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let steps = (0..<5).map { PlannedStep(kind: .createFile, destination: root.appendingPathComponent("file\($0)"), contents: Data([UInt8($0)])) }
         let plan = OperationPlan(command: .recovery, steps: steps)
         let task = Task {
@@ -70,7 +70,7 @@ final class K15OperationAdversarialTests: XCTestCase {
     /// F-052/B-041: random plans preserve byte totals through copy/move and undo.
     func testRandomPlansConserveFilesAndTrashUndo() async throws {
         let fs = InMemoryFileSystem()
-        let actual = OperationExecutor(fileSystem: fs)
+        let actual = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let sourceDirectory = URL(fileURLWithPath: "/source"), target = URL(fileURLWithPath: "/target")
         try await fs.createDirectory(at: sourceDirectory); try await fs.createDirectory(at: target)
         var seed: UInt64 = 819
@@ -102,7 +102,7 @@ final class K15OperationAdversarialTests: XCTestCase {
     func testTimeoutQuarantinesExecutor() async {
         let fs = InMemoryFileSystem(), destination = URL(fileURLWithPath: "/new")
         await fs.setFailure(.timedOut, at: destination)
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: destination)])
         let first = await executor.execute(plan); XCTAssertEqual(first.error, .timedOut)
         await fs.setFailure(nil, at: destination)
@@ -117,7 +117,7 @@ final class K15OperationAdversarialTests: XCTestCase {
         try await fs.createFileExclusively(at: source, contents: Data([1, 2]))
         try await fs.createFileExclusively(at: parent.appendingPathComponent("REPORT.TXT"), contents: Data([9]))
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
-        let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
         XCTAssertNil(result.error)
         XCTAssertEqual(result.outcomes.first?.destination?.lastPathComponent, "Report 2.txt")
         let old = try await fs.entry(at: parent.appendingPathComponent("REPORT.TXT")); XCTAssertEqual(old.size, 1)

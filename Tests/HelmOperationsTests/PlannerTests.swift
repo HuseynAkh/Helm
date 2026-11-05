@@ -44,7 +44,7 @@ final class PlannerTests: XCTestCase {
         XCTAssertTrue(OperationPlanner.resolve(initial, with: ConflictPolicy(defaultResolution: .skip)).steps.isEmpty)
         XCTAssertFalse(OperationPlanner.resolve(initial, with: ConflictPolicy(defaultResolution: .stop)).isExecutable)
         let replace = OperationPlanner.resolve(initial, with: ConflictPolicy(defaultResolution: .replace))
-        XCTAssertEqual(replace.steps.map(\.kind), [.copy, .verifyCopy, .move, .move, .trash])
+        XCTAssertEqual(replace.steps.map(\.kind), [.copy, .verifyCopy, .trash, .move])
         let all = ConflictPolicy(defaultResolution: .skip, perItem: [source: .replace], applyToAll: true)
         XCTAssertEqual(all.resolution(for: source), .skip)
         XCTAssertEqual(ConflictPolicy(perItem: [source: .replace]).resolution(for: source), .replace)

@@ -23,7 +23,7 @@ final class CapabilityIntegrationTests: XCTestCase {
         let plan = OperationPlan(command: .recovery,
                                  steps: [PlannedStep(kind: .copy, source: source, destination: destination)],
                                  context: PlanningContext())
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertNil(result.error)
         let exists = await fs.exists(destination)
         XCTAssertTrue(exists)
@@ -39,7 +39,7 @@ final class CapabilityIntegrationTests: XCTestCase {
             let plan = OperationPlan(command: .recovery,
                 steps: [PlannedStep(kind: .copy, source: source, destination: destination, retryKeepBoth: true)],
                 context: PlanningContext())
-            let result = await OperationExecutor(fileSystem: fs, copier: copier).execute(plan)
+            let result = await OperationExecutor(fileSystem: fs, copier: copier, origins: InMemoryTrashOrigins()).execute(plan)
             let attempts = await copier.attempts
             XCTAssertEqual(attempts, safe ? 2 : 1)
             if safe {

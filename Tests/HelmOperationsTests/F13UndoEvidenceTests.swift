@@ -9,7 +9,7 @@ final class F13UndoEvidenceTests: XCTestCase {
     func testCreateCopyAndMoveSubstitutionsBeforePlanningAndExecution() async throws {
         for kind in [PlannedStep.Kind.createFile, .copy, .move] {
             for beforePlanning in [true, false] {
-                let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+                let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
                 let source = URL(fileURLWithPath: "/source"), output = URL(fileURLWithPath: "/output")
                 try await fs.createFileExclusively(at: source, contents: Data([1]))
                 let result = await executor.execute(OperationPlan(command: .recovery,
@@ -35,7 +35,7 @@ final class F13UndoEvidenceTests: XCTestCase {
     func testReplaceInstalledAndBackupSubstitutionsRefuseAllUndoSteps() async throws {
         for replaceBackup in [true, false] {
             for beforePlanning in [true, false] {
-                let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+                let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
                 let source = URL(fileURLWithPath: "/new"), output = URL(fileURLWithPath: "/output")
                 let backup = URL(fileURLWithPath: "/backup"), stage = URL(fileURLWithPath: "/stage")
                 try await fs.createFileExclusively(at: source, contents: Data([1]))
@@ -64,7 +64,7 @@ final class F13UndoEvidenceTests: XCTestCase {
     }
 
     func testValidMultiStepMovesRemapIdentityAndUndoSuccessfully() async throws {
-        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let source = URL(fileURLWithPath: "/source"), stage = URL(fileURLWithPath: "/stage")
         let output = URL(fileURLWithPath: "/output")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
@@ -110,7 +110,7 @@ final class F13UndoEvidenceTests: XCTestCase {
         let outcome = ItemOutcome(step: step, destination: output, result: .success(metadata.changeToken), destinationKind: metadata.kind)
         let entry = JournalEntry(id: id, plan: plan, result: OperationResult(id: id, command: .recovery, outcomes: [outcome]))
         let inverse = UndoPlanner.inverse(of: entry, recordedOrigins: [:])
-        let result = await OperationExecutor(fileSystem: fs).execute(inverse)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(inverse)
         XCTAssertEqual(result.error, .verificationUnavailable); XCTAssertEqual(result.succeededCount, 0)
         let exists = await fs.exists(output)
         XCTAssertTrue(exists)

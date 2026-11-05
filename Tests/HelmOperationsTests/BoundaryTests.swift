@@ -17,7 +17,7 @@ final class BoundaryTests: XCTestCase {
             let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [x, y], destinations: [root])
             let plan = OperationPlanner.plan(.batchRename(pairs), context: context)
             let destination = try XCTUnwrap(plan.steps[index].destination)
-            let result = await OperationExecutor(fileSystem: fs).execute(plan) { progress in
+            let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan) { progress in
                 if progress.itemsDone == index && progress.currentName != nil { await fs.setFailure(.permissionDenied, at: destination) }
             }
             XCTAssertEqual(result.succeededCount, index); XCTAssertNotNil(result.error)
@@ -35,13 +35,13 @@ final class BoundaryTests: XCTestCase {
         try await fs.createDirectory(at: parent)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source, failed], destinations: [parent])
         await fs.setFailure(.permissionDenied, at: failed)
-        let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(.move(sources: [source, failed], destinationDirectory: parent), context: context))
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(.move(sources: [source, failed], destinationDirectory: parent), context: context))
         XCTAssertEqual(result.completedMoveSources, [source])
         let clipboard = ClipboardTransaction(mode: .cut, sources: [source, failed], changeCount: 8)
         XCTAssertEqual(clipboard.acknowledging(result.completedMoveSources, currentChangeCount: 8)?.sources, [failed])
     }
     func testCancellationPrefixCanBeUndone() async throws {
-        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let a = URL(fileURLWithPath: "/a"), b = URL(fileURLWithPath: "/b")
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: a), PlannedStep(kind: .createFile, destination: b)])
         let task = Task {
@@ -65,7 +65,7 @@ final class BoundaryTests: XCTestCase {
         let built = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
         let context = PlanningContext(sourceManifest: built.sourceManifest, existingNames: built.existingNames)
         let plan = OperationPlanner.plan(.move(sources: [source], destinationDirectory: parent), context: context)
-        let result = await OperationExecutor(fileSystem: fs).execute(plan) { progress in
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan) { progress in
             if progress.itemsDone == boundary && progress.currentName != nil {
                 do {
                     _ = try await fs.trashItem(at: source)

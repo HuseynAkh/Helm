@@ -10,7 +10,7 @@ final class F13CancellationTests: XCTestCase {
         let fs = InMemoryFileSystem(), source = URL(fileURLWithPath: "/source")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
         let gate = F13Gate(), entered = expectation(description: "Awaiting admission")
-        let executor = OperationExecutor(fileSystem: fs, copier: F13GatedCopier(fs: fs, gate: gate, entered: { entered.fulfill() }))
+        let executor = OperationExecutor(fileSystem: fs, copier: F13GatedCopier(fs: fs, gate: gate, entered: { entered.fulfill() }), origins: InMemoryTrashOrigins())
         let task = Task { await executor.execute(copyPlan(source)) }
         await fulfillment(of: [entered], timeout: 2)
         task.cancel()
@@ -26,7 +26,7 @@ final class F13CancellationTests: XCTestCase {
     func testReadOnlyValidationCancellationDoesNotQuarantine() async throws {
         let fs = InMemoryFileSystem(), source = URL(fileURLWithPath: "/source")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
-        let executor = OperationExecutor(fileSystem: F13ReadCancellation(fs: fs, source: source))
+        let executor = OperationExecutor(fileSystem: F13ReadCancellation(fs: fs, source: source), origins: InMemoryTrashOrigins())
         let result = await executor.execute(copyPlan(source))
         XCTAssertEqual(result.error, .cancelled)
         XCTAssertFalse(try XCTUnwrap(result.outcomes.first).requiresReconciliation)
@@ -38,7 +38,7 @@ final class F13CancellationTests: XCTestCase {
     func testOrdinaryPrimitiveCancellationStillQuarantines() async throws {
         let fs = InMemoryFileSystem(), source = URL(fileURLWithPath: "/source")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
-        let executor = OperationExecutor(fileSystem: fs, copier: F13UncertainCopier())
+        let executor = OperationExecutor(fileSystem: fs, copier: F13UncertainCopier(), origins: InMemoryTrashOrigins())
         let result = await executor.execute(copyPlan(source))
         XCTAssertEqual(result.error, .cancelled)
         XCTAssertTrue(try XCTUnwrap(result.outcomes.first).requiresReconciliation)

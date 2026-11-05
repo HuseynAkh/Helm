@@ -47,7 +47,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     func testConcurrentUndoAdmitsOne() async throws {
         let history = try await seeded()
         let count = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
-            for _ in 0..<20 { group.addTask { await history.beginUndo() != nil } }
+            for _ in 0..<20 { group.addTask { await history.beginUndo(recordedOrigins: [:]) != nil } }
             var total = 0
             for await admitted in group where admitted { total += 1 }
             return total
@@ -56,7 +56,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testInverseIsNotForwardHistory() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         let accepted = await history.complete(request: request.request, outcome: await success(request, history: history))
         XCTAssertTrue(accepted)
@@ -70,7 +70,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testStaleCompletionDoesNotReleaseBusy() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         let accepted = await history.complete(request: HistoryRequestID(), outcome: await success(request, history: history))
         XCTAssertFalse(accepted)
@@ -79,7 +79,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testDuplicateCompletionRejected() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         let result = await success(request, history: history)
         let first = await history.complete(request: request.request, outcome: result)
@@ -89,19 +89,19 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testForwardBlockedDuringUndo() async throws {
         let history = try await seeded()
-        _ = await history.beginUndo()
+        _ = await history.beginUndo(recordedOrigins: [:])
         let request = await history.beginForward(fixture().plan.command)
         XCTAssertNil(request)
     }
     func testUndoBlockedDuringForward() async throws {
         let history = try await seeded()
         _ = await history.beginForward(fixture().plan.command)
-        let request = await history.beginUndo()
+        let request = await history.beginUndo(recordedOrigins: [:])
         XCTAssertNil(request)
     }
     func testMissingTokenRefusesPlanning() async throws {
         let history = try await seeded(fixture(token: false))
-        let request = await history.beginUndo()
+        let request = await history.beginUndo(recordedOrigins: [:])
         XCTAssertNil(request)
         let state = await history.snapshot()
         guard case .refused = state.lastOutcome else { return XCTFail("Expected refusal") }
@@ -109,7 +109,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testLeafPolicyAndEvidencePreserved() async throws {
         let history = try await seeded(fixture(kind: .directory))
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         XCTAssertEqual(request.plan.undoVerification, .leafOnly)
         XCTAssertEqual(request.plan.expectedKinds[target], .directory)
@@ -128,7 +128,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testUncertainAttemptRetainedAndBlocksHistory() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         let step = try XCTUnwrap(request.plan.steps.first)
         let result = OperationResult(id: OperationID(), command: .recovery,
@@ -142,12 +142,12 @@ final class WindowOperationHistoryTests: XCTestCase {
         XCTAssertEqual(attempts.first?.result?.error, .timedOut)
         let original = await history.entry(for: request.originalOperation)
         XCTAssertNotNil(original)
-        let next = await history.beginUndo()
+        let next = await history.beginUndo(recordedOrigins: [:])
         XCTAssertNil(next)
     }
     func testRedoExplicitlyUnsupported() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         _ = await history.complete(request: request.request, outcome: await success(request, history: history))
         let redo = await history.beginRedo()
@@ -157,7 +157,7 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testNewForwardClearsRedo() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         _ = await history.complete(request: request.request, outcome: await success(request, history: history))
         _ = await history.beginForward(fixture().plan.command)
@@ -201,14 +201,14 @@ final class WindowOperationHistoryTests: XCTestCase {
     }
     func testEmptyRedoAndUndo() async {
         let history = WindowOperationHistory()
-        let undo = await history.beginUndo()
+        let undo = await history.beginUndo(recordedOrigins: [:])
         let redo = await history.beginRedo()
         XCTAssertNil(undo)
         XCTAssertEqual(redo, .empty)
     }
     func testForeignInverseDoesNotConsumeReservation() async throws {
         let history = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
         let genuine = await success(request, history: history)
         let foreignStep = PlannedStep(kind: .trash, source: target)

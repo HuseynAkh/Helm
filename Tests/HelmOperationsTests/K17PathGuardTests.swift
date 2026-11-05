@@ -73,7 +73,7 @@ final class K17PathGuardTests: XCTestCase {
         if parent != root { semantics[parent] = !sensitive }
         let step = PlannedStep(kind: kind, source: sourceURL, destination: targetURL)
         let plan = OperationPlan(command: .recovery, steps: [step], context: PlanningContext(caseSensitive: semantics))
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertEqual(result.error, expected)
         XCTAssertEqual(result.succeededCount, expected == nil ? 1 : 0)
         let sourceExists = await fs.exists(sourceURL)

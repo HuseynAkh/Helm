@@ -12,14 +12,14 @@ final class F23HistorySafetyTests: XCTestCase {
         let fs = InMemoryFileSystem()
         try await fs.createDirectory(at: target.deletingLastPathComponent())
         let history = WindowOperationHistory()
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let command = Command.createFile(parent: target.deletingLastPathComponent(),
             name: try XCTUnwrap(ValidFileName("new")), template: nil)
         let plan = OperationPlan(command: command, steps: [PlannedStep(kind: .createFile, destination: target)])
         let value = await history.beginForward(command)
         let request = try XCTUnwrap(value)
-        let result = await executor.execute(plan, admission: { id in
-            await history.bindExecution(request: request, operation: id, plan: plan)
+        let result = await executor.execute(plan, admission: { id, executingPlan in
+            await history.bindExecution(request: request, operation: id, plan: executingPlan)
         })
         XCTAssertNil(result.error)
         let stored = await executor.journal.entry(result.id)
@@ -51,7 +51,7 @@ final class F23HistorySafetyTests: XCTestCase {
     func testEveryInverseSafetyFieldMustMatchBeforeBinding() async throws {
         for field in 0..<12 {
             let (history, executor, fs) = try await seeded()
-            let value = await history.beginUndo()
+            let value = await history.beginUndo(recordedOrigins: [:])
             let undo = try XCTUnwrap(value)
             let accepted = await history.bindExecution(request: undo.request, operation: OperationID(),
                 plan: altered(undo.plan, field: field))
@@ -64,8 +64,8 @@ final class F23HistorySafetyTests: XCTestCase {
             XCTAssertEqual(original.objectIdentity, undo.plan.expectedEvidence[target]?.identity)
             // A rejected binding must not consume admission; the genuine plan still settles.
             if !accepted {
-                let result = await executor.execute(undo.plan, admission: { id in
-                    await history.bindExecution(request: undo.request, operation: id, plan: undo.plan)
+                let result = await executor.execute(undo.plan, admission: { id, executingPlan in
+                    await history.bindExecution(request: undo.request, operation: id, plan: executingPlan)
                 })
                 let completed = await history.complete(request: undo.request, outcome: result)
                 XCTAssertTrue(completed)
@@ -76,14 +76,14 @@ final class F23HistorySafetyTests: XCTestCase {
 
     func testReconstructedPlanCannotTrashReplacementOccupant() async throws {
         let (history, executor, fs) = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let undo = try XCTUnwrap(value)
         _ = try await fs.trashItem(at: target)
         try await fs.createFileExclusively(at: target, contents: Data("replacement".utf8))
         let replacement = try await fs.entry(at: target)
         let weakened = OperationPlan(command: undo.plan.command, steps: undo.plan.steps)
-        let result = await executor.execute(weakened, admission: { id in
-            await history.bindExecution(request: undo.request, operation: id, plan: weakened)
+        let result = await executor.execute(weakened, admission: { id, executingPlan in
+            await history.bindExecution(request: undo.request, operation: id, plan: executingPlan)
         })
         XCTAssertEqual(result.error, .invalidPlan)
         let exists = await fs.exists(target)
@@ -95,8 +95,8 @@ final class F23HistorySafetyTests: XCTestCase {
         if exists {
             let retained = try await fs.entry(at: target)
             XCTAssertEqual(retained.objectIdentity, replacement.objectIdentity)
-            let legitimate = await executor.execute(undo.plan, admission: { id in
-                await history.bindExecution(request: undo.request, operation: id, plan: undo.plan)
+            let legitimate = await executor.execute(undo.plan, admission: { id, executingPlan in
+                await history.bindExecution(request: undo.request, operation: id, plan: executingPlan)
             })
             XCTAssertNotNil(legitimate.error)
             let completed = await history.complete(request: undo.request, outcome: legitimate)
@@ -110,7 +110,7 @@ final class F23HistorySafetyTests: XCTestCase {
     func testAbortBeforeLaunchPreservesHistoryAndRejectsLateBinding() async throws {
         for failure: HistoryPreparationFailure in [.cancelled, .failed("preparation failed")] {
             let (history, executor, fs) = try await seeded()
-            let value = await history.beginUndo()
+            let value = await history.beginUndo(recordedOrigins: [:])
             let undo = try XCTUnwrap(value)
             let before = await history.snapshot()
             let journals = await executor.journal.allEntries()
@@ -127,15 +127,15 @@ final class F23HistorySafetyTests: XCTestCase {
             XCTAssertEqual(state.lastOutcome, failure.outcome)
             let afterJournals = await executor.journal.allEntries()
             XCTAssertEqual(afterJournals.count, journals.count)
-            let result = await executor.execute(undo.plan, admission: { id in
-                await history.bindExecution(request: undo.request, operation: id, plan: undo.plan)
+            let result = await executor.execute(undo.plan, admission: { id, executingPlan in
+                await history.bindExecution(request: undo.request, operation: id, plan: executingPlan)
             })
             XCTAssertEqual(result.error, .invalidPlan)
             let exists = await fs.exists(target)
             XCTAssertTrue(exists)
             let attempts = await history.inverseAttempts()
             XCTAssertTrue(attempts.isEmpty)
-            let next = await history.beginUndo()
+            let next = await history.beginUndo(recordedOrigins: [:])
             XCTAssertNotNil(next)
             let oldAbort = await history.abortUndo(request: undo.request, failure: failure)
             XCTAssertFalse(oldAbort)
@@ -148,16 +148,16 @@ final class F23HistorySafetyTests: XCTestCase {
 
     func testBindingWinsAndAbortCannotReleaseRunningUndo() async throws {
         let (history, executor, _) = try await seeded()
-        let value = await history.beginUndo()
+        let value = await history.beginUndo(recordedOrigins: [:])
         let undo = try XCTUnwrap(value)
-        let result = await executor.execute(undo.plan, admission: { id in
-            let bound = await history.bindExecution(request: undo.request, operation: id, plan: undo.plan)
+        let result = await executor.execute(undo.plan, admission: { id, executingPlan in
+            let bound = await history.bindExecution(request: undo.request, operation: id, plan: executingPlan)
             XCTAssertTrue(bound)
             let aborted = await history.abortUndo(request: undo.request, failure: .cancelled)
             XCTAssertFalse(aborted)
             let state = await history.snapshot()
             XCTAssertEqual(state.pending?.request, undo.request)
-            let other = await history.beginUndo()
+            let other = await history.beginUndo(recordedOrigins: [:])
             XCTAssertNil(other)
             return bound
         })

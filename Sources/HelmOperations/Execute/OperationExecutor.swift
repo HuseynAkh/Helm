@@ -14,39 +14,42 @@ public actor OperationExecutor {
     private var quarantined: Bool = false
     public init(fileSystem: any FileSystem, copier: (any FileCopier)? = nil,
                 verifier: (any CopyVerifying)? = nil,
-                origins: any TrashOriginRecording = InMemoryTrashOrigins(), journal: OperationJournal = OperationJournal()) {
+                origins: any TrashOriginRecording, journal: OperationJournal = OperationJournal()) {
         self.fileSystem = fileSystem; self.copier = copier ?? FoundationFileCopier(fileSystem: fileSystem)
         self.verifier = verifier ?? TreeCopyVerifier(fileSystem: fileSystem); self.origins = origins; self.journal = journal
     }
     /// Admission is awaited before filesystem access; false guarantees no mutation.
     /// Busy refusals also have a genuine journal entry and an admission callback (B-043).
     public func execute(_ plan: OperationPlan,
-                        admission: @Sendable (OperationID) async -> Bool = { _ in true },
-                        progress: @Sendable (OperationProgress) async -> Void = { _ in }) async -> OperationResult {
+                        progress: @Sendable (OperationProgress) async -> Void = { _ in },
+                        admission: @Sendable (OperationID, OperationPlan) async -> Bool = { _, _ in true }) async -> OperationResult {
         // Actor reentrancy must not interleave two mutation sequences.
         guard !running, !quarantined else {
             let id = await journal.begin(plan)
-            _ = await admission(id)
+            _ = await admission(id, plan)
             return await refuse(plan, id: id, error: .busy)
         }
         running = true
         defer { running = false }
         let id = await journal.begin(plan)
-        guard await admission(id) else { return await refuse(plan, id: id, error: .invalidPlan) }
+        guard await admission(id, plan) else { return await refuse(plan, id: id, error: .invalidPlan) }
         var outcomes: [ItemOutcome] = []
-        var expectedTokens = plan.expectedTokens
-        var expectedKinds = plan.expectedKinds
+        var expectedTokens: [String: ChangeToken] = [:]
+        for (url, value) in plan.expectedTokens { expectedTokens[url.path] = value }
+        var expectedKinds: [String: FileEntryKind] = [:]
+        for (url, value) in plan.expectedKinds { expectedKinds[url.path] = value }
         var forward = await ForwardEvidence.capture(plan, fileSystem: fileSystem)
+        let cache = ExecutionCache(fileSystem: fileSystem, context: plan.context)
         var failure: OperationError? = plan.isExecutable ? nil : .invalidPlan
         if failure == nil {
             for (url, token) in plan.expectedTokens {
                 do {
                     let current = try await fileSystem.entry(at: url)
-                    try validateUndoKind(current, expectedKind: expectedKinds[url], policy: plan.undoVerification)
+                    try validateUndoKind(current, expectedKind: expectedKinds[url.path], policy: plan.undoVerification)
                     if current.changeToken != token { failure = .sourceChanged(url); break }
                     if plan.undoVerification != .none {
                         let evidence = try forward.precondition(for: url)
-                        guard evidence.changeToken == token, evidence.kind == expectedKinds[url] else {
+                        guard evidence.changeToken == token, evidence.kind == expectedKinds[url.path] else {
                             throw OperationError.verificationUnavailable
                         }
                     }
@@ -66,7 +69,7 @@ public actor OperationExecutor {
                                              currentName: step.source?.lastPathComponent ?? step.destination?.lastPathComponent))
             do {
                 try Task.checkCancellation()
-                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification, forward: forward)
+                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification, forward: forward, cache: cache)
                 // Mutation success must survive a metadata read failure or cancellation.
                 let metadata: FileEntry?
                 if let destination {
@@ -75,14 +78,15 @@ public actor OperationExecutor {
                     metadata = await Task { try? await fs.entry(at: destination) }.value
                 } else { metadata = nil }
                 forward.completed(step, destination: destination, entry: metadata)
+                await cache.completed(step, destination: destination)
                 let token = metadata?.changeToken
-                if let source = step.source, let expected = expectedTokens[source],
+                if let source = step.source, let expected = expectedTokens[source.path],
                    step.kind == .move || step.kind == .trash {
-                    let kind = expectedKinds.removeValue(forKey: source)
-                    expectedTokens[source] = nil
+                    let kind = expectedKinds.removeValue(forKey: source.path)
+                    expectedTokens[source.path] = nil
                     if let destination {
-                        expectedTokens[destination] = token ?? expected
-                        expectedKinds[destination] = metadata?.kind ?? kind
+                        expectedTokens[destination.path] = token ?? expected
+                        expectedKinds[destination.path] = metadata?.kind ?? kind
                     }
                 }
                 let outcome = ItemOutcome(step: step, destination: destination, result: .success(token), destinationKind: metadata?.kind,
@@ -131,8 +135,8 @@ public actor OperationExecutor {
         await journal.complete(result)
         return result
     }
-    private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [URL: ChangeToken],
-                         expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence) async throws -> URL? {
+    private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [String: ChangeToken],
+                         expectedKinds: [String: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence, cache: ExecutionCache) async throws -> URL? {
         for url in [step.source, step.destination].compactMap({ $0 }) {
             guard url.isFileURL, url.standardizedFileURL.path != "/" else { throw OperationError.invalidPlan }
         }
@@ -147,7 +151,7 @@ public actor OperationExecutor {
         if let source = step.source, let target = step.destination {
             // Equality and containment are interpreted in the source namespace. A destination
             // on another volume must not change how the source's ancestors are compared.
-            let sensitive = await sensitivity(at: source.deletingLastPathComponent(), context: context)
+            let sensitive = await cache.sensitivity(at: source.deletingLastPathComponent())
             let sourcePath = FileNameComparison.key(source.standardizedFileURL.path, caseSensitive: sensitive)
             let targetPath = FileNameComparison.key(target.standardizedFileURL.path, caseSensitive: sensitive)
             guard targetPath != sourcePath, !targetPath.hasPrefix(sourcePath + "/") else { throw OperationError.invalidPlan }
@@ -155,9 +159,10 @@ public actor OperationExecutor {
         if step.kind == .trash {
             guard let source = step.source else { throw OperationError.invalidPlan }
             if let destination = step.verificationDestination {
-                try await verify(source: source, destination: destination, context: context)
+                try await verify(source: source, destination: destination, cache: cache)
+                try await forward.validate(destination, fileSystem: fileSystem)
             }
-            if let token = expectedTokens[source] {
+            if let token = expectedTokens[source.path] {
                 let current = try await fileSystem.entry(at: source)
                 guard current.changeToken == token else { throw OperationError.sourceChanged(source) }
                 // Root tokens cannot authorize retirement of potentially edited descendants.
@@ -180,19 +185,19 @@ public actor OperationExecutor {
         if step.kind == .verifyCopy {
             guard let source = step.source else { throw OperationError.invalidPlan }
             try await forward.validate(destination, fileSystem: fileSystem)
-            try await verify(source: source, destination: destination, context: context)
+            try await verify(source: source, destination: destination, cache: cache)
             try await forward.validate(source, fileSystem: fileSystem)
             try await forward.validate(destination, fileSystem: fileSystem)
             return destination
         }
         let parent = destination.deletingLastPathComponent()
         // Recheck complete no-follow names; exclusive FS mutations arbitrate subsequent races.
-        let occupied = try await fileSystem.childNames(of: parent)
-        let sensitive = await sensitivity(at: parent, context: context)
-        if occupied.contains(where: { FileNameComparison.key($0, caseSensitive: sensitive) == FileNameComparison.key(destination.lastPathComponent, caseSensitive: sensitive) }) {
+        let occupied = try await cache.names(at: parent)
+        let sensitive = await cache.sensitivity(at: parent)
+        if occupied.contains(FileNameComparison.key(destination.lastPathComponent, caseSensitive: sensitive)) {
             guard step.retryKeepBoth else { throw OperationError.conflict }
             destination = parent.appendingPathComponent(try UniqueNamer.name(for: (step.collisionName ?? step.source?.lastPathComponent ?? destination.lastPathComponent),
-                existingNames: occupied, caseSensitive: sensitive).value)
+                exists: { occupied.contains(FileNameComparison.key($0, caseSensitive: sensitive)) }).value)
         }
         for attempt in 0..<16 {
             do {
@@ -203,9 +208,10 @@ public actor OperationExecutor {
                 guard step.retryKeepBoth, attempt < 15 else {
                     throw StepExecutionFailure(destination: destination, underlying: OperationError.conflict)
                 }
-                let names = try await fileSystem.childNames(of: parent)
+                var names = try await cache.names(at: parent, refresh: true)
+                names.insert(FileNameComparison.key(destination.lastPathComponent, caseSensitive: sensitive))
                 let raw = step.collisionName ?? step.source?.lastPathComponent ?? step.destination?.lastPathComponent ?? ""
-                let name = try UniqueNamer.name(for: raw, existingNames: names.union([destination.lastPathComponent]), caseSensitive: sensitive)
+                let name = try UniqueNamer.name(for: raw, exists: { names.contains(FileNameComparison.key($0, caseSensitive: sensitive)) })
                 destination = parent.appendingPathComponent(name.value)
             }
         }
@@ -220,10 +226,10 @@ public actor OperationExecutor {
         }
         guard current.kind == expectedKind else { throw OperationError.sourceChanged(current.url) }
     }
-    private func validateExpectedSource(_ source: URL?, tokens: [URL: ChangeToken],
-                                        kinds: [URL: FileEntryKind], policy: UndoVerificationPolicy) async throws {
+    private func validateExpectedSource(_ source: URL?, tokens: [String: ChangeToken],
+                                        kinds: [String: FileEntryKind], policy: UndoVerificationPolicy) async throws {
         guard let source else { throw OperationError.invalidPlan }
-        guard let token = tokens[source] else {
+        guard let token = tokens[source.path] else {
             if policy == .leafOnly { throw OperationError.verificationUnavailable }
             return
         }
@@ -231,17 +237,11 @@ public actor OperationExecutor {
         do { current = try await fileSystem.entry(at: source) }
         catch is CancellationError { throw CancellationError() }
         catch { throw OperationError.sourceChanged(source) }
-        try validateUndoKind(current, expectedKind: kinds[source], policy: policy)
+        try validateUndoKind(current, expectedKind: kinds[source.path], policy: policy)
         guard current.changeToken == token else { throw OperationError.sourceChanged(source) }
     }
-    private func sensitivity(at directory: URL, context: PlanningContext) async -> Bool {
-        if let declared = context.caseSensitive.first(where: { $0.key.standardizedFileURL.path == directory.standardizedFileURL.path }) {
-            return declared.value
-        }
-        return (try? await fileSystem.isCaseSensitive(at: directory)) ?? false
-    }
-    private func verify(source: URL, destination: URL, context: PlanningContext) async throws {
-        let manifest = context.sourceManifest.filter { $0.source == source || $0.source.path.hasPrefix(source.path + "/") }
+    private func verify(source: URL, destination: URL, cache: ExecutionCache) async throws {
+        let manifest = await cache.manifest(for: source)
         guard !manifest.isEmpty else { throw OperationError.verificationUnavailable }
         for original in manifest {
             let current = try await fileSystem.entry(at: original.source)
@@ -250,8 +250,8 @@ public actor OperationExecutor {
         // Fable/Opus: K5 cannot atomically compare identity and retire a source; native coordination is still needed.
         try await verifier.verify(source: source, destination: destination)
     }
-    private func mutate(_ step: PlannedStep, destination: URL, expectedTokens: [URL: ChangeToken],
-                        expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence) async throws {
+    private func mutate(_ step: PlannedStep, destination: URL, expectedTokens: [String: ChangeToken],
+                        expectedKinds: [String: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence) async throws {
         switch step.kind {
         case .copy:
             guard let source = step.source else { throw OperationError.invalidPlan }

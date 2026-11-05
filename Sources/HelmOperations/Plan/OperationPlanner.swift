@@ -40,6 +40,7 @@ private struct PlanAssembly {
     var steps: [PlannedStep] = []
     var issues: [PlanningIssue] = []
     var reserved: [String: Set<String>] = [:]
+    var plannedTargets: [String: Set<String>] = [:]
     var originalNames: [String: [String: String]] = [:]
     var requiredBytes: [String: Int64] = [:]
     var manifestBytes: [String: Int64] = [:]
@@ -147,6 +148,9 @@ private struct PlanAssembly {
         let sensitive = context.sensitive(at: parent)
         let collision = reserved[parent.standardizedFileURL.path, default: []].contains(FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive))
         let policy = context.defaultPolicy.resolution(for: source)
+        if collision && policy == .replace && plannedTargets[parent.path, default: []].contains(FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive)) {
+            issues.append(.overlappingSelection(target)); return
+        }
         if collision && policy == .skip { return }
         if collision && policy == .stop { issues.append(.stopped); return }
         if !moving || context.volumeIDs[source] == nil || context.volumeIDs[source] != context.volumeIDs[parent] || (collision && policy == .replace) {
@@ -161,10 +165,12 @@ private struct PlanAssembly {
             }
             let original = originalNames[parent.standardizedFileURL.path]?[FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive)] ?? target.lastPathComponent
             replacement(source, target: target, original: parent.appendingPathComponent(original), moving: moving)
+            plannedTargets[parent.path, default: []].insert(FileNameComparison.key(target.lastPathComponent, caseSensitive: sensitive))
             originalNames[parent.standardizedFileURL.path, default: [:]][FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive)] = target.lastPathComponent
             return
         }
         guard let destination = unique(source.lastPathComponent, parent: parent) else { return }
+        plannedTargets[parent.path, default: []].insert(FileNameComparison.key(destination.lastPathComponent, caseSensitive: sensitive))
         if moving {
             let sourceVolume = context.volumeIDs[source]
             let targetVolume = context.volumeIDs[parent]
@@ -180,14 +186,12 @@ private struct PlanAssembly {
     }
     mutating func replacement(_ source: URL, target: URL, original: URL, moving: Bool) {
         let parent = target.deletingLastPathComponent()
-        guard let stage = unique(".helm-stage-" + target.lastPathComponent, parent: parent),
-              let backup = unique(".helm-backup-" + target.lastPathComponent, parent: parent) else { return }
+        guard let stage = unique(".helm-stage", parent: parent) else { return }
         // Fable/Opus: each boundary is recoverable, not an atomic multi-item transaction.
         steps.append(PlannedStep(kind: .copy, source: source, destination: stage))
         steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: stage))
-        steps.append(PlannedStep(kind: .move, source: original, destination: backup))
+        steps.append(PlannedStep(kind: .trash, source: original))
         steps.append(PlannedStep(kind: .move, source: stage, destination: target))
-        steps.append(PlannedStep(kind: .trash, source: backup))
         if moving { steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: target)) }
     }
     mutating func create(parent: URL, name: ValidFileName, template: URL?, folder: Bool) {

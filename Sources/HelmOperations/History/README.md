@@ -6,8 +6,8 @@ or is cancelled before execution, call abortForward(request:failure:). This is
 single-use, request-matched and unavailable once execution has been bound.
 
 For forward and inverse execution, capture the reservation and exact plan in
-OperationExecutor.execute(plan, admission: { operation in
-    await history.bindExecution(request: request, operation: operation, plan: plan)
+OperationExecutor.execute(plan, admission: { operation, executingPlan in
+    await history.bindExecution(request: request, operation: operation, plan: executingPlan)
 }).
 The executor awaits this callback before filesystem access. Returning false
 prevents mutation. Never launch an unbound execution and later attempt to bind
@@ -40,3 +40,11 @@ with default fields is refused before filesystem access. If undo preparation is
 cancelled or fails before binding, call abortUndo(request:failure:); it preserves
 both stacks and records the failure. Abort and bind are serialized by the actor:
 a successful abort rejects late binding, and successful binding rejects abort.
+
+AO3 DRAFT (2026-11-05): admission receives `(operation, executingPlan)`; forward
+that supplied plan directly to `bindExecution`. If binding returns false, the
+host must call the matching `abortForward` or `abortUndo` for its still-pending
+reservation. Rejected binding itself does not consume the reservation.
+Construct executors with an explicit shared `TrashOriginRecording` store and
+supply `beginUndo(recordedOrigins:)` explicitly. Empty origins are appropriate
+only when the inverse contains no Trash restoration.

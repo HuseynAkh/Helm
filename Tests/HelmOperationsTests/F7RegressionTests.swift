@@ -20,7 +20,7 @@ final class F7RegressionTests: XCTestCase {
         let source = URL(fileURLWithPath: "/src/report.txt"), parent = URL(fileURLWithPath: "/dest")
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
         let command: Command = moving ? .move(sources: [source], destinationDirectory: parent) : .trash(items: [source])
-        let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(command, context: context)) { progress in
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(command, context: context)) { progress in
             if progress.itemsDone == 0 && progress.currentName != nil {
                 do {
                     try await fs.moveItem(at: source, to: URL(fileURLWithPath: "/saved"))
@@ -32,7 +32,7 @@ final class F7RegressionTests: XCTestCase {
         let replacement = try await fs.entry(at: source)
         XCTAssertEqual(replacement.size, 2)
     }
-    func testBackupTrashRejectsSubstitution() async throws { try await checkArtifact(index: 4) }
+    func testOriginalTrashRejectsSubstitution() async throws { try await checkArtifact(index: 2) }
     func testStageInstallationRejectsSubstitution() async throws { try await checkArtifact(index: 3) }
     func testReplacementTargetRejectsSubstitution() async throws { try await checkArtifact(index: 2) }
     private func checkArtifact(index: Int) async throws {
@@ -42,7 +42,7 @@ final class F7RegressionTests: XCTestCase {
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent], policy: ConflictPolicy(defaultResolution: .replace))
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context)
         let artifact = try XCTUnwrap(plan.steps[index].source)
-        let result = await OperationExecutor(fileSystem: fs).execute(plan) { progress in
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan) { progress in
             if progress.itemsDone == index && progress.currentName != nil {
                 do {
                     try await fs.moveItem(at: artifact, to: URL(fileURLWithPath: "/saved"))
@@ -114,7 +114,7 @@ extension F7RegressionTests {
         try await fs.createFileExclusively(at: source, contents: Data([1]))
         let entry = try await fs.entry(at: source)
         let context = PlanningContext(sourceManifest: [SourceEntry(source: source, relativePath: "", kind: .alias, size: entry.size, changeToken: entry.changeToken)])
-        let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(.trash(items: [source]), context: context))
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(.trash(items: [source]), context: context))
         XCTAssertEqual(result.error, .sourceChanged(source))
     }
     func testForwardDirectoryMoveAndTrashRemainAvailable() async throws {
@@ -125,7 +125,7 @@ extension F7RegressionTests {
             try await fs.createFileExclusively(at: source.appendingPathComponent("child"), contents: Data([1]))
             let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
             let command: Command = moving ? .move(sources: [source], destinationDirectory: parent) : .trash(items: [source])
-            let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(command, context: context))
+            let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(command, context: context))
             XCTAssertNil(result.error)
             XCTAssertEqual(result.succeededCount, 1)
         }
@@ -139,7 +139,7 @@ extension F7RegressionTests {
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context)
         try await fs.moveItem(at: target, to: URL(fileURLWithPath: "/saved"))
         try await fs.createFileExclusively(at: target, contents: Data([3, 4]))
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertEqual(result.error, .sourceChanged(target))
         XCTAssertEqual(result.succeededCount, 2)
     }
@@ -159,7 +159,7 @@ extension F7RegressionTests {
         let target = parent.appendingPathComponent("report.txt")
         try await fs.createSymbolicLink(at: target, destination: URL(fileURLWithPath: "/src"))
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent], policy: ConflictPolicy(defaultResolution: .replace))
-        let result = await OperationExecutor(fileSystem: fs).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
         XCTAssertNil(result.error)
         let original = try await fs.entry(at: source)
         XCTAssertEqual(original.size, 1)
@@ -196,7 +196,7 @@ extension F7RegressionTests {
         try await fs.createFileExclusively(at: parent.appendingPathComponent("report.txt"), contents: Data([2]))
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent], policy: ConflictPolicy(defaultResolution: .replace))
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context)
-        let result = await OperationExecutor(fileSystem: fs, copier: F7UnreadableOutputCopier(fileSystem: fs)).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, copier: F7UnreadableOutputCopier(fileSystem: fs), origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertEqual(result.error, .verificationUnavailable)
         XCTAssertEqual(result.succeededCount, 1)
         XCTAssertTrue(result.outcomes[1].requiresReconciliation)

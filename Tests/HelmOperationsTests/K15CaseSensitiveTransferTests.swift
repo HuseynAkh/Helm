@@ -21,7 +21,7 @@ final class K15CaseSensitiveTransferTests: XCTestCase {
         let command: Command = moving ? .move(sources: [source], destinationDirectory: upper) : .copy(sources: [source], destinationDirectory: upper)
         let plan = OperationPlanner.plan(command, context: context)
         XCTAssertTrue(plan.isExecutable)
-        let result = await OperationExecutor(fileSystem: fs).execute(plan)
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
         XCTAssertNil(result.error)
         let destination = try await fs.entry(at: upper.appendingPathComponent("file"))
         XCTAssertEqual(destination.size, 3)

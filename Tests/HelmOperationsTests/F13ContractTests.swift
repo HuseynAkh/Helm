@@ -10,7 +10,7 @@ final class F13ContractTests: XCTestCase {
         let fs = InMemoryFileSystem()
         let output = URL(fileURLWithPath: "/output")
         let saved = URL(fileURLWithPath: "/saved-metadata")
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: output, contents: Data([1]))]))
         XCTAssertNil(result.error)
         let before = try await fs.entry(at: output)
@@ -33,7 +33,7 @@ final class F13ContractTests: XCTestCase {
         let fs = InMemoryFileSystem()
         let source = URL(fileURLWithPath: "/source"), output = URL(fileURLWithPath: "/output")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
-        let executor = OperationExecutor(fileSystem: fs, copier: CancelBeforeAdmission(fs: fs))
+        let executor = OperationExecutor(fileSystem: fs, copier: CancelBeforeAdmission(fs: fs), origins: InMemoryTrashOrigins())
         let task = Task { await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: output)])) }
         let result = await task.value
         XCTAssertEqual(result.error, .cancelled)

@@ -53,14 +53,14 @@ final class HistoryAdmissionTests: XCTestCase {
     }
     func testExecutorBusyIsBoundJournaledAndReleasesForward() async throws {
         let fs = InMemoryFileSystem()
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let history = WindowOperationHistory(), plan = try plan()
         // Reenter while the outer execution is held at admission; no filesystem work yet.
-        let outer = await executor.execute(plan, admission: { _ in
+        let outer = await executor.execute(plan, admission: { _, executingPlan in
             let value = await history.beginForward(plan.command)
             guard let request = value else { XCTFail("Reservation refused"); return false }
-            let result = await executor.execute(plan, admission: { id in
-                await history.bindExecution(request: request, operation: id, plan: plan)
+            let result = await executor.execute(plan, admission: { id, executingPlan in
+                await history.bindExecution(request: request, operation: id, plan: executingPlan)
             })
             XCTAssertEqual(result.error, .busy)
             XCTAssertEqual(result.outcomes.map(\.step), plan.steps)
@@ -84,12 +84,10 @@ final class HistoryAdmissionTests: XCTestCase {
     func testCancelledPlanningDoesNotEnterExecutor() async throws {
         let history = WindowOperationHistory(), plan = try plan()
         let fs = InMemoryFileSystem(), journal = OperationJournal()
-        let executor = OperationExecutor(fileSystem: fs, journal: journal)
         let value = await history.beginForward(plan.command)
         let request = try XCTUnwrap(value)
         do {
             try cancelledPlanning()
-            _ = await executor.execute(plan)
             XCTFail("Cancelled planning unexpectedly returned")
         } catch is CancellationError {
             let aborted = await history.abortForward(request: request, failure: .cancelled)
@@ -99,6 +97,11 @@ final class HistoryAdmissionTests: XCTestCase {
         XCTAssertTrue(entries.isEmpty)
         let exists = await fs.exists(URL(fileURLWithPath: "/target/new"))
         XCTAssertFalse(exists)
+        let state = await history.snapshot()
+        XCTAssertNil(state.pending)
+        XCTAssertNil(state.executingOperation)
+        let next = await history.beginForward(plan.command)
+        XCTAssertNotNil(next)
     }
 
     private func cancelledPlanning() throws { throw CancellationError() }
@@ -122,15 +125,15 @@ final class HistoryAdmissionTests: XCTestCase {
         let parent = URL(fileURLWithPath: "/target")
         try await fs.createDirectory(at: parent)
         let a = WindowOperationHistory(), b = WindowOperationHistory()
-        let ea = OperationExecutor(fileSystem: fs), eb = OperationExecutor(fileSystem: fs)
+        let ea = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()), eb = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         for (history, executor, name) in [(a, ea, "a"), (b, eb, "b")] {
             let command = Command.createFile(parent: parent, name: try XCTUnwrap(ValidFileName(name)), template: nil)
             let plan = OperationPlan(command: command,
                 steps: [PlannedStep(kind: .createFile, destination: parent.appendingPathComponent(name))])
             let value = await history.beginForward(command)
             let request = try XCTUnwrap(value)
-            let result = await executor.execute(plan, admission: { id in
-                await history.bindExecution(request: request, operation: id, plan: plan)
+            let result = await executor.execute(plan, admission: { id, executingPlan in
+                await history.bindExecution(request: request, operation: id, plan: executingPlan)
             })
             XCTAssertNil(result.error)
             let stored = await executor.journal.entry(result.id)
@@ -138,13 +141,13 @@ final class HistoryAdmissionTests: XCTestCase {
             let accepted = await history.completeForward(request: request, entry: entry)
             XCTAssertTrue(accepted)
         }
-        let av = await a.beginUndo(), bv = await b.beginUndo()
+        let av = await a.beginUndo(recordedOrigins: [:]), bv = await b.beginUndo(recordedOrigins: [:])
         let ar = try XCTUnwrap(av), br = try XCTUnwrap(bv)
-        let resultA = await ea.execute(ar.plan, admission: { id in
+        let resultA = await ea.execute(ar.plan, admission: { id, executingPlan in
             let bound = await a.bindExecution(request: ar.request, operation: id, plan: ar.plan)
             XCTAssertTrue(bound)
-            let resultB = await eb.execute(br.plan, admission: { bid in
-                await b.bindExecution(request: br.request, operation: bid, plan: br.plan)
+            let resultB = await eb.execute(br.plan, admission: { bid, executingPlan in
+                await b.bindExecution(request: br.request, operation: bid, plan: executingPlan)
             })
             XCTAssertNil(resultB.error)
             let foreign = await a.complete(request: ar.request, outcome: resultB)

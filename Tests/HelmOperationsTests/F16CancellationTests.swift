@@ -60,7 +60,7 @@ final class F16CancellationTests: XCTestCase {
         let x = URL(fileURLWithPath: "/x"), y = URL(fileURLWithPath: "/y")
         try await fs.createFileExclusively(at: a, contents: Data([1]))
         try await fs.createFileExclusively(at: b, contents: Data([2]))
-        let forwardExecutor = OperationExecutor(fileSystem: fs)
+        let forwardExecutor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let forward = await forwardExecutor.execute(OperationPlan(command: .recovery, steps: [
             PlannedStep(kind: .move, source: a, destination: x),
             PlannedStep(kind: .move, source: b, destination: y)]))
@@ -73,7 +73,7 @@ final class F16CancellationTests: XCTestCase {
         let gate = F16ReadGate()
         let adapter = F16ReadFileSystem(fs: fs, source: x, read: initial ? 1 : 3,
                                        gate: gate, entered: { entered.fulfill() })
-        let executor = OperationExecutor(fileSystem: adapter)
+        let executor = OperationExecutor(fileSystem: adapter, origins: InMemoryTrashOrigins())
         let task = Task {
             let result = await executor.execute(inverse)
             completed.fulfill()

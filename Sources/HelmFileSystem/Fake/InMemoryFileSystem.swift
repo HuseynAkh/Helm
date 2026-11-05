@@ -15,10 +15,16 @@ public actor InMemoryFileSystem: FileSystem {
     private var nodes: [String: Node] = [:]
     private var failures: [String: FileSystemError] = [:]
     private let caseSensitive: Bool
+    private let volumeIDs: [URL: String]
     private let identityScope = UUID().uuidString
     private var tick: TimeInterval = 0
     private var latencyNanoseconds: UInt64 = 0
     public init(caseSensitive: Bool = true) {
+        self.init(caseSensitive: caseSensitive, volumeIDs: [:])
+    }
+    /// Inject mount prefixes to exercise cross-volume move refusal (F-052/B-039).
+    public init(caseSensitive: Bool = true, volumeIDs: [URL: String]) {
+        self.volumeIDs = volumeIDs
         self.caseSensitive = caseSensitive
         nodes["/"] = Node(url: URL(fileURLWithPath: "/"), kind: .directory, data: Data(), modified: .distantPast)
     }
@@ -62,7 +68,7 @@ public actor InMemoryFileSystem: FileSystem {
             } else { kind = .danglingSymlink }
         }
         return FileEntry(url: value.url, kind: kind, isHidden: value.url.lastPathComponent.hasPrefix("."),
-                         size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: "memory",
+                         size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: volumeID(for: value.url),
                          objectIdentity: FileObjectIdentity(scope: identityScope, object: value.identity.uuidString))
     }
     public func entry(at url: URL) async throws -> FileEntry { try await delay(); return entry(try node(url)) }
@@ -214,7 +220,12 @@ public actor InMemoryFileSystem: FileSystem {
     }
     /// Fake volume capability matches its actual name lookup mode (F-052/B-039).
     public func isCaseSensitive(at url: URL) async throws -> Bool { caseSensitive }
-    public func volumeIdentifier(for url: URL) async throws -> String { _ = try node(url); return "memory" }
+    private func volumeID(for url: URL) -> String {
+        volumeIDs.sorted { $0.key.path.count > $1.key.path.count }.first {
+            url.path == $0.key.path || url.path.hasPrefix($0.key.path + "/")
+        }?.value ?? "memory"
+    }
+    public func volumeIdentifier(for url: URL) async throws -> String { _ = try node(url); return volumeID(for: url) }
     public func availableCapacity(of url: URL) async throws -> Int64 { _ = try node(url); return Int64.max }
     /// Bulk fixture setup avoids actor hops while retaining ordinary collision checks (F-035).
     public func seedFiles(in directory: URL, count: Int) throws {

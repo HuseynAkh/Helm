@@ -38,7 +38,7 @@ public struct LiveFileSystem: FileSystem {
             let cancellation = EnumerationCancellation()
             let task = Task {
                 do {
-                    try await executor.run(volume: queueKey(directory)) {
+                    try await executor.runReadWithProgress(volume: queueKey(directory)) { progress in
                         try cancellation.check()
                         // opendir provides an O(1) permission preflight without materializing 100k URLs.
                         guard let handle = opendir(directory.path) else {
@@ -73,7 +73,7 @@ public struct LiveFileSystem: FileSystem {
                             if !options.includeHidden && value.isHidden { continue }
                             batch.append(value)
                             if batch.count >= max(1, options.batchSize) || Date().timeIntervalSince(lastDelivery) >= 0.05 {
-                                continuation.yield(batch); batch.removeAll(keepingCapacity: true); lastDelivery = Date()
+                                progress(); continuation.yield(batch); batch.removeAll(keepingCapacity: true); lastDelivery = Date()
                             }
                         }
                         if let failure { throw FileSystemError.mapping(failure) }
@@ -96,7 +96,7 @@ public struct LiveFileSystem: FileSystem {
         return FileMutationPrecondition(identity: identity, changeToken: value.changeToken, kind: value.kind)
     }
     public func entry(at url: URL) async throws -> FileEntry {
-        try await executor.run(volume: queueKey(url)) {
+        try await executor.runRead(volume: queueKey(url)) {
             do {
                 let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
                 let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(url)
@@ -211,7 +211,7 @@ public struct LiveFileSystem: FileSystem {
     /// Queries volume metadata only; Linux uses case-sensitive path semantics (F-052/B-039).
     public func isCaseSensitive(at url: URL) async throws -> Bool {
         #if os(macOS)
-        return try await executor.run(volume: queueKey(url)) {
+        return try await executor.runRead(volume: queueKey(url)) {
             try url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames ?? false
         }
         #else
@@ -219,13 +219,13 @@ public struct LiveFileSystem: FileSystem {
         #endif
     }
     public func volumeIdentifier(for url: URL) async throws -> String {
-        try await executor.run(volume: queueKey(url)) {
+        try await executor.runRead(volume: queueKey(url)) {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             return (attributes[.systemNumber] as? NSNumber)?.stringValue ?? "/"
         }
     }
     public func availableCapacity(of url: URL) async throws -> Int64 {
-        try await executor.run(volume: queueKey(url)) {
+        try await executor.runRead(volume: queueKey(url)) {
             let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
             guard let value = attributes[.systemFreeSize] as? NSNumber else { throw FileSystemError.unsupported }
             return value.int64Value

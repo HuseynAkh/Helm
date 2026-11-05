@@ -21,7 +21,7 @@ final class F2SafetyTests: XCTestCase {
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data([1]).write(to: nested)
-        let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [target])
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: target), context: context)
         let refused = await executor.execute(plan)
@@ -93,7 +93,7 @@ final class F2SafetyTests: XCTestCase {
         let started = expectation(description: "Copy entered native body")
         let gate = DispatchSemaphore(value: 0)
         let copier = F2GatedCopier(fileSystem: fs, executor: IOExecutor(timeout: 5), gate: gate, started: { started.fulfill() })
-        let executor = OperationExecutor(fileSystem: fs, copier: copier)
+        let executor = OperationExecutor(fileSystem: fs, copier: copier, origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: target),
             PlannedStep(kind: .createFile, destination: URL(fileURLWithPath: "/later"))])
         let task = Task { await executor.execute(plan) }
@@ -141,7 +141,7 @@ final class F2SafetyTests: XCTestCase {
         try await fs.createFileExclusively(at: b, contents: Data([2]))
         let tokens = try await [a: fs.entry(at: a).changeToken, b: fs.entry(at: b).changeToken]
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .trash, source: a), PlannedStep(kind: .trash, source: b)], expectedTokens: tokens)
-        let result = await OperationExecutor(fileSystem: fs).execute(plan) { progress in
+        let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan) { progress in
             if progress.itemsDone == 1 && progress.currentName != nil {
                 try? await fs.removeItem(at: b)
                 try? await fs.createFileExclusively(at: b, contents: Data([3, 4]))

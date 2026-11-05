@@ -9,7 +9,7 @@ final class K34AtomicExecutorTests: XCTestCase {
     func testSubstitutionAfterLastPreflightIsRefusedByMutationBoundary() async throws {
         let fs = InMemoryFileSystem(), source = URL(fileURLWithPath: "/source"), destination = URL(fileURLWithPath: "/output")
         try await fs.createFileExclusively(at: source, contents: Data([1]))
-        let executor = OperationExecutor(fileSystem: fs, copier: K34SubstitutionCopier(fileSystem: fs))
+        let executor = OperationExecutor(fileSystem: fs, copier: K34SubstitutionCopier(fileSystem: fs), origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: destination)]))
         XCTAssertEqual(result.error, .sourceChanged(source))
         XCTAssertEqual(result.succeededCount, 0)
@@ -20,7 +20,7 @@ final class K34AtomicExecutorTests: XCTestCase {
     func testUnadoptedCopierRefusesWithoutCallingLegacyMutation() async throws {
         let fs = InMemoryFileSystem(), source = URL(fileURLWithPath: "/source")
         try await fs.createFileExclusively(at: source, contents: Data())
-        let executor = OperationExecutor(fileSystem: fs, copier: K34LegacyCopier())
+        let executor = OperationExecutor(fileSystem: fs, copier: K34LegacyCopier(), origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: URL(fileURLWithPath: "/output"))]))
         XCTAssertEqual(result.error, .verificationUnavailable)
         XCTAssertFalse(try XCTUnwrap(result.outcomes.first).requiresReconciliation)

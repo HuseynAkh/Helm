@@ -99,7 +99,7 @@ public actor WindowOperationHistory {
     }
 
     /// Origins are supplied values. The existing UndoPlanner retains all ownership/leaf checks.
-    public func beginUndo(recordedOrigins: [URL: URL] = [:]) -> HistoryUndoRequest? {
+    public func beginUndo(recordedOrigins: [URL: URL]) -> HistoryUndoRequest? {
         let request = HistoryRequestID()
         let effects = OperationHistoryReducer.reduce(&state, .beginUndo(request))
         guard case .performUndo(request, let operation) = effects.first else { return nil }

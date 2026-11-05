@@ -14,7 +14,7 @@ final class AO2OperationSafetyTests: XCTestCase {
         let gate = DispatchSemaphore(value: 0)
         defer { gate.signal() }
         let executor = OperationExecutor(fileSystem: fs, copier: AO2GatedCopier(
-            fs: fs, io: IOExecutor(timeout: 5), gate: gate, entered: { entered.fulfill() }))
+            fs: fs, io: IOExecutor(timeout: 5), gate: gate, entered: { entered.fulfill() }), origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery,
             steps: [PlannedStep(kind: .copy, source: source, destination: output)])
         let task = Task { await executor.execute(plan) }
@@ -34,7 +34,7 @@ final class AO2OperationSafetyTests: XCTestCase {
     }
 
     func testInverseMismatchAfterProgressHasNoUncertainMutation() async throws {
-        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let output = URL(fileURLWithPath: "/output")
         let forward = await executor.execute(OperationPlan(command: .recovery,
             steps: [PlannedStep(kind: .createFile, destination: output, contents: Data([1]))]))
@@ -54,7 +54,7 @@ final class AO2OperationSafetyTests: XCTestCase {
 
     func testTreeUndoWithJournalEvidenceRefusesEditedDescendants() async throws {
         for kind: PlannedStep.Kind in [.copy, .move, .createDirectory] {
-            let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+            let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
             let source = URL(fileURLWithPath: "/source"), output = URL(fileURLWithPath: "/output")
             try await fs.createDirectory(at: source)
             try await fs.createDirectory(at: source.appendingPathComponent("nested"))
@@ -101,7 +101,7 @@ final class AO2OperationSafetyTests: XCTestCase {
             let io = IOExecutor(maxConcurrentOperations: 1, timeout: 5)
             let started = expectation(description: "create reached provider")
             let fs = AO2CreateFileSystem(live: LiveFileSystem(executor: io), entered: { started.fulfill() })
-            let executor = OperationExecutor(fileSystem: fs)
+            let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
             let gate = DispatchSemaphore(value: 0)
             defer { gate.signal() }
             let blocked = expectation(description: "queue occupied")

@@ -26,7 +26,7 @@ final class RecoveryTests: XCTestCase {
         try await fs.createFileExclusively(at: source, contents: Data([1]))
         try await fs.createDirectory(at: parent)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent])
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context))
         let stored = await executor.journal.entry(result.id)
         let inverse = UndoPlanner.inverse(of: try XCTUnwrap(stored), recordedOrigins: [:])
@@ -53,13 +53,13 @@ final class RecoveryTests: XCTestCase {
     func testSymlinkAncestorCannotRedirectMutation() async throws {
         let fs = InMemoryFileSystem(), root = URL(fileURLWithPath: "/real"), link = URL(fileURLWithPath: "/link")
         try await fs.createDirectory(at: root); try await fs.createSymbolicLink(at: link, destination: root)
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: link.appendingPathComponent("new"))]))
         XCTAssertEqual(result.error, .invalidPlan)
         let names = try await fs.childNames(of: root); XCTAssertTrue(names.isEmpty)
     }
     func testReentrantExecutionIsRejected() async throws {
-        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs)
+        let fs = InMemoryFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .createFile, destination: URL(fileURLWithPath: "/new"))])
         let results = ResultCollector()
         let result = await executor.execute(plan) { progress in
@@ -74,7 +74,7 @@ final class RecoveryTests: XCTestCase {
         try await fs.createDirectory(at: destination)
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [destination])
         let copier = RacingCopier(fileSystem: fs)
-        let result = await OperationExecutor(fileSystem: fs, copier: copier).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: destination), context: context))
+        let result = await OperationExecutor(fileSystem: fs, copier: copier, origins: InMemoryTrashOrigins()).execute(OperationPlanner.plan(.copy(sources: [source], destinationDirectory: destination), context: context))
         XCTAssertNil(result.error); XCTAssertEqual(result.outcomes.first?.destination?.lastPathComponent, "x 2")
         let other = try await fs.entry(at: destination.appendingPathComponent("x")); XCTAssertEqual(other.size, 1)
     }

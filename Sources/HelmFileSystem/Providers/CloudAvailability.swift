@@ -10,7 +10,7 @@ public struct CloudAvailabilityReader: Sendable {
 
     /// Metadata errors propagate on macOS; Linux cannot determine cloud availability.
     public func availability(at url: URL) async throws -> CloudAvailability {
-        try await executor.run {
+        try await executor.runRead {
             try Self.readMetadata(at: url)
         }
     }

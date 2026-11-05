@@ -109,7 +109,7 @@ public extension FileSystem {
     }
     func childNames(of directory: URL) async throws -> Set<String> {
         var names = Set<String>()
-        for try await batch in enumerate(directory, options: EnumerationOptions(includeHidden: true)) {
+        for try await batch in enumerate(directory, options: EnumerationOptions(includeHidden: true, resolveSymlinkTargets: false)) {
             names.formUnion(batch.map(\.name))
         }
         return names

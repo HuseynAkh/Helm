@@ -42,14 +42,14 @@ final class HistoryReconciliationTests: XCTestCase {
             try await record(JournalEntry(id: operation, plan: plan, result: result), in: history)
             let state = await history.snapshot()
             XCTAssertNil(state.reconciliation)
-            let reservation = await history.beginUndo()
+            let reservation = await history.beginUndo(recordedOrigins: [:])
             let undo = try XCTUnwrap(reservation)
             XCTAssertTrue(undo.plan.isExecutable)
             XCTAssertEqual(undo.plan.steps.count, 1)
             XCTAssertEqual(undo.plan.steps.first?.source, destination)
-            let executor = OperationExecutor(fileSystem: fs)
-            let undone = await executor.execute(undo.plan, admission: { operation in
-                await history.bindExecution(request: undo.request, operation: operation, plan: undo.plan)
+            let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
+            let undone = await executor.execute(undo.plan, admission: { operation, executingPlan in
+                await history.bindExecution(request: undo.request, operation: operation, plan: executingPlan)
             })
             let completed = await history.complete(request: undo.request, outcome: undone)
             XCTAssertTrue(completed)
@@ -79,7 +79,7 @@ final class HistoryReconciliationTests: XCTestCase {
         }
         let entry = JournalEntry(id: id, plan: plan, result: result)
         try await record(entry, in: history)
-        let undo = await history.beginUndo()
+        let undo = await history.beginUndo(recordedOrigins: [:])
         let forward = await history.beginForward(command)
         XCTAssertNil(undo)
         XCTAssertNil(forward)

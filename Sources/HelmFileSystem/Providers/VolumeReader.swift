@@ -6,6 +6,12 @@ import HelmCore
 /// Mount notifications and icons remain UI responsibilities.
 public struct VolumeReader: Sendable {
     private let executor: IOExecutor
+    private var injectedURLs: (@Sendable () throws -> [URL])?
+    private var injectedRead: (@Sendable (URL) throws -> VolumeDetails)?
+    init(mountedURLs: @escaping @Sendable () throws -> [URL],
+         readVolume: @escaping @Sendable (URL) throws -> VolumeDetails) {
+        executor = IOExecutor(); injectedURLs = mountedURLs; injectedRead = readVolume
+    }
     public init(executor: IOExecutor = IOExecutor()) { self.executor = executor }
     public func volumes(showAll: Bool = false) async throws -> [VolumeInfo] {
         let values: [VolumeDetails] = try await details()
@@ -14,7 +20,10 @@ public struct VolumeReader: Sendable {
 
     /// Unfiltered mounted metadata; Linux exposes a synthetic root with unknown ejectability.
     public func details() async throws -> [VolumeDetails] {
-        try await executor.run {
+        try await executor.runRead {
+            if let injectedURLs, let injectedRead {
+                return try injectedURLs().map(injectedRead)
+            }
             #if os(macOS)
             let keys: Set<URLResourceKey> = [.volumeNameKey, .volumeUUIDStringKey, .volumeIsInternalKey,
                 .volumeIsRemovableKey, .volumeIsBrowsableKey, .isHiddenKey, .volumeIsEjectableKey]

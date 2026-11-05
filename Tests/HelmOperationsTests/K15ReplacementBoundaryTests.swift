@@ -10,14 +10,12 @@ final class K15ReplacementBoundaryTests: XCTestCase {
     func testReplacementFailureAtCopy() async throws { try await checkBoundary(0) }
     /// F-052/B-038: verification failure cannot retire the source.
     func testReplacementFailureAtVerify() async throws { try await checkBoundary(1) }
-    /// F-052/B-038: backup move failure retains the original target.
-    func testReplacementFailureAtBackup() async throws { try await checkBoundary(2) }
-    /// F-052/B-038: install failure retains the recoverable backup.
+    /// F-052/B-038: original Trash failure retains the original target.
+    func testReplacementFailureAtOriginalTrash() async throws { try await checkBoundary(2) }
+    /// F-052/B-038: install failure retains the recoverable original in Trash.
     func testReplacementFailureAtInstall() async throws { try await checkBoundary(3) }
-    /// F-052/B-038: backup trash failure retains both payloads.
-    func testReplacementFailureAtTrashBackup() async throws { try await checkBoundary(4) }
     /// F-052/B-038: source retirement failure leaves the source recoverable.
-    func testReplacementFailureAtRetireSource() async throws { try await checkBoundary(5) }
+    func testReplacementFailureAtRetireSource() async throws { try await checkBoundary(4) }
 
     private func checkBoundary(_ boundary: Int) async throws {
         let fs = InMemoryFileSystem()
@@ -28,10 +26,10 @@ final class K15ReplacementBoundaryTests: XCTestCase {
         try await fs.createFileExclusively(at: parent.appendingPathComponent("file"), contents: Data([9, 8]))
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [parent], policy: ConflictPolicy(defaultResolution: .replace))
         let plan = OperationPlanner.plan(.move(sources: [source], destinationDirectory: parent), context: context)
-        XCTAssertTrue(plan.isExecutable); XCTAssertEqual(plan.steps.count, 6)
+        XCTAssertTrue(plan.isExecutable); XCTAssertEqual(plan.steps.count, 5)
         let step = plan.steps[boundary]
         let injected = try XCTUnwrap(step.kind == .trash || step.kind == .verifyCopy ? step.source : step.destination)
-        let executor = OperationExecutor(fileSystem: fs)
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let result = await executor.execute(plan) { progress in
             if progress.itemsDone == boundary && progress.currentName != nil {
                 await fs.setFailure(.permissionDenied, at: injected)
@@ -39,7 +37,7 @@ final class K15ReplacementBoundaryTests: XCTestCase {
         }
         await fs.setFailure(nil, at: injected)
         XCTAssertNotNil(result.error); XCTAssertEqual(result.outcomes.filter(\.succeeded).count, boundary)
-        XCTAssertEqual(result.outcomes.count, 6)
+        XCTAssertEqual(result.outcomes.count, 5)
         // No step may permanently remove either payload, even when the target has moved to backup/Trash.
         var pending = [URL(fileURLWithPath: "/")]
         var sizes: [Int64] = []
@@ -58,6 +56,6 @@ final class K15ReplacementBoundaryTests: XCTestCase {
         XCTAssertTrue(payloads.contains(Data([1, 2, 3])), "Original source bytes lost at boundary \(boundary)")
         let original = try await fs.entry(at: source); XCTAssertEqual(original.size, 3)
         let journal = await executor.journal.outcomes(for: result.id)
-        XCTAssertEqual(journal.count, 6)
+        XCTAssertEqual(journal.count, 5)
     }
 }

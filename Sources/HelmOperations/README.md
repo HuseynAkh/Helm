@@ -20,8 +20,8 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
 - ConflictPolicy supports per-source decisions and apply-to-all. `resolve` replans
   against the retained snapshot. K2 UniqueNamer and BatchRenamePlanner provide all
   numbering and swap ordering, including case-only rename. Final-extension
-  splitting deliberately follows K2/legacy (`a.tar 2.gz`), winning over the stale
-  architecture sentence about compound-extension splitting.
+  splitting currently follows K2/legacy (`a.tar 2.gz`). This is the unresolved
+  B-116 deviation: architecture requires `a 2.tar.gz`; HelmCore owns the fix.
 - Retain one OperationExecutor and its OperationJournal per window association
   in the app registry until pending work finishes. Call async `execute`, retain
   the caller task for cancellation, and optionally supply an async progress
@@ -48,8 +48,8 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
   then move the source to Trash instead of permanently removing it. This retains
   recovery data and never falls back to deletion if Trash is unsupported. Source
   and copied destination are reverified immediately before source retirement.
-- Replacement stages and verifies a whole new tree, moves the original to an
-  owned backup path, installs the stage, then trashes the backup. Each mutation is
+- Replacement stages and verifies a whole new tree, trashes the original in
+  place under its real name, then installs the stage. Each mutation is
   journaled separately. Failure retains artifacts; there is no automatic rollback
   or directory merge. This is recoverable, not atomic replacement.
 - Whole-tree Foundation copying supplies no intra-file or per-child cancellation
@@ -164,7 +164,7 @@ contexts manually should supply it. Legacy/manual destructive plans snapshot the
 initial sources before progress starts, so their protection begins at execution,
 not at planning. Undo keeps its separate leaf-only policy and recorded output tokens.
 
-Completed copies/moves capture stage and backup evidence before the next progress
+Completed copies/moves capture output evidence before the next progress
 callback. Dependent mutations recheck it after preflight; missing metadata preserves
 the successful outcome and stops dependent work for reconciliation. Verification
 cannot replace an artifact's earlier ownership evidence.
