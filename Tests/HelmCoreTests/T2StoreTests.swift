@@ -142,14 +142,25 @@ final class T2StoreTests: XCTestCase {
         let (s, _, _) = fixture(); var seen: UInt64 = 0; _ = s.snapshots.subscribe { v in seen += 1; XCTAssertEqual(v.sequence, seen); XCTAssertEqual(v.window.isSidebarVisible, seen % 2 == 1) }; for i in 0..<100_000 { s.enqueue(.window(.setSidebarVisible(i % 2 == 0))) }; s.drain(); XCTAssertEqual(seen, 100_000)
     }
     func testConcurrentProducersRetainPerTabOrder() async throws {
-        let (s, _, _) = await fixture()
+        let (s, runner, _) = await fixture()
         let ids = await MainActor.run { (0..<8).map { _ -> TabID in
             let t = TabState(location: .recent, homeDirectory: root); s.send(.addTab(t, activate: false)); return t.id
         } }
         await withTaskGroup(of: Void.self) { group in
-            for id in ids { group.addTask { for i in 0..<1000 { s.enqueue(.tab(id, .setViewMode(i % 2 == 0 ? .grid : .list))) } } }
+            for id in ids { group.addTask { for i in 0..<1000 { s.enqueue(.tab(id, .navigate(.directory(URL(fileURLWithPath: "/fifo/\(i)")), .push))) } } }
         }
-        await MainActor.run { s.drain(); XCTAssertEqual(s.state.sequence, 8008); for id in ids { XCTAssertEqual(s.state.tabs[id]?.viewMode, .list) } }
+        await MainActor.run {
+            s.drain()
+            XCTAssertEqual(s.state.sequence, 8008)
+            for id in ids {
+                let trace = runner.effects.compactMap { effect -> String? in
+                    guard case .tab(let owner, .load(let location, _, _)) = effect, owner == id else { return nil }
+                    return location.mutationTarget?.path
+                }
+                XCTAssertEqual(trace, (0..<1000).map { "/fifo/\($0)" })
+            }
+            s.send(.shutdown)
+        }
     }
     @MainActor
     func testRetiredMonitorAfterRefresh() async throws {

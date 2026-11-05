@@ -2,7 +2,7 @@
 import Foundation
 import XCTest
 import HelmCore
-import HelmPersistence
+@testable import HelmPersistence
 
 // F-029/F-065: documents must retain user metadata through corruption and migration.
 final class T2PreferenceTests: XCTestCase {
@@ -155,6 +155,63 @@ final class T2PreferenceTests: XCTestCase {
     }
     @MainActor
     func testOptionsConcurrentFlushNewestWins() async throws {
-        let p = try url(); let s = try await LocationViewOptionsStore(url: p); try await withThrowingTaskGroup(of: Void.self) { group in for i in 0..<40 { group.addTask { @MainActor in try s.set(ViewOptions(iconSize: Double(20 + i)), for: .recent); try await s.flush() } } }; try await s.flush(); let restored = try await LocationViewOptionsStore(url: p); XCTAssertEqual(restored.options(for: .recent), s.options(for: .recent))
+        let p = try url()
+        let s = try await LocationViewOptionsStore(url: p)
+        var lastAdmitted = ViewOptions()
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for i in 0..<40 {
+                group.addTask { @MainActor in
+                    let value = ViewOptions(iconSize: Double(20 + i))
+                    try s.set(value, for: .recent)
+                    lastAdmitted = value
+                    try await s.flush()
+                }
+            }
+            try await group.waitForAll()
+        }
+        let restored = try await LocationViewOptionsStore(url: p)
+        XCTAssertEqual(restored.options(for: .recent), lastAdmitted)
+    }
+}
+
+private actor F17SaveGate {
+    private var release: CheckedContinuation<Void, Never>?
+    private var released = false
+    let entered: XCTestExpectation
+    init(entered: XCTestExpectation) { self.entered = entered }
+    func pause(_ revision: UInt64) async {
+        guard revision == 1, !released else { return }
+        entered.fulfill()
+        await withCheckedContinuation { release = $0 }
+    }
+    func resume() { released = true; release?.resume(); release = nil }
+}
+
+extension T2PreferenceTests {
+    @MainActor func testCapturedOldFlushCannotOverwriteNewerAdmittedEdit() async throws {
+        let p = try url()
+        let s = try await LocationViewOptionsStore(url: p)
+        let entered = expectation(description: "old snapshot captured")
+        let done = expectation(description: "old flush returned")
+        let gate = F17SaveGate(entered: entered)
+        s.beforeSave = { revision in await gate.pause(revision) }
+        try s.set(ViewOptions(iconSize: 40), for: .recent)
+        let old = Task { @MainActor in
+            defer { done.fulfill() }
+            try await s.flush()
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        let lastAdmitted = ViewOptions(iconSize: 140)
+        try s.set(lastAdmitted, for: .recent)
+        do { try await s.flush() } catch {
+            await gate.resume(); throw error
+        }
+        await gate.resume()
+        await fulfillment(of: [done], timeout: 2)
+        try await old.value
+        // Reopen immediately: no repair flush and no intervening LRU read.
+        let restored = try await LocationViewOptionsStore(url: p)
+        XCTAssertEqual(restored.options(for: .recent), lastAdmitted)
+        s.beforeSave = nil
     }
 }

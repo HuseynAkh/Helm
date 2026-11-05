@@ -36,11 +36,8 @@ extension K34MonitorAdapterTests {
         }
         await fulfillment(of: [received], timeout: 2)
         validation?.cancel()
-        let unexpected = expectation(description: "cancelled reload cannot publish")
-        unexpected.isInverted = true
-        let reload = runner.run(.tab(tab, .refreshPaths([], generation))) { _ in unexpected.fulfill() }
-        reload?.cancel(); watch?.cancel()
-        await fulfillment(of: [unexpected], timeout: 0.05)
+        let liveWatch = try XCTUnwrap(watch)
+        liveWatch.cancel()
         XCTAssertNil(runner.run(.tab(tab, .refreshPaths([], generation))) { _ in })
     }
 
@@ -59,4 +56,47 @@ extension K34MonitorAdapterTests {
         await fulfillment(of: [received], timeout: 2)
         validation?.cancel(); watch?.cancel()
     }
+}
+
+extension K34MonitorAdapterTests {
+    @MainActor func testReloadCancellationWithLiveWatchAtReadBoundary() async throws {
+        let base = InMemoryFileSystem(), root = URL(fileURLWithPath: "/watched")
+        try await base.createDirectory(at: root)
+        try await base.createFileExclusively(at: root.appendingPathComponent("child"), contents: Data())
+        let entered = expectation(description: "reload read entered")
+        let ended = expectation(description: "cancelled reload exited")
+        let gate = F17ReadGate(entered: entered)
+        let fs = F17FileSystemProbe(base: base, counts: F17ReadCounts(), gate: gate)
+        let monitor = F17QuietMonitor()
+        let runner = DirectoryEffectRunner(loader: DirectoryLoader(fileSystem: fs), monitorFactory: { _ in monitor })
+        let tab = TabID(), generation = Generation()
+        let watch = try XCTUnwrap(runner.run(.tab(tab, .startMonitor(.directory(root), generation))) { _ in })
+        defer { watch.cancel() }
+        runner.reloadDidFinish = { ended.fulfill() }
+        let callbacks = F17ReadCounts()
+        let reload = try XCTUnwrap(runner.run(.tab(tab, .refreshPaths([], generation))) { _ in callbacks.root() })
+        await fulfillment(of: [entered], timeout: 2)
+        reload.cancel()
+        await gate.release()
+        await fulfillment(of: [ended], timeout: 2)
+        XCTAssertEqual(callbacks.snapshot()[0], 0)
+        runner.reloadDidFinish = nil
+        let received = expectation(description: "same watch remains usable")
+        let next = try XCTUnwrap(runner.run(.tab(tab, .refreshPaths([], generation))) { action in
+            guard case .tab(_, .monitorSnapshot(let token, let snapshot)) = action else { XCTFail("Expected snapshot"); return }
+            XCTAssertEqual(token, generation)
+            XCTAssertEqual(snapshot.sortedEntries.map(\.name), ["child"])
+            received.fulfill()
+        })
+        await fulfillment(of: [received], timeout: 2)
+        next.cancel()
+    }
+}
+
+private actor F17QuietMonitor: DirectoryMonitor {
+    nonisolated let events: AsyncStream<MonitorEvent>
+    private let output: AsyncStream<MonitorEvent>.Continuation
+    init() { let pair = AsyncStream<MonitorEvent>.makeStream(); events = pair.stream; output = pair.continuation }
+    func start() async throws {}
+    func stop() async { output.finish() }
 }

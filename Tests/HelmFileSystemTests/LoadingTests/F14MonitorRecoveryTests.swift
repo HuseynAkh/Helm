@@ -33,7 +33,7 @@ final class F14MonitorRecoveryTests: XCTestCase {
         let recovered = expectation(description: "reconcile recovery")
         let change = expectation(description: "subsequent changes")
         let handle = runner.run(.tab(tab, .startMonitor(.directory(root), generation))) { action in
-            if case .tab(_, .monitorEvent(_, .rootChanged)) = action { recovered.fulfill() }
+            if case .tab(_, .monitorWatching) = action { recovered.fulfill() }
             if case .tab(_, .monitorEvent(_, .rescan)) = action { change.fulfill() }
         }
         await fulfillment(of: [recovered], timeout: 2)
@@ -64,41 +64,51 @@ final class F14MonitorRecoveryTests: XCTestCase {
 }
 
 extension F14MonitorRecoveryTests {
-    @MainActor func testRecoveryThroughStorePublishesAndRebindsThenReceivesChange() async throws {
+    @MainActor func testRecoveryThroughStoreRetainsReplacementThenReceivesChange() async throws {
         let root = URL(fileURLWithPath: "/watched")
         let fs = InMemoryFileSystem()
         try await fs.createDirectory(at: root)
         try await fs.createFileExclusively(at: root.appendingPathComponent("first"), contents: Data())
         var monitors: [F14Monitor] = []
-        let rebound = expectation(description: "root validation rebinds watch")
+        let retryEntered = expectation(description: "retry backoff entered")
+        let retryGate = F17ReadGate(entered: retryEntered)
+        let rebound = expectation(description: "recovery publishes fresh snapshot")
         let runner = DirectoryEffectRunner(loader: DirectoryLoader(fileSystem: fs), monitorFactory: { _ in
-            let monitor = F14Monitor(fails: monitors.isEmpty)
+            let monitor = F14Monitor(fails: monitors.count % 2 == 0)
             monitors.append(monitor)
-            if monitors.count == 3 { rebound.fulfill() }
             return monitor
-        }, retryDelay: { _ in await Task.yield() })
+        }, retryDelay: { _ in await retryGate.wait() })
         let tab = TabState(location: .directory(root), homeDirectory: root)
         let store = WindowStore(window: WindowState(tabs: [tab.id], activeTabID: tab.id), tabs: [tab], runner: runner,
                                 context: ReducerContext(now: .distantPast, homeDirectory: root))
         let changed = expectation(description: "post-recovery snapshot")
+        var reconciled = false
         _ = store.snapshots.subscribe { value in
+            if !reconciled, value.tabs[tab.id]?.snapshot.sortedEntries.map(\.name) == ["first"] {
+                reconciled = true; rebound.fulfill()
+            }
             if value.tabs[tab.id]?.snapshot.sortedEntries.map(\.name) == ["first", "second"] { changed.fulfill() }
         }
         store.send(.tab(tab.id, .deactivated))
         store.send(.tab(tab.id, .activated))
+        await fulfillment(of: [retryEntered], timeout: 2)
+        XCTAssertEqual(monitors.count, 1)
+        await retryGate.release()
         await fulfillment(of: [rebound], timeout: 3)
         XCTAssertEqual(store.state.tabs[tab.id]?.snapshot.sortedEntries.map(\.name), ["first"])
         XCTAssertFalse(store.state.tabs[tab.id]?.monitorDegraded ?? true)
-        XCTAssertEqual(monitors.count, 3)
+        XCTAssertEqual(monitors.count, 2)
         try await fs.createFileExclusively(at: root.appendingPathComponent("second"), contents: Data())
         monitors.last?.output.yield(.rescan)
         await fulfillment(of: [changed], timeout: 3)
+        XCTAssertEqual(monitors.count, 2)
         store.send(.shutdown)
     }
 
     @MainActor func testFiniteSourceIsRetiredAndRetried() async {
         var attempts = 0
         let recovered = expectation(description: "finite source replaced")
+        recovered.expectedFulfillmentCount = 2
         let runner = DirectoryEffectRunner(loader: DirectoryLoader(fileSystem: InMemoryFileSystem()), monitorFactory: { _ in
             attempts += 1
             let monitor = F14Monitor(fails: false)
@@ -106,10 +116,37 @@ extension F14MonitorRecoveryTests {
             return monitor
         }, retryDelay: { _ in await Task.yield() })
         let handle = runner.run(.tab(TabID(), .startMonitor(.directory(URL(fileURLWithPath: "/root")), Generation()))) { action in
-            if case .tab(_, .monitorEvent(_, .rootChanged)) = action { recovered.fulfill() }
+            if case .tab(_, .monitorWatching) = action { recovered.fulfill() }
         }
         await fulfillment(of: [recovered], timeout: 2)
         XCTAssertEqual(attempts, 2)
         handle?.cancel()
+    }
+}
+
+extension F14MonitorRecoveryTests {
+    @MainActor func testShutdownDuringGatedRetryTerminatesWithoutNewFactory() async throws {
+        let root = URL(fileURLWithPath: "/watched")
+        let entered = expectation(description: "retry suspended")
+        let finished = expectation(description: "watch task exited")
+        let gate = F17ReadGate(entered: entered)
+        var creations = 0
+        let runner = DirectoryEffectRunner(loader: DirectoryLoader(fileSystem: InMemoryFileSystem()), monitorFactory: { _ in
+            creations += 1
+            return F14Monitor(fails: true)
+        }, retryDelay: { _ in await gate.wait() })
+        runner.watchDidFinish = { finished.fulfill() }
+        let tab = TabState(location: .directory(root), homeDirectory: root)
+        let store = WindowStore(window: WindowState(tabs: [tab.id], activeTabID: tab.id), tabs: [tab], runner: runner,
+                                context: ReducerContext(now: .distantPast, homeDirectory: root))
+        store.send(.tab(tab.id, .deactivated))
+        store.send(.tab(tab.id, .activated))
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertEqual(creations, 1)
+        store.send(.shutdown)
+        await gate.release()
+        await fulfillment(of: [finished], timeout: 2)
+        XCTAssertEqual(creations, 1)
+        runner.watchDidFinish = nil
     }
 }

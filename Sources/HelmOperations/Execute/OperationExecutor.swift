@@ -43,6 +43,8 @@ public actor OperationExecutor {
                         }
                     }
                     try await forward.validate(url, fileSystem: fileSystem)
+                } catch is CancellationError {
+                    failure = .cancelled; break
                 } catch { failure = (error as? OperationError) ?? .sourceChanged(url); break }
             }
         }
@@ -211,6 +213,7 @@ public actor OperationExecutor {
         }
         let current: FileEntry
         do { current = try await fileSystem.entry(at: source) }
+        catch is CancellationError { throw CancellationError() }
         catch { throw OperationError.sourceChanged(source) }
         try validateUndoKind(current, expectedKind: kinds[source], policy: policy)
         guard current.changeToken == token else { throw OperationError.sourceChanged(source) }

@@ -56,7 +56,11 @@ public enum TabReducer {
             }
             (next, effects) = reduce(next, reply, context: context)
             if validated {
-                if case .failure = result { next.monitorNeedsValidation = true }
+                if case .failure = result {
+                    next.monitorNeedsValidation = true
+                    // Retry only an invalidation received during this read, never the error alone.
+                    if next.monitorDirty { replayMonitor(&next, effects: &effects) }
+                }
                 if next.pendingNavigation != nil || next.isLoading { next.monitorNeedsValidation = true }
             }
             if validated, case .success = result, next.pendingNavigation == nil, !next.isLoading {

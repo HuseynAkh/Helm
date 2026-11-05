@@ -63,7 +63,7 @@ final class LeafPresentationTests: XCTestCase {
         let value = PropertiesViewModel(entries: [a, b], supplement: PropertiesSupplement(posixMode: 0o777, locked: true))
         XCTAssertEqual(value.title, "2 Items"); XCTAssertEqual(value.kind, "Multiple kinds")
         XCTAssertEqual(value.location, "Multiple locations"); XCTAssertEqual(value.created, "Multiple dates")
-        XCTAssertTrue(value.size.contains("known sizes only")); XCTAssertTrue(value.size.contains("folder contents not included"))
+        XCTAssertEqual(value.size, "20 bytes (known contents only)")
         XCTAssertNil(value.supplement.posixMode); XCTAssertNil(value.supplement.locked)
         XCTAssertEqual(value.permissionRows.first?.1, "Multiple items — unavailable")
         let overflow = PropertiesViewModel(entries: [a, FileEntry(url: URL(fileURLWithPath: "/huge"), size: .max)])

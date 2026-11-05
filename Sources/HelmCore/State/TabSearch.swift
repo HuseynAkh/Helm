@@ -3,7 +3,7 @@ import Foundation
 
 extension TabReducer {
     static func startSearch(_ query: SearchQuery, state: inout TabState, effects: inout [TabEffect]) {
-        if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query.filters.isEmpty {
             endSearch(&state, effects: &effects); return
         }
         if state.search == nil {

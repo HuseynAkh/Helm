@@ -23,6 +23,8 @@ internal struct LocationOptionsRecord: Codable, Sendable {
     private var document: LocationOptionsDocument
     private let file: PreferenceDocumentFile<LocationOptionsDocument>
     private var revision: UInt64 = 0
+    // Internal admission seam for deterministic revision-order verification.
+    internal var beforeSave: (@Sendable (UInt64) async -> Void)?
 
     public init(url: URL, capacity: Int = 256, defaults: ViewOptions = ViewOptions()) async throws {
         self.capacity = max(0, capacity)
@@ -74,7 +76,12 @@ internal struct LocationOptionsRecord: Codable, Sendable {
         let keys = Set(locations.map(Self.stableKey))
         document.records.removeAll { keys.contains($0.key) }; revision &+= 1
     }
-    public func flush() async throws { try await file.save(document, revision: revision) }
+    public func flush() async throws {
+        let capturedDocument = document
+        let capturedRevision = revision
+        if let beforeSave { await beforeSave(capturedRevision) }
+        try await file.save(capturedDocument, revision: capturedRevision)
+    }
     private func checkWritable() throws {
         if isReadOnly { throw PreferenceDocumentError.recoveryReadOnly }
     }

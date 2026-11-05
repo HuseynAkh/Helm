@@ -82,7 +82,8 @@ extension TabReducer {
     }
     static func replayMonitor(_ state: inout TabState, effects: inout [TabEffect]) {
         guard state.monitorDirty || state.monitorNeedsValidation,
-              state.isActive, !state.isLoading, state.pendingNavigation == nil else { return }
+              state.isActive, !state.isLoading, !state.monitorValidationPending, !state.monitorDegraded,
+              state.pendingNavigation == nil else { return }
         state.monitorDirty = false
         if state.monitorNeedsValidation {
             state.monitorNeedsValidation = false

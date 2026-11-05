@@ -59,6 +59,49 @@ final class T2LoadingTests: XCTestCase {
         }
         return DirectoryLoadPipeline(fileSystem: T2ControlledFS(root: root, entryGate: nil, entered: nil, enumerated: nil, stream: stream))
     }
+    func testProgressBeforeEOFAcrossBatchSizesAndMetadataReplacement() async {
+        for batchSize in [1, 7, 64, 512] {
+            let first = expectation(description: "early progress \(batchSize)")
+            let second = expectation(description: "replacement progress \(batchSize)")
+            let pair = AsyncThrowingStream<LoadEvent, Error>.makeStream()
+            let fs = T2ControlledFS(root: root, entryGate: nil, entered: nil, enumerated: nil, stream: pair.stream)
+            let loader = DirectoryLoadPipeline(fileSystem: fs)
+            let stream = await loader.load(.directory(root), generation: generation, options: LoadOptions(batchSize: batchSize))
+            let initial = (0..<batchSize).map { FileEntry(url: root.appendingPathComponent("item\($0)"), size: 1) }
+            var expected = initial
+            expected[0] = FileEntry(url: initial[0].url, size: 99)
+            expected += (batchSize..<(batchSize * 2)).map { FileEntry(url: root.appendingPathComponent("item\($0)"), size: 2) }
+            let finalEntries = expected
+            let stamp = generation
+            let consumer = Task {
+                var progressCount = 0
+                var finished = false
+                for await action in stream {
+                    switch action {
+                    case .loadProgress(let generation, let snapshot):
+                        progressCount += 1
+                        XCTAssertEqual(generation, stamp); XCTAssertEqual(snapshot.id, stamp)
+                        let entries = progressCount == 1 ? initial : finalEntries
+                        XCTAssertEqual(snapshot.phase, .loading(loadedCount: entries.count))
+                        XCTAssertEqual(snapshot.sortedEntries, ItemSort().sorted(entries))
+                        if progressCount == 1 { first.fulfill() } else if progressCount == 2 { second.fulfill() }
+                    case .loadFinished(let generation, let snapshot):
+                        finished = true
+                        XCTAssertEqual(generation, stamp); XCTAssertEqual(snapshot.phase, .ready)
+                        XCTAssertEqual(snapshot.sortedEntries, ItemSort().sorted(finalEntries))
+                    default: XCTFail("Unexpected load action")
+                    }
+                }
+                XCTAssertEqual(progressCount, 2); XCTAssertTrue(finished)
+            }
+            pair.continuation.yield(.batch(initial))
+            await fulfillment(of: [first], timeout: 3)
+            pair.continuation.yield(.batch(finalEntries))
+            await fulfillment(of: [second], timeout: 3)
+            pair.continuation.finish()
+            await consumer.value
+        }
+    }
     func testCumulativeBatchSize1() async throws {
         let entries = (0..<103).reversed().map { FileEntry(url: root.appendingPathComponent("item\($0)")) }
         let loader = fixture(entries.map { .batch([$0]) })

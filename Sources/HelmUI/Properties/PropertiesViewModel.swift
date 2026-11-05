@@ -21,10 +21,15 @@ public struct PropertiesViewModel: Sendable {
     public let entries: [FileEntry]
     public let aggregate: PropertiesModel
     public let supplement: PropertiesSupplement
-    public init(entries: [FileEntry], supplement: PropertiesSupplement = PropertiesSupplement()) {
+    public let contentsSize: InspectorSizeState
+    /// Supply contentsSize only for a trusted recursive measurement of this exact selection.
+    /// Without it, directory/package metadata never stands in for contents bytes (F-050/B-066).
+    public init(entries: [FileEntry], supplement: PropertiesSupplement = PropertiesSupplement(),
+                contentsSize: InspectorSizeState? = nil) {
         var seen: Set<ItemID> = []
         let unique = entries.filter { seen.insert($0.id).inserted }
         self.entries = unique; aggregate = PropertiesModel(entries: unique)
+        self.contentsSize = contentsSize ?? aggregate.contentsSize
         self.supplement = unique.count == 1 ? supplement : PropertiesSupplement()
     }
     public var title: String { entries.count == 1 ? entries[0].name : "\(entries.count) Items" }
@@ -34,12 +39,17 @@ public struct PropertiesViewModel: Sendable {
     }
     public var size: String {
         guard !entries.isEmpty else { return "Unknown" }
-        if aggregate.sizeOverflowed { return "Size exceeds supported total" }
-        let bytes = "\(aggregate.totalSize) bytes"
-        let qualifier = aggregate.hasUnknownSize ? " (known sizes only)" : ""
-        let directory = aggregate.directoryCount > 0 ? " — folder contents not included" : ""
-        return bytes + qualifier + directory
+        switch contentsSize {
+        case .calculating: return "Calculating contents size"
+        case .unavailable: return "Unknown"
+        case .partial(let total): return sizeText(total) + (total.overflowed ? "" : " (known contents only)")
+        case .final(let total): return sizeText(total)
+        }
     }
+    private func sizeText(_ total: InspectorSizeTotal) -> String {
+        total.overflowed ? "Size exceeds supported total" : "\(total.bytes) bytes"
+    }
+
     public var location: String {
         if aggregate.hasMixedLocations { return "Multiple locations" }
         return entries.first?.url.deletingLastPathComponent().path ?? "Unknown"

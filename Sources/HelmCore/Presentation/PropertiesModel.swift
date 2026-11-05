@@ -7,7 +7,10 @@ public struct PropertiesModel: Sendable, Equatable {
     public let itemCount: Int
     public let directoryCount: Int
     public let fileCount: Int
+    /// Legacy raw metadata sum, not recursive contents bytes.
     public let totalSize: Int64
+    /// F-050/B-066: packages and directories require a recursive contents measurement.
+    public let contentsSize: InspectorSizeState
     public let hasUnknownSize: Bool
     public let sizeOverflowed: Bool
     public let commonKind: FileEntryKind?
@@ -22,6 +25,10 @@ public struct PropertiesModel: Sendable, Equatable {
     public init(entries: [FileEntry]) {
         var seen: Set<ItemID> = []
         let items = entries.filter { seen.insert($0.id).inserted }
+        contentsSize = InspectorSizeState.aggregate(items.map { entry in
+            InspectorSizeState.metadata(bytes: entry.size,
+                isDirectory: entry.kind == .directory || entry.kind == .package)
+        })
         itemCount = items.count
         directoryCount = items.filter(\.isDirectoryLike).count
         fileCount = itemCount - directoryCount

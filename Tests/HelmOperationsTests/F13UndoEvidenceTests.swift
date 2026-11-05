@@ -2,7 +2,7 @@
 import XCTest
 import Foundation
 import HelmCore
-import HelmFileSystem
+@testable import HelmFileSystem
 import HelmOperations
 
 final class F13UndoEvidenceTests: XCTestCase {
@@ -20,7 +20,10 @@ final class F13UndoEvidenceTests: XCTestCase {
                 if beforePlanning { try await substitute(output, in: fs) }
                 let inverse = UndoPlanner.inverse(of: entry, recordedOrigins: [:])
                 if !beforePlanning { try await substitute(output, in: fs) }
+                let beforeUndo = try await inventory(fs)
                 let undo = await executor.execute(inverse)
+                let afterUndo = try await inventory(fs)
+                XCTAssertEqual(afterUndo, beforeUndo)
                 XCTAssertEqual(undo.error, .sourceChanged(output))
                 XCTAssertEqual(undo.succeededCount, 0)
                 let exists = await fs.exists(output)
@@ -48,7 +51,10 @@ final class F13UndoEvidenceTests: XCTestCase {
                 if beforePlanning { try await substitute(replaced, in: fs) }
                 let inverse = UndoPlanner.inverse(of: entry, recordedOrigins: [:])
                 if !beforePlanning { try await substitute(replaced, in: fs) }
+                let beforeUndo = try await inventory(fs)
                 let undo = await executor.execute(inverse)
+                let afterUndo = try await inventory(fs)
+                XCTAssertEqual(afterUndo, beforeUndo)
                 XCTAssertEqual(undo.error, .sourceChanged(replaced))
                 XCTAssertEqual(undo.succeededCount, 0)
                 let outputExists = await fs.exists(output), backupExists = await fs.exists(backup)
@@ -108,6 +114,54 @@ final class F13UndoEvidenceTests: XCTestCase {
         XCTAssertEqual(result.error, .verificationUnavailable); XCTAssertEqual(result.succeededCount, 0)
         let exists = await fs.exists(output)
         XCTAssertTrue(exists)
+    }
+
+    func testPlannerReplaceTrashedBackupSubstitutionRefusesWithoutPhysicalEffects() async throws {
+        for beforePlanning in [true, false] {
+            let fs = InMemoryFileSystem(), origins = InMemoryTrashOrigins()
+            let executor = OperationExecutor(fileSystem: fs, origins: origins)
+            let source = URL(fileURLWithPath: "/source/file"), parent = URL(fileURLWithPath: "/target")
+            try await fs.createDirectory(at: source.deletingLastPathComponent())
+            try await fs.createDirectory(at: parent)
+            try await fs.createFileExclusively(at: source, contents: Data([1]))
+            try await fs.createFileExclusively(at: parent.appendingPathComponent("file"), contents: Data([2]))
+            let context = try await PlanningContextBuilder(fileSystem: fs).build(
+                sources: [source], destinations: [parent], policy: ConflictPolicy(defaultResolution: .replace))
+            let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: parent), context: context)
+            XCTAssertTrue(plan.isExecutable)
+            let result = await executor.execute(plan)
+            XCTAssertNil(result.error)
+            let backup = try XCTUnwrap(result.outcomes.first(where: { $0.step.kind == .trash })?.destination)
+            let stored = await executor.journal.entry(result.id)
+            let entry = try XCTUnwrap(stored)
+            if beforePlanning { try await substitute(backup, in: fs) }
+            let inverse = await UndoPlanner.inverse(of: entry, origins: origins)
+            if !beforePlanning { try await substitute(backup, in: fs) }
+            let before = try await inventory(fs)
+            let undo = await executor.execute(inverse)
+            XCTAssertEqual(undo.error, .sourceChanged(backup))
+            XCTAssertEqual(undo.succeededCount, 0)
+            let after = try await inventory(fs)
+            XCTAssertEqual(after, before)
+        }
+    }
+
+    private struct PhysicalEntry: Equatable {
+        let metadata: FileEntry
+        let contents: Data
+    }
+    private func inventory(_ fs: InMemoryFileSystem) async throws -> [String: PhysicalEntry] {
+        var pending = [URL(fileURLWithPath: "/")]
+        var result: [String: PhysicalEntry] = [:]
+        while let directory = pending.popLast() {
+            for try await batch in fs.enumerate(directory, options: EnumerationOptions(includeHidden: true)) {
+                for entry in batch {
+                    result[entry.url.path] = PhysicalEntry(metadata: entry, contents: try await fs.storedContents(at: entry.url))
+                    if entry.kind == .directory { pending.append(entry.url) }
+                }
+            }
+        }
+        return result
     }
 
     private func substitute(_ url: URL, in fs: InMemoryFileSystem) async throws {

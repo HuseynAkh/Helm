@@ -19,6 +19,9 @@ import HelmCore
     private let options: @MainActor (TabID) -> LoadOptions
     private let fallback: (any EffectRunner)?
     private var watches: [TabID: Watch] = [:]
+    // Internal completion observation permits deterministic lifecycle verification.
+    internal var reloadDidFinish: (@MainActor () -> Void)?
+    internal var watchDidFinish: (@MainActor () -> Void)?
     public init(loader: DirectoryLoader, options: @escaping @MainActor (TabID) -> LoadOptions = { _ in LoadOptions() },
                 fallback: (any EffectRunner)? = nil,
                 monitorFactory: (@MainActor (Location) -> (any DirectoryMonitor)?)? = nil,
@@ -40,6 +43,7 @@ import HelmCore
                                 coalescer: DirectoryReloadCoalescer(generation: generation))
             watches[tab] = initial
             let task = Task {
+                defer { self.watchDidFinish?() }
                 await watch(tab, initial: initial, monitor: monitor, send: send)
             }
             return StoreEffectCancellation { [weak self] in
@@ -68,7 +72,8 @@ import HelmCore
                 try await monitor.start()
                 try Task.checkCancellation()
                 send(.tab(tab, .monitorWatching(watch.generation)))
-                if attempt > 0 { send(.tab(tab, .monitorEvent(watch.generation, .rootChanged))) }
+                // monitorWatching reconciles the newly bound watch. A synthetic rootChanged
+                // would discard this healthy replacement and reset the retry budget.
                 let coalescer = watch.coalescer
                 let events = monitor.events
                 await withTaskGroup(of: Void.self) { group in
@@ -110,6 +115,7 @@ import HelmCore
         let current = options(tab)
         let loadOptions = LoadOptions(showHidden: current.showHidden, sort: current.sort, useCache: false, batchSize: current.batchSize)
         let task = Task {
+            defer { self.reloadDidFinish?() }
             let revision = await watch.coalescer.rootValidationRevision
             do {
                 let entries = try await loader.snapshot(watch.location, options: loadOptions)
