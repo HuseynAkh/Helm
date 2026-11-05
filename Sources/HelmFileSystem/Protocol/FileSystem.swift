@@ -45,6 +45,8 @@ public protocol FileSystem: Sendable {
     func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition
     /// Compares source evidence and admits an absent destination in the same atomic mutation boundary.
     /// A conformer must refuse if it cannot guarantee this against other filesystem writers.
+    /// Emit cancelledBeforeMutation only when cancellation guarantees zero effects (B-038);
+    /// ordinary CancellationError after possible admission requires reconciliation.
     func mutate(_ mutation: ConditionalFileMutation, source: URL,
                 requiring precondition: FileMutationPrecondition) async throws -> URL?
     func copyItem(at source: URL, to destination: URL) async throws

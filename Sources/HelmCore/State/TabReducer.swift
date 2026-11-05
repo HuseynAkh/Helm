@@ -42,6 +42,42 @@ public enum TabReducer {
             let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &next)
             replayMonitor(&next, effects: &effects)
+        case .monitorWorkCompleted(let generation, let request, let result):
+            guard next.isActive, generation == next.monitorGeneration,
+                  request == next.monitorWorkGeneration, !next.monitorDegraded else { return (state, []) }
+            let validated = next.monitorValidationPending
+            next.monitorValidationPending = false
+            // Completion is single-use, including duplicate or already queued callbacks.
+            next.monitorWorkGeneration = next.monitorWorkGeneration.next()
+            let reply: TabAction
+            switch result {
+            case .success(let snapshot): reply = .monitorSnapshot(generation, snapshot)
+            case .failure(let error): reply = .monitorValidationFailed(generation, error)
+            }
+            (next, effects) = reduce(next, reply, context: context)
+            if validated {
+                if case .failure = result { next.monitorNeedsValidation = true }
+                if next.pendingNavigation != nil || next.isLoading { next.monitorNeedsValidation = true }
+            }
+            if validated, case .success = result, next.pendingNavigation == nil, !next.isLoading {
+                // A vnode watch may still refer to the replaced object. Rebind after validation.
+                effects.append(.cancel(.monitor, next.monitorGeneration))
+                next.monitorGeneration = next.monitorGeneration.next()
+                effects.append(.startMonitor(next.location, next.monitorGeneration))
+                replayMonitor(&next, effects: &effects)
+            }
+        case .monitorStopped(let generation, let error, _):
+            guard next.isActive, generation == next.monitorGeneration else { return (state, []) }
+            next.monitorDegraded = true; next.monitorValidationPending = false
+            next.monitorWorkGeneration = next.monitorWorkGeneration.next()
+            let base = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
+            publish(base.stamped(base.id, phase: .failed(error, attempted: next.location)), state: &next)
+        case .monitorWatching(let generation):
+            guard next.isActive, generation == next.monitorGeneration else { return (state, []) }
+            next.monitorDegraded = false
+            // Reconcile after startup, closing the read-to-new-watch observation gap.
+            next.monitorDirty = true
+            replayMonitor(&next, effects: &effects)
         case .monitorValidationFailed(let generation, let error):
             guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil else { return (state, []) }
             let base = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
@@ -63,10 +99,12 @@ public enum TabReducer {
             }
             switch event {
             case .changed(let paths):
-                if next.isLoading { next.monitorDirty = true }
+                if next.isLoading || next.monitorValidationPending || next.monitorDegraded { next.monitorDirty = true }
+                else if next.monitorNeedsValidation { effects.append(.validateNavigation(next.location, generation)) }
                 else { effects.append(.refreshPaths(paths, generation)) }
             case .rescan:
-                if next.isLoading { next.monitorDirty = true }
+                if next.isLoading || next.monitorValidationPending || next.monitorDegraded { next.monitorDirty = true }
+                else if next.monitorNeedsValidation { effects.append(.validateNavigation(next.location, generation)) }
                 else { effects.append(.refreshPaths([], generation)) }
             case .rootChanged, .volumeUnmounted: effects.append(.validateNavigation(next.location, generation))
             case .unavailable(let failure):
@@ -141,6 +179,22 @@ public enum TabReducer {
                 next.deferredSnapshot = nil; publish(snapshot, state: &next)
             }
         case .cutSetChanged(let ids): next.cutIDs = ids
+        }
+        for effect in effects {
+            switch effect {
+            case .cancel(.monitor, _):
+                next.monitorValidationPending = false
+                next.monitorWorkGeneration = next.monitorWorkGeneration.next()
+            case .startMonitor:
+                next.monitorDegraded = false
+            case .validateNavigation:
+                next.monitorNeedsValidation = false
+                next.monitorWorkGeneration = next.monitorWorkGeneration.next()
+                next.monitorValidationPending = true
+            case .refreshPaths:
+                next.monitorWorkGeneration = next.monitorWorkGeneration.next()
+            default: break
+            }
         }
         return (next, effects)
     }

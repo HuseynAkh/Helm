@@ -9,6 +9,11 @@ public enum TabAction: Sendable {
     case goBack, goForward, goUp, refresh
     case loadProgress(Generation, PresentationSnapshot), loadFinished(Generation, PresentationSnapshot)
     case loadFailed(Generation, LoadError)
+    /// WindowStore stamps every monitor-work reply before enqueueing it (B-009/B-014).
+    case monitorWorkCompleted(Generation, request: Generation, Result<PresentationSnapshot, LoadError>)
+    /// A stopped watch remains visibly degraded until a replacement reconciles the root.
+    case monitorStopped(Generation, LoadError, retrying: Bool)
+    case monitorWatching(Generation)
     case monitorValidationFailed(Generation, LoadError)
     case monitorEvent(Generation, MonitorEvent), monitorSnapshot(Generation, PresentationSnapshot)
     case setSelection(Set<ItemID>, source: SelectionSource), setSort(ItemSort), setViewMode(ViewMode)

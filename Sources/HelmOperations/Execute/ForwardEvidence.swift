@@ -15,6 +15,13 @@ struct ForwardEvidence {
 
     static func capture(_ plan: OperationPlan, fileSystem: any FileSystem) async -> ForwardEvidence {
         var evidence = ForwardEvidence()
+        if plan.undoVerification != .none {
+            for (url, value) in plan.expectedEvidence {
+                evidence.observations[url] = .observed(value.changeToken, value.kind, value.identity)
+            }
+            // Inverses may only use journal ownership, never a fresh pathname observation.
+            return evidence
+        }
         for (url, entry) in plan.context.existingEntries where plan.undoVerification == .none {
             evidence.observations[url] = .observed(entry.changeToken, entry.kind, entry.objectIdentity)
         }

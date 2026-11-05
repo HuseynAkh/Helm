@@ -280,3 +280,29 @@ K29/K34 and the current source supersede these specific earlier deferrals:
 Current counts, logs and exact Mac SDK priorities are in [VERIFICATION.md](VERIFICATION.md).
 Wave 12–17 inventory and deferred integration are in [MAC_HANDOFF.md](MAC_HANDOFF.md).
 No source contracts were changed by F12.
+
+## F13
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+
+- **P8-1:** `ItemOutcome.destinationEvidence: FileMutationPrecondition?` and
+  `OperationPlan.expectedEvidence: [URL: FileMutationPrecondition]` are additive
+  initializer arguments defaulting to nil/empty. Successful output metadata now
+  records identity, token and kind together. UndoPlanner carries that record and
+  removes retired source paths as moves/Trash remap outputs. Inverse execution
+  seeds ownership exclusively from the journal, verifies all initial output
+  identities before any mutation, and retains per-step conditional admission.
+  Missing evidence refuses with `verificationUnavailable`; it never adopts the
+  current occupant. Legacy manually constructed plans still compile. Tree undo
+  still refuses, and missing evidence cannot authorize legacy leaf undo.
+- **P8-2:** Core `ConditionalMutationError.cancelledBeforeMutation` guarantees
+  zero effects. Fake conditional admission emits it when already cancelled;
+  providers must use ordinary errors if effects may have started. Executor maps
+  this guarantee to `.cancelled` without reconciliation/quarantine. Read-only
+  validation sits outside the uncertain mutation wrapper; ordinary cancellation
+  from an invoked primitive still quarantines. Exclusive collision retry retains
+  the actual attempted destination and its no-mutation requirement.
+- Native atomic mutation remains unsupported, and post-mutation output observation
+  is not an atomic receipt. Root evidence is not descendant/content proof. macOS
+  SDK compilation and behavior review remain pending Opus after 22:00 Toronto.
+- Verification and regression coverage: `docs/prereview/fixes-F13.md`.

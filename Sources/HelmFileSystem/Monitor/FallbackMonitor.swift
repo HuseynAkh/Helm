@@ -1,3 +1,4 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 
@@ -48,6 +49,7 @@ public actor FallbackMonitor: DirectoryMonitor {
                         if Task.isCancelled { break }
                         await self?.receive(event)
                     }
+                    if !Task.isCancelled { await self?.stop() }
                 }
                 return
             } catch { lastError = error; await monitor.stop() }

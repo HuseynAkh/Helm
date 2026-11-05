@@ -13,9 +13,12 @@ public struct ItemOutcome: Sendable {
     public let destination: URL?
     public let result: Result<ChangeToken?, OperationError>
     /// No-follow kind observed after mutation; missing metadata cannot authorize automatic undo.
+    /// Identity, kind and token observed together after completion (F-059/B-041).
+    public let destinationEvidence: FileMutationPrecondition?
     public let destinationKind: FileEntryKind?
     public let requiresReconciliation: Bool
-    public init(step: PlannedStep, destination: URL?, result: Result<ChangeToken?, OperationError>, requiresReconciliation: Bool? = nil, destinationKind: FileEntryKind? = nil) {
+    public init(step: PlannedStep, destination: URL?, result: Result<ChangeToken?, OperationError>, requiresReconciliation: Bool? = nil, destinationKind: FileEntryKind? = nil, destinationEvidence: FileMutationPrecondition? = nil) {
+        self.destinationEvidence = destinationEvidence
         self.destinationKind = destinationKind
         self.step = step; self.destination = destination; self.result = result
         if case .failure(let error) = result { self.requiresReconciliation = requiresReconciliation ?? (error != .notAttempted) }

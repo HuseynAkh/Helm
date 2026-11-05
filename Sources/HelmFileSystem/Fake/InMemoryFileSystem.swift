@@ -169,7 +169,7 @@ public actor InMemoryFileSystem: FileSystem {
     /// No await between comparison, destination admission and mutation: actor isolation is atomic here.
     public func mutate(_ mutation: ConditionalFileMutation, source: URL,
                        requiring precondition: FileMutationPrecondition) async throws -> URL? {
-        try Task.checkCancellation()
+        if Task.isCancelled { throw ConditionalMutationError.cancelledBeforeMutation }
         guard try evidence(source) == precondition else { throw ConditionalMutationError.sourceChanged }
         switch mutation {
         case .move(let destination): try move(source, to: destination); return destination

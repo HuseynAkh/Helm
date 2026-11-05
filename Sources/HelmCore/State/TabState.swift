@@ -27,6 +27,11 @@ public struct TabState: Sendable, Equatable {
     public var snapshot: PresentationSnapshot
     public var loadGeneration: Generation = Generation()
     public var monitorGeneration: Generation = Generation()
+    /// Shared reload/validation admission identity; adapters return through WindowStore (B-014).
+    public var monitorWorkGeneration: Generation = Generation()
+    /// True after watch termination; manual refresh/reactivation can retry after exhaustion (B-013).
+    public var monitorDegraded: Bool = false
+    var monitorValidationPending: Bool = false
     public var searchGeneration: Generation = Generation()
     public var completionGeneration: Generation { addressBar.generation }
     public var pendingNavigation: PendingNavigation?

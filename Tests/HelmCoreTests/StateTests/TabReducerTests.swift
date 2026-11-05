@@ -177,6 +177,11 @@ final class TabReducerTests: XCTestCase {
         finish(&state)
         XCTAssertEqual(send(.monitorEvent(state.monitorGeneration, .rootChanged), to: &state),
                        [.validateNavigation(a, state.monitorGeneration)])
+        XCTAssertTrue(send(.monitorEvent(state.monitorGeneration, .changed(paths: ["/a/x"])), to: &state).isEmpty)
+        let reconciliation = send(.monitorWorkCompleted(state.monitorGeneration, request: state.monitorWorkGeneration,
+                                                        .success(PresentationSnapshot(location: a))), to: &state)
+        XCTAssertTrue(reconciliation.contains(.startMonitor(a, state.monitorGeneration)))
+        XCTAssertTrue(reconciliation.contains(.refreshPaths([], state.monitorGeneration)))
         XCTAssertEqual(send(.monitorEvent(state.monitorGeneration, .changed(paths: ["/a/x"])), to: &state),
                        [.refreshPaths(["/a/x"], state.monitorGeneration)])
         send(.setViewMode(.list), to: &state); XCTAssertEqual(state.viewMode, .list)

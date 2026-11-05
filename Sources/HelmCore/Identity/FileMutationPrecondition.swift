@@ -24,4 +24,8 @@ public struct FileMutationPrecondition: Hashable, Sendable {
 public enum ConditionalFileMutation: Sendable { case copy(to: URL), move(to: URL), trash }
 
 /// Refusals guarantee no mutation; uncertain native completion must use ordinary I/O errors (B-038).
-public enum ConditionalMutationError: Error, Sendable, Equatable { case unsupported, sourceChanged }
+public enum ConditionalMutationError: Error, Sendable, Equatable {
+    case unsupported, sourceChanged
+    /// Cancellation refused admission before any effect; ordinary CancellationError remains uncertain.
+    case cancelledBeforeMutation
+}

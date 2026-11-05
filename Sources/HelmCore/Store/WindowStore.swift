@@ -124,6 +124,7 @@ import Foundation
             monitorValidations[id] = nil; validation.cancellation.cancel()
         }
         if case .tab(let id, .validateNavigation) = effect {
+            monitorReloads.removeValue(forKey: id)?.cancellation.cancel()
             monitorValidations.removeValue(forKey: id)?.cancellation.cancel()
         }
         if case .tab(let id, .refreshPaths) = effect {
@@ -135,7 +136,27 @@ import Foundation
             let previous = running[id]?[lane]
             running[id]?[lane] = nil; previous?.cancellation.cancel()
         }
-        let cancellation = runner.run(effect) { [weak self] action in self?.enqueue(action) }
+        let request: Generation?
+        switch effect {
+        case .tab(let id, .validateNavigation), .tab(let id, .refreshPaths):
+            request = state.tabs[id]?.monitorWorkGeneration
+        default: request = nil
+        }
+        let cancellation = runner.run(effect) { [weak self] action in
+            // Stamp at effect admission, not callback arrival: cancellation cannot retract a queued reply.
+            if let request, case .tab(let id, let reply) = action {
+                switch reply {
+                case .monitorSnapshot(let generation, let snapshot):
+                    self?.enqueue(.tab(id, .monitorWorkCompleted(generation, request: request, .success(snapshot))))
+                    return
+                case .monitorValidationFailed(let generation, let error):
+                    self?.enqueue(.tab(id, .monitorWorkCompleted(generation, request: request, .failure(error))))
+                    return
+                default: break
+                }
+            }
+            self?.enqueue(action)
+        }
         if case .tab(let id, .validateNavigation(_, let generation)) = effect, let cancellation {
             monitorValidations[id] = Running(generation: generation, cancellation: cancellation)
         }

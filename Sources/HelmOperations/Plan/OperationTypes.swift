@@ -68,10 +68,13 @@ public struct OperationPlan: Sendable {
     public let context: PlanningContext
     public let undoVerification: UndoVerificationPolicy
     public let expectedKinds: [URL: FileEntryKind]
+    /// Recorded output ownership for safe leaf undo (B-041); never inferred from the current occupant.
+    public let expectedEvidence: [URL: FileMutationPrecondition]
     public let expectedTokens: [URL: ChangeToken]
     public var isExecutable: Bool { !issues.contains(where: \.isBlocking) }
     public init(command: Command, steps: [PlannedStep], issues: [PlanningIssue] = [], context: PlanningContext = PlanningContext(), expectedTokens: [URL: ChangeToken] = [:],
-                undoVerification: UndoVerificationPolicy = .none, expectedKinds: [URL: FileEntryKind] = [:]) {
+                undoVerification: UndoVerificationPolicy = .none, expectedKinds: [URL: FileEntryKind] = [:], expectedEvidence: [URL: FileMutationPrecondition] = [:]) {
+        self.expectedEvidence = expectedEvidence
         self.undoVerification = undoVerification; self.expectedKinds = expectedKinds
         self.command = command; self.steps = steps; self.issues = issues; self.context = context; self.expectedTokens = expectedTokens
     }
