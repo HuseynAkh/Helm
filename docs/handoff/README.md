@@ -1,12 +1,21 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Handoff integration notes — F22 / through wave 21
+# Handoff integration notes — F25 / through wave 24
 
-First read the [complete Opus/Fable queue](REVIEW_QUEUE.md): P1–P19, R1, fixes-F1–F21 and the F22 documentation disposition. Concurrent F19–F21 reports must be reviewed before accepting their changes.
+Read the [Opus/Fable queue](REVIEW_QUEUE.md): P1–P21, R1, fixes-F1–F24 and
+all test-findings reports. Latest committed baseline: `0021ac6`, wave 24;
+**1,198 portable tests, zero failures/skips** in F23/F24 logs. The separate T4
+five-run serial evidence covers 1,185 tests, not five passes of wave 24.
 
-[MAC_HANDOFF.md](MAC_HANDOFF.md) inventories components through K41/wave 21 and separates portable policy from native execution. [VERIFICATION.md](VERIFICATION.md) records the verified historical **1,159-test K41 baseline**, fresh frozen F22 baseline evidence and input identity. F12’s 877/889 counts are historical. Overlapping runs are never summed.
+[MAC_HANDOFF.md](MAC_HANDOFF.md) inventories native gaps and the latest fixes.
+[VERIFICATION.md](VERIFICATION.md) records F25 execution evidence and the refreshed
+[565-row ledger](coverage-ledger.csv). Citations do not establish feature acceptance.
+Earlier F22/K41 counts and hashes are retained as historical evidence only.
 
-[CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) retains dated decisions and current session/host obligations. Live executor copy/move/Trash still refuse conditional mutations; safe redo and native host wiring remain open. Linux success does not establish Mac acceptance.
+[CONTRACT_INTEGRATION.md](CONTRACT_INTEGRATION.md) describes exact-plan history
+binding, pre-binding aborts, session teardown and byte-preserving path admission.
+Live executor copy/move/Trash still refuse conditional mutations. Native host,
+Mac SDK validation, safe redo and broader ItemID identity policy remain open.
 
-The [565-row ledger](coverage-ledger.csv) is regenerated from a complete passing portable log. It records file/class citations, including F18 contents-size and K37–K41 policy/session tests, not acceptance of each feature. F-050 and F-063 require native integration despite their additional evidence.
-
-All changes remain drafts pending Opus review after 22:00 Toronto, 2026-11-04. No network, external actions, commits or pushes are authorized by this handoff.
+The [F25 disposition](fixes-F25.md) is kept in this owned directory because the
+requested `docs/prereview/fixes-F25.md` is outside the explicit lane boundary.
+No network, external actions, commits or pushes are authorized by this handoff.

@@ -1,9 +1,29 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Mac handoff — F22 / through wave 21
+# Mac handoff — F25 / through wave 24
 
-First read the [Opus/Fable review queue](REVIEW_QUEUE.md): P1–P19, R1 and fixes-F1–F21. Snapshot: 2026-11-04, root package on `forge/rebuild-build`. The verified K41 wave 21 baseline is 1,159 portable tests, zero failures/skips; F12’s 877/889 counts below are historical. [VERIFICATION.md](VERIFICATION.md) binds fresh evidence to revision and input hashes. Parallel F19–F21 changes require their own final dispositions. All work remains draft; no Mac gate closes from Linux tests or elapsed time.
+First read the [Opus/Fable review queue](REVIEW_QUEUE.md). Snapshot: `0021ac6`, 2026-11-04, root package on `forge/rebuild-build`. Wave 24 has 1,198 portable tests, zero failures/skips in F23/F24 logs; earlier wave counts below are historical. [VERIFICATION.md](VERIFICATION.md) records F25 checks. All work remains draft; no Mac gate closes from Linux tests or elapsed time.
 
 The root [Package.swift](../../Package.swift) is authoritative for actual membership. `Helm/` is the untouched legacy behavior reference. External planning files are under `/workspace/forge/helm-plan/docs/rebuild` on this machine; set `PLAN_DIR` to the owner's supplied local equivalent on Mac. `review-01-architecture.md` fixes win over `01-architecture.md`, especially public type homes, contracts, Linux guards and explicit public initializers (Fixes 1/5/8/9). No network fetch is authorized, including shared GitHub memory.
+
+## Waves 22–24: current draft dispositions
+
+Baseline `0021ac6` includes round-five P16–P19 review, F19–F22 integration,
+P20/P21 follow-up reviews, F23/F24 corrections and T4 test hardening. The source
+and regression paths below were inspected by F25; passing tests do not replace
+Opus review. F22's earlier moving-tree concerns are historical, not current failures.
+
+| Change | Current contract and evidence | Remaining gate |
+| --- | --- | --- |
+| F19 / P16 | History preparation abort and executor admission bind the request, operation ID and ordered steps before filesystem access. `Sources/HelmOperations/History/WindowOperationHistory.swift`; `Tests/HelmOperationsTests/HistoryTests/HistoryAdmissionTests.swift` | Native host must retain bound tasks until terminal settlement; foreign results must not consume reservations. |
+| F20 / P17 | Inspector reuse reconciles metadata/identity and dirty decisions; indexed callback admission builds ordered edit projection only on complete enrichment. Search terminal admission cancels the retained stream through the iterator. `Sources/HelmCore/InspectorSessions/InspectorSessionRegistry.swift`; `Sources/HelmSearch/Sessions/SearchSessionDriver.swift` | Native producer teardown, exact-token effects and host publication costs remain unvalidated. |
+| F21 / P18 | Spring compares destination object identity, refuses invalid authorities/parents, and restores on missing evidence; gallery paging uses geometry independently of image budget. `Tests/HelmCoreTests/SpringNavigationTests/F21RegressionTests.swift` | Host must supply destination-directory evidence, not copied-child evidence; no native gallery or sharing execution is supplied. |
+| F23 / P20 | Inverse admission compares the entire `OperationPlan`, including safety/context fields; `abortUndo` settles only pre-binding preparation. `Tests/HelmOperationsTests/HistoryTests/F23HistorySafetyTests.swift`; `Tests/HelmCoreTests/OperationHistoryTests/F23UndoPreparationTests.swift` | Host must use the exact reserved plan and serialize abort versus admission; redo, tree undo and native atomic receipts remain open. |
+| F24 / P21 | Shared lexical parser decodes each URL component once, rejects encoded slash/NUL/invalid UTF-8 and uses component UTF-8 bytes for membership, ancestry and deduplication. `Tests/HelmCoreTests/PathPresentationTests/F24LexicalPathTests.swift` | Wider ItemID standardized-path/String identity remains deferred; native path behavior needs Mac review. |
+| T4 | Explicit enumeration suspension, semaphore-held timeout work, monotonic observation deadlines and pre-admission cancellation replace fragile sleeps/yield counts in selected tests. `docs/test-findings/T4-findings.md` | Five serial runs covered 1,185 tests; later parallel run covered 1,195. F23/F24 final logs cover 1,198. Existing performance thresholds remain load-sensitive and unchanged. |
+
+No new CloudPolicy executable correction was made by F21: P21 confirms that its
+cloud changes were documentation only. Scoped path fixes do not redefine global
+ItemID equality or authorize sharing, navigation or filesystem mutations.
 
 ## Actual module layout
 
@@ -150,7 +170,7 @@ Source: `$PLAN_DIR/review-03-astra-selfcheck.md`, “As-built vs plan”, plus p
 | M25 tabs/migration/integration | partial | Persistence LegacyDefaultsMigrator, Core WindowState, App launch/session primitives; remaining: No tab strip/reorder/transfer/overflow, external-open delegate/Services/default-handler adapter; session lacks selection/anchor/history/expansion/frame-clamp acceptance. |
 | M26 stability/handoff | partial | partial — current F12 evidence/ledger refreshed (VERIFICATION.md); missing mandatory features, Apple SDK/runtime review, G11 and GM remain open. |
 
-## Mac acceptance checklist (all NOT RUN by F22)
+## Mac acceptance checklist (all NOT RUN by F25)
 
 Use `$PLAN_DIR/00-current-state.md`, `00b-opus-review.md` (R-1–R-19), `02-finder-parity.md` and `03-build-plan.md` acceptance rows for exact expected behavior. Track each ID individually; F-033/F-058 deferred/dead behavior needs explicit disposition, not citation-based closure.
 
@@ -168,9 +188,9 @@ The following is self-contained, with the staged manifest proposal and exact com
 ````text
 Do not publish or post anything (including TikTok), activate or change ads, or run paid renders (e.g. Higgsfield) on your own; stop and report instead. Do not send, delete or change sharing.
 
-You are performing Huseyn's local Mac compile-and-validation handoff for the Helm rebuild. All Astra code and plans remain DRAFT pending the applicable Opus review record. Claude work may begin only after 22:00 America/Toronto on November 4, 2026; time alone closes no gate. Do not use the network, install dependencies, purchase, publish, send, delete, change sharing, change OS defaults, commit or push. Exact-action approval comes only from Huseyn in chat. Prepare concrete module-sized fixes for the orchestrator within your explicitly assigned paths; do not assume this prompt grants ownership of all files.
+You are performing Huseyn's local Mac compile-and-validation handoff for the Helm rebuild. All Astra code and plans remain DRAFT pending the applicable Opus review record. Claude work may begin only at or after 22:00 America/Toronto on November 4, 2026, with at most two Claude runs active at once; time alone closes no gate. Do not use the network, install dependencies, purchase, publish, send, delete, change sharing, change OS defaults, commit or push. Exact-action approval comes only from Huseyn in chat. Prepare concrete module-sized fixes for the orchestrator within your explicitly assigned paths; do not assume this prompt grants ownership of all files.
 
-The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. First read docs/handoff/REVIEW_QUEUE.md, including all P1–P19, R1 and fixes-F1–F21 reports. Then read local AGENTS, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
+The rebuilt package is the repository-root Package.swift with Sources/, Tests/, scripts/rebuild/ and docs/handoff/. The branch is forge/rebuild-build unless the owner identifies its reviewed successor. Legacy Helm/ stays untouched and is the behavioral reference. Planning documents are supplied separately: set PLAN_DIR to their verified local docs/rebuild directory; do not fetch them or assume the code checkout's copied documents are current. First read docs/handoff/REVIEW_QUEUE.md, including all P1–P21, R1 and fixes-F1–F24 reports. Then read local AGENTS, scripts/K1_HANDOFF.md, all current ModuleInfo/README notes, docs/handoff/VERIFICATION.md and MAC_HANDOFF.md, the external 00/00b/01/review-01/02/03/04 documents and review-03-astra-selfcheck.md. Frozen review records win over stale notes; review-01 corrected public type homes win over older architecture sketches. Do not import UI into Core to repair a compile. Public types named by Core signatures belong in Core; public structs/classes need explicit public initializers. Keep actor-crossing values Sendable and core modules free of Combine/AppKit/@Observable/macros/third-party packages. Use XCTest, preserve error handling, and avoid force unwraps or try! on user-input paths.
 
 Record revision plus dirty files, Xcode/compiler/SDK/XcodeGen versions and hardware. Require macOS 14+, full Xcode, tools 5.9 support and Swift 5 language mode. Report missing tools without installing them. Perform inventory from the rebuilt repository root:
 

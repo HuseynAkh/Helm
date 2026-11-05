@@ -1,4 +1,39 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
+## F25 current contract integration — through wave 24 (`0021ac6`)
+
+This section supersedes dated deferrals below where explicitly described. Review
+[P20](../prereview/P20.md)/[F23](../prereview/fixes-F23.md) and
+[P21](../prereview/P21.md)/[F24](../prereview/fixes-F24.md) together.
+
+- History hosts reserve first, preserve the exact plan, and bind via executor
+  admission before filesystem access. F19 adds forward preparation settlement;
+  F23 adds `abortUndo(request:failure:)` and full inverse-plan equality, including
+  all ownership and planning context fields. Abort succeeds only before binding;
+  once bound, retain/cancel/await the task and submit the genuine terminal result.
+  Late binding after abort and abort after binding both refuse. No redo or native
+  conditional mutation capability is added.
+- F20 Inspector reuse retains window identity while renewing changed clean
+  generations; dirty selections wait for the current keep/discard token. Callback
+  admission uses an immutable ID/URL index; ordered edits appear on complete
+  enrichment. Hosts execute exact read/cancel tokens. Search terminal admission
+  cancels the current stream and performs a cancelled iterator wait so retained
+  producers receive termination; native query teardown still needs integration.
+- F21 spring completion requires matching destination-directory identity; absent
+  evidence restores instead of committing. F24 uses one percent-decoding admission
+  parser and UTF-8 component keys across path presentation, sharing and spring.
+  Encoded separators/NUL/invalid UTF-8 refuse; literal percent names remain valid.
+  Parent spelling remains literal, with non-copy breadcrumb and spring actions
+  refused. Global ItemID normalization is unchanged and remains an owner decision.
+- Gallery page size comes from geometry independently of imaging demand. These
+  policies supply values/intents, not native execution. CloudPolicy was not changed
+  by F21 beyond documentation. T4 changes test synchronization, not core contracts.
+
+[Verification](VERIFICATION.md) records the 1,198-test wave-24 baseline and F25
+checks. [Review queue](REVIEW_QUEUE.md) retains native receipts, tree undo, safe
+redo, host composition, durability and Mac validation as open gates. Earlier
+K23/K29/K34/F12/F22 counts below are historical, never additive.
+
+<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Contract integration — K23 history through F22
 
 First read the [Opus/Fable review queue](REVIEW_QUEUE.md). The F22 section below
@@ -310,7 +345,7 @@ DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
   SDK compilation and behavior review remain pending Opus after 22:00 Toronto.
 - Verification and regression coverage: `docs/prereview/fixes-F13.md`.
 
-## F22 current contract pointers — through wave 21
+## Historical F22 contract pointers — through wave 21
 
 DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 First read the [full Opus/Fable queue](REVIEW_QUEUE.md). The K23/K29/K34/F12

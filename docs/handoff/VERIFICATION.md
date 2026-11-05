@@ -1,7 +1,79 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-# Verification record — F22 current, earlier runs historical
+# Verification record — F25 current, earlier runs historical
 
-## Current F22 verification — through wave 21
+## Current F25 verification — through wave 24
+
+DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
+Baseline: `0021ac623e2cb55645ee00fd279992ba0880d0f5` on `forge/rebuild-build`.
+Git history records P16–P19 at `30c826b`, F19–F22 at `6400fa5`, then
+F23/F24, P20/P21 and T4 at `0021ac6`. The Package/Sources/Tests/scripts diff
+against HEAD is empty. F25 changes only top-level README and docs/handoff.
+
+Fresh local execution, Linux Swift 6.0.3, tools 5.9 / Swift 5 mode:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Explicit HelmCore build | PASS, zero errors | `/tmp/build-F25/logs/build.log` |
+| Six portable XCTest target filter | **1,198 executed, zero failures, zero skips**, 51.379 seconds | `/tmp/build-F25/logs/tests.log`; selected suite passed `2026-11-04 21:28:08.732` (log timestamp; no timezone inferred) |
+| Strict coverage audit | **565 unique rows, zero gaps**; 408 planned, 84 drafted, 73 linux-tested | `/tmp/build-F25/logs/ledger-audit.log` |
+| Ledger evidence audit | All 445 distinct cited test names occur among 1,198 passed cases; all rows retain draft label | `/tmp/F25-evidence.py` |
+| Static checks | **242 Swift files, zero errors** | `/tmp/build-F25/logs/static.log` |
+
+The test command compiled the six portable libraries and their test targets.
+F25 did not rerun the full orchestration runner or supplemental UI/App harness;
+F23/F24's existing runner logs independently report 1,198 tests and zero failed
+checks. No test was changed, skipped or disabled by F25. UI/App native targets
+remain unconfigured; no SDK type-check, native run or Mac acceptance is claimed.
+
+T4's five serial passes were 1,185 tests each; its later two-worker parallel run
+was 1,195 after concurrent additions. Neither count is five serial passes of the
+final 1,198-test tree. Historical benchmark sensitivity remains; T4 did not relax
+performance thresholds. Do not sum overlapping executions.
+
+### Reproduction and identity
+
+```sh
+source /workspace/toolchains/env.sh
+swift build --scratch-path /tmp/build-F25 --target HelmCore
+swift test --scratch-path /tmp/build-F25 --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+python3 -B scripts/rebuild/check_coverage.py \
+  --parity /workspace/forge/helm-plan/docs/rebuild/02-finder-parity.md \
+  --current-state /workspace/forge/helm-plan/docs/rebuild/00-current-state.md \
+  --build-plan /workspace/forge/helm-plan/docs/rebuild/03-build-plan.md \
+  --generate --test-log /tmp/build-F25/logs/tests.log \
+  --ledger docs/handoff/coverage-ledger.csv
+# Reapply inspected supplemental attribution and normalize CSV to LF:
+python3 /tmp/F25-evidence.py
+python3 -B scripts/rebuild/check_coverage.py \
+  --parity /workspace/forge/helm-plan/docs/rebuild/02-finder-parity.md \
+  --current-state /workspace/forge/helm-plan/docs/rebuild/00-current-state.md \
+  --ledger docs/handoff/coverage-ledger.csv
+bash scripts/static_checks.sh
+```
+
+Supplemental attribution is class-level evidence, not feature acceptance. F-050
+adds InspectorReuseRegressionTests to F22's F18/Inspector classes; B-066 retains
+F18PropertiesSizeTests/InspectorSizeProjectionTests. F-063 retains SharingTests
+and adds F24LexicalPathTests; F-012/F-067 also cite that class. F-059 adds
+HistoryAdmissionTests, F23HistorySafetyTests and F23UndoPreparationTests. The
+parser-only generator cannot discover these associations without F/B comments.
+The exact paths are retained in each row and `/tmp/build-F25/supplemental-attribution.json`.
+All other evidence is regenerated from current source comments and the fresh log.
+No Mac-passed state is introduced, and unrelated feature gates remain open.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `/tmp/build-F25/inputs.json` (tracked Package/Sources/Tests/scripts input hashes) | `fafedbc09873bbcdd9edbeb7457b8a46b5617dc5952991e2061073407685638b` |
+| `/tmp/build-F25/logs/tests.log` | `5197e82bda95129590a5c553eda6c92c0e7b452fb81e0989748c92ae5d191b4e` |
+| `docs/handoff/coverage-ledger.csv` | `e163a7f3ec4ced935bd0f04eec1af361f53c432e19b254ffd5b6315436536e43` |
+
+The input diff is empty (`/tmp/build-F25/input-diff.patch`); the working tree was
+clean at lane start. This binds the fresh checks to the committed code baseline,
+with documentation edits only. Local `/tmp` artifacts are not committed; preserve
+locally before cleanup. Earlier hashes and counts below are historical snapshots.
+[REVIEW_QUEUE.md](REVIEW_QUEUE.md) defines remaining owner and Mac gates.
+
+## Historical F22 verification — through wave 21
 
 DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 First read the [complete Opus/Fable queue](REVIEW_QUEUE.md). Linux Swift 6.0.3,
