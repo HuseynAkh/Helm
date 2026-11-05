@@ -132,12 +132,14 @@ final class WindowStoreTests: XCTestCase {
         await MainActor.run {
             let (store, runner, id) = fixture()
             store.send(.tab(id, .refresh))
+            let active = store.state.tabs[id]
             store.send(.shutdown)
+            XCTAssertEqual(runner.cancelled, [active?.loadGeneration, active?.monitorGeneration].compactMap { $0 })
             let finalSequence = store.state.sequence
-            XCTAssertEqual(runner.cancelled.count, 1)
+            XCTAssertEqual(runner.cancelled.count, 2)
             store.send(.shutdown); store.enqueue(.tab(id, .refresh)); store.drain()
             XCTAssertEqual(store.state.sequence, finalSequence)
-            XCTAssertEqual(runner.cancelled.count, 1)
+            XCTAssertEqual(runner.cancelled.count, 2)
         }
     }
 

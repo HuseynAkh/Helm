@@ -28,6 +28,7 @@ public actor OperationExecutor {
         var outcomes: [ItemOutcome] = []
         var expectedTokens = plan.expectedTokens
         var expectedKinds = plan.expectedKinds
+        var forward = await ForwardEvidence.capture(plan, fileSystem: fileSystem)
         var failure: OperationError? = plan.isExecutable ? nil : .invalidPlan
         if failure == nil {
             for (url, token) in plan.expectedTokens {
@@ -48,10 +49,11 @@ public actor OperationExecutor {
                                              currentName: step.source?.lastPathComponent ?? step.destination?.lastPathComponent))
             do {
                 try Task.checkCancellation()
-                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification)
+                let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification, forward: forward)
                 // Mutation success must survive a metadata read failure or cancellation.
                 let metadata: FileEntry?
                 if let destination { metadata = try? await fileSystem.entry(at: destination) } else { metadata = nil }
+                forward.completed(step, destination: destination, entry: metadata)
                 let token = metadata?.changeToken
                 if let source = step.source, let expected = expectedTokens[source],
                    step.kind == .move || step.kind == .trash {
@@ -80,7 +82,8 @@ public actor OperationExecutor {
                 let uncertain: Bool
                 switch mapped {
                 case .cancelled: uncertain = executionFailure != nil
-                case .invalidPlan, .conflict, .verificationFailed, .verificationUnavailable: uncertain = false
+                case .verificationUnavailable: uncertain = forward.isMissing(step.source) || forward.isMissing(step.destination)
+                case .invalidPlan, .conflict, .verificationFailed: uncertain = false
                 default: uncertain = true
                 }
                 let outcome = ItemOutcome(step: step, destination: executionFailure?.destination ?? step.destination,
@@ -94,7 +97,7 @@ public actor OperationExecutor {
         return result
     }
     private func perform(_ step: PlannedStep, context: PlanningContext, expectedTokens: [URL: ChangeToken],
-                         expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy) async throws -> URL? {
+                         expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence) async throws -> URL? {
         for url in [step.source, step.destination].compactMap({ $0 }) {
             guard url.isFileURL, url.standardizedFileURL.path != "/" else { throw OperationError.invalidPlan }
         }
@@ -129,6 +132,7 @@ public actor OperationExecutor {
                 }
             }
             try await validateExpectedSource(step.source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
+            try await forward.validate(source, fileSystem: fileSystem)
             let trashed: URL?
             do { trashed = try await fileSystem.trashItem(at: source) }
             catch { throw StepExecutionFailure(destination: nil, underlying: error) }
@@ -138,7 +142,10 @@ public actor OperationExecutor {
         guard var destination = step.destination else { throw OperationError.invalidPlan }
         if step.kind == .verifyCopy {
             guard let source = step.source else { throw OperationError.invalidPlan }
+            try await forward.validate(destination, fileSystem: fileSystem)
             try await verify(source: source, destination: destination, context: context)
+            try await forward.validate(source, fileSystem: fileSystem)
+            try await forward.validate(destination, fileSystem: fileSystem)
             return destination
         }
         let parent = destination.deletingLastPathComponent()
@@ -153,7 +160,7 @@ public actor OperationExecutor {
         for attempt in 0..<16 {
             do {
                 try Task.checkCancellation()
-                try await mutate(step, destination: destination, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: undoVerification)
+                try await mutate(step, destination: destination, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: undoVerification, forward: forward)
                 return destination
             } catch let error where error is ExclusiveDestinationConflict || (error as? FileSystemError) == .collision(noMutation: true) {
                 guard step.retryKeepBoth, attempt < 15 else {
@@ -206,10 +213,11 @@ public actor OperationExecutor {
         try await verifier.verify(source: source, destination: destination)
     }
     private func mutate(_ step: PlannedStep, destination: URL, expectedTokens: [URL: ChangeToken],
-                        expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy) async throws {
+                        expectedKinds: [URL: FileEntryKind], undoVerification: UndoVerificationPolicy, forward: ForwardEvidence) async throws {
         switch step.kind {
         case .copy:
             guard let source = step.source else { throw OperationError.invalidPlan }
+            try await forward.validate(source, fileSystem: fileSystem)
             try await copier.copy(from: source, to: destination)
         case .move:
             guard let source = step.source else { throw OperationError.invalidPlan }
@@ -217,6 +225,7 @@ public actor OperationExecutor {
             let destinationVolume = try await fileSystem.volumeIdentifier(for: destination.deletingLastPathComponent())
             guard sourceVolume == destinationVolume else { throw OperationError.invalidPlan }
             try await validateExpectedSource(source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
+            try await forward.validate(source, fileSystem: fileSystem)
             try await fileSystem.moveItem(at: source, to: destination)
         case .createDirectory: try await fileSystem.createDirectory(at: destination)
         case .createFile: try await fileSystem.createFileExclusively(at: destination, contents: step.contents)

@@ -4,6 +4,7 @@ import Foundation
 extension TabReducer {
     static func stage(_ target: Location, intent: NavigationIntent, restoring: Set<ItemID> = [],
                       state: inout TabState, effects: inout [TabEffect]) {
+        if target != state.location { state.monitorDirty = false }
         endSearch(&state, effects: &effects)
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
@@ -15,6 +16,10 @@ extension TabReducer {
         LoadOptions(showHidden: state.showHidden, sort: state.sort, useCache: useCache)
     }
     static func startLoad(_ state: inout TabState, useCache: Bool, effects: inout [TabEffect]) {
+        // Retire queued monitor snapshots captured before this foreground/options epoch.
+        effects.append(.cancel(.monitor, state.monitorGeneration))
+        state.monitorGeneration = state.monitorGeneration.next()
+        if state.isActive { effects.append(.startMonitor(state.location, state.monitorGeneration)) }
         effects.append(.cancel(.load, state.loadGeneration))
         state.loadGeneration = state.loadGeneration.next(); state.isLoading = true
         // Same-location restarts must retain history IDs absent from an early batch.
@@ -41,6 +46,7 @@ extension TabReducer {
             state.pendingNavigation = nil; state.isLoading = false; state.restorationIDs = nil
             let base: PresentationSnapshot = state.underlyingSnapshot ?? state.deferredSnapshot ?? state.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &state)
+            replayMonitor(&state, effects: &effects)
             return
         }
         if let pending = state.pendingNavigation {
@@ -67,7 +73,15 @@ extension TabReducer {
             if state.isActive { effects.append(.startMonitor(state.location, state.monitorGeneration)) }
         }
         publish(snapshot, state: &state)
-        if finished { state.isLoading = false; state.restorationIDs = nil }
+        if finished {
+            state.isLoading = false; state.restorationIDs = nil
+            replayMonitor(&state, effects: &effects)
+        }
+    }
+    static func replayMonitor(_ state: inout TabState, effects: inout [TabEffect]) {
+        guard state.monitorDirty, state.isActive, !state.isLoading, state.pendingNavigation == nil else { return }
+        state.monitorDirty = false
+        effects.append(.refreshPaths([], state.monitorGeneration))
     }
     static func visibleSelection(_ ids: Set<ItemID>, snapshot: PresentationSnapshot, expanded: Set<ItemID>) -> Set<ItemID> {
         if snapshot.children.isEmpty {

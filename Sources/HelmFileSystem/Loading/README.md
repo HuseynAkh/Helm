@@ -22,8 +22,10 @@ it and identity gates publication immediately.
 Use DirectoryReloadCoalescer.actions for the monitor lane; run consume(events)
 in a caller-owned task and cancel that task on replacement. Quiet/max deadlines
 use HelmClock; flush() supports FakeClock tests. Changed sets become rescan so
-bounded buffering never loses an affected path. Root/unmount/unavailable remain
-sticky for the watch lifetime until composition revalidates/replaces the watch.
+bounded buffering never loses an affected path. Root/unmount remain sticky until composition consumes the validation action and
+calls acknowledgeRootValidation() after successful validation, or replaces the
+watch. Unavailable errors never demote root validation and do not suppress later
+recovered changes. The reducer requests validation for unavailable errors too.
 Handle reducer refreshPaths by using a SEPARATE pipeline's reload(), forwarding
 monitorSnapshot. It emits only a complete snapshot so the reducer preserves
 selection IDs absent from intermediate batches. Do not restart the navigation
@@ -46,3 +48,9 @@ Needed changes elsewhere / deviations:
 - There is no independent grouping parameter on SnapshotBuilder; ItemSort's
   directory grouping is preserved, not a second invented grouping contract.
 - macOS/Xcode and Opus review remain required. No external actions performed.
+
+F6 integration: use the new monitor generation after every foreground refresh;
+return reload cancellation handles to WindowStore. Root acknowledgement belongs
+to the validation adapter (outside this lane); never acknowledge before consuming
+and successfully completing validation. Native macOS watcher behavior remains
+pending Opus/Xcode review. No public action contract changes were needed.

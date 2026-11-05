@@ -17,13 +17,16 @@ public struct SourceEntry: Sendable, Hashable {
 /// Explicit immutable inputs keep F-052 planning independent of disk and UI state (B-031).
 public struct PlanningContext: Sendable {
     public let sourceManifest: [SourceEntry]
+    /// Destination metadata captured with names, preserving replacement evidence (F-052/B-042).
+    public let existingEntries: [URL: FileEntry]
     public let availableBytes: [URL: Int64]
     public let caseSensitive: [URL: Bool]
     public let existingNames: [URL: Set<String>]
     public let volumeIDs: [URL: String]
     public let defaultPolicy: ConflictPolicy
     public init(sourceManifest: [SourceEntry] = [], availableBytes: [URL: Int64] = [:], caseSensitive: [URL: Bool] = [:],
-                existingNames: [URL: Set<String>] = [:], volumeIDs: [URL: String] = [:], defaultPolicy: ConflictPolicy = ConflictPolicy()) {
+                existingNames: [URL: Set<String>] = [:], volumeIDs: [URL: String] = [:], defaultPolicy: ConflictPolicy = ConflictPolicy(), existingEntries: [URL: FileEntry] = [:]) {
+        self.existingEntries = existingEntries
         self.sourceManifest = sourceManifest; self.availableBytes = availableBytes; self.caseSensitive = caseSensitive
         self.existingNames = existingNames; self.volumeIDs = volumeIDs; self.defaultPolicy = defaultPolicy
     }
@@ -39,6 +42,7 @@ public struct PlanningContextBuilder: Sendable {
         var sensitivity = caseSensitive
         var manifest: [SourceEntry] = []
         var names: [URL: Set<String>] = [:]
+        var existingEntries: [URL: FileEntry] = [:]
         var volumes: [URL: String] = [:]
         var capacity: [URL: Int64] = [:]
         for source in sources {
@@ -59,11 +63,20 @@ public struct PlanningContextBuilder: Sendable {
             if !sensitivity.keys.contains(where: { $0.standardizedFileURL.path == directory.standardizedFileURL.path }) {
                 sensitivity[directory] = (try? await fileSystem.isCaseSensitive(at: directory)) ?? false
             }
-            names[directory] = try await fileSystem.childNames(of: directory)
+            var children: Set<String> = []
+            for try await batch in fileSystem.enumerate(directory, options: EnumerationOptions(includeHidden: true, resolveSymlinkTargets: false)) {
+                for entry in batch {
+                    children.insert(entry.name)
+                    // Match entry(at:) link classification without traversing target children.
+                    existingEntries[entry.url] = entry.kind == .danglingSymlink
+                        ? try await fileSystem.entry(at: entry.url) : entry
+                }
+            }
+            names[directory] = children
             volumes[directory] = try await fileSystem.volumeIdentifier(for: directory)
             capacity[directory] = try await fileSystem.availableCapacity(of: directory)
         }
         return PlanningContext(sourceManifest: manifest, availableBytes: capacity, caseSensitive: sensitivity,
-                               existingNames: names, volumeIDs: volumes, defaultPolicy: policy)
+                               existingNames: names, volumeIDs: volumes, defaultPolicy: policy, existingEntries: existingEntries)
     }
 }

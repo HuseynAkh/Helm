@@ -30,7 +30,7 @@ public enum TabReducer {
             }
         case .refresh:
             guard next.pendingNavigation == nil else { return (state, []) }
-            startLoad(&next, useCache: false, effects: &effects)
+            restart(&next, effects: &effects)
         case .loadProgress(let generation, let snapshot):
             acceptLoad(generation, snapshot: snapshot, finished: false, state: &next, effects: &effects)
         case .loadFinished(let generation, let snapshot):
@@ -41,17 +41,24 @@ public enum TabReducer {
             next.pendingNavigation = nil; next.isLoading = false; next.restorationIDs = nil
             let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
             publish(base.stamped(base.id, phase: .failed(error, attempted: attempted)), state: &next)
+            replayMonitor(&next, effects: &effects)
         case .monitorSnapshot(let generation, let snapshot):
             guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil,
-                  !next.isLoading, snapshot.location == next.location else { return (state, []) }
+                  snapshot.location == next.location else { return (state, []) }
+            if next.isLoading { next.monitorDirty = true; return (next, []) }
             publish(snapshot, state: &next)
         case .monitorEvent(let generation, let event):
             guard next.isActive, generation == next.monitorGeneration, next.pendingNavigation == nil else { return (state, []) }
             switch event {
-            case .changed(let paths): effects.append(.refreshPaths(paths, generation))
-            case .rescan: effects.append(.refreshPaths([], generation))
+            case .changed(let paths):
+                if next.isLoading { next.monitorDirty = true }
+                else { effects.append(.refreshPaths(paths, generation)) }
+            case .rescan:
+                if next.isLoading { next.monitorDirty = true }
+                else { effects.append(.refreshPaths([], generation)) }
             case .rootChanged, .volumeUnmounted: effects.append(.validateNavigation(next.location, generation))
             case .unavailable(let failure):
+                effects.append(.validateNavigation(next.location, generation))
                 let base: PresentationSnapshot = next.underlyingSnapshot ?? next.deferredSnapshot ?? next.snapshot
                 publish(base.stamped(base.id, phase: .failed(.other(String(describing: failure)), attempted: next.location)), state: &next)
             }
@@ -104,6 +111,7 @@ public enum TabReducer {
             if !next.isActive {
                 next.isActive = true; next.monitorGeneration = next.monitorGeneration.next()
                 effects.append(.startMonitor(next.location, next.monitorGeneration))
+                replayMonitor(&next, effects: &effects)
             }
         case .deactivated:
             if next.isActive {

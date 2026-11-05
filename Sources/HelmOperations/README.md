@@ -159,3 +159,30 @@ restores as well. P2-3 is resolved by explicit conservative refusal, not by clai
 root metadata verifies descendants: unchanged trees also require reconciliation.
 Source token comparison and native mutation are still separate calls; full tree
 manifests and atomic identity/content comparison remain future contract work.
+
+## F7 forward safety and replacement fixes
+
+Forward execution now carries source kind/change-token evidence from the manifest,
+and destination evidence from `PlanningContext.existingEntries`. The builder fills
+that additive snapshot field together with destination names; callers constructing
+contexts manually should supply it. Legacy/manual destructive plans snapshot their
+initial sources before progress starts, so their protection begins at execution,
+not at planning. Undo keeps its separate leaf-only policy and recorded output tokens.
+
+Completed copies/moves capture stage and backup evidence before the next progress
+callback. Dependent mutations recheck it after preflight; missing metadata preserves
+the successful outcome and stops dependent work for reconciliation. Verification
+cannot replace an artifact's earlier ownership evidence. Ordinary directory Move and
+Trash remain supported; directory root evidence does not prove unchanged descendants.
+
+Replacement tracks the actual original destination spelling separately from the
+incoming installed name, including case/Unicode equivalence. Undo restores that
+original spelling. Cut completion uses one outcome pass and one source pass; its
+internal visit hook tests the production extraction path at 100,000 sources.
+
+Needed changes elsewhere: HelmCore identity/entry types and the FileSystem contract
+need persistent no-follow object identity plus a native conditional mutation seam.
+Current kind/token checks do not close stat/mutate or post-mutation observation
+races, nor detect same-token content replacements. This portion of P6-1 is deferred;
+no atomic identity or content guarantee is claimed. Native macOS and Opus review
+remain required. See `docs/prereview/fixes-F7.md` for verification and residual risks.

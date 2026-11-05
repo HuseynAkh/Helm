@@ -14,6 +14,7 @@ import Foundation
     private var draining: Bool = false
     private var stopped: Bool = false
     private var running: [TabID: [GenerationLane: Running]] = [:]
+    private var monitorReloads: [TabID: Running] = [:]
     private struct Running {
         let generation: Generation
         let cancellation: StoreEffectCancellation
@@ -113,12 +114,23 @@ import Foundation
            let active = running[id]?[lane], active.generation == generation {
             running[id]?[lane] = nil; active.cancellation.cancel()
         }
+        if case .tab(let id, .cancel(.monitor, let generation)) = effect,
+           let reload = monitorReloads[id], reload.generation == generation {
+            monitorReloads[id] = nil; reload.cancellation.cancel()
+        }
+        if case .tab(let id, .refreshPaths) = effect {
+            let previous = monitorReloads.removeValue(forKey: id)
+            previous?.cancellation.cancel()
+        }
         let slot = effectSlot(effect)
         if let (id, lane, _) = slot {
             let previous = running[id]?[lane]
             running[id]?[lane] = nil; previous?.cancellation.cancel()
         }
         let cancellation = runner.run(effect) { [weak self] action in self?.enqueue(action) }
+        if case .tab(let id, .refreshPaths(_, let generation)) = effect, let cancellation {
+            monitorReloads[id] = Running(generation: generation, cancellation: cancellation)
+        }
         if let (id, lane, generation) = slot, let cancellation = cancellation {
             running[id, default: [:]][lane] = Running(generation: generation, cancellation: cancellation)
         }
@@ -136,6 +148,7 @@ import Foundation
     }
 
     private func cancelTab(_ id: TabID) {
+        monitorReloads.removeValue(forKey: id)?.cancellation.cancel()
         let handles = running.removeValue(forKey: id) ?? [:]
         // Fixed order avoids dictionary iteration influencing callback admission order.
         for lane in [GenerationLane.load, .monitor, .search, .completion] { handles[lane]?.cancellation.cancel() }

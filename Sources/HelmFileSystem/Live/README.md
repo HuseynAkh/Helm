@@ -26,3 +26,17 @@ The runner validates dependency modules/objects and uses the same root for compi
 link, runtime lookup, and subprocess typechecking. No manifest or script changes.
 
 Deviations and verification details are recorded in `docs/prereview/fixes-F5.md`.
+
+## F7 multi-volume admission
+
+Native copy, move, replacement, metadata transfer and alias creation register all
+source/destination/backup volumes with one IOExecutor admission lock. Worker queue
+selection stays independent of the safety footprint. Timeout quarantines every
+registered volume; admission checks every volume before registration and again
+before body entry. Unrelated volumes remain available. The existing single-volume
+public run API remains source-compatible; the multi-volume overload is internal.
+Symbolic-link creation only writes its link directory and does not access its target.
+
+Share this LiveFileSystem/IOExecutor across windows. Quarantine remains per executor,
+not a process-global mount registry; do not recreate it to bypass reconciliation.
+Native macOS cross-volume completion and alias writes still require acceptance.

@@ -1,6 +1,25 @@
 <!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K12 UI leaf draft
 
+## F8 pre-review follow-up
+
+P7-1: batch rename now explains Core's overlapping-source rejection using both
+full paths. A folder and descendant remain non-executable in either selection
+order; no Core validation or execution contract changed.
+
+P7-2 remains deferred: the synchronous Core planner has no cancellation seam.
+Its owner needs a throwing, cooperatively cancellable planning entry point with
+checks during generation, occupancy/target construction, temporary-step creation
+and around sorting. Cancellation must never yield a partial plan. Then the sheet
+can own one worker, forward cancellation on replacement/disappearance, retain
+only the latest pending revision and avoid caching cancelled evaluations.
+Current revision guards prevent stale execution but do not stop obsolete CPU
+work. Do not treat cancelling only a detached handle as a completed fix.
+
+F8 verification uses `/tmp/build-F8`; set `HELM_UI_SCRATCH=/tmp/build-F8`
+when invoking `Tests/HelmUITests/PortableRunner/run.py`. See
+`docs/prereview/fixes-F8.md` for results and macOS review limitations.
+
 Author: Astra (codex). M13/M24 leaf slice only, pending Opus compile-correctness
 and behaviour-preservation review after 22:00 Toronto on 2026-11-04.
 No network, commits, pushes, sends, sharing changes or external actions.

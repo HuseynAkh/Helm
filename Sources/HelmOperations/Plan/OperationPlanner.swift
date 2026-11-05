@@ -20,7 +20,7 @@ public enum OperationPlanner {
     public static func resolve(_ plan: OperationPlan, with policy: ConflictPolicy) -> OperationPlan {
         let c = plan.context
         return self.plan(plan.command, context: PlanningContext(sourceManifest: c.sourceManifest, availableBytes: c.availableBytes,
-            caseSensitive: c.caseSensitive, existingNames: c.existingNames, volumeIDs: c.volumeIDs, defaultPolicy: policy))
+            caseSensitive: c.caseSensitive, existingNames: c.existingNames, volumeIDs: c.volumeIDs, defaultPolicy: policy, existingEntries: c.existingEntries))
     }
     public static func plan(_ command: Command, context: PlanningContext) -> OperationPlan {
         plan(command, context: context, work: PlannerWork())
@@ -40,6 +40,7 @@ private struct PlanAssembly {
     var steps: [PlannedStep] = []
     var issues: [PlanningIssue] = []
     var reserved: [String: Set<String>] = [:]
+    var originalNames: [String: [String: String]] = [:]
     var requiredBytes: [String: Int64] = [:]
     var manifestBytes: [String: Int64] = [:]
     var pathCache: [URL: String] = [:]
@@ -105,6 +106,12 @@ private struct PlanAssembly {
         if reserved[key] != nil { return true }
         guard let value = context.names(at: parent) else { issues.append(.missingSnapshot(parent)); return false }
         let sensitive = context.sensitive(at: parent)
+        var originals: [String: String] = [:]
+        for name in value {
+            let folded = FileNameComparison.key(name, caseSensitive: sensitive)
+            originals[folded] = min(originals[folded] ?? name, name)
+        }
+        originalNames[key] = originals
         reserved[key] = Set(value.map { FileNameComparison.key($0, caseSensitive: sensitive) })
         return true
     }
@@ -152,7 +159,10 @@ private struct PlanAssembly {
             guard !sourceKey.hasPrefix(targetKey + "/") else {
                 issues.append(.overlappingSelection(target)); return
             }
-            replacement(source, target: target, moving: moving); return
+            let original = originalNames[parent.standardizedFileURL.path]?[FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive)] ?? target.lastPathComponent
+            replacement(source, target: target, original: parent.appendingPathComponent(original), moving: moving)
+            originalNames[parent.standardizedFileURL.path, default: [:]][FileNameComparison.key(source.lastPathComponent, caseSensitive: sensitive)] = target.lastPathComponent
+            return
         }
         guard let destination = unique(source.lastPathComponent, parent: parent) else { return }
         if moving {
@@ -168,14 +178,14 @@ private struct PlanAssembly {
             }
         } else { steps.append(PlannedStep(kind: .copy, source: source, destination: destination, retryKeepBoth: true)) }
     }
-    mutating func replacement(_ source: URL, target: URL, moving: Bool) {
+    mutating func replacement(_ source: URL, target: URL, original: URL, moving: Bool) {
         let parent = target.deletingLastPathComponent()
         guard let stage = unique(".helm-stage-" + target.lastPathComponent, parent: parent),
               let backup = unique(".helm-backup-" + target.lastPathComponent, parent: parent) else { return }
         // Fable/Opus: each boundary is recoverable, not an atomic multi-item transaction.
         steps.append(PlannedStep(kind: .copy, source: source, destination: stage))
         steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: stage))
-        steps.append(PlannedStep(kind: .move, source: target, destination: backup))
+        steps.append(PlannedStep(kind: .move, source: original, destination: backup))
         steps.append(PlannedStep(kind: .move, source: stage, destination: target))
         steps.append(PlannedStep(kind: .trash, source: backup))
         if moving { steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: target)) }

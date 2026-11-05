@@ -65,6 +65,19 @@ final class BatchRenameViewModelTests: XCTestCase {
         }
         XCTAssertNil(NewItemNameValidation.message(for: " report: final.txt "))
     }
+    func testOverlappingSourcesExplainBothPathsAndRefuseExecution() {
+        for names in [["folder", "folder/child.txt"], ["folder/child.txt", "folder"]] {
+            var value = model(names)
+            value.append = "-new"
+            XCTAssertFalse(value.canRename)
+            XCTAssertEqual(value.plan?.steps.count, 0)
+            XCTAssertNil(value.evaluation.executablePlan(for: value.revision))
+            XCTAssertTrue(value.validationMessages.contains {
+                $0.contains("/fixtures/folder") && $0.contains("/fixtures/folder/child.txt")
+                    && $0.contains("cannot be renamed in the same batch")
+            })
+        }
+    }
     func testEditsInvalidateCopiesAndRejectObsoleteCompletion() {
         var value = model(["a.txt"])
         value.append = "-old"

@@ -23,52 +23,64 @@ public final class IOExecutor: @unchecked Sendable {
         queues[volume] = queue
         return queue
     }
-    private func register<T>(_ state: IOResultState<T>, id: UUID, volume: String) throws -> OperationQueue {
+    private func register<T>(_ state: IOResultState<T>, id: UUID, volumes: Set<String>, worker: String) throws -> OperationQueue {
         lock.lock(); defer { lock.unlock() }
-        let queue = try queue(for: volume)
-        queued[volume, default: [:]][id] = { state.cancelIfQueued(error: FileSystemError.timedOut) }
+        guard quarantined.isDisjoint(with: volumes) else { throw FileSystemError.timedOut }
+        let queue = try queue(for: worker)
+        for volume in volumes {
+            queued[volume, default: [:]][id] = { state.cancelIfQueued(error: FileSystemError.timedOut) }
+        }
         return queue
     }
-    private func begin<T>(_ state: IOResultState<T>, id: UUID, volume: String) -> Bool {
+    private func begin<T>(_ state: IOResultState<T>, id: UUID, volumes: Set<String>) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        queued[volume]?[id] = nil
-        guard !quarantined.contains(volume) else {
+        for volume in volumes { queued[volume]?[id] = nil }
+        guard quarantined.isDisjoint(with: volumes) else {
             state.cancelIfQueued(error: FileSystemError.timedOut)
             return false
         }
         return state.begin()
     }
-    private func expire<T>(_ state: IOResultState<T>, volume: String) {
+    private func expire<T>(_ state: IOResultState<T>, volumes: Set<String>) {
         lock.lock(); defer { lock.unlock() }
-        // Shared lock makes timeout/quarantine indivisible with queued-to-running admission.
+        // Admission checks and timeout quarantine share one lock across the whole footprint.
         state.complete(.failure(FileSystemError.timedOut), onCompletion: {
-            quarantined.insert(volume)
-            let waiting = queued.removeValue(forKey: volume) ?? [:]
-            for reject in waiting.values { reject() }
+            quarantined.formUnion(volumes)
+            for volume in volumes {
+                let waiting = queued.removeValue(forKey: volume) ?? [:]
+                for reject in waiting.values { reject() }
+            }
         })
     }
     /// The caller supplies a mount identity when known; unrelated queues survive a blocked mount.
     public func run<T: Sendable>(volume: String = "/", _ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await run(volumes: [volume], body)
+    }
+    // Native multi-path calls register every touched volume, independently of worker selection.
+    func run<T: Sendable>(volumes: [String], _ body: @escaping @Sendable () throws -> T) async throws -> T {
         try Task.checkCancellation()
+        let worker = volumes.first ?? "/"
+        let footprint = Set(volumes.isEmpty ? [worker] : volumes)
         let state = IOResultState<T>()
         let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 state.install(continuation)
                 let queue: OperationQueue
-                do { queue = try register(state, id: id, volume: volume) }
+                do { queue = try register(state, id: id, volumes: footprint, worker: worker) }
                 catch { state.complete(.failure(error)); return }
                 queue.addOperation {
-                    guard self.begin(state, id: id, volume: volume) else { return }
+                    guard self.begin(state, id: id, volumes: footprint) else { return }
                     do { state.complete(.success(try body())) }
                     catch { state.complete(.failure(error)) }
                 }
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { [weak self, weak state] in
-                    if let state { self?.expire(state, volume: volume) }
+                    if let state { self?.expire(state, volumes: footprint) }
                 }
             }
         } onCancel: { state.cancelIfQueued() }
     }
+
 }
 /// Lock covers continuation installation and exactly-once completion, including cancel-before-install.
 final class IOResultState<T: Sendable>: @unchecked Sendable {

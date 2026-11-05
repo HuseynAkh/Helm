@@ -59,3 +59,12 @@ latest deferred listing during inline rename (P1-3). Same-location refresh/hidde
 restarts retain pending history selection until completion or explicit selection
 (P1-5). No action, effect, or public signature changes are required. See
 `docs/prereview/fixes-F1.md` for regression evidence and deferred contract work.
+
+F6 draft fixes (F-008, B-014/B-016): each foreground refresh retires and
+restarts the monitor generation, so queued monitor snapshots cannot undo newer
+load/options results. Monitor changes during loading coalesce into one full
+refresh on success or failure. Same-location supersession retains that dirty
+state; different navigation retires it. Refresh reruns an active search without
+replacing its underlying selection ownership. No public action signatures changed.
+Unavailable monitor events now request navigation validation as well as show an
+error; adapters must validate and replace failed watches as appropriate.

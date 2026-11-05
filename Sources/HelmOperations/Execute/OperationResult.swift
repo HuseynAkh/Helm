@@ -33,11 +33,21 @@ public struct OperationResult: Sendable {
     public var failedCount: Int { outcomes.filter { !$0.succeeded }.count }
     /// Only completed original cut sources may be removed from clipboard metadata (B-037).
     public var completedMoveSources: Set<URL> {
-        guard case .move(let sources, _) = command else { return [] }
-        return Set(sources.filter { source in
-            outcomes.contains { $0.succeeded && $0.step.source == source && ($0.step.kind == .move || $0.step.kind == .trash) }
-        })
+        completedMoveSources(visit: {})
     }
+    func completedMoveSources(visit: () -> Void) -> Set<URL> {
+        guard case .move(let sources, _) = command else { return [] }
+        var completed: Set<URL> = []
+        for outcome in outcomes {
+            visit()
+            if outcome.succeeded, outcome.step.kind == .move || outcome.step.kind == .trash,
+               let source = outcome.step.source { completed.insert(source) }
+        }
+        var original: Set<URL> = []
+        for source in sources { visit(); original.insert(source) }
+        return completed.intersection(original)
+    }
+
     public var wasCancelled: Bool { error == .cancelled }
     public var affectedDirectories: Set<URL> {
         Set(outcomes.flatMap { [$0.step.source, $0.destination].compactMap { $0?.deletingLastPathComponent() } })

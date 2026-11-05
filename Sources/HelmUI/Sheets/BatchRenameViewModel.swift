@@ -54,6 +54,8 @@ public struct BatchRenameViewModel: Sendable {
             case let .invalidName(url, error): return "\(url.lastPathComponent): \(NewItemNameValidation.message(for: error))"
             case let .counterOverflow(url): return "\(url.lastPathComponent): Counter is too large."
             case let .duplicateSource(url): return "Item selected more than once: \(url.path)"
+            case let .overlappingSources(ancestor, descendant):
+                return "A folder and an item inside it cannot be renamed in the same batch: \(ancestor.path) and \(descendant.path)."
             case let .collision(url): return "An item named “\(url.lastPathComponent)” already exists in \(url.deletingLastPathComponent().path)."
             }
         }

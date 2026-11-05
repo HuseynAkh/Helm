@@ -64,3 +64,8 @@ Deviations / needed changes elsewhere
 
 Verification: Swift 6.0.3 in Swift 5 mode, /tmp/build-K32, XCTest, static_checks.sh.
 No network, commits, pushes, shared-file edits, or external actions are used.
+
+F6: return a cancellation handle for refreshPaths work. WindowStore now retains
+that auxiliary handle independently of the watch, cancels it on monitor retirement,
+replacement, tab disposal and shutdown. Generation guards also reject already
+queued results. Adapters returning nil remain responsible for cancelling work.

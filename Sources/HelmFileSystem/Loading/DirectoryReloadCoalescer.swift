@@ -26,7 +26,7 @@ public actor DirectoryReloadCoalescer {
         // Revalidation cannot be overwritten by an ordinary changed event in a slow consumer's buffer.
         if case .changed = event { pendingChanges = true }
         switch event {
-        case .rootChanged, .volumeUnmounted, .unavailable: revalidation = event
+        case .rootChanged, .volumeUnmounted: revalidation = event
         default: break
         }
         publish(coalescer.receive(event))
@@ -34,6 +34,12 @@ public actor DirectoryReloadCoalescer {
     public func flush() {
         guard !stopped else { return }
         publish(coalescer.flushIfDue())
+    }
+    /// Call after consuming root validation and successfully validating this watch's root.
+    /// Until acknowledgement, root invalidation survives newest-buffer replacement (F-008/B-014).
+    public func acknowledgeRootValidation() {
+        guard !stopped else { return }
+        revalidation = nil
     }
     public func finish() { stopped = true; output.finish() }
 

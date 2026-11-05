@@ -89,19 +89,19 @@ public struct LiveFileSystem: FileSystem {
         try await executor.run(volume: queueKey(url)) { try MetadataReader().read(url) }
     }
     public func exists(_ url: URL) async -> Bool { (try? await entry(at: url)) != nil }
-    private func perform(at url: URL, _ body: @escaping @Sendable (FileManager) throws -> Void) async throws {
-        try await executor.run(volume: queueKey(url)) {
+    private func perform(at url: URL, also others: [URL] = [], _ body: @escaping @Sendable (FileManager) throws -> Void) async throws {
+        try await executor.run(volumes: ([url] + others).map(queueKey)) {
             do { try body(FileManager.default) } catch { throw FileSystemError.mapping(error) }
         }
     }
     public func copyItem(at source: URL, to destination: URL) async throws {
-        try await perform(at: source) { try $0.copyItem(at: source, to: destination) }
+        try await perform(at: source, also: [destination]) { try $0.copyItem(at: source, to: destination) }
     }
     public func moveItem(at source: URL, to destination: URL) async throws {
-        try await perform(at: source) { try $0.moveItem(at: source, to: destination) }
+        try await perform(at: source, also: [destination]) { try $0.moveItem(at: source, to: destination) }
     }
     public func replaceItem(at destination: URL, with temporary: URL, backup: URL) async throws {
-        try await perform(at: destination) { manager in
+        try await perform(at: destination, also: [temporary, backup]) { manager in
             try manager.moveItem(at: destination, to: backup)
             do { try manager.moveItem(at: temporary, to: destination) }
             catch {
@@ -112,7 +112,7 @@ public struct LiveFileSystem: FileSystem {
         }
     }
     public func applyDirectoryMetadata(from source: URL, to destination: URL) async throws {
-        try await perform(at: destination) { manager in
+        try await perform(at: destination, also: [source]) { manager in
             let sourceAttributes = try manager.attributesOfItem(atPath: source.path)
             var attributes: [FileAttributeKey: Any] = [:]
             for key: FileAttributeKey in [.posixPermissions, .modificationDate, .creationDate] {
@@ -178,7 +178,7 @@ public struct LiveFileSystem: FileSystem {
     }
     public func createAlias(for url: URL, at destination: URL) async throws {
         #if os(macOS)
-        try await executor.run(volume: queueKey(url)) {
+        try await executor.run(volumes: [queueKey(url), queueKey(destination)]) {
             let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
             try URL.writeBookmarkData(data, to: destination)
         }
