@@ -51,6 +51,12 @@ public enum AddressEditor {
             }
         case .backtab: break // Consumed by the UI; focus remains in the editor.
         case .returnKey:
+            if let remote = TypedLocation.serverURL(from: next.text) {
+                invalidate(&next, effects: &effects)
+                next.isEditing = false
+                effects.append(.connect(remote))
+                return (next, effects)
+            }
             if !next.text.hasSuffix("/"), let row = next.selectedRow {
                 next.text = PathCompletionEngine.acceptedText(row: row, typed: next.text, home: next.home)
             }
@@ -72,6 +78,15 @@ public enum AddressEditor {
                 next.error = nil
                 effects.append(kind == .directory ? .navigate(url) : .openFile(url))
             }
+        case .resolved(let generation, let requested, let canonical, let kind):
+            guard generation == next.generation, next.pendingCommit == requested else { return (state, []) }
+            next.pendingCommit = nil
+            if kind == .invalid { invalid(&next, effects: &effects) }
+            else {
+                next.isEditing = false
+                next.error = nil
+                effects.append(kind == .directory ? .navigate(canonical) : .openFile(canonical))
+            }
         }
         return (next, effects)
     }
@@ -89,6 +104,8 @@ public enum AddressEditor {
 
     private static func refresh(_ state: inout AddressEditorState, effects: inout [AddressEditorEffect]) {
         invalidate(&state, effects: &effects)
+        // A server address has no local folder to complete against.
+        if TypedLocation.serverURL(from: state.text) != nil { return }
         if let request = PathCompletionEngine.request(for: state.text, currentDirectory: state.currentDirectory,
                                                        home: state.home, showHidden: state.showHidden, generation: state.generation) {
             effects.append(.requestCompletions(request))

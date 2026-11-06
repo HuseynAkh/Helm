@@ -116,8 +116,8 @@ final class Part3AdapterTests: XCTestCase {
         XCTAssertEqual(model.items, before)
         model.remove(at: 0); XCTAssertEqual(model.items.first, .search)
         model.items.append(.search); XCTAssertFalse(model.canApply)
-        model.restoreDefaults(); XCTAssertEqual(model.items, HelmCore.ToolbarItem.defaultLayout)
+        model.restoreDefaults(); XCTAssertEqual(model.items, HelmCore.HelmToolbarItem.defaultLayout)
         XCTAssertTrue(model.canApply)
-        for item in HelmCore.ToolbarItem.allCases { XCTAssertFalse(ToolbarCustomizationModel.label(item).isEmpty) }
+        for item in HelmCore.HelmToolbarItem.allCases { XCTAssertFalse(ToolbarCustomizationModel.label(item).isEmpty) }
     }
 }

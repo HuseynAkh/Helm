@@ -111,7 +111,7 @@ final class WindowOperationHistoryTests: XCTestCase {
         let history = try await seeded(fixture(kind: .directory))
         let value = await history.beginUndo(recordedOrigins: [:])
         let request = try XCTUnwrap(value)
-        XCTAssertEqual(request.plan.undoVerification, .leafOnly)
+        XCTAssertEqual(request.plan.undoVerification, .sameObject)
         XCTAssertEqual(request.plan.expectedKinds[target], .directory)
         XCTAssertNotNil(request.plan.expectedEvidence[target])
         let result = OperationResult(id: OperationID(), command: .recovery,

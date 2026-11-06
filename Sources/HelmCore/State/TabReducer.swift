@@ -104,6 +104,7 @@ public enum TabReducer {
                   snapshot.location == next.location else { return (state, []) }
             if next.isLoading || next.pendingNavigation != nil { next.monitorDirty = true; return (next, []) }
             publish(snapshot, state: &next)
+            reloadExpandedChildren(next, effects: &effects)
         case .monitorEvent(let generation, let event):
             guard next.isActive, generation == next.monitorGeneration else { return (state, []) }
             if next.pendingNavigation != nil {
@@ -157,10 +158,24 @@ public enum TabReducer {
             next.showHidden = settings.showHiddenFiles; syncEditorHidden(&next, effects: &effects)
             if changed { restart(&next, effects: &effects) }
         case .expand(let id):
-            if next.snapshot.entry(id)?.isDirectoryLike == true { next.expandedIDs.insert(id) }
+            if let entry = next.snapshot.entry(id), entry.isDirectoryLike {
+                next.expandedIDs.insert(id)
+                effects.append(.loadChildren(entry.url, id, next.loadGeneration, options(next, useCache: false)))
+            }
         case .collapse(let id):
             next.expandedIDs.remove(id)
             next.selection = visibleSelection(next.selection, snapshot: next.snapshot, expanded: next.expandedIDs)
+        case .childrenLoaded(let id, let generation, let entries):
+            guard generation == next.loadGeneration, next.expandedIDs.contains(id), next.search == nil else { return (state, []) }
+            next.childListings[id] = entries
+            present(attachingChildren(to: next.snapshot, state: next), state: &next)
+        case .childrenFailed(let id, let generation, _):
+            guard generation == next.loadGeneration else { return (state, []) }
+            next.expandedIDs.remove(id)
+        case .refreshSelecting(let ids):
+            guard next.pendingNavigation == nil else { return (state, []) }
+            next.restorationIDs = ids
+            restart(&next, effects: &effects)
         case .searchStarted(let query): startSearch(query, state: &next, effects: &effects)
         case .searchResults(let generation, let results):
             guard generation == next.searchGeneration, next.search != nil else { return (state, []) }
@@ -177,7 +192,7 @@ public enum TabReducer {
                 switch effect {
                 case .navigate(let url): stage(.directory(url), intent: .push, state: &next, effects: &effects)
                 case .cancelCompletions: effects.append(.cancel(.completion, state.completionGeneration))
-                case .requestCompletions, .validate, .openFile, .cancelled, .invalidPathFeedback:
+                case .requestCompletions, .validate, .openFile, .connect, .cancelled, .invalidPathFeedback:
                     effects.append(.addressEditor(effect))
                 }
             }

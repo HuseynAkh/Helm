@@ -3,6 +3,7 @@ import Foundation
 import XCTest
 import HelmCore
 @testable import HelmFileSystem
+import HelmTestKit
 
 final class K34ConditionalMutationTests: XCTestCase {
     func testSubstitutionRefusesWithoutMutation() async throws {
@@ -35,20 +36,18 @@ final class K34ConditionalMutationTests: XCTestCase {
         let retained = try await fs.mutationPrecondition(at: destination)
         XCTAssertEqual(retained, after)
     }
-    func testLiveAtomicMutationRefusesAndRetainsSource() async throws {
+    func testLiveTrashUsesTheInjectedTrash() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = directory.appendingPathComponent("a")
-        let fs = LiveFileSystem()
+        let fs = LiveFileSystem(trash: fixtureTrash(in: directory.appendingPathComponent("trash")))
         try await fs.createFileExclusively(at: source, contents: Data([1]))
         let evidence = try await fs.mutationPrecondition(at: source)
-        do {
-            _ = try await fs.mutate(.trash, source: source, requiring: evidence)
-            XCTFail("Native compare-and-mutate is unavailable")
-        } catch { XCTAssertEqual(error as? ConditionalMutationError, .unsupported) }
+        let trashed = try await fs.mutate(.trash, source: source, requiring: evidence)
+        XCTAssertEqual(try Data(contentsOf: try XCTUnwrap(trashed)), Data([1]))
         let retained = await fs.exists(source)
-        XCTAssertTrue(retained)
+        XCTAssertFalse(retained)
     }
 }
 

@@ -1,10 +1,13 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
-/// Conservative automatic undo policy preserves F-059 and prevents B-041 descendant loss.
-/// Metadata cannot verify a whole tree: leafOnly refuses directories/packages even unchanged.
-/// This is not a complete content/identity manifest or an atomic compare-and-mutate guarantee.
+/// How an inverse plan proves it still holds the items it is about to move (F-059, O1-1).
 public enum UndoVerificationPolicy: Sendable, Equatable {
     case none
+    /// Refuses directories and packages, and refuses any leaf whose metadata changed. For callers that
+    /// must not act on edited content.
     case leafOnly
+    /// What undo uses: the same object (volume and file number) must still be there. Changed contents don't
+    /// refuse it, because an inverse only moves things back or to the Trash and destroys nothing. Finder
+    /// allows the same, including for folders.
+    case sameObject
 }

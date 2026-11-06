@@ -143,11 +143,11 @@ final class EnvironmentTests: XCTestCase {
         } catch { XCTAssertTrue(error is AppConfigurationError) }
         let storage = MigrationSettings()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("K22-failure-" + UUID().uuidString)
-        do {
-            _ = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
-                settingsStorage: storage, legacyReader: EmptyLegacyReader(corrupt: true))
-            XCTFail("Corrupt migration accepted")
-        } catch { XCTAssertFalse(storage.didRegister) }
+        // A damaged legacy key must not stop anyone reaching their files: it's reported and retried (OK2-9, FB2-9).
+        let environment = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: storage, legacyReader: EmptyLegacyReader(corrupt: true))
+        XCTAssertEqual(environment.loadFailures.map(\.document), ["legacy preferences"])
+        XCTAssertNil(storage.object(forKey: LegacyDefaultsMigrator.doneKey))
     }
     @MainActor func testFlushAttemptsRemainingStoresAfterFailure() async throws {
         let base = try await AppEnvironment.test()

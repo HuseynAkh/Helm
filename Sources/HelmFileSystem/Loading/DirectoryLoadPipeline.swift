@@ -56,7 +56,7 @@ public actor DirectoryLoadPipeline {
                 let root = try await fileSystem.entry(at: url)
                 try Task.checkCancellation()
                 guard root.isReadable else { throw FileSystemError.permissionDenied }
-                guard root.isDirectoryLike else { throw FileSystemError.other("Not a directory") }
+                guard root.isDirectoryLike || root.kind == .package else { throw FileSystemError.other("Not a directory") }
                 var entries: [ItemID: FileEntry] = [:]
                 var threshold = options.batchSize
                 let enumeration = EnumerationOptions(includeHidden: options.showHidden, batchSize: options.batchSize)

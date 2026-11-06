@@ -1,7 +1,5 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
-import HelmPersistence
 
 /// Shared store lifetime and explicit quit flush preserve F-028–F-030/F-068.
 @MainActor public protocol AppFlushable: AnyObject { func flush() async throws }

@@ -5,7 +5,7 @@ session per drag/tab and polls the existing SpringLoadingModel through this API.
 Load callbacks must return the exact request and fresh target metadata. Only a
 commit effect may enter history/Recent; displayTemporary and restore must bypass
 normal committed navigation. Escape/failed drop restores original selection and
-scroll. Owner close terminates silently. DropSession validates accepted intent;
+scroll. Owner close terminates silently. FileDropSession validates accepted intent;
 execution must still perform its own filesystem validation. This model does no I/O.
 
 Virtual destinations are unsupported for spring/drop acceptance, including Trash;

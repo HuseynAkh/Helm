@@ -78,12 +78,12 @@ final class T3AccessibilityTests: XCTestCase {
     func testfr_FR_Sizes() { checkSizes("fr_FR") }
     func testfr_FR_Rows() { checkRows("fr_FR") }
     func testfr_FR_Milestones() { checkMilestones("fr_FR") }
-    func testar_Counts() { checkCounts("ar", digits: "٠١٢٣٤٥٦٧٨٩") }
-    func testar_Plural() { checkPlural("ar") }
-    func testar_Selection() { checkSelection("ar") }
-    func testar_Sizes() { checkSizes("ar") }
-    func testar_Rows() { checkRows("ar") }
-    func testar_Milestones() { checkMilestones("ar") }
+    func testar_Counts() { checkCounts("ar-EG", digits: "٠١٢٣٤٥٦٧٨٩") }
+    func testar_Plural() { checkPlural("ar-EG") }
+    func testar_Selection() { checkSelection("ar-EG") }
+    func testar_Sizes() { checkSizes("ar-EG") }
+    func testar_Rows() { checkRows("ar-EG") }
+    func testar_Milestones() { checkMilestones("ar-EG") }
     func testde_Counts() { checkCounts("de", digits: "0123456789") }
     func testde_Plural() { checkPlural("de") }
     func testde_Selection() { checkSelection("de") }

@@ -1,7 +1,5 @@
-// DRAFT: pending review, 2026-11-05
 import Foundation
 import HelmCore
-import HelmPersistence
 
 /// Shared catalogue edits and quit flushing preserve tag identity separately from stars (F-029, F-068).
 @MainActor public protocol AppTagCatalogStoring: AppFlushable {

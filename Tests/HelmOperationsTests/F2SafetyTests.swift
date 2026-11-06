@@ -3,6 +3,7 @@ import XCTest
 import Foundation
 import HelmCore
 import HelmFileSystem
+import HelmTestKit
 @testable import HelmOperations
 
 final class F2SafetyTests: XCTestCase {
@@ -12,7 +13,8 @@ final class F2SafetyTests: XCTestCase {
         XCTAssertFalse(index.overlaps)
         XCTAssertLessThan(index.comparisons, count * 16)
     }
-    func testUndoRefusesTreeWithoutDescendantEvidence() async throws {
+    /// Undo of a copy moves it to the Trash even if edited: recoverable, and what Finder does (O1-1).
+    func testUndoOfCopiedTreeKeepsEditedDescendantsRecoverable() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let source = root.appendingPathComponent("Project")
         let nested = source.appendingPathComponent("sub/report.txt")
@@ -21,31 +23,23 @@ final class F2SafetyTests: XCTestCase {
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try Data([1]).write(to: nested)
-        let fs = LiveFileSystem(), executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
+        let fs = LiveFileSystem(trash: fixtureTrash(in: root.appendingPathComponent("trash")))
+        let executor = OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins())
         let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [source], destinations: [target])
         let plan = OperationPlanner.plan(.copy(sources: [source], destinationDirectory: target), context: context)
-        let refused = await executor.execute(plan)
-        XCTAssertEqual(refused.error, .verificationUnavailable)
-        XCTAssertEqual(refused.succeededCount, 0)
+        let copied = await executor.execute(plan)
+        XCTAssertNil(copied.error)
+        XCTAssertEqual(copied.succeededCount, 1)
         let output = target.appendingPathComponent("Project")
-        // Native fixture setup remains independent of the conditional executor contract.
-        try await fs.copyItem(at: source, to: output)
-        let metadata = try await fs.entry(at: output)
-        let operationID = await executor.journal.begin(plan)
-        let step = try XCTUnwrap(plan.steps.first)
-        let outcome = ItemOutcome(step: step, destination: output, result: .success(metadata.changeToken), destinationKind: metadata.kind)
-        await executor.journal.record(outcome, for: operationID)
-        let copied = OperationResult(id: operationID, command: plan.command, outcomes: [outcome], error: nil)
-        await executor.journal.complete(copied)
-        let before = try await fs.entry(at: output).changeToken
         try Data([2, 3]).write(to: output.appendingPathComponent("sub/report.txt"))
-        let after = try await fs.entry(at: output).changeToken
-        XCTAssertEqual(before, after, "Root metadata cannot prove descendant content")
         let stored = await executor.journal.entry(copied.id)
         let inverse = UndoPlanner.inverse(of: try XCTUnwrap(stored), recordedOrigins: [:])
         let result = await executor.execute(inverse)
-        XCTAssertEqual(result.error, .verificationUnavailable)
-        XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent("sub/report.txt")), Data([2, 3]))
+        XCTAssertNil(result.error)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+        let trashed = try XCTUnwrap(result.outcomes.first?.destination)
+        XCTAssertEqual(try Data(contentsOf: trashed.appendingPathComponent("sub/report.txt")), Data([2, 3]))
+        XCTAssertEqual(try Data(contentsOf: nested), Data([1]))
     }
     func testHundredThousandSiblingPlanAndJournal() async {
         let count = 100_000

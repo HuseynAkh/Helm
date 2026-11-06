@@ -27,9 +27,9 @@ public struct RubberBandOverlay: View {
 
 /// F-067 target decoration follows the accepted Core proposal, never an insertion gap (B-074).
 public struct DropHighlightOverlay: View {
-    private let proposal: HelmCore.DropProposal?
+    private let proposal: HelmCore.FileDropProposal?
     private let target: DropHighlight
-    public init(proposal: HelmCore.DropProposal?, target: DropHighlight) {
+    public init(proposal: HelmCore.FileDropProposal?, target: DropHighlight) {
         self.proposal = proposal; self.target = target
     }
     public var body: some View {

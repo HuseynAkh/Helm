@@ -20,7 +20,7 @@ final class AccessibilityTests: XCTestCase {
     func testLocalizedNumbersAndBytes() {
         let cases: [(String, String, String)] = [
             ("en_US", "14.2 MB", "1,234"), ("fr_FR", "14,2 MB", "1\u{202f}234"),
-            ("ar", "١٤٫٢ MB", "١٬٢٣٤")
+            ("ar-EG", "١٤٫٢ MB", "١٬٢٣٤")
         ]
         for (locale, size, count) in cases {
             XCTAssertEqual(formatting(locale).bytes(14_200_000), size, locale)
@@ -56,7 +56,7 @@ final class AccessibilityTests: XCTestCase {
     func testAbsoluteDatesUseInjectedLocaleAndTimezone() throws {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
         var values: Set<String> = []
-        for locale in ["en_US", "fr_FR", "ar"] {
+        for locale in ["en_US", "fr_FR", "ar-EG"] {
             let value = try XCTUnwrap(formatting(locale).modifiedDate(date, relative: false))
             XCTAssertFalse(value.isEmpty)
             values.insert(value)
@@ -152,7 +152,7 @@ final class AccessibilityTests: XCTestCase {
         XCTAssertEqual(SelectionAnnouncement.describe(selectedCount: -1, itemCount: -1, selectedBytes: 0, formatting: f), "0 of 0 selected")
         XCTAssertEqual(SelectionAnnouncement.describe(selectedCount: 0, itemCount: 2, selectedBytes: 200, formatting: f), "0 of 2 selected")
         XCTAssertEqual(SelectionAnnouncement.describe(selectedCount: 1, itemCount: 2, selectedBytes: 0, formatting: f), "1 of 2 selected, 0 bytes")
-        XCTAssertEqual(SelectionAnnouncement.describe(selectedCount: 3, itemCount: 120, formatting: formatting("ar")), "٣ of ١٢٠ selected")
+        XCTAssertEqual(SelectionAnnouncement.describe(selectedCount: 3, itemCount: 120, formatting: formatting("ar-EG")), "٣ of ١٢٠ selected")
     }
 
     func testNavigationStatesAndCounts() {
@@ -160,7 +160,7 @@ final class AccessibilityTests: XCTestCase {
         XCTAssertEqual(NavigationAnnouncement.describe(folderName: "Home", itemCount: 1, state: .loaded, formatting: f), "Entered Home, 1 item")
         XCTAssertEqual(NavigationAnnouncement.describe(folderName: "Home", itemCount: -1, state: .loading, formatting: f), "Entered Home, loading, 0 items so far")
         XCTAssertEqual(NavigationAnnouncement.describe(folderName: "Home", itemCount: 3, state: .partial, formatting: f), "Entered Home, 3 items, partial results")
-        XCTAssertEqual(NavigationAnnouncement.describe(folderName: "اسم", itemCount: 2, state: .loaded, formatting: formatting("ar")), "Entered اسم, ٢ items")
+        XCTAssertEqual(NavigationAnnouncement.describe(folderName: "اسم", itemCount: 2, state: .loaded, formatting: formatting("ar-EG")), "Entered اسم, ٢ items")
     }
 
     func testOperationStartMilestonesAndThrottle() {
@@ -206,7 +206,7 @@ final class AccessibilityTests: XCTestCase {
         var value = OperationAnnouncement(operationName: "Copy", milestonePercent: 30)
         XCTAssertEqual(value.announcement(for: .progress(0.3), formatting: formatting(now: 100)), "Copy, 30 percent")
         XCTAssertEqual(value.announcement(for: .progress(0.6), formatting: formatting(now: 90)), "Copy, 60 percent")
-        XCTAssertEqual(value.announcement(for: .progress(1), formatting: formatting("ar", now: 92)), "Copy, ١٠٠ percent")
+        XCTAssertEqual(value.announcement(for: .progress(1), formatting: formatting("ar-EG", now: 92)), "Copy, ١٠٠ percent")
         XCTAssertEqual(value.announcement(for: .completed, formatting: formatting(now: 92)), "Copy completed")
     }
 

@@ -191,7 +191,7 @@ extension AF1RegressionTests {
             displayedRoot: URL(fileURLWithPath: "/")), "/gone")
     }
 
-    func testLiveConditionalMutationRefusesWithoutChangingDisk() async throws {
+    func testLiveConditionalCopyKeepsSource() async throws {
         let temp = try TempDirectory()
         let source = temp.url.appendingPathComponent("source")
         let destination = temp.url.appendingPathComponent("destination")
@@ -199,11 +199,8 @@ extension AF1RegressionTests {
         try payload.write(to: source)
         let fs = LiveFileSystem()
         let evidence = try await fs.mutationPrecondition(at: source)
-        do {
-            _ = try await fs.mutate(.copy(to: destination), source: source, requiring: evidence)
-            XCTFail("Live conditional mutation must remain refused pending owner decision")
-        } catch { XCTAssertEqual(error as? ConditionalMutationError, .unsupported) }
+        _ = try await fs.mutate(.copy(to: destination), source: source, requiring: evidence)
         XCTAssertEqual(try Data(contentsOf: source), payload)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertEqual(try Data(contentsOf: destination), payload)
     }
 }

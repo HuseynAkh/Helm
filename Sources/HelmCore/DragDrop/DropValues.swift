@@ -10,7 +10,7 @@ public struct DropModifiers: OptionSet, Hashable, Sendable {
     public static let control = DropModifiers(rawValue: 4)
 }
 /// Pure operation intent; execution belongs to the journal (F-067, B-044).
-public enum DropOperation: String, Hashable, Sendable { case copy, move, alias, moveToTrash }
+public enum FileDropOperation: String, Hashable, Sendable { case copy, move, alias, moveToTrash }
 /// Cursor feedback for F-067 and P-274; rejected proposals never highlight a target.
 public enum DropFeedback: String, Hashable, Sendable { case copy, move, alias, trash, forbidden }
 /// Stable row identity avoids stale index targets (B-009) and insertion gaps (B-074).
@@ -56,10 +56,10 @@ public struct DropDestination: Hashable, Sendable {
     }
 }
 /// Retain this immutable proposal between validation and acceptance (F-067, B-045).
-public struct DropProposal: Hashable, Sendable {
+public struct FileDropProposal: Hashable, Sendable {
     public let sources: [DraggedItem]
     public let destination: DropDestination
-    public let operation: DropOperation?
+    public let operation: FileDropOperation?
     public let rejection: DropRejection?
     public var feedback: DropFeedback {
         switch operation {
@@ -72,7 +72,7 @@ public struct DropProposal: Hashable, Sendable {
     }
     public var highlight: DropHighlight { operation == nil ? .none : destination.highlight }
     public init(sources: [DraggedItem], destination: DropDestination,
-                result: Result<DropOperation, DropRejection>) {
+                result: Result<FileDropOperation, DropRejection>) {
         self.sources = sources; self.destination = destination
         switch result {
         case .success(let operation): self.operation = operation; self.rejection = nil

@@ -15,7 +15,7 @@ pasteboard writes or operations execute here. Tests live in
   For expanded list rows resolve their actual parent before constructing a background
   destination (B-079). A file row is not a directory: UI may explicitly target its
   parent to preserve legacy F-067 fallback. No insertion gap is requested (B-074).
-- Cache the entire DropProposal from the last drag update. Execute its exact sources,
+- Cache the entire FileDropProposal from the last drag update. Execute its exact sources,
   destination and operation, without rereading modifiers at acceptance (B-045,
   P-270/P-274). Intersect source masks through allowedOperations. A refused desired
   operation is not silently replaced with another operation. UI maps AppKit's source
@@ -82,7 +82,7 @@ elapsed time diagnostically, without a platform-dependent latency assertion.
 Selection validation caching remains adapter/public-contract work: this stateless
 API has no drag-session lifetime. No global mutable cache was introduced.
 
-K29 adds DropSession for the deferred session cache. Construct once per native drag,
+K29 adds FileDropSession for the deferred session cache. Construct once per native drag,
 retain across target/modifier updates, replaceSources when ordered source metadata
 changes, and end on termination. The session caches source path normalization and
 overlap validation, not target permissions or execution preconditions. End is

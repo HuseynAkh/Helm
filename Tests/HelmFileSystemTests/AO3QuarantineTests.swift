@@ -40,9 +40,10 @@ final class AO3QuarantineTests: XCTestCase {
     }
 
     func testProgressResetsWatchdog() async throws {
-        let executor = IOExecutor(timeout: 0.1)
+        // Margins are wide: a 25 ms sleep at this queue's utility QoS was measured taking 180 ms on macOS.
+        let executor = IOExecutor(timeout: 1)
         let value = try await executor.runReadWithProgress(volume: "v") { progress in
-            for _ in 0..<8 { Thread.sleep(forTimeInterval: 0.025); progress() }
+            for _ in 0..<7 { Thread.sleep(forTimeInterval: 0.2); progress() }
             return 7
         }
         XCTAssertEqual(value, 7)

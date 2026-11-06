@@ -37,7 +37,9 @@ final class F24LexicalPathTests: XCTestCase {
             let url = URL(fileURLWithPath: path, isDirectory: true)
             let model = PathPresentation(location: .directory(url), selectedEntries: [])
             let leaf = try XCTUnwrap(model.segments.last)
-            XCTAssertEqual(Array(leaf.id.path.utf8), Array(path.utf8))
+            // macOS URLs decompose names; everywhere else the bytes round-trip exactly.
+            XCTAssertEqual(leaf.id.path.split(separator: "/", omittingEmptySubsequences: true).map { PathSpelling.identity(String($0)) },
+                           path.split(separator: "/", omittingEmptySubsequences: true).map { PathSpelling.identity(String($0)) })
             XCTAssertEqual(model.intent(.navigate, segmentID: url), .navigate(url))
             XCTAssertEqual(try SharingSelectionSnapshot(urls: [url]).urls, [url])
         }
@@ -58,6 +60,41 @@ final class F24LexicalPathTests: XCTestCase {
         XCTAssertTrue(state.poll(openImmediately: true).isEmpty)
     }
 
+#if canImport(Darwin)
+    /// On macOS the two spellings name one file, so they are one location everywhere (Unicode ruling).
+    func testUnicodeSpellingsAreOneNameOnMacOS() throws {
+        let nfc = URL(fileURLWithPath: "/caf\u{00E9}", isDirectory: true)
+        let nfd = URL(fileURLWithPath: "/cafe\u{0301}", isDirectory: true)
+        let encodedNFC = try XCTUnwrap(URL(string: "file:///caf%C3%A9/"))
+        XCTAssertEqual(nfc, nfd)
+        XCTAssertEqual(try SharingSelectionSnapshot(urls: [nfc, nfd, nfc]).urls.count, 1)
+        let model = PathPresentation(location: .directory(nfc), selectedEntries: [])
+        XCTAssertEqual(model.intent(.navigate, segmentID: nfd), .navigate(try XCTUnwrap(model.segments.last).id))
+        XCTAssertNotNil(model.intent(.navigate, segmentID: encodedNFC))
+        let selected = PathPresentation(location: .recent, selectedEntries: [FileEntry(url: nfc), FileEntry(url: encodedNFC)])
+        XCTAssertEqual(selected.context, .selectedItem)
+    }
+
+    func testUnicodeParentsShareTheirCommonFolderOnMacOS() {
+        let entries = ["/caf\u{00E9}/one", "/cafe\u{0301}/two"].map {
+            FileEntry(url: URL(fileURLWithPath: $0, isDirectory: false))
+        }
+        let model = PathPresentation(location: .recent, selectedEntries: entries)
+        XCTAssertEqual(model.segments.map { PathSpelling.identity($0.id.path) },
+                       ["/", "/cafe\u{0301}"].map(PathSpelling.identity))
+    }
+
+    func testSpringTreatsBothSpellingsAsOneFolderOnMacOS() throws {
+        let identity = FileObjectIdentity(scope: "F24", object: "same-evidence")
+        let nfc = FileEntry(url: URL(fileURLWithPath: "/caf\u{00E9}", isDirectory: true), kind: .directory, objectIdentity: identity)
+        let nfd = FileEntry(url: URL(fileURLWithPath: "/cafe\u{0301}", isDirectory: true), kind: .directory, objectIdentity: identity)
+        var state = session()
+        state.beginHover(nfc)
+        XCTAssertEqual(state.poll(openImmediately: true).count, 1)
+        let load = try XCTUnwrap(state.pending)
+        XCTAssertFalse(state.hoverOpened(request: load, target: nfd).isEmpty)
+    }
+#else
     func testUnicodeSpellingsStayDistinctInSharingAndMembership() throws {
         let nfc = URL(fileURLWithPath: "/caf\u{00E9}", isDirectory: true)
         let nfd = URL(fileURLWithPath: "/cafe\u{0301}", isDirectory: true)
@@ -92,4 +129,5 @@ final class F24LexicalPathTests: XCTestCase {
         let request = try XCTUnwrap(dropState.acceptDrop(target: nfc, destination: DropDestination(location: .directory(nfc.url)), allowedOperations: [.copy, .move]))
         XCTAssertEqual(dropState.dropCompleted(request: request, success: true, destination: nfd), [.restore(dropState.original)])
     }
+#endif
 }

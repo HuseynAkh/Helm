@@ -45,7 +45,8 @@ final class MigrationTests: XCTestCase {
         let repeated = try await migrator.migrate()
         XCTAssertFalse(repeated)
     }
-    @MainActor func testMalformedSourceReportsOnceAndWritesNothing() async throws {
+    /// One damaged key costs only itself: the others migrate, it stays untouched, and it's retried (FB2-9).
+    @MainActor func testMalformedKeyReportsOnceAndOtherKeysStillMigrate() async throws {
         let dir = try temporaryStoreDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }
         let memory = MemoryDefaults()
@@ -59,7 +60,8 @@ final class MigrationTests: XCTestCase {
         }
         XCTAssertEqual(reports.count, 1)
         XCTAssertNil(memory.values[LegacyDefaultsMigrator.doneKey])
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [])
+        let stars = try Data(contentsOf: dir.appendingPathComponent("stars.json"))
+        XCTAssertTrue(String(decoding: stars, as: UTF8.self).contains("safe"))
         XCTAssertEqual(memory.domains["Helm"]?["helm.bookmarks"] as? Data, Data("invalid".utf8))
     }
     @MainActor func testRetryMergesAlreadyWrittenDataAndPreservesDates() async throws {

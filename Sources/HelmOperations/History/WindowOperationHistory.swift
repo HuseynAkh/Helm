@@ -144,7 +144,18 @@ public actor WindowOperationHistory {
         return true
     }
 
-    /// Explicitly unsupported: stale paths/steps are never used as redo authorization.
+    /// Redo re-runs the original command, which the host plans afresh against the current disk,
+    /// so stale paths and steps are never replayed (O1-1).
+    public func beginRedoForward() -> (request: HistoryRequestID, command: Command)? {
+        guard let entry = state.redoEntries.last, let command = entries[entry.operationID]?.plan.command else { return nil }
+        let request = HistoryRequestID()
+        OperationHistoryReducer.reduce(&state, .beginRedoForward(request))
+        guard state.pending?.request == request else { return nil }
+        forwardCommand = command
+        return (request, command)
+    }
+
+    /// Reports redo availability without performing it.
     public func beginRedo() -> HistoryAvailability {
         OperationHistoryReducer.reduce(&state, .beginRedo)
         return state.redoAvailability

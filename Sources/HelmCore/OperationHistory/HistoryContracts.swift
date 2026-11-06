@@ -59,6 +59,8 @@ public enum HistoryAction: Sendable {
     case abortUndo(HistoryRequestID, failure: HistoryPreparationFailure)
     case complete(HistoryRequestID, outcome: HistoryOutcome)
     case beginRedo
+    /// Redo re-runs the original command, freshly planned, without discarding older redo entries.
+    case beginRedoForward(HistoryRequestID)
     /// Retire the blocked undo entry after the host presents journal evidence and gets user confirmation.
     case acknowledgeReconciliation
 }

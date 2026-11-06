@@ -38,6 +38,8 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public let journal: OperationJournal
     public let clock: any HelmClock
     public let directories: AppDirectories
+    /// Documents that couldn't be read at launch. Their originals are untouched, and edits this session stay in memory (OK2-9).
+    public private(set) var loadFailures: [AppFlushFailure] = []
 
     public init(settings: SettingsStore, bookmarks: any AppBookmarkStoring, stars: any AppStarStoring,
                 recents: any AppRecentStoring, session: any AppSessionStoring, trashOrigins: any AppTrashOriginStoring,
@@ -52,25 +54,39 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     /// Migration must succeed before defaults registration or any store is exposed (F-068, B-029).
     public static func live(directories: AppDirectories, settingsStorage: any KeyValueStoring,
                             legacyReader: any LegacyDefaultsReading, clock: any HelmClock = SystemHelmClock(),
-                            bundleDomain: String = "com.helm.filemanager") async throws -> AppEnvironment {
+                            bundleDomain: String = "com.helm.filemanager",
+                            trash: @escaping @Sendable (URL) throws -> URL? = LiveFileSystem.systemTrash) async throws -> AppEnvironment {
         guard directories.home.isFileURL, directories.applicationSupport.isFileURL,
               directories.volumeRoots.allSatisfy(\.isFileURL) else { throw AppConfigurationError.nonFileDirectory }
         let locations = StoreLocation(directory: directories.applicationSupport)
         let migrator = LegacyDefaultsMigrator(reader: legacyReader, destination: settingsStorage,
             directory: locations.directory, home: directories.home, bundleDomain: bundleDomain)
-        try await migrator.migrate(at: clock.now())
-        let bookmarks = try await BookmarkStore(url: locations.bookmarks, home: directories.home)
-        let stars = try await StarStore(url: locations.stars)
-        let recents = try await RecentStore(url: locations.recent)
-        let session = try await SessionStore(url: locations.session)
-        let origins = try await TrashOriginStore(url: locations.trashOrigins)
-        let tagCatalog = try await TagCatalogStore(url: locations.tagCatalog)
-        let viewOptions = try await LocationViewOptionsStore(url: locations.viewOptions)
-        return AppEnvironment(settings: SettingsStore(storage: settingsStorage), bookmarks: bookmarks,
+        var failures: [AppFlushFailure] = []
+        // A migration problem must not stop anyone reaching their files. It retries next launch (OK2-9, FB2-9).
+        do { try await migrator.migrate(at: clock.now()) }
+        catch { failures.append(AppFlushFailure(document: "legacy preferences", message: String(describing: error))) }
+        func loaded<Store>(_ name: String, _ make: () async throws -> Store, fallback: () -> Store) async -> Store {
+            do { return try await make() }
+            catch {
+                failures.append(AppFlushFailure(document: name, message: String(describing: error)))
+                return fallback()
+            }
+        }
+        let bookmarks: any AppBookmarkStoring = await loaded("bookmarks", { try await BookmarkStore(url: locations.bookmarks, home: directories.home) },
+                                                             fallback: { AppMemoryBookmarks(home: directories.home) })
+        let stars: any AppStarStoring = await loaded("stars", { try await StarStore(url: locations.stars) }, fallback: { AppMemoryStars() })
+        let recents: any AppRecentStoring = await loaded("recent", { try await RecentStore(url: locations.recent) }, fallback: { AppMemoryRecents() })
+        let session: any AppSessionStoring = await loaded("session", { try await SessionStore(url: locations.session) }, fallback: { AppMemorySession() })
+        let origins: any AppTrashOriginStoring = await loaded("trash-origins", { try await TrashOriginStore(url: locations.trashOrigins) }, fallback: { AppMemoryTrashOrigins() })
+        let tagCatalog: any AppTagCatalogStoring = await loaded("tag-catalog", { try await TagCatalogStore(url: locations.tagCatalog) }, fallback: { AppMemoryTagCatalog() })
+        let viewOptions: any AppViewOptionsStoring = await loaded("view-options", { try await LocationViewOptionsStore(url: locations.viewOptions) }, fallback: { AppMemoryViewOptions() })
+        let environment = AppEnvironment(settings: SettingsStore(storage: settingsStorage), bookmarks: bookmarks,
             stars: stars, recents: recents, session: session, trashOrigins: origins,
             tagCatalog: tagCatalog, viewOptions: viewOptions,
-            fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots), journal: OperationJournal(),
+            fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots, trash: trash), journal: OperationJournal(),
             clock: clock, directories: directories)
+        environment.loadFailures = failures
+        return environment
     }
 
     /// Fully in-memory stores and filesystem; no real defaults or filesystem writes (B-068).

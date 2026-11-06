@@ -3,9 +3,9 @@ import HelmCore
 
 /// Draft toolbar layout enforces independent keyboard entry points (F-003/F-043, M24).
 public struct ToolbarCustomizationModel: Equatable, Sendable {
-    public var items: [HelmCore.ToolbarItem]
+    public var items: [HelmCore.HelmToolbarItem]
     public var reachableKeyboardCommands: Set<ToolbarCommand>
-    public init(items: [HelmCore.ToolbarItem] = HelmCore.ToolbarItem.defaultLayout,
+    public init(items: [HelmCore.HelmToolbarItem] = HelmCore.HelmToolbarItem.defaultLayout,
                 reachableKeyboardCommands: Set<ToolbarCommand>) {
         self.items = items; self.reachableKeyboardCommands = reachableKeyboardCommands
     }
@@ -13,7 +13,7 @@ public struct ToolbarCustomizationModel: Equatable, Sendable {
         ToolbarLayoutValidation.validate(items, reachableKeyboardCommands: reachableKeyboardCommands)
     }
     public var canApply: Bool { issues.isEmpty }
-    public mutating func add(_ item: HelmCore.ToolbarItem) {
+    public mutating func add(_ item: HelmCore.HelmToolbarItem) {
         if item == .flexibleSpace || !items.contains(item) { items.append(item) }
     }
     public mutating func remove(at index: Int) {
@@ -26,8 +26,8 @@ public struct ToolbarCustomizationModel: Equatable, Sendable {
         let item = items.remove(at: source)
         items.insert(item, at: destination)
     }
-    public mutating func restoreDefaults() { items = HelmCore.ToolbarItem.defaultLayout }
-    public static func label(_ item: HelmCore.ToolbarItem) -> String {
+    public mutating func restoreDefaults() { items = HelmCore.HelmToolbarItem.defaultLayout }
+    public static func label(_ item: HelmCore.HelmToolbarItem) -> String {
         switch item {
         case .sidebar: return "Toggle Sidebar"
         case .navigation: return "Navigation"

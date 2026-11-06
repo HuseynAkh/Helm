@@ -4,7 +4,7 @@ import Foundation
 /// Session-scoped source validation preserves F-067 order without repeating overlap sorting.
 /// Keep one value per native drag, replace sources on payload changes, and end on exit/completion.
 /// Execution still revalidates filesystem state; this cache contains only immutable drag metadata.
-public struct DropSession: Sendable {
+public struct FileDropSession: Sendable {
     public let id: UUID
     private var validation: DropSourceValidation
     public private(set) var isEnded: Bool = false
@@ -22,7 +22,7 @@ public struct DropSession: Sendable {
         validation = DropSourceValidation(sources: [])
     }
     public func proposal(destination: DropDestination, modifiers: DropModifiers = [],
-                         allowedOperations: Set<DropOperation> = [.copy, .move, .moveToTrash]) -> DropProposal {
+                         allowedOperations: Set<FileDropOperation> = [.copy, .move, .moveToTrash]) -> FileDropProposal {
         // Ended sessions have no sources and cannot authorize a drop or retain user paths.
         DropPlanner.proposal(validation: validation, destination: destination,
                              modifiers: modifiers, allowedOperations: allowedOperations)

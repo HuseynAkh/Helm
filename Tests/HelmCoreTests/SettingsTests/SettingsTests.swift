@@ -15,7 +15,7 @@ final class SettingsTests: XCTestCase {
         }
         XCTAssertEqual(snapshot.double(.gridIconSize), 96)
         XCTAssertFalse(snapshot.bool(.confirmBeforeTrash))
-        XCTAssertFalse(snapshot.bool(.askOnConflict))
+        XCTAssertTrue(snapshot.bool(.askOnConflict))
         XCTAssertEqual(snapshot.string(.crossVolumeDragDefault), "copy")
         XCTAssertEqual(snapshot.defaultViewMode, .grid)
         XCTAssertEqual(snapshot.defaultSort, .defaultSort)

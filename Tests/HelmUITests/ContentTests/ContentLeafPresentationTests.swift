@@ -48,7 +48,7 @@ final class ContentLeafPresentationTests: XCTestCase {
     }
     func testRejectedProposalsAndMissingProposalsNeverHighlight() {
         let destination = DropDestination(location: .directory(URL(fileURLWithPath: "/target")))
-        let rejected = DropProposal(sources: [], destination: destination, result: .failure(.emptySources))
+        let rejected = FileDropProposal(sources: [], destination: destination, result: .failure(.emptySources))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.background, proposal: rejected))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.none, proposal: rejected))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.background, proposal: nil))
@@ -57,12 +57,12 @@ final class ContentLeafPresentationTests: XCTestCase {
         let id = ItemID(url: URL(fileURLWithPath: "/target"))
         let other = ItemID(url: URL(fileURLWithPath: "/other"))
         let destination = DropDestination(location: .directory(URL(fileURLWithPath: "/target")), highlight: .row(id))
-        let accepted = DropProposal(sources: [], destination: destination, result: .success(.copy))
+        let accepted = FileDropProposal(sources: [], destination: destination, result: .success(.copy))
         XCTAssertTrue(ContentLeafPresentation.isHighlighted(.row(id), proposal: accepted))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.row(other), proposal: accepted))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.background, proposal: accepted))
         XCTAssertFalse(ContentLeafPresentation.isHighlighted(.none, proposal: accepted))
-        let background = DropProposal(sources: [], destination: DropDestination(location: destination.location),
+        let background = FileDropProposal(sources: [], destination: DropDestination(location: destination.location),
                                       result: .success(.move))
         XCTAssertTrue(ContentLeafPresentation.isHighlighted(.background, proposal: background))
     }

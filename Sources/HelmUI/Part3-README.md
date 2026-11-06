@@ -36,7 +36,7 @@ query generations, debounce, cancellation, focus and sheet lifetime (B-117).
   Feed the service's truncated flag. Install SearchLocationColumnView in the
   host's Location column; its model retains the full enclosing path (M-24).
 - ToolbarCustomizationView binds a draft layout. Available items come from
-  Core's ToolbarItem table; labels preserve Toggle Sidebar/Navigation/Path/
+  Core's HelmToolbarItem table; labels preserve Toggle Sidebar/Navigation/Path/
   View Mode/Search. Dragging reorders rows; Add Item and Remove configure them;
   Move Up/Down provide keyboard alternatives. Repeated flexible spaces are valid.
   Supply actual reachableKeyboardCommands, never assume visible fields suffice.

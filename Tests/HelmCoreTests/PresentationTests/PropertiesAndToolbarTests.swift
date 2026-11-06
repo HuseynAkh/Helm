@@ -32,16 +32,16 @@ final class PresentationPropertiesAndToolbarTests: XCTestCase {
     }
     func testToolbarLayoutAndKeyboardRoutes() {
         let routes: Set<ToolbarCommand> = [.focusLocation, .focusSearch]
-        XCTAssertEqual(ToolbarItem.defaultLayout, [.sidebar, .navigation, .location, .viewMode, .search])
-        for layout in [ToolbarItem.defaultLayout, [], [.flexibleSpace, .flexibleSpace]] {
+        XCTAssertEqual(HelmToolbarItem.defaultLayout, [.sidebar, .navigation, .location, .viewMode, .search])
+        for layout in [HelmToolbarItem.defaultLayout, [], [.flexibleSpace, .flexibleSpace]] {
             XCTAssertEqual(ToolbarLayoutValidation.validate(layout, reachableKeyboardCommands: routes), [])
         }
         XCTAssertEqual(ToolbarLayoutValidation.validate([.search, .search], reachableKeyboardCommands: [.focusSearch]),
                        [.duplicateItem(.search), .unreachableCommand(.focusLocation)])
-        XCTAssertEqual(ToolbarLayoutValidation.validate(ToolbarItem.defaultLayout, reachableKeyboardCommands: []).count, 2)
+        XCTAssertEqual(ToolbarLayoutValidation.validate(HelmToolbarItem.defaultLayout, reachableKeyboardCommands: []).count, 2)
         XCTAssertEqual(ToolbarCommand.focusLocation.keyEquivalent, "Cmd+L")
         XCTAssertEqual(ToolbarCommand.focusSearch.keyEquivalent, "Cmd+F")
         XCTAssertEqual(Set(ToolbarCommand.allCases.compactMap(\.keyEquivalent)).count, ToolbarCommand.allCases.count)
-        for command in ToolbarCommand.allCases { XCTAssertTrue(ToolbarItem.defaultLayout.contains(command.toolbarItem)) }
+        for command in ToolbarCommand.allCases { XCTAssertTrue(HelmToolbarItem.defaultLayout.contains(command.toolbarItem)) }
     }
 }

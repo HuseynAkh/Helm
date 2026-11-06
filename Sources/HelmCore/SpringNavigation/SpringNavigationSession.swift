@@ -11,7 +11,7 @@ public struct SpringNavigationSession: Sendable {
     public private(set) var acceptedDrop: SpringDropRequest?
     public private(set) var isEnded: Bool = false
     private var timing: SpringLoadingModel
-    private var drag: DropSession
+    private var drag: FileDropSession
     private var hover: FileEntry?
     private let sourcesAreLocal: Bool
     public var current: SpringNavigationContext { stack.last ?? original }
@@ -20,7 +20,7 @@ public struct SpringNavigationSession: Sendable {
                 delay: TimeInterval, sources: [DraggedItem]) {
         self.id = UUID(); self.original = original
         self.timing = SpringLoadingModel(clock: clock, delay: delay)
-        self.drag = DropSession(sources: sources)
+        self.drag = FileDropSession(sources: sources)
         self.sourcesAreLocal = sources.allSatisfy { LexicalLocalPath($0.url).map { !$0.hasParent } ?? false }
     }
     public mutating func beginHover(_ target: FileEntry?) {
@@ -62,7 +62,7 @@ public struct SpringNavigationSession: Sendable {
     }
     /// Host supplies fresh destination facts; this admits intent only, never executes a drop.
     public mutating func acceptDrop(target: FileEntry, destination: DropDestination,
-                                    modifiers: DropModifiers = [], allowedOperations: Set<DropOperation>) -> SpringDropRequest? {
+                                    modifiers: DropModifiers = [], allowedOperations: Set<FileDropOperation>) -> SpringDropRequest? {
         guard !isEnded, sourcesAreLocal, acceptedDrop == nil, let path = LexicalLocalPath(target.url), !path.hasParent, target.isDirectoryLike,
               case .directory(let destinationURL) = destination.location,
               let destinationPath = LexicalLocalPath(destinationURL), !destinationPath.hasParent,

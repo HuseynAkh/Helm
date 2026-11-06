@@ -60,7 +60,8 @@ public actor FSEventsMonitor: DirectoryMonitor {
     public nonisolated let events: AsyncStream<MonitorEvent>
     private let continuation: AsyncStream<MonitorEvent>.Continuation
     private let directory: URL
-    private var stream: FSEventStreamRef?
+    // Actor-owned, but read by the nonisolated deinit, which runs only once nothing else can reach this actor.
+    private nonisolated(unsafe) var stream: FSEventStreamRef?
     private let callbackQueue = DispatchQueue(label: "helm.fsevents", qos: .utility)
     public init(directory: URL) {
         self.directory = directory

@@ -1,5 +1,13 @@
 // swift-tools-version: 5.9
+import Foundation
 import PackageDescription
+
+/// READMEs sit beside the code they document; none is a build input.
+func readmes(in directory: String) -> [String] {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent(directory)
+    guard let walker = FileManager.default.enumerator(atPath: root.path) else { return [] }
+    return walker.compactMap { $0 as? String }.filter { $0.hasSuffix(".md") }.sorted()
+}
 
 var products: [Product] = [
     .library(name: "HelmCore", targets: ["HelmCore"]),
@@ -10,17 +18,17 @@ var products: [Product] = [
     .library(name: "HelmTestKit", targets: ["HelmTestKit"]),
 ]
 var targets: [Target] = [
-    .target(name: "HelmCore", dependencies: []),
-    .target(name: "HelmFileSystem", dependencies: ["HelmCore"]),
-    .target(name: "HelmPersistence", dependencies: ["HelmCore"]),
-    .target(name: "HelmOperations", dependencies: ["HelmCore", "HelmFileSystem"]),
-    .target(name: "HelmSearch", dependencies: ["HelmCore", "HelmFileSystem"]),
+    .target(name: "HelmCore", dependencies: [], exclude: readmes(in: "Sources/HelmCore")),
+    .target(name: "HelmFileSystem", dependencies: ["HelmCore"], exclude: readmes(in: "Sources/HelmFileSystem")),
+    .target(name: "HelmPersistence", dependencies: ["HelmCore"], exclude: readmes(in: "Sources/HelmPersistence")),
+    .target(name: "HelmOperations", dependencies: ["HelmCore", "HelmFileSystem"], exclude: readmes(in: "Sources/HelmOperations")),
+    .target(name: "HelmSearch", dependencies: ["HelmCore", "HelmFileSystem"], exclude: readmes(in: "Sources/HelmSearch")),
     .target(name: "HelmTestKit", dependencies: ["HelmCore", "HelmFileSystem"]),
-    .testTarget(name: "HelmCoreTests", dependencies: ["HelmCore", "HelmTestKit"]),
+    .testTarget(name: "HelmCoreTests", dependencies: ["HelmCore", "HelmTestKit"], exclude: readmes(in: "Tests/HelmCoreTests")),
     .testTarget(name: "HelmFileSystemTests", dependencies: ["HelmFileSystem", "HelmTestKit"]),
     .testTarget(name: "HelmPersistenceTests", dependencies: ["HelmPersistence", "HelmTestKit"]),
-    .testTarget(name: "HelmOperationsTests", dependencies: ["HelmOperations", "HelmTestKit"]),
-    .testTarget(name: "HelmSearchTests", dependencies: ["HelmSearch", "HelmTestKit"]),
+    .testTarget(name: "HelmOperationsTests", dependencies: ["HelmOperations", "HelmTestKit"], exclude: readmes(in: "Tests/HelmOperationsTests")),
+    .testTarget(name: "HelmSearchTests", dependencies: ["HelmSearch", "HelmTestKit"], exclude: readmes(in: "Tests/HelmSearchTests")),
     .testTarget(name: "HelmTestKitTests", dependencies: ["HelmTestKit"]),
 ]
 #if os(macOS)

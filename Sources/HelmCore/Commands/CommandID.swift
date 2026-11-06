@@ -12,21 +12,18 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case removeBookmark, copyPath
     // Rebuild additions (architecture 8.3).
     case permanentDelete, emptyTrash, clearRecent, putBack, duplicate
-    // Planned Finder parity; disabled placeholders, no installed shortcuts (14.5).
+    // Finder parity (14.5). `isPlanned` marks the ones still disabled.
     case openInNewTab, openInNewWindow, closeWindow, reopenClosedTab, nextTab, previousTab
     case makeAlias, makeSymbolicLink, eject, reveal, showOriginal, connectToServer
     case newFolderWithSelection, addToSidebar, copyAsPathname, moveItemsHere, printSelection
-    case columns, gallery, previewPane, viewOptions, desktop, documents, downloads
+    case columns, gallery, previewPane, viewOptions, desktop, documents, downloads, recents
     case applications, utilities, computer, network, compress, decompress, tags
 
+    /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {
         switch self {
-        case .openInNewTab, .openInNewWindow, .closeWindow, .reopenClosedTab, .nextTab,
-             .previousTab, .makeAlias, .makeSymbolicLink, .eject, .reveal, .showOriginal,
-             .connectToServer, .newFolderWithSelection, .addToSidebar, .copyAsPathname,
-             .moveItemsHere, .printSelection, .columns, .gallery, .previewPane, .viewOptions,
-             .desktop, .documents, .downloads, .applications, .utilities, .computer,
-             .network, .compress, .decompress, .tags: return true
+        case .printSelection, .columns, .gallery, .previewPane, .viewOptions, .computer, .network,
+             .compress, .decompress, .tags: return true
         default: return false
         }
     }

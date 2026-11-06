@@ -28,9 +28,23 @@ done
 run_check tests swift test --scratch-path "$scratch" --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
 counts=$(python3 - "$scratch/logs/tests.log" <<'PY'
 import re, sys
-text = open(sys.argv[1]).read()
-counts = re.findall(r'Executed (\d+) tests?, with (?:(\d+) tests? skipped and )?(\d+) failures?', text)
-print(' '.join(value or '0' for value in counts[-1]) if counts else '0 0 0')
+# SwiftPM can build one bundle per test target, each with its own closing summary. Sum them all,
+# so a later bundle with nothing selected cannot hide an earlier bundle's tests or failures.
+tests = skipped = failures = 0
+closing = re.compile(r"Test Suite '(?:All|Selected) tests' (?:passed|failed)")
+summary = re.compile(r'Executed (\d+) tests?, with (?:(\d+) tests? skipped and )?(\d+) failures?')
+lines = open(sys.argv[1]).read().splitlines()
+for index, line in enumerate(lines):
+    if closing.search(line) and index + 1 < len(lines):
+        match = summary.search(lines[index + 1])
+        if match:
+            tests += int(match.group(1)); skipped += int(match.group(2) or 0); failures += int(match.group(3))
+if tests == 0:
+    # Linux's XCTest and simple runners print a single summary with no closing suite line.
+    found = summary.findall('\n'.join(lines))
+    if found:
+        tests, skipped, failures = int(found[-1][0]), int(found[-1][1] or 0), int(found[-1][2])
+print(tests, skipped, failures)
 PY
 )
 read -r tests skipped test_failures <<< "$counts"
@@ -42,11 +56,10 @@ run_check python-tests python3 -m unittest discover -s scripts/rebuild -p 'test_
 run_check static-tests python3 -m unittest discover -s scripts -p 'test_static_checks.py' -v
 run_check static bash scripts/static_checks.sh
 run_check core-type-name-fixtures python3 scripts/rebuild/check_core_type_names.py --self-test
-# Retained SDK collisions intentionally fail until the owner approves their rename.
 run_check core-type-names python3 scripts/rebuild/check_core_type_names.py
 run_check ui-parse bash scripts/rebuild/parse_check_ui.sh
 run_check coverage python3 scripts/rebuild/check_coverage.py --parity "$plan/02-finder-parity.md" --current-state "$plan/00-current-state.md" --report-only
-printf '\nK11 Linux verification (draft; Mac pending)\n'
+printf '\nPortable verification\n'
 printf '%s\n' "${summary[@]}"
 printf 'XCTest: %s executed; %s skipped; %s failures. Failed checks: %s\nLogs: %s/logs\n' "$tests" "$skipped" "$test_failures" "$failures" "$scratch"
 echo 'Coverage is report-only; UI parse is syntax only. Neither closes feature acceptance.'

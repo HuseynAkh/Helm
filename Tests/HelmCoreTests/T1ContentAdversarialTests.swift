@@ -162,7 +162,10 @@ final class T1ContentAdversarialTests: XCTestCase {
     func testRenameUnicodeUTF16Stem()  {
         var model = InlineRenameModel(); let file = entry("👩🏽‍💻.résumé.txt")
         model.begin(file)
-        XCTAssertEqual(model.editing?.selectedRange, NSRange(location: 0, length: "👩🏽‍💻.résumé".utf16.count))
+        // The range measures the field's text, which keeps the spelling the file system reports.
+        let stem = (file.name as NSString).deletingPathExtension
+        XCTAssertEqual(stem.precomposedStringWithCanonicalMapping, "👩🏽‍💻.résumé".precomposedStringWithCanonicalMapping)
+        XCTAssertEqual(model.editing?.selectedRange, NSRange(location: 0, length: stem.utf16.count))
     }
     func testRenameDirectoryKeepsExtensionSelected()  {
         var model = InlineRenameModel(); model.begin(entry("folder.ext", kind: .directory))

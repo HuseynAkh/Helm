@@ -15,7 +15,8 @@ public enum SettingsSchema {
         case .searchDebounceMilliseconds: return .integer(180)
         case .completionDebounceMilliseconds: return .integer(100)
         case .defaultSortAscending, .directoriesFirst, .liveMonitoringEnabled,
-             .enableDirectoryCache, .searchPreferUserFolders, .restoreSessionOnLaunch: return .bool(true)
+             .enableDirectoryCache, .searchPreferUserFolders, .restoreSessionOnLaunch,
+             .askOnConflict: return .bool(true) // Finder asks; a surprise "name 2" isn't what it does (Q9).
         default: return .bool(false)
         }
     }

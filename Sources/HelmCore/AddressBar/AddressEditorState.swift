@@ -50,6 +50,8 @@ public enum AddressEditorAction: Equatable, Sendable {
     case select(Int?)
     case arrowUp, arrowDown, arrowRight, tab, backtab, acceptSelection, returnKey, escape, cancel
     case validated(Generation, URL, AddressCommitKind)
+    /// As `validated`, for a path the file system spells differently: another case, Unicode form or a symlink.
+    case resolved(Generation, requested: URL, canonical: URL, AddressCommitKind)
 }
 
 /// F-015/F-016 effects are executed by adapters; the reducer performs no filesystem operations.
@@ -59,6 +61,7 @@ public enum AddressEditorEffect: Equatable, Sendable {
     case validate(URL, Generation)
     case navigate(URL)
     case openFile(URL)
+    case connect(URL)
     case cancelled
     case invalidPathFeedback
 }

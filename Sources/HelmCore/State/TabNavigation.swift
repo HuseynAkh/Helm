@@ -87,7 +87,7 @@ extension TabReducer {
             }
             state.location = pending.target; state.pendingNavigation = nil
             state.restorationIDs = pending.restoredSelection; state.selection = pending.restoredSelection
-            state.selectionSource = .history; state.expandedIDs = []; state.anchorID = nil
+            state.selectionSource = .history; state.expandedIDs = []; state.childListings = [:]; state.anchorID = nil
             state.inlineRenameID = nil; state.deferredSnapshot = nil
             if let url = pending.target.mutationTarget {
                 state.lastDirectory = url; state.addressBar.currentDirectory = url
@@ -104,7 +104,21 @@ extension TabReducer {
         if finished {
             state.isLoading = false; state.restorationIDs = nil
             replayMonitor(&state, effects: &effects)
+            reloadExpandedChildren(state, effects: &effects)
         }
+    }
+    /// A root listing can't see inside expanded folders, so each refresh also re-reads them (FB2-10).
+    static func reloadExpandedChildren(_ state: TabState, effects: inout [TabEffect]) {
+        for id in state.expandedIDs.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let entry = state.snapshot.entry(id) else { continue }
+            effects.append(.loadChildren(entry.url, id, state.loadGeneration, options(state, useCache: false)))
+        }
+    }
+    static func attachingChildren(to snapshot: PresentationSnapshot, state: TabState) -> PresentationSnapshot {
+        let roots = Array(snapshot.sortedEntries.prefix(snapshot.rootCount))
+        return SnapshotBuilder.build(location: snapshot.location, entries: roots, sort: snapshot.sort, phase: snapshot.phase,
+                                     rankByID: snapshot.rankByID,
+                                     children: state.childListings.filter { state.expandedIDs.contains($0.key) })
     }
     static func replayMonitor(_ state: inout TabState, effects: inout [TabEffect]) {
         guard state.monitorDirty || state.monitorNeedsValidation,
@@ -141,7 +155,9 @@ extension TabReducer {
         } else if state.inlineRenameID != nil { state.deferredSnapshot = snapshot }
         else { present(snapshot, state: &state) }
     }
-    static func present(_ snapshot: PresentationSnapshot, state: inout TabState) {
+    static func present(_ incoming: PresentationSnapshot, state: inout TabState) {
+        let snapshot = state.search == nil && !state.childListings.isEmpty && incoming.children.isEmpty
+            ? attachingChildren(to: incoming, state: state) : incoming
         state.snapshotCounter = state.snapshotCounter &+ 1
         state.snapshot = snapshot.stamped(Generation(rawValue: state.snapshotCounter), source: state.selectionSource)
         state.selection = visibleSelection(state.restorationIDs ?? state.selection, snapshot: snapshot, expanded: state.expandedIDs)

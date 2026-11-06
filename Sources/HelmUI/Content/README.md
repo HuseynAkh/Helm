@@ -39,7 +39,7 @@ No network access, commits, pushes or external actions were performed.
   points using its scroll offset and use the same content rectangle with Core's
   `indices(intersecting:)`/selection APIs. Do not attach it in viewport coordinates.
 - `DropHighlightOverlay` uses the proposal's stable row/background target; rejected
-  proposals never highlight. `DragBadgeView` consumes `DropProposal.feedback` and
+  proposals never highlight. `DragBadgeView` consumes `FileDropProposal.feedback` and
   the full source count. These leaves never accept a drop or perform operations.
 
 ## Deviations and open macOS checks

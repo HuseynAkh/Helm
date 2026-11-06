@@ -5,23 +5,23 @@ import Foundation
 public enum DropPlanner {
     public static func proposal(sources: [DraggedItem], destination: DropDestination,
                                 modifiers: DropModifiers = [],
-                                allowedOperations: Set<DropOperation> = [.copy, .move, .moveToTrash]) -> DropProposal {
+                                allowedOperations: Set<FileDropOperation> = [.copy, .move, .moveToTrash]) -> FileDropProposal {
         proposal(validation: DropSourceValidation(sources: sources), destination: destination,
                  modifiers: modifiers, allowedOperations: allowedOperations)
     }
 
     static func proposal(validation: DropSourceValidation, destination: DropDestination,
-                         modifiers: DropModifiers, allowedOperations: Set<DropOperation>) -> DropProposal {
+                         modifiers: DropModifiers, allowedOperations: Set<FileDropOperation>) -> FileDropProposal {
         let sources = validation.sources
-        func reject(_ reason: DropRejection) -> DropProposal {
-            DropProposal(sources: sources, destination: destination, result: .failure(reason))
+        func reject(_ reason: DropRejection) -> FileDropProposal {
+            FileDropProposal(sources: sources, destination: destination, result: .failure(reason))
         }
         if let rejection = validation.rejection { return reject(rejection) }
         guard !destination.isSearchResults, destination.location != .recent else { return reject(.virtualDestination) }
         guard destination.isWritable else { return reject(.readOnlyDestination) }
         let paths = validation.paths
         if validation.overlaps { return reject(.overlappingSources) }
-        let operation: DropOperation
+        let operation: FileDropOperation
         switch destination.location {
         case .recent: return reject(.virtualDestination)
         case .trash:
@@ -51,7 +51,7 @@ public enum DropPlanner {
             }) { return reject(.sameParentNoOp) }
         }
         guard allowedOperations.contains(operation) else { return reject(.unsupportedOperation) }
-        return DropProposal(sources: sources, destination: destination, result: .success(operation))
+        return FileDropProposal(sources: sources, destination: destination, result: .success(operation))
     }
     // Internal comparison seam makes the preflight work bound testable without a clock.
     static func hasOverlappingPaths(_ paths: [[String]],

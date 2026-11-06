@@ -6,7 +6,7 @@ public enum Location: Hashable, Sendable, Codable {
     // Normalize navigation spelling only; ItemID identity policy is independent.
     var canonicalNavigationLocation: Location {
         guard case .directory(let url) = self else { return self }
-        return .directory(URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true))
+        return .directory(URL(fileURLWithPath: PathSpelling.standardPath(url), isDirectory: true))
     }
     public var mutationTarget: URL? {
         if case .directory(let url) = self { return url }

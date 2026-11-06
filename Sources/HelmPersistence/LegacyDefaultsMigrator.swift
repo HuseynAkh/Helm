@@ -24,8 +24,15 @@ import HelmCore
     }
 }
 
+/// A legacy key that can't be read. The others have migrated; this one stays untouched and is retried next launch.
+public struct LegacyMigrationIncomplete: Error, Equatable {
+    public let keys: [String]
+    public init(keys: [String]) { self.keys = keys }
+}
+
 /// Once-only, idempotent migration leaves every legacy key untouched (F-028–F-030, B-029).
-/// Decode all sources first; failed writes leave the flag unset and can be safely retried.
+/// Each key migrates on its own, so one damaged key can't cost the other collections (FB2-9).
+/// Anything left unread or unwritten leaves the flag unset and can be safely retried.
 @MainActor public final class LegacyDefaultsMigrator {
     public static let doneKey: String = "helm.migration.v1.done"
     public let changes: Broadcast<Bool> = Broadcast()
@@ -54,16 +61,19 @@ import HelmCore
         var starURLs: [URL] = []
         var bookmarkURLs: [URL] = []
         var recents: [RecentRecord] = []
+        var malformed: [String] = []
+        func read<Value: Decodable>(_ key: String, domain: String?, as type: Value.Type) -> Value? {
+            guard let data = reader.data(forKey: key, domain: domain) else { return nil }
+            do { return try JSONDecoder().decode(type, from: data) }
+            catch {
+                if !malformed.contains(key) { malformed.append(key) }
+                return nil
+            }
+        }
         for domain: String? in [nil, bundleDomain, "Helm"] {
-            if let data = reader.data(forKey: "com.helm.starredFiles", domain: domain) {
-                starURLs += try JSONDecoder().decode([URL].self, from: data)
-            }
-            if let data = reader.data(forKey: "helm.bookmarks", domain: domain) {
-                bookmarkURLs += try JSONDecoder().decode([URL].self, from: data)
-            }
-            if let data = reader.data(forKey: "helm.recentAccessRecords", domain: domain) {
-                recents += try JSONDecoder().decode([RecentRecord].self, from: data)
-            }
+            starURLs += read("com.helm.starredFiles", domain: domain, as: [URL].self) ?? []
+            bookmarkURLs += read("helm.bookmarks", domain: domain, as: [URL].self) ?? []
+            recents += read("helm.recentAccessRecords", domain: domain, as: [RecentRecord].self) ?? []
         }
         let stars = JSONFileStore<[StarRecord]>(url: directory.appendingPathComponent("stars.json"), empty: [])
         let bookmarks = JSONFileStore<[BookmarkRecord]>(url: directory.appendingPathComponent("bookmarks.json"), empty: [])
@@ -98,5 +108,6 @@ import HelmCore
             let value = reader.storedSetting(for: key, domain: sourceDomain)
             if let value { destination.set(SettingsStore.object(SettingsSchema.validated(value, for: key)), forKey: key.rawValue) }
         }
+        if !malformed.isEmpty { throw LegacyMigrationIncomplete(keys: malformed) }
     }
 }

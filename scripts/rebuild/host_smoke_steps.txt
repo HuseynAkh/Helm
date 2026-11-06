@@ -1,0 +1,442 @@
+# Launch
+windows 1
+location @FIX@/home
+has Documents
+lacks .Trash
+# Navigation and history
+go @FIX@/home/Documents
+location @FIX@/home/Documents
+lists link-to-reports,Reports,Résumés,alpha.md,@NFC@,notes.txt
+cmd up
+location @FIX@/home
+cmd back
+location @FIX@/home/Documents
+cmd forward
+location @FIX@/home
+cmd back
+# Hidden files
+lacks .secret
+cmd hidden
+has .secret
+cmd hidden
+lacks .secret
+# Typed paths: case-insensitive, Unicode either spelling, ~, file URLs, parent, files reveal
+type ~/documents/rep
+typed-rows Reports
+return
+location @FIX@/home/Documents/Reports
+type @FILEURL@
+return
+location @FIX@/home/Documents
+type ~/Documents/@NFC@
+return
+location @FIX@/home/Documents
+selected @NFC@
+type ~/Documents/@NFD@
+return
+selected @NFC@
+type ~/DOCUMENTS/NOTES.TXT
+return
+selected notes.txt
+type ..
+return
+location @FIX@/home
+type /no/such/place
+return
+location @FIX@/home
+cmd location
+go @FIX@/home/Documents
+# Symlinked folder lands on the real folder
+select link-to-reports
+cmd open
+location @FIX@/home/Documents/Reports
+cmd back
+location @FIX@/home/Documents
+# View modes
+view list
+screenshot @SHOTS@/full-list.png
+view grid
+wait 0.4
+screenshot @SHOTS@/full-grid.png
+# Copy: metadata, xattrs and collision-free destination
+select notes.txt
+cmd copy
+go @FIX@/home/Documents/Reports
+cmd paste
+wait 0.5
+has notes.txt
+exists @FIX@/home/Documents/Reports/notes.txt
+contents @FIX@/home/Documents/Reports/notes.txt=hello
+same-mtime @FIX@/home/Documents/notes.txt=@FIX@/home/Documents/Reports/notes.txt
+has-xattr @FIX@/home/Documents/Reports/notes.txt=com.example.keep
+selected notes.txt
+undo-title Copy
+cmd undo
+wait 0.5
+lacks notes.txt
+missing @FIX@/home/Documents/Reports/notes.txt
+exists @FIX@/home/.Trash/notes.txt
+cmd redo
+wait 0.5
+has notes.txt
+exists @FIX@/home/Documents/Reports/notes.txt
+cmd undo
+wait 0.5
+# Cut and paste moves, and undo puts it back
+go @FIX@/home/Documents
+select alpha.md
+cmd cut
+go @FIX@/home/Documents/Reports
+cmd paste
+wait 0.5
+has alpha.md
+missing @FIX@/home/Documents/alpha.md
+exists @FIX@/home/Documents/Reports/alpha.md
+cmd undo
+wait 0.5
+exists @FIX@/home/Documents/alpha.md
+missing @FIX@/home/Documents/Reports/alpha.md
+# A name that already exists: keep both, no overwrite
+setting askOnConflict false
+go @FIX@/home/Documents
+select notes.txt
+cmd copy
+cmd paste
+wait 0.5
+has notes 2.txt
+contents @FIX@/home/Documents/notes 2.txt=hello
+contents @FIX@/home/Documents/notes.txt=hello
+cmd undo
+wait 0.5
+lacks notes 2.txt
+# Duplicate
+select alpha.md
+cmd duplicate
+wait 0.5
+has alpha 2.md
+selected alpha 2.md
+cmd undo
+wait 0.5
+# Rename, including undo
+select alpha.md
+rename beta.md
+has beta.md
+lacks alpha.md
+selected beta.md
+exists @FIX@/home/Documents/beta.md
+undo-title Rename
+cmd undo
+wait 0.5
+has alpha.md
+lacks beta.md
+# Case-only rename
+select alpha.md
+rename ALPHA.md
+has ALPHA.md
+lacks alpha.md
+cmd undo
+wait 0.5
+has alpha.md
+# Unicode name rename and collision across spelling
+select alpha.md
+rename @NFD@
+exists @FIX@/home/Documents/alpha.md
+# New folder, undo
+cmd newFolder
+wait 0.6
+has untitled folder
+exists @FIX@/home/Documents/untitled folder
+commit-rename
+cmd undo
+wait 0.5
+lacks untitled folder
+# Folder copy keeps its tree and its link
+select Reports
+cmd copy
+go @FIX@/home/Downloads
+cmd paste
+wait 0.6
+has Reports
+exists @FIX@/home/Downloads/Reports/2026/q2.txt
+go @FIX@/home/Documents
+select link-to-reports
+cmd copy
+go @FIX@/home/Downloads
+cmd paste
+wait 0.6
+is-link @FIX@/home/Downloads/link-to-reports
+cmd undo
+wait 0.4
+cmd undo
+wait 0.4
+go @FIX@/home/Documents
+# Move a folder into itself is refused, with nothing changed
+# Trash (fixture Trash only), selection moves on, undo, put back
+select notes.txt
+cmd trash
+wait 0.6
+lacks notes.txt
+missing @FIX@/home/Documents/notes.txt
+selected @NFC@
+cmd undo
+wait 0.6
+has notes.txt
+exists @FIX@/home/Documents/notes.txt
+contents @FIX@/home/Documents/notes.txt=hello
+# Trashing a folder works and undoes
+select Reports
+cmd trash
+wait 0.6
+lacks Reports
+missing @FIX@/home/Documents/Reports
+cmd undo
+wait 0.6
+has Reports
+exists @FIX@/home/Documents/Reports/q1.txt
+# Trash view and put back
+watch-external @FIX@/home/Documents/trash-me.txt
+wait 0.8
+has trash-me.txt
+select trash-me.txt
+cmd trash
+wait 0.6
+window-trash
+# Expand in the list
+view list
+expand Reports
+child Reports/q1.txt/2026
+expand 2026
+child q2.txt
+view grid
+# External changes show up by themselves
+watch-external @FIX@/home/Documents/appeared.txt
+wait 1.5
+has appeared.txt
+# Tabs
+cmd newTab
+wait 0.4
+tabs 2
+go @FIX@/home/Downloads
+location @FIX@/home/Downloads
+cmd nextTab
+wait 0.3
+location @FIX@/home/Documents
+cmd nextTab
+wait 0.3
+location @FIX@/home/Downloads
+main-thread-clean
+cmd closeTab
+wait 0.3
+tabs 1
+location @FIX@/home/Documents
+main-thread-clean
+cmd reopenClosedTab
+wait 0.4
+tabs 2
+location @FIX@/home/Downloads
+cmd closeTab
+wait 0.3
+# Stars
+select alpha.md
+cmd star
+wait 0.2
+starred alpha.md
+cmd star
+wait 0.2
+unstarred alpha.md
+# Search
+search q2
+wait 0.6
+has q2.txt
+screenshot @SHOTS@/full-search.png
+search
+wait 0.4
+has alpha.md
+# Recent
+recent
+wait 0.4
+location recent
+go @FIX@/home/Documents
+# Windows
+cmd newWindow
+wait 0.5
+windows 2
+close-window
+windows 1
+main-thread-clean
+# Inline rename through the real field, in both views
+go @FIX@/home/Documents
+view list
+select alpha.md
+inline-rename beta.md
+has beta.md
+exists @FIX@/home/Documents/beta.md
+selected beta.md
+select beta.md
+inline-cancel ignored.md
+has beta.md
+lacks ignored.md
+view grid
+wait 0.3
+select beta.md
+inline-rename alpha.md
+has alpha.md
+# Menus: enablement and named undo
+select alpha.md
+menu trash enabled
+menu rename enabled
+menu properties enabled
+menu undo enabled Undo Rename
+select
+menu trash disabled
+menu properties enabled
+menu back enabled
+menu columns disabled
+# Sheets open and close
+select alpha.md
+cmd properties
+sheet
+dismiss-sheet
+select alpha.md,notes.txt
+cmd rename
+wait 0.4
+sheet
+screenshot @SHOTS@/batch-rename.png
+dismiss-sheet
+# Quick Look on a fixture file
+select notes.txt
+quicklook open
+# Settings window
+settings-window
+# Conflicts through the real dialog: replace, skip, stop
+setting askOnConflict true
+go @FIX@/home/Downloads
+watch-external @FIX@/home/Downloads/clash.txt
+wait 0.8
+go @FIX@/home/Documents
+watch-external @FIX@/home/Documents/clash.txt
+wait 0.8
+select clash.txt
+cmd copy
+go @FIX@/home/Downloads
+conflict stop
+cmd paste
+wait 0.8
+lists clash.txt
+conflict skip
+cmd paste
+wait 0.8
+lists clash.txt
+conflict keepBoth
+cmd paste
+wait 0.8
+lists clash 2.txt,clash.txt
+cmd undo
+wait 0.5
+conflict replace
+cmd paste
+wait 0.8
+lists clash.txt
+cmd undo
+wait 0.8
+lists clash.txt
+setting askOnConflict false
+# Drag and drop moves within a volume
+go @FIX@/home/Documents
+watch-external @FIX@/home/Documents/dragged.txt
+wait 0.8
+drop dragged.txt @FIX@/home/Downloads
+missing @FIX@/home/Documents/dragged.txt
+exists @FIX@/home/Downloads/dragged.txt
+cmd undo
+wait 0.5
+exists @FIX@/home/Documents/dragged.txt
+# Move Items Here
+select dragged.txt
+cmd copy
+go @FIX@/home/Downloads
+cmd moveItemsHere
+wait 0.6
+exists @FIX@/home/Downloads/dragged.txt
+missing @FIX@/home/Documents/dragged.txt
+# A folder into itself is refused
+go @FIX@/home/Documents
+select Reports
+drop Reports @FIX@/home/Documents/Reports/2026
+exists @FIX@/home/Documents/Reports/q1.txt
+# Sidebar bookmarks
+bookmark @FIX@/home/Documents/Reports
+bookmarked Reports
+# Per-folder view memory
+go @FIX@/home/Downloads
+view list
+sort size
+go @FIX@/home/Desktop
+view grid
+go @FIX@/home/Downloads
+view-is list
+sorted-by size
+go @FIX@/home/Desktop
+view-is grid
+# Aliases and links
+go @FIX@/home/Documents
+select notes.txt
+cmd makeSymbolicLink
+wait 0.5
+is-link @FIX@/home/Documents/notes.txt link
+# Package contents, Clear Recent, Delete Immediately and Empty Trash act only on the fixture
+recent
+cmd clearRecent
+wait 0.4
+go @FIX@/home/Documents
+select notes.txt link
+cmd permanentDelete
+wait 0.5
+missing @FIX@/home/Documents/notes.txt link
+window-empty-trash
+main-thread-clean
+# Menu rows that had no check of their own
+go @FIX@/home/Documents
+select alpha.md
+cmd duplicate
+wait 0.5
+has alpha 2.md
+cmd undo
+wait 0.5
+select alpha.md
+cmd makeAlias
+wait 0.5
+exists @FIX@/home/Documents/alpha.md alias
+select alpha.md
+cmd copyAsPathname
+select Reports
+cmd openInNewTab
+wait 0.5
+tabs 2
+location @FIX@/home/Documents/Reports
+cmd closeTab
+wait 0.3
+select alpha.md alias
+cmd trash
+wait 0.5
+watch-external @FIX@/home/Documents/into-folder.txt
+wait 0.8
+select into-folder.txt
+cmd newFolderWithSelection
+wait 1.0
+commit-rename
+wait 0.3
+exists @FIX@/home/Documents/New Folder With Items/into-folder.txt
+cmd recents
+wait 0.3
+location recent
+go @FIX@/home/Documents
+# Quit saves the session, and the second run below restores it
+go @FIX@/home/Downloads
+cmd newTab
+wait 0.3
+go @FIX@/home/Documents
+view list
+wait 0.3
+star-now alpha.md
+quit

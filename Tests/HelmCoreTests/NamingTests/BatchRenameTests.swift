@@ -41,7 +41,12 @@ final class BatchRenameTests: XCTestCase {
 
     func testCaseOnlyAndNormalizationOnlyAndUnchanged() throws {
         XCTAssertTrue(BatchRenamePlanner.plan(renames: try [pair("a", "A")], existingNames: [directory: ["a"]]).canExecute)
+        #if canImport(Darwin)
+        // macOS treats the two spellings as one name, so this is not a change (Unicode ruling).
+        XCTAssertFalse(BatchRenamePlanner.plan(renames: try [pair("é", "e\u{301}")]).hasChanges)
+        #else
         XCTAssertTrue(BatchRenamePlanner.plan(renames: try [pair("é", "e\u{301}")]).canExecute)
+        #endif
         let unchanged = BatchRenamePlanner.plan(renames: try [pair("a", "a")])
         XCTAssertFalse(unchanged.hasChanges)
         XCTAssertFalse(unchanged.canExecute)

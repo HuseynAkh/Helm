@@ -10,7 +10,8 @@ public struct PathEntry: Equatable, Sendable {
     /// Completion text is not trimmed: spaces can belong to filenames. Commit trims separately.
     public init(text: String, currentDirectory: URL, home: URL) {
         let expanded: String
-        if text == "~" { expanded = home.path }
+        if let path = TypedLocation.localPath(fromFileURL: text) { expanded = path }
+        else if text == "~" { expanded = home.path }
         else if text.hasPrefix("~/") { expanded = home.path + String(text.dropFirst()) }
         else { expanded = text }
         let absolute: String = expanded.hasPrefix("/") ? expanded : (currentDirectory.path as NSString).appendingPathComponent(expanded)

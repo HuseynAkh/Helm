@@ -43,7 +43,7 @@ final class AK1RegressionTests: XCTestCase {
         let target = DropDestination(location: .directory(entry("/target").url))
         for modifiers: DropModifiers in [.control, [.option, .command]] {
             XCTAssertEqual(DropPlanner.proposal(sources: sources, destination: target, modifiers: modifiers).rejection, .unsupportedOperation)
-            XCTAssertEqual(DropSession(sources: sources).proposal(destination: target, modifiers: modifiers).rejection, .unsupportedOperation)
+            XCTAssertEqual(FileDropSession(sources: sources).proposal(destination: target, modifiers: modifiers).rejection, .unsupportedOperation)
         }
     }
     func testSpringAcceptsEquivalentLocalDestinationSpellings() throws {
@@ -69,7 +69,7 @@ final class AK1RegressionTests: XCTestCase {
         XCTAssertFalse(registry.sessions[0].edits.isDirty)
     }
     func testSpringHonorsRequiredSourceMask() {
-        for mask: Set<DropOperation> in [[], [.copy]] {
+        for mask: Set<FileDropOperation> in [[], [.copy]] {
             var state = spring()
             let target = entry("/target", kind: .directory)
             XCTAssertNil(state.acceptDrop(target: target, destination: DropDestination(location: .directory(target.url)),
@@ -152,7 +152,7 @@ final class AK1RegressionTests: XCTestCase {
         let value = entry("/trash/a")
         let trashed = DraggedItem(entry: value, isInTrash: true)
         XCTAssertTrue(trashed.isInTrash)
-        var session = DropSession(sources: [DraggedItem(entry: value)])
+        var session = FileDropSession(sources: [DraggedItem(entry: value)])
         XCTAssertEqual(session.proposal(destination: DropDestination(location: .trash)).operation, .moveToTrash)
         session.replaceSources([trashed])
         XCTAssertEqual(session.proposal(destination: DropDestination(location: .trash)).rejection, .sameParentNoOp)

@@ -15,10 +15,22 @@ public struct LiveFileSystem: FileSystem {
         try MetadataReader().read($0, resolveSymlinkTargets: $1, volumeIdentifier: $2)
     }
     private let diagnostic: @Sendable (URL, FileSystemError) -> Void
+    private let trash: @Sendable (URL) throws -> URL?
+    /// `trash` is injectable so tests never touch the user's real Trash.
     public init(executor: IOExecutor = IOExecutor(), volumeRoots: [URL] = [],
-                diagnostic: @escaping @Sendable (URL, FileSystemError) -> Void = { _, _ in }) {
+                diagnostic: @escaping @Sendable (URL, FileSystemError) -> Void = { _, _ in },
+                trash: @escaping @Sendable (URL) throws -> URL? = LiveFileSystem.systemTrash) {
         self.executor = executor; self.volumeRoots = volumeRoots
-        self.diagnostic = diagnostic
+        self.diagnostic = diagnostic; self.trash = trash
+    }
+    public static let systemTrash: @Sendable (URL) throws -> URL? = { url in
+        #if os(macOS)
+        var result: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+        return result as URL?
+        #else
+        throw FileSystemError.unsupported
+        #endif
     }
     init(readMetadata: @escaping @Sendable (URL, Bool, String) throws -> FileEntry) {
         self.init()
@@ -88,12 +100,56 @@ public struct LiveFileSystem: FileSystem {
     public func makeMonitor(for directory: URL) -> any DirectoryMonitor {
         FallbackMonitor(directory: directory, fileSystem: self)
     }
-    /// Native metadata supplies no-follow inode evidence; POSIX has no portable atomic compare/rename.
-    /// Conditional mutations inherit refusal, including on macOS; never emulate them with stat + rename.
+    /// Native metadata supplies no-follow inode evidence for the bounded-race contract (O1-1).
     public func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition {
         let value = try await entry(at: source)
         guard let identity = value.objectIdentity else { throw ConditionalMutationError.unsupported }
         return FileMutationPrecondition(identity: identity, changeToken: value.changeToken, kind: value.kind)
+    }
+    /// Compare, admit exclusively, mutate (O1-1 option A). macOS has no atomic compare-identity-and-rename,
+    /// so a small window remains between the comparison and the mutation, disclosed in OWNER_RULINGS.md.
+    /// Linux keeps the refusal: nothing ships there and its primitives were never reviewed for this.
+    public func mutate(_ mutation: ConditionalFileMutation, source: URL,
+                       requiring precondition: FileMutationPrecondition) async throws -> URL? {
+        #if os(macOS)
+        if Task.isCancelled { throw ConditionalMutationError.cancelledBeforeMutation }
+        let volumes: [String]
+        switch mutation {
+        case .copy(let destination), .move(let destination): volumes = [queueKey(source), queueKey(destination)]
+        case .trash: volumes = [queueKey(source)]
+        }
+        let read = readMetadata, trash = self.trash
+        let cancellation = EnumerationCancellation()
+        do {
+            return try await withTaskCancellationHandler {
+                try await executor.runWithProgress(volumes: volumes) { progress -> URL? in
+                    let current = try read(source, true, "")
+                    guard current.objectIdentity == precondition.identity, current.kind == precondition.kind,
+                          current.changeToken == precondition.changeToken else {
+                        throw ConditionalMutationError.sourceChanged
+                    }
+                    switch mutation {
+                    case .copy(let destination):
+                        // copyfile calls back only while it runs, so the closure never outlives this call.
+                        try withoutActuallyEscaping(progress) { progress in
+                            try NativeMutation.copy(from: source, to: destination, cancellation: cancellation, progress: progress)
+                        }
+                        return destination
+                    case .move(let destination):
+                        try NativeMutation.publish(source, as: destination)
+                        return destination
+                    case .trash:
+                        do { return try trash(source) } catch { throw FileSystemError.mapping(error) }
+                    }
+                }
+            } onCancel: { cancellation.cancel() }
+        } catch is CancellationError {
+            // IOExecutor only throws this before the body is admitted, so nothing happened.
+            throw ConditionalMutationError.cancelledBeforeMutation
+        }
+        #else
+        throw ConditionalMutationError.unsupported
+        #endif
     }
     public func entry(at url: URL) async throws -> FileEntry {
         try await executor.runRead(volume: queueKey(url)) {
@@ -139,10 +195,9 @@ public struct LiveFileSystem: FileSystem {
     }
     public func trashItem(at url: URL) async throws -> URL? {
         #if os(macOS)
+        let trash = self.trash
         return try await executor.run(volume: queueKey(url)) {
-            var result: NSURL?
-            do { try FileManager.default.trashItem(at: url, resultingItemURL: &result); return result as URL? }
-            catch { throw FileSystemError.mapping(error) }
+            do { return try trash(url) } catch { throw FileSystemError.mapping(error) }
         }
         #else
         throw FileSystemError.unsupported

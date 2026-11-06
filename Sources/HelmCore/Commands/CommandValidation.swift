@@ -56,7 +56,7 @@ public enum CommandValidation {
         case .trash, .permanentDelete, .duplicate: return .mutationSelection
         case .newFolder, .newFile, .newTextFile, .newFromTemplate: return .destination
         case .cut, .copy: return .textOrSelection
-        case .paste: return .clipboard
+        case .paste, .moveItemsHere: return .clipboard
         case .selectAll: return .selectAll
         case .rename: return .rename
         case .quickLook: return .quickLook
@@ -70,12 +70,13 @@ public enum CommandValidation {
         case .emptyTrash: return .trashLocation
         case .clearRecent: return .recentLocation
         case .directoryProperties, .removeBookmark, .copyPath: return .directory
-        case .openInNewTab, .openInNewWindow, .closeWindow, .reopenClosedTab, .nextTab,
-             .previousTab, .makeAlias, .makeSymbolicLink, .eject, .reveal, .showOriginal,
-             .connectToServer, .newFolderWithSelection, .addToSidebar, .copyAsPathname,
-             .moveItemsHere, .printSelection, .columns, .gallery, .previewPane, .viewOptions,
-             .desktop, .documents, .downloads, .applications, .utilities, .computer,
-             .network, .compress, .decompress, .tags: return .planned
+        case .openInNewTab, .openInNewWindow, .reveal, .showOriginal, .copyAsPathname, .addToSidebar: return .selection
+        case .closeWindow, .reopenClosedTab, .nextTab, .previousTab, .desktop, .documents, .downloads, .recents,
+             .applications, .utilities, .connectToServer: return .window
+        case .makeAlias, .makeSymbolicLink, .newFolderWithSelection: return .mutationSelection
+        case .eject: return .application
+        case .printSelection, .columns, .gallery, .previewPane, .viewOptions,
+             .computer, .network, .compress, .decompress, .tags: return .planned
         }
     }
 

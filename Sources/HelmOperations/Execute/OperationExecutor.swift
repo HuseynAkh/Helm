@@ -35,9 +35,9 @@ public actor OperationExecutor {
         guard await admission(id, plan) else { return await refuse(plan, id: id, error: .invalidPlan) }
         var outcomes: [ItemOutcome] = []
         var expectedTokens: [String: ChangeToken] = [:]
-        for (url, value) in plan.expectedTokens { expectedTokens[url.path] = value }
+        for (url, value) in plan.expectedTokens { expectedTokens[url.evidenceKey] = value }
         var expectedKinds: [String: FileEntryKind] = [:]
-        for (url, value) in plan.expectedKinds { expectedKinds[url.path] = value }
+        for (url, value) in plan.expectedKinds { expectedKinds[url.evidenceKey] = value }
         var forward = await ForwardEvidence.capture(plan, fileSystem: fileSystem)
         let cache = ExecutionCache(fileSystem: fileSystem, context: plan.context)
         var failure: OperationError? = plan.isExecutable ? nil : .invalidPlan
@@ -45,11 +45,11 @@ public actor OperationExecutor {
             for (url, token) in plan.expectedTokens {
                 do {
                     let current = try await fileSystem.entry(at: url)
-                    try validateUndoKind(current, expectedKind: expectedKinds[url.path], policy: plan.undoVerification)
-                    if current.changeToken != token { failure = .sourceChanged(url); break }
-                    if plan.undoVerification != .none {
+                    try validateUndoKind(current, expectedKind: expectedKinds[url.evidenceKey], policy: plan.undoVerification)
+                    if plan.undoVerification != .sameObject, current.changeToken != token { failure = .sourceChanged(url); break }
+                    if plan.undoVerification == .leafOnly {
                         let evidence = try forward.precondition(for: url)
-                        guard evidence.changeToken == token, evidence.kind == expectedKinds[url.path] else {
+                        guard evidence.changeToken == token, evidence.kind == expectedKinds[url.evidenceKey] else {
                             throw OperationError.verificationUnavailable
                         }
                     }
@@ -80,13 +80,13 @@ public actor OperationExecutor {
                 forward.completed(step, destination: destination, entry: metadata)
                 await cache.completed(step, destination: destination)
                 let token = metadata?.changeToken
-                if let source = step.source, let expected = expectedTokens[source.path],
+                if let source = step.source, let expected = expectedTokens[source.evidenceKey],
                    step.kind == .move || step.kind == .trash {
-                    let kind = expectedKinds.removeValue(forKey: source.path)
-                    expectedTokens[source.path] = nil
+                    let kind = expectedKinds.removeValue(forKey: source.evidenceKey)
+                    expectedTokens[source.evidenceKey] = nil
                     if let destination {
-                        expectedTokens[destination.path] = token ?? expected
-                        expectedKinds[destination.path] = metadata?.kind ?? kind
+                        expectedTokens[destination.evidenceKey] = token ?? expected
+                        expectedKinds[destination.evidenceKey] = metadata?.kind ?? kind
                     }
                 }
                 let outcome = ItemOutcome(step: step, destination: destination, result: .success(token), destinationKind: metadata?.kind,
@@ -168,7 +168,7 @@ public actor OperationExecutor {
                 try await verify(source: source, destination: destination, cache: cache)
                 try await forward.validate(destination, fileSystem: fileSystem)
             }
-            if let token = expectedTokens[source.path] {
+            if undoVerification != .sameObject, let token = expectedTokens[source.evidenceKey] {
                 let current = try await fileSystem.entry(at: source)
                 guard current.changeToken == token else { throw OperationError.sourceChanged(source) }
                 // Root tokens cannot authorize retirement of potentially edited descendants.
@@ -179,7 +179,7 @@ public actor OperationExecutor {
             }
             try await validateExpectedSource(step.source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             try await forward.validate(source, fileSystem: fileSystem)
-            let evidence = try forward.precondition(for: source)
+            let evidence = try await forward.precondition(for: source, fileSystem: fileSystem)
             try Task.checkCancellation()
             let trashed: URL?
             do { trashed = try await fileSystem.mutate(.trash, source: source, requiring: evidence) }
@@ -235,15 +235,17 @@ public actor OperationExecutor {
     private func validateExpectedSource(_ source: URL?, tokens: [String: ChangeToken],
                                         kinds: [String: FileEntryKind], policy: UndoVerificationPolicy) async throws {
         guard let source else { throw OperationError.invalidPlan }
-        guard let token = tokens[source.path] else {
-            if policy == .leafOnly { throw OperationError.verificationUnavailable }
+        guard let token = tokens[source.evidenceKey] else {
+            if policy != .none { throw OperationError.verificationUnavailable }
             return
         }
+        // Identity is checked by ForwardEvidence; contents may legitimately have changed.
+        if policy == .sameObject { return }
         let current: FileEntry
         do { current = try await fileSystem.entry(at: source) }
         catch is CancellationError { throw CancellationError() }
         catch { throw OperationError.sourceChanged(source) }
-        try validateUndoKind(current, expectedKind: kinds[source.path], policy: policy)
+        try validateUndoKind(current, expectedKind: kinds[source.evidenceKey], policy: policy)
         guard current.changeToken == token else { throw OperationError.sourceChanged(source) }
     }
     private func verify(source: URL, destination: URL, cache: ExecutionCache) async throws {
@@ -273,7 +275,7 @@ public actor OperationExecutor {
             guard sourceVolume == destinationVolume else { throw OperationError.invalidPlan }
             try await validateExpectedSource(source, tokens: expectedTokens, kinds: expectedKinds, policy: undoVerification)
             try await forward.validate(source, fileSystem: fileSystem)
-            let evidence = try forward.precondition(for: source)
+            let evidence = try await forward.precondition(for: source, fileSystem: fileSystem)
             try Task.checkCancellation()
             do { _ = try await fileSystem.mutate(.move(to: destination), source: source, requiring: evidence) }
             catch { throw StepExecutionFailure(destination: destination, underlying: error) }

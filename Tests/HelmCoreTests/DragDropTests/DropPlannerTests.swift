@@ -11,7 +11,7 @@ final class DropPlannerTests: XCTestCase {
         DropDestination(location: .directory(URL(fileURLWithPath: path)), volumeID: volume)
     }
     func testAllModifierCombinationsAndFeedback() {
-        let expected: [DropOperation] = [.move, .copy, .move, .alias, .alias, .alias, .alias, .alias]
+        let expected: [FileDropOperation] = [.move, .copy, .move, .alias, .alias, .alias, .alias, .alias]
         for raw in 0..<8 {
             let proposal = DropPlanner.proposal(sources: [item()], destination: destination(), modifiers: DropModifiers(rawValue: raw), allowedOperations: [.copy, .move, .alias, .moveToTrash])
             XCTAssertEqual(proposal.operation, expected[raw])
@@ -29,7 +29,7 @@ final class DropPlannerTests: XCTestCase {
         XCTAssertEqual(DropPlanner.proposal(sources: [item(volume: "B")], destination: destination(), modifiers: .command).operation, .move)
     }
     func testSourceMaskDoesNotSilentlyChangeForcedOperation() {
-        for operation in [DropOperation.copy, .move, .alias, .moveToTrash] {
+        for operation in [FileDropOperation.copy, .move, .alias, .moveToTrash] {
             let modifiers: DropModifiers = operation == .copy ? .option : operation == .alias ? .control : .command
             let target = operation == .moveToTrash ? DropDestination(location: .trash) : destination()
             let result = DropPlanner.proposal(sources: [item()], destination: target, modifiers: modifiers, allowedOperations: [])

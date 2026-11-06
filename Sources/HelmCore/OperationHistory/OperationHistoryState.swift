@@ -81,6 +81,11 @@ public enum OperationHistoryReducer {
                 state.redoEntries.append(entry)
             }
             if outcome.needsReconciliation { state.reconciliation = outcome }
+        case .beginRedoForward(let request):
+            guard let entry = state.redoEntries.last, admit(&state, request) else { return [] }
+            state.redoEntries.removeLast()
+            state.pending = .forward(request, name: entry.name)
+            state.lastOutcome = nil
         case .acknowledgeReconciliation:
             guard state.pending == nil, state.reconciliation != nil else { return [] }
             // Admission is blocked while latched, so only the top entry can be affected.

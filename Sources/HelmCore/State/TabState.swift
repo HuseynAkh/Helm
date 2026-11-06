@@ -23,6 +23,8 @@ public struct TabState: Sendable, Equatable {
     public var sort: ItemSort
     public var showHidden: Bool
     public var expandedIDs: Set<ItemID> = []
+    /// Children of expanded folders, re-attached whenever a new root listing arrives (FB2-10).
+    var childListings: [ItemID: [FileEntry]] = [:]
     public var search: SearchState?
     public var snapshot: PresentationSnapshot
     public var loadGeneration: Generation = Generation()

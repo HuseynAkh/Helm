@@ -39,9 +39,9 @@ public enum SpringNavigationEffect: Equatable, Sendable {
 public struct SpringDropRequest: Hashable, Sendable {
     public let id: UUID
     public let sessionID: UUID
-    public let proposal: DropProposal
+    public let proposal: FileDropProposal
     public let target: FileEntry
-    public init(id: UUID = UUID(), sessionID: UUID, proposal: DropProposal, target: FileEntry) {
+    public init(id: UUID = UUID(), sessionID: UUID, proposal: FileDropProposal, target: FileEntry) {
         self.id = id; self.sessionID = sessionID; self.proposal = proposal; self.target = target
     }
 }

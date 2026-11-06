@@ -94,20 +94,23 @@ final class AO3SafetyTests: XCTestCase {
         XCTAssertEqual(result.error, .invalidPlan)
     }
 
-    func testLiveUnsupportedMutationMapsWithoutChangingDisk() async throws {
+    func testLiveCopyAdmitsDestinationExclusively() async throws {
         let temp = try TempDirectory()
         // Canonical fixture only; it isolates mutation mapping from the ancestor walk (see OP1 FB1-11).
         let root = temp.url.resolvingSymlinksInPath()
         let source = root.appendingPathComponent("source"), destination = root.appendingPathComponent("copy")
         try Data([1, 2]).write(to: source)
         let fs = LiveFileSystem(), evidence = try await fs.mutationPrecondition(at: source)
-        do { _ = try await fs.mutate(.copy(to: destination), source: source, requiring: evidence); XCTFail("Must refuse") }
-        catch { XCTAssertEqual(error as? ConditionalMutationError, .unsupported) }
+        _ = try await fs.mutate(.copy(to: destination), source: source, requiring: evidence)
+        XCTAssertEqual(try Data(contentsOf: destination), Data([1, 2]))
+        try Data([7]).write(to: destination)
+        do { _ = try await fs.mutate(.copy(to: destination), source: source, requiring: evidence); XCTFail("Must not overwrite") }
+        catch { XCTAssertEqual(error as? FileSystemError, .collision(noMutation: true)) }
         let plan = OperationPlan(command: .recovery, steps: [PlannedStep(kind: .copy, source: source, destination: destination)])
         let result = await OperationExecutor(fileSystem: fs, origins: InMemoryTrashOrigins()).execute(plan)
-        XCTAssertEqual(result.error, .verificationUnavailable)
+        XCTAssertEqual(result.error, .conflict)
         XCTAssertEqual(try Data(contentsOf: source), Data([1, 2]))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertEqual(try Data(contentsOf: destination), Data([7]))
     }
 }
 

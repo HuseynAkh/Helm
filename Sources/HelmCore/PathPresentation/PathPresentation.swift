@@ -24,7 +24,7 @@ public struct PathPresentation: Equatable, Sendable {
             let parents = entries.map { Array($0.1.components.dropLast()) }
             var common = parents[0]
             for parent in parents.dropFirst() {
-                common = Array(zip(common, parent).prefix(while: { $0.0.utf8.elementsEqual($0.1.utf8) }).map { $0.0 })
+                common = Array(zip(common, parent).prefix(while: { PathSpelling.identity($0.0) == PathSpelling.identity($0.1) }).map { $0.0 })
             }
             segments = Self.ancestry(common, leafIsDirectory: true)
         } else if case .directory(let url) = location {

@@ -9,7 +9,7 @@ final class K29DropSessionTests: XCTestCase {
     }
     func testRepeatedTargetsAndModifiersReuseValidationAndMatchStatelessPlanner() {
         let sources = (0..<1000).map { source("/source/file\($0)") }
-        let session = DropSession(sources: sources)
+        let session = FileDropSession(sources: sources)
         for location in [Location.trash, .recent, .directory(URL(fileURLWithPath: "/target"))] {
             let target = DropDestination(location: location, volumeID: "v")
             for flags: DropModifiers in [[], .option, .command, .control] {
@@ -23,7 +23,7 @@ final class K29DropSessionTests: XCTestCase {
     func testSourceChangesRevalidateIncludingMetadataAndOrder() {
         let target = DropDestination(location: .directory(URL(fileURLWithPath: "/target")), volumeID: "v")
         let sources = [source("/a"), source("/b")]
-        var session = DropSession(sources: sources)
+        var session = FileDropSession(sources: sources)
         session.replaceSources(sources)
         XCTAssertEqual(session.validationCount, 1)
         session.replaceSources([source("/a", volume: "different"), source("/b")])
@@ -35,17 +35,17 @@ final class K29DropSessionTests: XCTestCase {
         XCTAssertEqual(session.validationCount, 4)
     }
     func testEndIsTerminalAndReleasesSourcePaths() {
-        var session = DropSession(sources: [source("/a")])
+        var session = FileDropSession(sources: [source("/a")])
         session.end(); session.end(); session.replaceSources([source("/new")])
         let result = session.proposal(destination: DropDestination(location: .trash))
         XCTAssertTrue(session.isEnded); XCTAssertTrue(result.sources.isEmpty)
         XCTAssertEqual(result.rejection, .emptySources)
-        XCTAssertNotEqual(session.id, DropSession(sources: []).id)
+        XCTAssertNotEqual(session.id, FileDropSession(sources: []).id)
     }
     func testCachedRejectionsAndTargetRestrictionsMatchStateless() {
         let invalid = DraggedItem(url: URL(fileURLWithPath: "/a"), id: ItemID(rawValue: "/wrong"))
         for sources in [[], [invalid], [source("/a"), source("/a")], [source("/a"), source("/ab")]] {
-            let session = DropSession(sources: sources)
+            let session = FileDropSession(sources: sources)
             for destination in [DropDestination(location: .recent),
                                 DropDestination(location: .directory(URL(fileURLWithPath: "/target")), isWritable: false),
                                 DropDestination(location: .trash)] {

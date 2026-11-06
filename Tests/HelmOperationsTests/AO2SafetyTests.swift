@@ -84,12 +84,14 @@ final class AO2OperationSafetyTests: XCTestCase {
             if kind == .createDirectory { try await fs.applyDirectoryMetadata(from: savedMetadata, to: output) }
             let changedRootToken = try await fs.entry(at: output).changeToken
             XCTAssertEqual(changedRootToken, rootToken)
-            let before = try await inventory(fs)
+            // Undo proceeds on the same object and never destroys the edit: it is back in place or in the Trash (O1-1).
             let undone = await executor.execute(inverse)
-            XCTAssertEqual(undone.error, .verificationUnavailable)
-            XCTAssertEqual(undone.succeededCount, 0)
-            let after = try await inventory(fs)
-            XCTAssertEqual(after, before)
+            XCTAssertNil(undone.error)
+            XCTAssertEqual(undone.succeededCount, 1)
+            let leafName = kind == .createDirectory ? "added" : "nested/leaf"
+            let home = kind == .move ? source : try XCTUnwrap(undone.outcomes.first?.destination)
+            let kept = try await fs.entry(at: home.appendingPathComponent(leafName))
+            XCTAssertEqual(kept.size, 2)
         }
     }
 

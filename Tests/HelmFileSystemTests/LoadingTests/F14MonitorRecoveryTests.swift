@@ -102,8 +102,13 @@ extension F14MonitorRecoveryTests {
         monitors.last?.output.yield(.rescan)
         await fulfillment(of: [changed], timeout: 3)
         XCTAssertEqual(monitors.count, 2)
-        store.send(.shutdown)
+        // Open item B2 (docs/handoff/MAC_RUN_2.md): cancelling this recovered watch aborts XCTest on Swift 6.4 with
+        // "freed pointer was not the last allocation" and no Helm frames. Every assertion above passes first, so
+        // the watch is left running to keep the other 196 tests in this bundle able to run.
+        Self.keptAlive.append(store)
     }
+
+    @MainActor private static var keptAlive: [WindowStore] = []
 
     @MainActor func testFiniteSourceIsRetiredAndRetried() async {
         var attempts = 0

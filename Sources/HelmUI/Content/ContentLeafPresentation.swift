@@ -41,7 +41,7 @@ public enum ContentLeafPresentation {
         let clipped: CGRect = normalized.intersection(bounds)
         return clipped.isNull || clipped.isEmpty ? nil : clipped
     }
-    public static func isHighlighted(_ target: DropHighlight, proposal: DropProposal?) -> Bool {
+    public static func isHighlighted(_ target: DropHighlight, proposal: FileDropProposal?) -> Bool {
         target != .none && proposal?.highlight == target
     }
 }

@@ -52,7 +52,7 @@ public struct MenuModel: Equatable, Sendable {
     ]
 
     /// New entries are explicit; existing entries keep their original positions relative to each other.
-    /// Planned parity placeholders remain disabled; reserved tab shortcuts are never installed.
+    /// Planned parity placeholders remain disabled. Tab keys are Finder's: Shift+Cmd+] and [, written as } and {.
     public static let menuBar: [MenuModel] = legacy.map { menu in
         var sections = menu.sections
         switch menu.title {
@@ -62,27 +62,27 @@ public struct MenuModel: Equatable, Sendable {
                 item("Open in New Tab", .openInNewTab, isNew: true), item("Open in New Window", .openInNewWindow, isNew: true),
                 item("Quick Look", .quickLook, " ", [], isNew: true)], at: 3)
             sections.insert([
-                item("Duplicate", .duplicate, isNew: true), item("Make Alias", .makeAlias, isNew: true),
+                item("Duplicate", .duplicate, isNew: true), item("Make Alias", .makeAlias, "a", [.command, .control], isNew: true),
                 item("Make Symbolic Link", .makeSymbolicLink, isNew: true), item("Show Original", .showOriginal, isNew: true),
                 item("Compress", .compress, isNew: true), item("Decompress", .decompress, isNew: true)], at: 4)
             sections.append([item("Put Back", .putBack, isNew: true), item("Delete Immediately...", .permanentDelete, "\u{8}", [.command, .option], isNew: true),
                 item("Empty Trash...", .emptyTrash, "\u{8}", [.command, .shift], isNew: true),
-                item("Eject", .eject, isNew: true), item("Share", .share, isNew: true), item("Tags...", .tags, isNew: true),
+                item("Eject", .eject, "e", isNew: true), item("Share", .share, isNew: true), item("Tags...", .tags, isNew: true),
                 item("Print...", .printSelection, isNew: true)])
-            sections.append([item("New Folder with Selection", .newFolderWithSelection, isNew: true), item("Close Window", .closeWindow, isNew: true)])
+            sections.append([item("New Folder with Selection", .newFolderWithSelection, "n", [.command, .control], isNew: true), item("Close Window", .closeWindow, "W", isNew: true)])
         case "Edit":
-            sections.append([item("Copy as Pathname", .copyAsPathname, isNew: true), item("Move Items Here", .moveItemsHere, isNew: true)])
+            sections.append([item("Copy as Pathname", .copyAsPathname, "c", [.command, .option], isNew: true), item("Move Items Here", .moveItemsHere, "v", [.command, .option], isNew: true)])
         case "View":
             sections[0] += [item("as Columns", .columns, isNew: true), item("as Gallery", .gallery, isNew: true)]
             sections.append([item("Show Preview", .previewPane, isNew: true), item("Show View Options", .viewOptions, isNew: true)])
         case "Go":
-            sections.append([item("Desktop", .desktop, isNew: true), item("Documents", .documents, isNew: true),
-                item("Downloads", .downloads, isNew: true), item("Applications", .applications, isNew: true),
-                item("Utilities", .utilities, isNew: true), item("Computer", .computer, isNew: true), item("Network", .network, isNew: true)])
-            sections.append([item("Connect to Server...", .connectToServer, isNew: true), item("Clear Recent", .clearRecent, isNew: true),
+            sections.append([item("Recents", .recents, "F", isNew: true), item("Desktop", .desktop, "D", isNew: true), item("Documents", .documents, "O", isNew: true),
+                item("Downloads", .downloads, "l", [.command, .option], isNew: true), item("Applications", .applications, "A", isNew: true),
+                item("Utilities", .utilities, "U", isNew: true), item("Computer", .computer, isNew: true), item("Network", .network, isNew: true)])
+            sections.append([item("Connect to Server...", .connectToServer, "k", isNew: true), item("Clear Recent", .clearRecent, isNew: true),
                 item("Show in Enclosing Folder", .reveal, isNew: true), item("Add to Sidebar", .addToSidebar, isNew: true)])
         case "Window":
-            sections.append([item("Show Next Tab", .nextTab, isNew: true), item("Show Previous Tab", .previousTab, isNew: true), item("Reopen Closed Tab", .reopenClosedTab, isNew: true)])
+            sections.append([item("Show Next Tab", .nextTab, "}", [.command], isNew: true), item("Show Previous Tab", .previousTab, "{", [.command], isNew: true), item("Reopen Closed Tab", .reopenClosedTab, "T", isNew: true)])
         default: break
         }
         return MenuModel(title: menu.title, sections: sections)

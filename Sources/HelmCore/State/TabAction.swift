@@ -19,6 +19,11 @@ public enum TabAction: Sendable {
     case setSelection(Set<ItemID>, source: SelectionSource), setSort(ItemSort), setViewMode(ViewMode)
     case toggleHidden, settingsChanged(SettingsSnapshot)
     case expand(ItemID), collapse(ItemID)
+    /// Replies carry the load generation they were requested under, so a navigation retires them (FB2-10).
+    case childrenLoaded(ItemID, Generation, [FileEntry])
+    case childrenFailed(ItemID, Generation, LoadError)
+    /// Reloads, then selects these items once they exist: pasted copies, a renamed file, the next item after Trash.
+    case refreshSelecting(Set<ItemID>)
     case searchStarted(SearchQuery), searchResults(Generation, [SearchResult]), searchEnded
     case addressBar(AddressEditorAction)
     case activated, deactivated
@@ -36,4 +41,5 @@ public enum TabEffect: Sendable, Equatable {
     case validateNavigation(Location, Generation)
     case refreshPaths(Set<String>, Generation)
     case persistShowHidden(Bool)
+    case loadChildren(URL, ItemID, Generation, LoadOptions)
 }

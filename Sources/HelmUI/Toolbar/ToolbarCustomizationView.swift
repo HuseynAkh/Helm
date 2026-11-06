@@ -6,9 +6,9 @@ import HelmCore
 public struct ToolbarCustomizationView: View {
     @Binding private var model: ToolbarCustomizationModel
     @State private var dragSession: String = UUID().uuidString
-    private let apply: ([HelmCore.ToolbarItem]) -> Void
+    private let apply: ([HelmCore.HelmToolbarItem]) -> Void
     private let cancel: () -> Void
-    public init(model: Binding<ToolbarCustomizationModel>, apply: @escaping ([HelmCore.ToolbarItem]) -> Void,
+    public init(model: Binding<ToolbarCustomizationModel>, apply: @escaping ([HelmCore.HelmToolbarItem]) -> Void,
                 cancel: @escaping () -> Void) {
         _model = model; self.apply = apply; self.cancel = cancel
     }
@@ -43,7 +43,7 @@ public struct ToolbarCustomizationView: View {
                 }
             }.frame(maxHeight: 260)
             Menu("Add Item") {
-                ForEach(HelmCore.ToolbarItem.allCases, id: \.self) { item in
+                ForEach(HelmCore.HelmToolbarItem.allCases, id: \.self) { item in
                     Button(ToolbarCustomizationModel.label(item)) { model.add(item) }
                         .disabled(item != .flexibleSpace && model.items.contains(item))
                 }

@@ -12,7 +12,9 @@ final class InlineRenameModelTests: XCTestCase {
                              (".hidden", ".hidden"), (".config.json", ".config"),
                              ("plain", "plain"), ("😀é.txt", "😀é"), ("trailing.", "trailing")] {
             var model = InlineRenameModel(); _ = model.begin(entry(name))
-            XCTAssertEqual(model.editing?.selectedRange, NSRange(location: 0, length: stem.utf16.count))
+            // The range measures the field's text, which keeps the spelling the file system reports.
+            let shown = String(entry(name).name.prefix(stem.count))
+            XCTAssertEqual(model.editing?.selectedRange, NSRange(location: 0, length: shown.utf16.count))
         }
         var model = InlineRenameModel(); _ = model.begin(entry("folder.ext", kind: .directory))
         XCTAssertEqual(model.editing?.selectedRange.length, 10)

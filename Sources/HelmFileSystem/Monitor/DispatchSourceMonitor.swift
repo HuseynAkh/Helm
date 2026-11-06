@@ -28,8 +28,8 @@ public actor DispatchSourceMonitor: DirectoryMonitor {
         self.identity = identity
         watcher.setEventHandler { [weak self] in
             // Dispatch event data must be captured while the handler is executing.
-            let flags = watcher.data
-            Task { await self?.receive(identity: identity, flags: flags) }
+            let flags = watcher.data.rawValue
+            Task { await self?.receive(identity: identity, flags: DispatchSource.FileSystemEvent(rawValue: flags)) }
         }
         // Cancellation owns descriptor closure; close must never precede source cancellation.
         watcher.setCancelHandler { _ = close(descriptor) }

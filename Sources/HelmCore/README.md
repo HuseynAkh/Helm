@@ -29,7 +29,7 @@ return it to push(_:request:). A request is single-use and bound to its column U
 new navigation, ancestor reload, pop and truncation invalidate earlier requests.
 There is deliberately no path-only acceptance overload (B-009).
 
-DropSession owns cached source validation for one drag. Keep it across destination
+FileDropSession owns cached source validation for one drag. Keep it across destination
 and modifier updates; call replaceSources on payload/metadata changes and end on
 termination. End releases the paths and refuses later proposals. DropPlanner's
 stateless API remains available; neither API caches live filesystem permission.
