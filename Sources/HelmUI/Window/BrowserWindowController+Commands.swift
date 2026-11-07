@@ -102,7 +102,7 @@ extension BrowserWindowController {
         case .list: store.send(.tab(id, .setViewMode(.list))); rememberViewOptions(mode: .list)
         case .hidden: store.send(.tab(id, .toggleHidden))
         case .refresh: store.send(.tab(id, .refresh))
-        case .sidebar: split.toggleSidebar(nil)
+        case .sidebar: toggleSidebar()
         case .find: beginSearch()
         // Windows and tabs
         case .newWindow: host?.openWindow(at: tab.location, selecting: [])
@@ -250,17 +250,15 @@ extension BrowserWindowController {
             // Several folders become tabs, as in Nautilus.
             for folder in resolvedFolders { newTab(at: .directory(folder)) }
         }
-        if !files.isEmpty {
-            let urls = files.map(\.url)
-            for entry in files { dependencies.recents.recordAccess(to: entry.url, kind: entry.kind, at: dependencies.clock.now()) }
-            NSWorkspace.shared.open(urls, withApplicationAt: applicationURL(for: urls), configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
-                guard let error else { return }
-                Task { @MainActor in self?.show(message: "Couldn’t open the file: \(error.localizedDescription)") }
-            }
+        // Each file opens in its own default app: a picture and a document chosen together don't share one.
+        var byApp: [URL: [FileEntry]] = [:]
+        var unclaimed: [FileEntry] = []
+        for entry in files {
+            if let app = NSWorkspace.shared.urlForApplication(toOpen: entry.url) { byApp[app, default: []].append(entry) } else { unclaimed.append(entry) }
         }
-    }
-    private func applicationURL(for urls: [URL]) -> URL {
-        NSWorkspace.shared.urlForApplication(toOpen: urls[0]) ?? URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        for (app, group) in byApp { open(group.map(\.url), with: app, entries: group) }
+        // Nothing claims these, so the Open With chooser asks, as Finder does.
+        if let first = unclaimed.first { showOpenWithChooser(for: first, makeDefault: false) }
     }
     private func showOriginal() {
         guard let entry = selectedEntries().first else { return }
@@ -656,28 +654,7 @@ extension BrowserWindowController {
         }
     }
 
-    // MARK: Drag and drop
-
-    func dragOperation(from urls: [URL], into target: URL) -> NSDragOperation {
-        let flags = NSEvent.modifierFlags
-        if flags.contains(.option) { return .copy }
-        if flags.contains(.command) { return .move }
-        // Copy across volumes, move within one (Q5). Decided from paths, so it can't block on a stalled disk.
-        let same = urls.allSatisfy { Self.volumeKey($0) == Self.volumeKey(target) }
-        if same { return .move }
-        return dependencies.settings.snapshot.string(.crossVolumeDragDefault) == "move" ? .move : .copy
-    }
-    func acceptDrop(_ urls: [URL], into target: URL) -> Bool {
-        let operation = dragOperation(from: urls, into: target)
-        let sources = urls.filter { $0.deletingLastPathComponent().standardizedFileURL.path != target.standardizedFileURL.path || operation == .copy }
-        guard !sources.isEmpty else { return false }
-        run(operation == .copy ? .copy(sources: sources, destinationDirectory: target) : .move(sources: sources, destinationDirectory: target))
-        return true
-    }
-    static func volumeKey(_ url: URL) -> String {
-        let parts = url.standardizedFileURL.pathComponents
-        return parts.count > 2 && parts[1] == "Volumes" ? "/Volumes/" + parts[2] : "/"
-    }
+    // Drag and drop lives in BrowserWindowController+Drops.swift.
 
     // MARK: Context menus
 
@@ -715,84 +692,69 @@ extension BrowserWindowController {
         }
         return menu
     }
-    /// Sorting for when there are no column headers to click.
-    func sortMenu() -> NSMenu {
-        let menu = NSMenu(title: "Sort By")
+    /// View › Sort By in the menu bar: the fields, where choosing the current one reverses it, then its two directions in words.
+    public func fillSortItems(in menu: NSMenu) {
         let current = activeTab?.sort ?? .defaultSort
-        for (title, field) in [("Name", ItemSort.Field.name), ("Size", .size), ("Date Modified", .dateModified), ("Kind", .kind)] {
-            let target = ClosureMenuTarget { [weak self] in
-                guard let self, let tab = self.activeTab else { return }
-                self.contentSetSort(tab.sort.toggling(field: field))
-            }
-            let item = NSMenuItem(title: title, action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
-            item.target = target; item.representedObject = target
-            item.state = current.field == field ? .on : .off
+        if activeTab?.search != nil {
+            let best = closureItem(SortChoice.bestMatch.title) { [weak self] in self?.pressSort(.relevance) }
+            best.state = current.field == .relevance ? .on : .off
+            menu.addItem(best)
+        }
+        for field in SortField.all {
+            let item = closureItem(field.title) { [weak self] in self?.pressSort(field.field) }
+            item.state = current.field == field.field ? .on : .off
+            if current.field == field.field { item.toolTip = "Choose again to reverse" }
             menu.addItem(item)
+        }
+        if current.field != .relevance, let field = SortField.all.first(where: { $0.field == current.field }) {
+            menu.addItem(.separator())
+            for ascending in [field.startsAscending, !field.startsAscending] {
+                let item = closureItem(SortField.direction(field.field, ascending: ascending)) { [weak self] in
+                    guard let self, let tab = self.activeTab else { return }
+                    self.contentSetSort(ItemSort(field: tab.sort.field, ascending: ascending, directoriesFirst: tab.sort.directoriesFirst))
+                }
+                item.state = current.ascending == ascending ? .on : .off
+                item.indentationLevel = 1
+                menu.addItem(item)
+            }
         }
         menu.addItem(.separator())
-        let target = ClosureMenuTarget { [weak self] in
-            guard let self, let tab = self.activeTab else { return }
-            self.contentSetSort(ItemSort(field: tab.sort.field, ascending: tab.sort.ascending, directoriesFirst: !tab.sort.directoriesFirst))
-        }
-        let folders = NSMenuItem(title: "Keep Folders on Top", action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
-        folders.target = target; folders.representedObject = target
+        let folders = closureItem("Keep Folders on Top") { [weak self] in self?.toggleFoldersFirst() }
         folders.state = current.directoriesFirst ? .on : .off
         menu.addItem(folders)
-        return menu
     }
-    @objc public func biggerIcons(_ sender: Any?) { adjustIcons(by: 16) }
-    @objc public func smallerIcons(_ sender: Any?) { adjustIcons(by: -16) }
-    private func adjustIcons(by delta: Double) {
-        let current = dependencies.settings.snapshot.double(.gridIconSize)
-        dependencies.settings.set(.double(min(256, max(32, current + delta))), for: .gridIconSize)
+    /// Pressing the current sort again reverses it, as clicking a column heading does.
+    public func pressSort(_ field: ItemSort.Field) {
+        guard let tab = activeTab else { return }
+        contentSetSort(SortField.pressing(field, on: tab.sort))
     }
-    private func openWithMenu(for entries: [FileEntry]) -> NSMenu {
-        let menu = NSMenu()
-        let urls = entries.map(\.url)
-        guard let first = urls.first else { return menu }
-        let standard = NSWorkspace.shared.urlForApplication(toOpen: first)
-        // The default comes first and is marked; the rest are sorted by name.
-        let others = NSWorkspace.shared.urlsForApplications(toOpen: first).filter { $0 != standard }
-            .sorted { FileManager.default.displayName(atPath: $0.path).localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending }
-        func add(_ application: URL, suffix: String = "") {
-            let target = ClosureMenuTarget { [weak self] in self?.open(urls, with: application, entries: entries) }
-            let item = NSMenuItem(title: FileManager.default.displayName(atPath: application.path) + suffix, action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
-            item.target = target; item.representedObject = target
-            item.image = NSWorkspace.shared.icon(forFile: application.path)
-            item.image?.size = NSSize(width: 16, height: 16)
-            menu.addItem(item)
-        }
-        if let standard { add(standard, suffix: " (default)") }
-        if standard != nil, !others.isEmpty { menu.addItem(.separator()) }
-        for application in others.prefix(30) { add(application) }
-        if !menu.items.isEmpty { menu.addItem(.separator()) }
-        let target = ClosureMenuTarget { [weak self] in self?.chooseApplication(for: urls, entries: entries) }
-        let other = NSMenuItem(title: "Other…", action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
-        other.target = target; other.representedObject = target
-        menu.addItem(other)
-        return menu
+    func toggleFoldersFirst() {
+        guard let tab = activeTab else { return }
+        contentSetSort(ItemSort(field: tab.sort.field, ascending: tab.sort.ascending, directoriesFirst: !tab.sort.directoriesFirst))
     }
-    private func open(_ urls: [URL], with application: URL, entries: [FileEntry]) {
-        for entry in entries { dependencies.recents.recordAccess(to: entry.url, kind: entry.kind, at: dependencies.clock.now()) }
-        NSWorkspace.shared.open(urls, withApplicationAt: application, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
-            guard let error else { return }
-            Task { @MainActor in self?.show(message: "Couldn’t open the file: \(error.localizedDescription)") }
-        }
+    private func closureItem(_ title: String, _ action: @escaping () -> Void) -> NSMenuItem {
+        let target = ClosureMenuTarget(action)
+        let item = NSMenuItem(title: title, action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
+        item.target = target; item.representedObject = target
+        return item
     }
-    private func chooseApplication(for urls: [URL], entries: [FileEntry]) {
-        guard let window else { return }
-        let panel = NSOpenPanel()
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowedContentTypes = [.application]
-        panel.prompt = "Open"
-        panel.beginSheetModal(for: window) { [weak self] response in
-            if response == .OK, let application = panel.url { self?.open(urls, with: application, entries: entries) }
-        }
+    /// Cmd+Plus and Cmd+Minus scale what's in the folder, as Ctrl+Plus and Ctrl+Minus do in Nautilus.
+    @objc public func zoomIn(_ sender: Any?) { stepText(by: 1); stepIcons(by: 1) }
+    @objc public func zoomOut(_ sender: Any?) { stepText(by: -1); stepIcons(by: -1) }
+    @objc public func resetSizes(_ sender: Any?) { resetText(); resetIcons() }
+    public func resetText() { dependencies.settings.set(SettingsSchema.defaultValue(for: .fileTextSize), for: .fileTextSize) }
+    public func resetIcons() { dependencies.settings.set(SettingsSchema.defaultValue(for: .gridIconSize), for: .gridIconSize) }
+    /// Text moves in steps of 10%, from 80% to 170%.
+    public func stepText(by steps: Int) {
+        let points = dependencies.settings.snapshot.double(.fileTextSize)
+        dependencies.settings.set(.double(ContentZoom.steppedText(points, by: steps)), for: .fileTextSize)
     }
-    private func showOpenWithMenu() {
-        guard let view = window?.contentView else { return }
-        openWithMenu(for: selectedEntries()).popUp(positioning: nil, at: view.convert(window?.mouseLocationOutsideOfEventStream ?? .zero, from: nil), in: view)
+    public func stepIcons(by steps: Int) {
+        let pixels = dependencies.settings.snapshot.double(.gridIconSize)
+        dependencies.settings.set(.double(ContentZoom.steppedIcons(pixels, by: steps)), for: .gridIconSize)
     }
+    public var textPercent: Int { ContentZoom.textPercent(dependencies.settings.snapshot.double(.fileTextSize)) }
+    // Open With lives in BrowserWindowController+OpenWith.swift.
     private func showSharePicker() {
         let urls = selectedEntries().map(\.url)
         guard !urls.isEmpty, let view = window?.contentView else { return }
@@ -851,6 +813,18 @@ extension BrowserWindowController {
 
     public func refreshHistoryForTesting() async { await refreshHistory() }
     public func emptyTrashForTesting() { emptyTrash() }
+    public var isSearchingForTesting: Bool { header.isSearching }
+    public func chooseSortForTesting(_ title: String) {
+        guard let tab = activeTab, let choice = SortChoice.all.first(where: { $0.title == title }) else { return }
+        contentSetSort(choice.applied(to: tab.sort))
+    }
+    public func pathSegmentsForTesting() -> [String] {
+        guard let tab = activeTab else { return [] }
+        return PathBarView.segments(for: tab.location, home: dependencies.home).map(\.title)
+    }
+    public var sidebarDriveNamesForTesting: [String] {
+        dependencies.volumes.volumes.map(\.name)
+    }
     public var hasSheetForTesting: Bool { window?.attachedSheet != nil }
     public func dismissSheetForTesting() { if let sheet = window?.attachedSheet { window?.endSheet(sheet) } }
     public func title(of command: CommandID) -> (String, Bool) {

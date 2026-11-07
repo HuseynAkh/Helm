@@ -359,11 +359,17 @@ cmd moveItemsHere
 wait 0.6
 exists @FIX@/home/Downloads/dragged.txt
 missing @FIX@/home/Documents/dragged.txt
-# A folder into itself is refused
+# A folder into itself is refused while dragging, and so is moving something to where it already is
 go @FIX@/home/Documents
 select Reports
-drop Reports @FIX@/home/Documents/Reports/2026
+drop-refused Reports @FIX@/home/Documents/Reports/2026
+drop-refused Reports @FIX@/home/Documents/Reports
+drop-refused Reports @FIX@/home/Documents
 exists @FIX@/home/Documents/Reports/q1.txt
+# Open With ranks the apps for a file: a default, then the best fits, each app once
+go @FIX@/home/Documents/Reports
+openwith-ranked q1.txt
+go @FIX@/home/Documents
 # Sidebar bookmarks
 bookmark @FIX@/home/Documents/Reports
 bookmarked Reports
@@ -431,6 +437,54 @@ cmd recents
 wait 0.3
 location recent
 go @FIX@/home/Documents
+# Sorting says what it's doing, in both directions
+go @FIX@/home/Documents
+view list
+sort-choose Name Z–A
+sort-is Name Z–A
+first-row Résumés
+sort-choose Name A–Z
+sort-is Name A–Z
+sort-choose Largest First
+sort-is Largest First
+sort-choose Newest First
+sort-is Newest First
+sort-choose Name A–Z
+view grid
+# The path reads from Home, and cloud drives are listed with the drives
+path-reads Home / Documents
+drive-listed Google Drive
+drive-listed iCloud Drive
+go @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared
+path-reads Google Drive / Shared
+go @FIX@/home/Documents
+# Text size steps by 10% and says where it is
+text-percent 100
+text-step 2
+text-percent 120
+text-step -2
+text-percent 100
+text-step 1
+popover-shot @SHOTS@/view-options.png
+text-step -1
+# Pressing the current sort again reverses it, and a new field starts in its own direction
+view list
+sort-press Name
+sort-is Name Z–A
+first-row Résumés
+sort-press Name
+sort-is Name A–Z
+sort-press Modified
+sort-is Newest First
+sort-press Modified
+sort-is Oldest First
+sort-press Size
+sort-is Largest First
+sort-press Name
+sort-is Name A–Z
+view grid
+search-open
+screenshot @SHOTS@/search-open.png
 # Quit saves the session, and the second run below restores it
 go @FIX@/home/Downloads
 cmd newTab

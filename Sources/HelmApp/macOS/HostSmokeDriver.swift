@@ -176,6 +176,17 @@ import Quartz
             guard bits.count == 2, let entry = tab?.snapshot.sortedEntries.first(where: { $0.name == bits[0] }) else { check(false, step, "no such row"); return }
             check(window.dropForTesting([entry.url], into: URL(fileURLWithPath: bits[1], isDirectory: true)), step)
             await wait(seconds: 0.6)
+        case "drop-refused":
+            // drop-refused <name in this folder> <destination folder path>: refused before anything moves.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            guard bits.count == 2, let entry = tab?.snapshot.sortedEntries.first(where: { $0.name == bits[0] }) else { check(false, step, "no such row"); return }
+            check(!window.dropForTesting([entry.url], into: URL(fileURLWithPath: bits[1], isDirectory: true)), step, "accepted")
+        case "openwith-ranked":
+            // Open With offers a default, lists each app once, and never puts an app in two groups.
+            guard let entry = tab?.snapshot.sortedEntries.first(where: { $0.name == argument }) else { check(false, step, "no such row"); return }
+            let summary = window.openWithSummaryForTesting(entry)
+            check(summary.defaultName != nil && summary.apps == summary.distinct && summary.recommended > 0, step,
+                  "default \(summary.defaultName ?? "none"), \(summary.apps) apps, \(summary.distinct) distinct, \(summary.recommended) recommended")
         case "bookmark":
             window.sidebarDropForTesting([URL(fileURLWithPath: argument, isDirectory: true)])
             await wait(seconds: 0.3)
@@ -189,6 +200,35 @@ import Quartz
             guard let field = ItemSort.Field(rawValue: argument), let current = tab?.sort else { check(false, step, "bad field"); return }
             window.contentSetSortForTesting(current.toggling(field: field))
             await wait(seconds: 0.4)
+        case "sort-choose":
+            window.chooseSortForTesting(argument)
+            await wait(seconds: 0.4)
+        case "sort-is":
+            let current = tab.map { SortChoice.matching($0.sort).title } ?? ""
+            check(current == argument, step, current)
+        case "first-row":
+            check(names.first == argument, step, names.first ?? "")
+        case "path-reads":
+            let segments = window.pathSegmentsForTesting().joined(separator: " / ")
+            check(segments == argument, step, segments)
+        case "drive-listed":
+            check(window.sidebarDriveNamesForTesting.contains(argument), step, window.sidebarDriveNamesForTesting.joined(separator: ","))
+        case "text-step":
+            window.stepText(by: Int(argument) ?? 0)
+            await wait(seconds: 0.3)
+        case "text-percent":
+            check(window.textPercent == Int(argument), step, "\(window.textPercent)%")
+        case "sort-press":
+            guard let field = SortField.all.first(where: { $0.title == argument }) else { check(false, step, "no such field"); return }
+            window.pressSort(field.field)
+            await wait(seconds: 0.4)
+        case "search-open":
+            window.perform(.find)
+            await wait(seconds: 0.2)
+            check(window.isSearchingForTesting, step)
+        case "keep-open":
+            // Holds a run open so the real window can be looked at from outside.
+            await wait(seconds: Double(argument) ?? 60)
         case "star-now":
             guard let tab, let entry = tab.snapshot.sortedEntries.first(where: { $0.name == argument }) else { check(false, step, "no such row"); return }
             window.dependencies.stars.star(entry.url, at: Date())
@@ -239,6 +279,18 @@ import Quartz
                 }
             }
             check(clean, step)
+        case "popover-shot":
+            // Opens the view options popover and captures it.
+            guard let content = window.showViewOptionsForTesting() else { check(false, step, "no popover"); return }
+            await wait(seconds: 0.6)
+            let target = content.superview ?? content
+            guard let image = target.bitmapImageRepForCachingDisplay(in: target.bounds) else { check(false, step, "no image"); return }
+            target.cacheDisplay(in: target.bounds, to: image)
+            let data = image.representation(using: .png, properties: [:])
+            try? data?.write(to: URL(fileURLWithPath: argument))
+            window.closeViewOptionsForTesting()
+            await wait(seconds: 0.3)
+            check(data != nil, step)
         case "screenshot":
             // The frame view, so the capture includes the toolbar and window background.
             guard let content = window.window?.contentView?.superview, let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {

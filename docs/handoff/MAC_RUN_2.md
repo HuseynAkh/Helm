@@ -6,13 +6,40 @@ Everything here came from Huseyn's rulings of 2026-11-06, recorded in [`OWNER_RU
 
 Mac acceptance: NOT CLAIMED. G11 and GM: not assessed.
 
+## Interface pass after Huseyn's first use
+
+Huseyn's feedback on the first install: the header looked like overlapping parts, the transparency and Nautilus feel were gone, text was small, drives were missing, and sorting wasn't obvious. What changed:
+
+- **Header:** macOS's toolbar wrapped each control in its own glass capsule. It's replaced by Helm's own flat header bar, and the path bar is one field reading from Home or the drive.
+- **Look:** a full-height translucent sidebar with monochrome icons and no headings, plain split items instead of the system's floating sidebar, and transparency on by default.
+- **Text:** 14 pt names, adjustable from 11 to 24 pt, and larger text in the sidebar, path bar, tabs and status bar.
+- **Drives:** iCloud Drive and the folders in `~/Library/CloudStorage` now list with the mounted volumes. Removable drives get an eject button.
+- **Sorting:** a header button names the current sort, the menu spells out each direction, View › Sort By has the same list, and the list's column title carries an arrow.
+
+The transparency can't be judged from here, because a window capture doesn't show the desktop behind it. It needs a person's eye.
+
+## Second interface pass
+
+Huseyn's second round: the sidebar highlight bounced, sort and text size needed "press again" controls and a percentage, transparency needed a slider, the search field didn't match the path bar, Open With was weak, and drag and drop and previews had to be complete. He also asked for an app icon. What changed:
+
+- **Sidebar:** the highlight follows where the tab is going, so it moves once.
+- **View options:** a popover from the header's sort button. Pressing the current sort reverses it, and text and icon sizes step by 10% with the percentage between − and +.
+- **Transparency:** a slider in Settings › View from solid to clear, with 50% as Helm's look.
+- **Search:** the same rounded 34-point field as the path bar.
+- **Drag and drop:** one set of rules for every drop target. It covers file promises, opening files on an app, spring-loaded folders, drops on tabs, and refusing a folder into itself while dragging. The audit found that a drop on an app icon fell through and moved the file into the app's folder. That's fixed.
+- **Previews:** every file with content gets a preview, at the screen's real density, in both views. Quick Look follows the selection and zooms out of the thumbnail.
+- **Open With:** Default, Recently Used, Recommended and Other Apps, ranked from each app's own declarations. Helm remembers your choices in `open-with.json`. Defaults change with Option, Change Default App…, or the chooser. Double-clicking several files now opens each in its own default app.
+- **Icon:** a horned helmet on a folder, drawn by `scripts/rebuild/make_app_icon.swift`.
+
+Not done from the audit: dragging places out of the sidebar and reordering bookmarks, a stacked drag image for several items, and text clippings and `.webloc` files from dropped text and links. The volume test for copy-or-move still reads paths, so it can't block on a stalled disk.
+
 ## Results
 
 | Check | Command | Result |
 |---|---|---|
-| All tests | `swift test --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit\|UI\|App)Tests'` | PASS: 1,417 run, 1 skipped by design, 0 failed |
-| Portable gate | `HELM_K11_SCRATCH=/tmp/build-MAC-HANDOFF HELM_PLAN_DIR="$PWD/docs/rebuild" bash scripts/rebuild/run_all.sh` | PASS: exit 0, its first pass on a Mac. 1,350 executed |
-| Scripted app run | `bash scripts/rebuild/host_smoke.sh` | PASS: 156 checks against the real window, then a relaunch |
+| All tests | `swift test --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit\|UI\|App)Tests'` | PASS: 1,431 run, 1 skipped by design, 0 failed |
+| Portable gate | `HELM_K11_SCRATCH=/tmp/build-MAC-HANDOFF HELM_PLAN_DIR="$PWD/docs/rebuild" bash scripts/rebuild/run_all.sh` | PASS: exit 0. 1,359 executed, no failed checks |
+| Scripted app run | `bash scripts/rebuild/host_smoke.sh` | PASS: 181 checks against the real window, then a relaunch |
 | Xcode app | `xcodebuild -project App/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/build-MAC-HANDOFF/dd build` | PASS: ad hoc signature, no team |
 | P0 and P1 rows | Audit in `P0_P1_STATUS.md` | 293 rows: 31 verified, 101 built but unverified, 69 partial, 69 missing, 23 ruled out |
 
@@ -98,4 +125,4 @@ New: `LiveMutationTests`, `LiveOperationFlowTests`, `TypedLocationTests`, `Expan
 - **Windows appeared on screen during runs,** and the first few took focus. Scripted runs now stay in the background, though windows still show.
 - **Scratch left behind:** `/tmp/build-MAC-HANDOFF*`, the session scratch folder, `.build/host-smoke` (ignored by git), and temp folders from tests.
 - **`P0_P1_STATUS.md` began as an audit by a separate agent,** reading the code while it was changing. I then updated 14 rows by hand for fixes made afterwards. Treat it as a good map, not a verdict.
-- **Nothing was pushed.** This run is one local commit on `handoff/mac-fixups`.
+- **Pushed on Huseyn's approval, 2026-11-07:** `handoff/mac-fixups` to `origin`, authored by Huseyn alone. AI co-author lines were removed from the earlier local commits' messages before the push.

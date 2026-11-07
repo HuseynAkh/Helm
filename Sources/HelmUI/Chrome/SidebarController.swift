@@ -8,98 +8,135 @@ import HelmPersistence
     func sidebarRemoveBookmark(_ place: Place)
     func sidebarEject(_ place: Place)
     func sidebarAddBookmarks(_ urls: [URL])
-    func sidebarAcceptDrop(_ urls: [URL], into url: URL) -> Bool
+    func sidebarDropOperation(_ info: NSDraggingInfo, onto place: Place) -> NSDragOperation
+    func sidebarPerformDrop(_ info: NSDraggingInfo, onto place: Place) -> Bool
+    func sidebarDragEnded()
     func sidebarEmptyTrash()
-    func sidebarTrash(_ urls: [URL])
 }
 
-/// The Places sidebar: flat sections in a fixed order, no tree (F-026 to F-031).
+/// The Places sidebar in Nautilus's shape: one full-height translucent pane, plain rows with monochrome icons,
+/// and thin lines between groups rather than headings (F-026 to F-031).
 @MainActor final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     weak var delegate: SidebarDelegate?
+    private enum Row: Equatable { case place(Place), line(Int) }
     private let outline = SidebarOutlineView()
+    private let effect = NSVisualEffectView()
+    private let tint = TintView()
     private var model: SidebarModel?
-    private var applying = false
+    private var rows: [Row] = []
+    /// Boxed so the outline view gets a stable object per row.
+    private var items: [NSString] = []
 
     override func loadView() {
+        effect.material = .sidebar
+        effect.blendingMode = .behindWindow
+        effect.state = .active
         let scroll = NSScrollView()
         scroll.drawsBackground = false; scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: HeaderBarView.height, left: 0, bottom: 8, right: 0)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
         let column = NSTableColumn(identifier: .init("place"))
         outline.addTableColumn(column); outline.outlineTableColumn = column
-        outline.headerView = nil; outline.style = .sourceList; outline.backgroundColor = .clear
-        outline.floatsGroupRows = false; outline.rowSizeStyle = .default; outline.indentationPerLevel = 0
+        // Plain rows with our own soft selection: a source list would tint the selected row blue, as Finder does.
+        outline.headerView = nil; outline.style = .plain; outline.backgroundColor = .clear
+        outline.intercellSpacing = NSSize(width: 0, height: 2)
+        outline.floatsGroupRows = false; outline.indentationPerLevel = 0
         outline.dataSource = self; outline.delegate = self
         outline.target = self; outline.action = #selector(clicked)
-        outline.registerForDraggedTypes([.fileURL])
+        outline.registerForDraggedTypes(FileDrag.acceptedTypes)
+        outline.onDragEnded = { [weak self] in self?.delegate?.sidebarDragEnded() }
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setAccessibilityLabel("Places")
         outline.menuProvider = { [weak self] row in self?.menu(forRow: row) }
         scroll.documentView = outline
-        view = scroll
+        tint.fraction = 0
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        effect.addSubview(tint)
+        effect.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            tint.topAnchor.constraint(equalTo: effect.topAnchor), tint.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: effect.leadingAnchor), tint.trailingAnchor.constraint(equalTo: effect.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: effect.topAnchor), scroll.bottomAnchor.constraint(equalTo: effect.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: effect.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: effect.trailingAnchor)
+        ])
+        view = effect
+    }
+
+    /// `tint` is how much solid colour covers the glass: 0 is fully see-through, 1 is solid.
+    func setTransparent(_ transparent: Bool, tint amount: CGFloat) {
+        effect.state = transparent ? .active : .inactive
+        effect.material = transparent ? .sidebar : .windowBackground
+        effect.blendingMode = transparent ? .behindWindow : .withinWindow
+        tint.fraction = transparent ? amount : 0
     }
 
     func render(_ model: SidebarModel) {
-        let sectionsChanged = self.model?.sections.map({ $0.rows.map(\.id) }) != model.sections.map({ $0.rows.map(\.id) })
+        let next = Self.flatten(model)
+        let changed = next != rows
         self.model = model
-        applying = true
-        defer { applying = false }
-        if sectionsChanged {
+        if changed {
+            rows = next
+            items = rows.enumerated().map { "\($0.offset)" as NSString }
             outline.reloadData()
-            for section in model.sections { outline.expandItem(Self.sectionItem(section.id)) }
         }
         select(model.selectedPlaceID)
     }
 
+    /// Recent, the standard places and Trash first, then bookmarks, starred items and drives.
+    private static func flatten(_ model: SidebarModel) -> [Row] {
+        func rows(_ id: String) -> [Row] {
+            model.sections.first { $0.id == id }?.rows.map(Row.place) ?? []
+        }
+        var groups: [[Row]] = [rows("recent") + rows("favorites") + rows("trash")]
+        for id in ["bookmarks", "starred", "devices"] where !rows(id).isEmpty { groups.append(rows(id)) }
+        var result: [Row] = []
+        for (index, group) in groups.enumerated() {
+            if index > 0 { result.append(.line(index)) }
+            result += group
+        }
+        return result
+    }
+
     private func select(_ id: String?) {
-        guard let id else { outline.deselectAll(nil); return }
-        let row = outline.row(forItem: Self.placeItem(id))
+        guard let id, let index = rows.firstIndex(where: { if case .place(let place) = $0 { return place.id == id }; return false }) else {
+            outline.deselectAll(nil); return
+        }
+        let row = outline.row(forItem: items[index])
         if row >= 0 { outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false) }
-        else { outline.deselectAll(nil) }
     }
 
-    // Sections and places share an id space ("trash" is both), so outline items carry their type.
-    private static func sectionItem(_ id: String) -> String { "section:" + id }
-    private static func placeItem(_ id: String) -> String { "place:" + id }
+    private func row(of item: Any?) -> Row? {
+        guard let value = item as? NSString, let index = items.firstIndex(where: { $0 === value }) else { return nil }
+        return rows[index]
+    }
     private func place(_ item: Any?) -> Place? {
-        guard let value = item as? String, value.hasPrefix("place:") else { return nil }
-        return model?.place(for: String(value.dropFirst(6)))
-    }
-    private func section(_ item: Any?) -> SidebarSection? {
-        guard let value = item as? String, value.hasPrefix("section:") else { return nil }
-        return model?.sections.first { $0.id == String(value.dropFirst(8)) }
+        if case .place(let place)? = row(of: item) { return place }
+        return nil
     }
 
-    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let model else { return 0 }
-        if let section = section(item) { return section.rows.count }
-        return item == nil ? model.sections.count : 0
-    }
-    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        if let section = section(item) { return Self.placeItem(section.rows[index].id) }
-        return Self.sectionItem(model?.sections[index].id ?? "")
-    }
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { section(item) != nil }
-    func outlineView(_ outlineView: NSOutlineView, isGroupItem item: Any) -> Bool { section(item) != nil }
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { item == nil ? rows.count : 0 }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { items[index] }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
     func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool { place(item) != nil }
-    func outlineView(_ outlineView: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool { false }
-    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
-        if let section = section(item) { return section.title == nil ? 6 : 26 }
-        return 26
-    }
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat { place(item) == nil ? 13 : 34 }
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? { PlaceRowView() }
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
-        if let section = section(item) {
-            let label = NSTextField(labelWithString: section.title ?? "")
-            label.font = .systemFont(ofSize: 11, weight: .semibold); label.textColor = .secondaryLabelColor
-            let cell = NSTableCellView()
-            label.translatesAutoresizingMaskIntoConstraints = false
-            cell.addSubview(label)
-            NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                                         label.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -3)])
+        guard let place = place(item) else {
+            let box = NSBox(); box.boxType = .separator
+            let cell = NSView()
+            box.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(box)
+            NSLayoutConstraint.activate([
+                box.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+                box.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+                box.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
             return cell
         }
-        guard let place = place(item) else { return nil }
         let id = NSUserInterfaceItemIdentifier("place")
         let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? PlaceCell) ?? PlaceCell(identifier: id)
-        cell.apply(place)
+        cell.apply(place) { [weak self] in self?.delegate?.sidebarEject(place) }
         return cell
     }
 
@@ -107,7 +144,7 @@ import HelmPersistence
         guard let place = place(outline.item(atRow: outline.clickedRow)) else { return }
         delegate?.sidebarActivate(place, newTab: NSEvent.modifierFlags.contains(.command))
         // The highlight follows committed navigation, not this click (F-027).
-        applying = true; select(model?.selectedPlaceID); applying = false
+        select(model?.selectedPlaceID)
     }
 
     private func menu(forRow row: Int) -> NSMenu? {
@@ -119,7 +156,7 @@ import HelmPersistence
         if place.kind == .bookmark {
             menu.addItem(item("Remove Bookmark", place) { [weak self] in self?.delegate?.sidebarRemoveBookmark($0) })
         }
-        if place.kind == .device, place.url?.path != "/" {
+        if place.isEjectable {
             menu.addItem(item("Eject “\(place.name)”", place) { [weak self] in self?.delegate?.sidebarEject($0) })
         }
         if place.kind == .trash {
@@ -134,64 +171,98 @@ import HelmPersistence
         return item
     }
 
-    // MARK: Drops: onto a folder moves or copies into it, between rows adds a bookmark.
+    // MARK: Drops: onto a place moves, copies or opens as Finder would, onto Trash trashes, between rows bookmarks.
 
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        if let place = place(item), place.kind == .trash, index == NSOutlineViewDropOnItemIndex { return .delete }
-        if let place = place(item), place.url != nil, index == NSOutlineViewDropOnItemIndex {
-            return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+        if let place = place(item), index == NSOutlineViewDropOnItemIndex {
+            let operation = delegate?.sidebarDropOperation(info, onto: place) ?? []
+            if operation != [] { return operation }
         }
-        // Anywhere else in the list adds a bookmark.
-        guard let bookmarks = model?.sections.first(where: { $0.id == "bookmarks" }) ?? model?.sections.first(where: { $0.id == "favorites" }) else { return [] }
-        outlineView.setDropItem(Self.sectionItem(bookmarks.id), dropChildIndex: bookmarks.rows.count)
+        delegate?.sidebarDragEnded()
+        // Anywhere else in the list bookmarks the dragged items. Promised files don't exist yet, so they can't be.
+        guard !BrowserWindowController.fileURLs(info).isEmpty else { return [] }
+        outlineView.setDropItem(nil, dropChildIndex: rows.count)
         return .link
     }
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty else { return false }
-        if let place = place(item), place.kind == .trash, index == NSOutlineViewDropOnItemIndex {
-            delegate?.sidebarTrash(urls)
-            return true
+        if let place = place(item), index == NSOutlineViewDropOnItemIndex {
+            return delegate?.sidebarPerformDrop(info, onto: place) ?? false
         }
-        if let place = place(item), let url = place.url, index == NSOutlineViewDropOnItemIndex {
-            return delegate?.sidebarAcceptDrop(urls, into: url) ?? false
-        }
+        let urls = BrowserWindowController.fileURLs(info)
+        guard !urls.isEmpty else { return false }
         delegate?.sidebarAddBookmarks(urls)
         return true
     }
 }
 
+private extension Place {
+    /// Removable and network drives. The startup disk and cloud folders have nothing to eject.
+    var isEjectable: Bool { kind == .device && iconName == "externaldrive" }
+}
+
 @MainActor final class SidebarOutlineView: NSOutlineView {
     var menuProvider: ((Int) -> NSMenu?)?
+    var onDragEnded: (() -> Void)?
+    override func draggingExited(_ sender: NSDraggingInfo?) { super.draggingExited(sender); onDragEnded?() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { super.draggingEnded(sender); onDragEnded?() }
     override func menu(for event: NSEvent) -> NSMenu? {
         menuProvider?(row(at: convert(event.locationInWindow, from: nil)))
+    }
+}
+
+/// The selected place: a soft rounded fill that doesn't change the row's colours, as in Nautilus.
+@MainActor private final class PlaceRowView: NSTableRowView {
+    override var isEmphasized: Bool { get { false } set {} }
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
+    override func drawSelection(in dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 8, dy: 1)
+        NSColor.labelColor.withAlphaComponent(0.13).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
     }
 }
 
 @MainActor private final class PlaceCell: NSTableCellView {
     private let icon = NSImageView()
     private let label = NSTextField(labelWithString: "")
+    private let eject = NSButton()
+    private var onEject: (() -> Void)?
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         self.identifier = identifier
         icon.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingMiddle
-        addSubview(icon); addSubview(label)
+        label.font = .systemFont(ofSize: 14)
+        label.textColor = .labelColor
+        eject.isBordered = false
+        eject.image = NSImage(systemSymbolName: "eject", accessibilityDescription: "Eject")?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
+        eject.contentTintColor = .secondaryLabelColor
+        eject.target = self; eject.action = #selector(ejectClicked)
+        eject.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(icon); addSubview(label); addSubview(eject)
         imageView = icon; textField = label
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18), icon.heightAnchor.constraint(equalToConstant: 18),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6), label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6)
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 20), icon.heightAnchor.constraint(equalToConstant: 20),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10), label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: eject.leadingAnchor, constant: -4),
+            eject.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14), eject.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
     }
     required init?(coder: NSCoder) { nil }
-    func apply(_ place: Place) {
+    func apply(_ place: Place, onEject: @escaping () -> Void) {
         label.stringValue = place.name
-        icon.image = NSImage(systemSymbolName: place.iconName, accessibilityDescription: nil)
-        icon.contentTintColor = place.kind == .starred ? .systemYellow : .controlAccentColor
+        // Monochrome, as Adwaita's symbolic icons are.
+        icon.image = NSImage(systemSymbolName: place.iconName.replacingOccurrences(of: ".fill", with: ""), accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+        icon.contentTintColor = .secondaryLabelColor
+        eject.isHidden = !(place.kind == .device && place.iconName == "externaldrive")
+        eject.setAccessibilityLabel("Eject \(place.name)")
+        self.onEject = onEject
         setAccessibilityLabel(place.name)
     }
+    @objc private func ejectClicked() { onEject?() }
 }
 
 /// Lets a menu item run a closure. The item retains this through `representedObject`.

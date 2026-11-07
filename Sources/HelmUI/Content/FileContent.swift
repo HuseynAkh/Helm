@@ -6,6 +6,7 @@ import HelmCore
 @MainActor protocol FileContentHost: AnyObject {
     var icons: IconCache { get }
     var gridIconSize: Int { get }
+    var fileTextSize: CGFloat { get }
     var starred: Set<ItemID> { get }
     func contentSelectionChanged(_ ids: Set<ItemID>)
     func contentOpen(_ entries: [FileEntry], newTab: Bool)
@@ -14,9 +15,11 @@ import HelmCore
     func contentSetSort(_ sort: ItemSort)
     func contentExpand(_ id: ItemID)
     func contentCollapse(_ id: ItemID)
-    func contentAcceptDrop(_ urls: [URL], into url: URL?) -> Bool
-    func contentCanAcceptDrop(into url: URL?, from urls: [URL]) -> Bool
-    func contentDragOperation(from urls: [URL], into url: URL?) -> NSDragOperation
+    /// The operation for a drop on `entry` (a folder or app), or on the folder on show when nil.
+    func contentDropOperation(_ info: NSDraggingInfo, onto entry: FileEntry?) -> NSDragOperation
+    func contentPerformDrop(_ info: NSDraggingInfo, onto entry: FileEntry?) -> Bool
+    /// The drag left the view or finished, so a folder waiting to spring open shouldn't.
+    func contentDragEnded()
     func contentKeyDown(_ event: NSEvent) -> Bool
     func contentActivated()
 }
@@ -31,6 +34,8 @@ import HelmCore
     var keyResponder: NSResponder? { get }
     /// The view behind an item, for Quick Look's zoom. Nil if it's scrolled away.
     func screenFrame(of id: ItemID) -> NSRect?
+    /// The image an item shows now, so Quick Look zooms out of the real picture.
+    func image(of id: ItemID) -> NSImage?
 }
 
 extension FileEntry {

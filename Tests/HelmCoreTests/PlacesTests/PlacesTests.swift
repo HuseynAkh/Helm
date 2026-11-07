@@ -14,7 +14,7 @@ final class PlacesTests: XCTestCase {
     }
     func testFavoritesAndVirtualDestinations() throws {
         let model = PlacesModel(home: home)
-        XCTAssertEqual(model.favorites.map(\.name), ["Home", "Desktop", "Documents", "Downloads", "Applications"])
+        XCTAssertEqual(model.favorites.map(\.name), ["Home", "Desktop", "Documents", "Downloads", "Pictures", "Music", "Movies", "Applications"])
         XCTAssertEqual(model.favorites[1].url?.path, "/Users/test/Desktop")
         XCTAssertEqual(model.recentsRoot.destination.location, .recent)
         XCTAssertNil(model.starredRoot.destination.location)

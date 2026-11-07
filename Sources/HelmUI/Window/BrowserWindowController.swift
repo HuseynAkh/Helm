@@ -22,10 +22,36 @@ public struct BrowserTabSeed {
 
 @MainActor private final class StoreBox { weak var store: WindowStore? }
 
+/// A wash of the window colour over the blur, so files stay readable on any wallpaper.
+@MainActor final class TintView: NSView {
+    var fraction: CGFloat = 0.55 { didSet { refresh() } }
+    override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true; refresh() }
+    required init?(coder: NSCoder) { nil }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refresh() }
+    private func refresh() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(fraction).cgColor
+        }
+    }
+}
+
+/// How much solid colour lies over each part of the window for a transparency percentage.
+/// The sidebar clears first, the files later, so names stay readable.
+struct WindowTints: Equatable {
+    let sidebar: CGFloat
+    let content: CGFloat
+    init(percent: Double) {
+        let amount = CGFloat(min(100, max(0, percent))) / 100
+        sidebar = max(0, 1 - 2 * amount)
+        content = max(0, 1 - 1.1 * amount)
+    }
+}
+
 /// One Helm window. It renders the store's state and turns user intent into store actions and file commands.
 /// Nautilus's shape: a clean header bar, a Places sidebar and one content pane with tabs.
-@MainActor public final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate,
-    NSMenuItemValidation, NSSearchFieldDelegate, FileContentHost, SidebarDelegate, PathBarDelegate, TabStripDelegate {
+@MainActor public final class BrowserWindowController: NSWindowController, NSWindowDelegate,
+    NSMenuItemValidation, FileContentHost, SidebarDelegate, PathBarDelegate, TabStripDelegate, HeaderBarDelegate {
 
     public let dependencies: WindowDependencies
     public private(set) weak var host: BrowserWindowHost?
@@ -38,7 +64,16 @@ public struct BrowserTabSeed {
 
     let split = NSSplitViewController()
     let sidebar = SidebarController()
-    let pathBar = PathBarView()
+    let header = HeaderBarView()
+    var pathBar: PathBarView { header.pathBar }
+    private var sidebarItem: NSSplitViewItem?
+    private let contentEffect = NSVisualEffectView()
+    private let contentTint = TintView()
+    private let viewOptions = ViewOptionsPopover()
+    /// Opens a folder held under a drag.
+    let springs = SpringLoader()
+    /// Per drag: whether an app can open what's dragged over it.
+    var appDropAnswers: [String: Bool] = [:]
     let tabStrip = TabStripView()
     private let contentContainer = NSView()
     private let list = FileListController()
@@ -48,9 +83,6 @@ public struct BrowserTabSeed {
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
     private var operationsHeight: NSLayoutConstraint?
     private var tabStripHeight: NSLayoutConstraint?
-    private var searchItem: NSSearchToolbarItem?
-    private var viewSwitch: NSSegmentedControl?
-    private var backForward: NSSegmentedControl?
     private var shownContent: FileContentPresenting?
     private var shownMode: ViewMode?
     private var subscriptions: [Any] = []
@@ -123,53 +155,67 @@ public struct BrowserTabSeed {
     private func configureWindow(_ window: NSWindow) {
         window.delegate = self
         window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = false
+        window.titlebarAppearsTransparent = true
         window.tabbingMode = .disallowed // Our own strip owns tabs.
-        window.minSize = NSSize(width: 520, height: 320)
+        window.minSize = NSSize(width: 620, height: 380)
         window.isRestorable = false
         window.isReleasedWhenClosed = false
         window.autorecalculatesKeyViewLoop = true // Tab moves between sidebar, content and path bar.
+        window.isMovableByWindowBackground = false
         if dependencies.persistsWindowFrames { window.setFrameAutosaveName(frameName) }
 
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 170; sidebarItem.maximumThickness = 320
+        // Plain split items: a system sidebar item would float on macOS's own glass panel, which is Finder's look.
+        let sidebarItem = NSSplitViewItem(viewController: sidebar)
+        sidebarItem.minimumThickness = 190; sidebarItem.maximumThickness = 340
         sidebarItem.canCollapse = true
+        sidebarItem.holdingPriority = .init(260)
+        self.sidebarItem = sidebarItem
         sidebar.delegate = self
+        springs.open = { [weak self] url in self?.navigate(to: .directory(url)) }
         let contentController = NSViewController()
         contentController.view = buildContentArea()
-        let contentItem = NSSplitViewItem(contentListWithViewController: contentController)
-        contentItem.minimumThickness = 320
+        let contentItem = NSSplitViewItem(viewController: contentController)
+        contentItem.minimumThickness = 420
         split.addSplitViewItem(sidebarItem); split.addSplitViewItem(contentItem)
+        split.splitView.dividerStyle = .thin
         if dependencies.persistsWindowFrames { split.splitView.autosaveName = "HelmSplit" }
         window.contentViewController = split
         window.setContentSize(NSSize(width: 1040, height: 680))
         if !dependencies.persistsWindowFrames || !window.setFrameUsingName(frameName) { window.center() }
+        split.view.layoutSubtreeIfNeeded()
+        if !dependencies.persistsWindowFrames || split.splitView.subviews.first.map({ $0.frame.width > 340 || $0.frame.width < 190 }) == true {
+            split.splitView.setPosition(232, ofDividerAt: 0)
+        }
 
-        let toolbar = NSToolbar(identifier: "HelmToolbar")
-        toolbar.delegate = self; toolbar.displayMode = .iconOnly
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
+        // An empty toolbar only sets the title bar's height, which centres the window buttons on the header bar.
+        window.toolbar = NSToolbar(identifier: "HelmHeader")
         window.toolbarStyle = .unified
-        window.subtitle = ""
 
         list.host = self; grid.host = self
-        pathBar.delegate = self; tabStrip.delegate = self
+        pathBar.delegate = self; tabStrip.delegate = self; header.delegate = self
+        applyTransparency()
     }
 
     private func buildContentArea() -> NSView {
-        let root = NSView()
-        for view in [tabStrip, contentContainer, overlay, operationsHost, statusHost] as [NSView] {
+        let root = contentEffect
+        root.blendingMode = .behindWindow
+        root.state = .active
+        for view in [contentTint, header, tabStrip, contentContainer, overlay, operationsHost, statusHost] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
-        overlay.alignment = .center; overlay.textColor = .secondaryLabelColor; overlay.font = .systemFont(ofSize: 15)
+        overlay.alignment = .center; overlay.textColor = .secondaryLabelColor; overlay.font = .systemFont(ofSize: 16)
         overlay.isHidden = true; overlay.isSelectable = false
         let stripHeight = tabStrip.heightAnchor.constraint(equalToConstant: 0)
         tabStripHeight = stripHeight
         let operations = operationsHost.heightAnchor.constraint(equalToConstant: 0)
         operationsHeight = operations
         NSLayoutConstraint.activate([
-            tabStrip.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
+            contentTint.topAnchor.constraint(equalTo: root.topAnchor), contentTint.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            contentTint.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentTint.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            header.topAnchor.constraint(equalTo: root.topAnchor),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor), header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            tabStrip.topAnchor.constraint(equalTo: header.bottomAnchor),
             tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             stripHeight,
             contentContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
@@ -181,9 +227,21 @@ public struct BrowserTabSeed {
             operations,
             operationsHost.bottomAnchor.constraint(equalTo: statusHost.topAnchor),
             statusHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), statusHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 24)
+            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 28)
         ])
         return root
+    }
+
+    /// The window lets the desktop show through, more in the sidebar than behind the files, which keeps text readable.
+    /// The amount runs from 0% (solid) through 50% (Helm's own look) to 100% (as clear as the materials allow).
+    private func applyTransparency() {
+        let settings = dependencies.settings.snapshot
+        let transparent = settings.bool(.sidebarLiquidGlass)
+        let tints = WindowTints(percent: transparent ? settings.double(.windowTransparency) : 0)
+        sidebar.setTransparent(transparent, tint: tints.sidebar)
+        contentEffect.material = transparent ? .underWindowBackground : .windowBackground
+        contentEffect.blendingMode = transparent ? .behindWindow : .withinWindow
+        contentTint.fraction = tints.content
     }
 
     private func subscribe() {
@@ -201,7 +259,9 @@ public struct BrowserTabSeed {
 
     private func settingsChanged(_ settings: SettingsSnapshot) {
         for id in store.state.window.tabs { store.send(.tab(id, .settingsChanged(settings))) }
+        applyTransparency()
         renderContent(force: true)
+        if viewOptions.isShown { refreshViewOptions() }
         dependencies.volumes.reload()
     }
 
@@ -212,9 +272,9 @@ public struct BrowserTabSeed {
         applyRememberedViewOptions(tab)
         window?.title = title(for: tab)
         if case .directory(let url) = tab.location, tab.search == nil { window?.representedURL = url } else { window?.representedURL = nil }
-        pathBar.render(location: tab.location, editor: tab.addressBar)
+        pathBar.render(location: tab.location, home: dependencies.home, editor: tab.addressBar)
         let many = snapshot.window.tabs.count > 1
-        tabStripHeight?.constant = many ? 29 : 0
+        tabStripHeight?.constant = many ? 36 : 0
         tabStrip.isHidden = !many
         if many { tabStrip.render(window: snapshot.window, tabs: snapshot.tabs) }
         renderContent(tab: tab, force: lastRenderedTab != tab.id)
@@ -223,6 +283,7 @@ public struct BrowserTabSeed {
         renderSidebar(for: tab)
         renderStatus(tab)
         finishPendingWork(tab)
+        followSelectionInQuickLook()
     }
 
     /// A folder you've set up keeps its view and sort when you come back. Elsewhere the tab keeps its current choice.
@@ -312,12 +373,8 @@ public struct BrowserTabSeed {
     }
 
     private func updateChrome(_ tab: TabState) {
-        backForward?.setEnabled(!tab.history.back.isEmpty, forSegment: 0)
-        backForward?.setEnabled(!tab.history.forward.isEmpty, forSegment: 1)
-        viewSwitch?.selectedSegment = tab.viewMode == .grid ? 0 : 1
-        if let searchItem, tab.search == nil, searchItem.searchField.stringValue != "", window?.firstResponder !== searchItem.searchField.currentEditor() {
-            searchItem.searchField.stringValue = ""
-        }
+        header.render(tab: tab)
+        if viewOptions.isShown { refreshViewOptions() }
     }
 
     private func renderSidebar() { if let tab = activeTab { renderSidebar(for: tab) } }
@@ -327,8 +384,10 @@ public struct BrowserTabSeed {
                                  starred: dependencies.stars.records.map { URL(fileURLWithPath: $0.path) },
                                  volumes: dependencies.volumes.volumes,
                                  showAllVolumes: dependencies.settings.snapshot.bool(.showAllMountedVolumes))
+        // The highlight follows where the tab is going, so a click doesn't flick back to the old place while the
+        // new folder loads. If that load fails, the pending target clears and the highlight returns (F-027).
         let destination: PlaceDestination
-        switch tab.location {
+        switch tab.pendingNavigation?.target ?? tab.location {
         case .directory(let url): destination = .directory(url)
         case .recent: destination = .recent
         case .trash: destination = .trash
@@ -410,86 +469,63 @@ public struct BrowserTabSeed {
 
     func refreshHistory() async {
         historyState = await history.snapshot()
-        window?.toolbar?.validateVisibleItems()
     }
 
-    // MARK: Toolbar
+    // MARK: Header bar
 
-    private enum ToolbarID {
-        static let navigation = NSToolbarItem.Identifier("helm.navigation")
-        static let path = NSToolbarItem.Identifier("helm.path")
-        static let search = NSToolbarItem.Identifier("helm.search")
-        static let view = NSToolbarItem.Identifier("helm.view")
-        static let actions = NSToolbarItem.Identifier("helm.actions")
-    }
-    public func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, ToolbarID.navigation, ToolbarID.path, ToolbarID.search, ToolbarID.view, ToolbarID.actions]
-    }
-    public func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
-    public func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        switch id {
-        case ToolbarID.navigation:
-            let control = NSSegmentedControl(images: [
-                NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back") ?? NSImage(),
-                NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Forward") ?? NSImage()
-            ], trackingMode: .momentary, target: self, action: #selector(backForwardClicked(_:)))
-            control.setToolTip("Back", forSegment: 0); control.setToolTip("Forward", forSegment: 1)
-            backForward = control
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.view = control; item.label = "Back/Forward"
-            return item
-        case ToolbarID.path:
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.view = pathBar; item.label = "Location"
-            item.visibilityPriority = .high
-            // The toolbar gives its spare width to whichever item can take it, which is what centres the path bar.
-            pathBar.translatesAutoresizingMaskIntoConstraints = false
-            pathBar.setContentHuggingPriority(.init(1), for: .horizontal)
-            pathBar.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            pathBar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
-            pathBar.widthAnchor.constraint(lessThanOrEqualToConstant: 2400).isActive = true
-            return item
-        case ToolbarID.search:
-            let item = NSSearchToolbarItem(itemIdentifier: id)
-            item.searchField.delegate = self
-            item.searchField.placeholderString = "Search"
-            item.searchField.target = self; item.searchField.action = #selector(searchChanged(_:))
-            item.searchField.sendsSearchStringImmediately = true
-            searchItem = item
-            return item
-        case ToolbarID.view:
-            let control = NSSegmentedControl(images: [
-                NSImage(systemSymbolName: ViewMode.grid.systemImageName, accessibilityDescription: "Grid") ?? NSImage(),
-                NSImage(systemSymbolName: ViewMode.list.systemImageName, accessibilityDescription: "List") ?? NSImage()
-            ], trackingMode: .selectOne, target: self, action: #selector(viewSwitchClicked(_:)))
-            viewSwitch = control
-            let item = NSToolbarItem(itemIdentifier: id)
-            item.view = control; item.label = "View"
-            item.visibilityPriority = .low
-            return item
-        case ToolbarID.actions:
-            let item = NSMenuToolbarItem(itemIdentifier: id)
-            item.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "Actions")
-            item.label = "Actions"; item.showsIndicator = false
-            item.menu = headerMenu()
-            return item
-        default: return nil
+    func headerToggleSidebar() { toggleSidebar() }
+    func toggleSidebar() {
+        guard let sidebarItem else { return }
+        let hide = !sidebarItem.isCollapsed
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            sidebarItem.animator().isCollapsed = hide
         }
+        header.setSidebarVisible(!hide)
+        store.send(.window(.setSidebarVisible(!hide)))
     }
-    /// Nautilus's main menu: what you reach for without leaving the keyboard's home row.
-    private func headerMenu() -> NSMenu {
+    func headerBack() { perform(.back) }
+    func headerForward() { perform(.forward) }
+    func headerToggleViewMode() { perform(activeTab?.viewMode == .grid ? .list : .grid) }
+    func headerShowViewOptions(from button: NSView) {
+        let model = viewOptions.model
+        model.pressSort = { [weak self] in self?.pressSort($0) }
+        model.toggleFoldersFirst = { [weak self] in self?.toggleFoldersFirst() }
+        model.toggleHidden = { [weak self] in self?.perform(.hidden) }
+        model.stepText = { [weak self] in self?.stepText(by: $0) }
+        model.resetText = { [weak self] in self?.resetText() }
+        model.stepIcons = { [weak self] in self?.stepIcons(by: $0) }
+        model.resetIcons = { [weak self] in self?.resetIcons() }
+        viewOptions.onClose = { [weak self] in self?.header.setViewOptionsShown(false) }
+        refreshViewOptions()
+        viewOptions.show(from: button)
+        header.setViewOptionsShown(viewOptions.isShown)
+    }
+    /// For the smoke run: opens the view options popover and returns what it shows.
+    public func showViewOptionsForTesting() -> NSView? {
+        header.openViewOptionsForTesting()
+        return viewOptions.contentView
+    }
+    public func closeViewOptionsForTesting() { viewOptions.close() }
+    /// Keeps the open popover in step with the tab and settings, so pressing again shows the new state at once.
+    private func refreshViewOptions() {
+        guard let tab = activeTab else { return }
+        let settings = dependencies.settings.snapshot
+        let next = HeaderViewOptionsState(sort: tab.sort, searching: tab.search != nil, showHidden: tab.showHidden, isGrid: tab.viewMode == .grid,
+                                    textPoints: settings.double(.fileTextSize), iconPixels: settings.double(.gridIconSize))
+        if viewOptions.model.state != next { viewOptions.model.state = next }
+    }
+    /// Nautilus's main menu: what you reach for without going to the menu bar.
+    func headerMainMenu() -> NSMenu? {
         let menu = NSMenu()
-        for (title, command) in [("New Folder", CommandID.newFolder), ("New Tab", .newTab), ("New Window", .newWindow)] {
+        for (title, command) in [("New Window", CommandID.newWindow), ("New Tab", .newTab), ("New Folder", .newFolder)] {
             menu.addItem(commandItem(title, command))
         }
         menu.addItem(.separator())
-        let sort = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
-        sort.submenu = NSMenu(title: "Sort By")
-        sort.submenu?.delegate = self
-        menu.addItem(sort)
-        menu.addItem(commandItem("Show Hidden Files", .hidden))
-        menu.addItem(commandItem("Refresh", .refresh))
+        menu.addItem(commandItem("Undo", .undo))
+        menu.addItem(commandItem("Redo", .redo))
         menu.addItem(.separator())
+        menu.addItem(commandItem("Connect to Server…", .connectToServer))
         menu.addItem(commandItem("Settings…", .settings))
         return menu
     }
@@ -499,24 +535,21 @@ public struct BrowserTabSeed {
         return item
     }
 
-    @objc private func backForwardClicked(_ sender: NSSegmentedControl) {
-        perform(sender.selectedSegment == 0 ? .back : .forward)
-    }
-    @objc private func viewSwitchClicked(_ sender: NSSegmentedControl) {
-        perform(sender.selectedSegment == 0 ? .grid : .list)
-    }
-
     // MARK: Search
 
-    @objc private func searchChanged(_ sender: NSSearchField) {
-        let text = sender.stringValue
+    func headerSearchChanged(_ text: String) {
         let delay = dependencies.settings.snapshot.integer(.searchDebounceMilliseconds)
         searchDebounce?.cancel()
-        searchDebounce = Task { [weak self] in
+        searchDebounce = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, delay)) * 1_000_000)
             guard !Task.isCancelled else { return }
             self?.search(text)
         }
+    }
+    func headerSearchClosed() {
+        searchDebounce?.cancel()
+        store.send(.tab(activeTabID, .searchEnded))
+        shownContent?.focusContent()
     }
     public func search(_ text: String) {
         guard let tab = activeTab else { return }
@@ -532,22 +565,15 @@ public struct BrowserTabSeed {
                                 limit: settings.integer(.searchResultLimit))
         store.send(.tab(tab.id, .searchStarted(query)))
     }
-    public func searchFieldDidEndSearching(_ sender: NSSearchField) {
-        guard let tab = activeTab else { return }
-        store.send(.tab(tab.id, .searchEnded))
-        shownContent?.focusContent()
-    }
-    func beginSearch() {
-        searchItem?.beginSearchInteraction()
-    }
+    func beginSearch() { header.beginSearch() }
 
     // MARK: FileContentHost
 
     public var icons: IconCache { dependencies.icons }
     var gridIconSize: Int { Int(dependencies.settings.snapshot.double(.gridIconSize)) }
+    var fileTextSize: CGFloat { CGFloat(dependencies.settings.snapshot.double(.fileTextSize)) }
     func contentSelectionChanged(_ ids: Set<ItemID>) {
         store.send(.tab(activeTabID, .setSelection(ids, source: .user)))
-        if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { reloadQuickLook() }
     }
     func contentOpen(_ entries: [FileEntry], newTab: Bool) { open(entries, newTab: newTab) }
     func contentMenu(for entries: [FileEntry]) -> NSMenu? { contextMenu(for: entries) }
@@ -566,17 +592,24 @@ public struct BrowserTabSeed {
     func contentCollapse(_ id: ItemID) { store.send(.tab(activeTabID, .collapse(id))) }
     func contentActivated() {}
     func contentKeyDown(_ event: NSEvent) -> Bool { handleContentKey(event) }
-    func contentCanAcceptDrop(into url: URL?, from urls: [URL]) -> Bool {
-        guard !urls.isEmpty else { return false }
-        return (url ?? activeTab?.mutationTarget) != nil && activeTab?.search == nil
+    /// `entry` is the item under the pointer when it takes drops; nil means the folder on show.
+    func contentDropOperation(_ info: NSDraggingInfo, onto entry: FileEntry?) -> NSDragOperation {
+        guard let destination = contentDestination(entry) else { springs.cancel(); return [] }
+        let operation = dropOperation(info, into: destination)
+        springs.hover(operation != [] && entry?.isDirectoryLike == true ? entry?.url : nil)
+        return operation
     }
-    func contentDragOperation(from urls: [URL], into url: URL?) -> NSDragOperation {
-        guard let target = url ?? activeTab?.mutationTarget else { return [] }
-        return dragOperation(from: urls, into: target)
+    func contentPerformDrop(_ info: NSDraggingInfo, onto entry: FileEntry?) -> Bool {
+        guard let destination = contentDestination(entry) else { return false }
+        return performDrop(info, into: destination)
     }
-    func contentAcceptDrop(_ urls: [URL], into url: URL?) -> Bool {
-        guard let target = url ?? activeTab?.mutationTarget else { return false }
-        return acceptDrop(urls, into: target)
+    func contentDragEnded() { springs.cancel() }
+    private func contentDestination(_ entry: FileEntry?) -> WindowDropTarget? {
+        if let entry, entry.takesDrops { return entry.isApplicationBundle ? .application(entry.url) : .folder(entry.url) }
+        // Search results and Recent aren't folders, so there's nowhere to put a drop between their items.
+        guard let tab = activeTab, tab.search == nil else { return nil }
+        if case .trash = tab.location { return .trash }
+        return tab.mutationTarget.map(WindowDropTarget.folder)
     }
     var starred: Set<ItemID> { starredIDs }
 
@@ -589,7 +622,15 @@ public struct BrowserTabSeed {
         store.send(.tab(activeTabID, .addressBar(action)))
         if case .cancel = action { shownContent?.focusContent() }
     }
-    func pathBarAcceptDrop(_ urls: [URL], into url: URL) -> Bool { acceptDrop(urls, into: url) }
+    func pathBarDropOperation(_ info: NSDraggingInfo, into url: URL?) -> NSDragOperation {
+        guard let url else { springs.cancel(); return [] }
+        let operation = dropOperation(info, into: .folder(url))
+        springs.hover(operation != [] ? url : nil)
+        return operation
+    }
+    func pathBarPerformDrop(_ info: NSDraggingInfo, into url: URL) -> Bool { performDrop(info, into: .folder(url)) }
+    func pathBarDragEnded() { springs.cancel() }
+    func pathBarFolderMenu() -> NSMenu? { contextMenu(for: []) }
     func locationBarRejected() { pathBar.shake() }
 
     // MARK: TabStripDelegate
@@ -597,6 +638,20 @@ public struct BrowserTabSeed {
     func tabStripActivate(_ id: TabID) { store.send(.window(.activate(id))) }
     func tabStripClose(_ id: TabID) { closeTab(id) }
     func tabStripNewTab() { newTab(at: activeTab?.location ?? .directory(dependencies.home)) }
+    func tabStripDropOperation(_ info: NSDraggingInfo, onto id: TabID) -> NSDragOperation {
+        if id != activeTabID { springs.hover(id) { [weak self] in self?.store.send(.window(.activate(id))) } }
+        guard let tab = store.state.tabs[id], tab.search == nil else { return [] }
+        if case .trash = tab.location { return dropOperation(info, into: .trash) }
+        guard let url = tab.mutationTarget else { return [] }
+        return dropOperation(info, into: .folder(url))
+    }
+    func tabStripPerformDrop(_ info: NSDraggingInfo, onto id: TabID) -> Bool {
+        guard let tab = store.state.tabs[id], tab.search == nil else { return false }
+        if case .trash = tab.location { return performDrop(info, into: .trash) }
+        guard let url = tab.mutationTarget else { return false }
+        return performDrop(info, into: .folder(url))
+    }
+    func tabStripDragEnded() { springs.cancel() }
 
     // MARK: SidebarDelegate
 
@@ -630,8 +685,28 @@ public struct BrowserTabSeed {
             }
         }
     }
-    func sidebarAcceptDrop(_ urls: [URL], into url: URL) -> Bool { acceptDrop(urls, into: url) }
-    func sidebarTrash(_ urls: [URL]) { trash(urls) }
+    func sidebarDropOperation(_ info: NSDraggingInfo, onto place: Place) -> NSDragOperation {
+        guard let destination = dropDestination(for: place) else { springs.cancel(); return [] }
+        let operation = dropOperation(info, into: destination)
+        // Holding a drag over a place opens it, so you can drop deeper inside.
+        if case .folder(let url) = destination, operation != [] { springs.hover(url) } else { springs.cancel() }
+        return operation
+    }
+    func sidebarPerformDrop(_ info: NSDraggingInfo, onto place: Place) -> Bool {
+        guard let destination = dropDestination(for: place) else { return false }
+        return performDrop(info, into: destination)
+    }
+    func sidebarDragEnded() { springs.cancel() }
+    private func dropDestination(for place: Place) -> WindowDropTarget? {
+        switch place.destination {
+        case .trash: return .trash
+        case .directory(let url):
+            guard place.kind == .starred, !isDirectory(url) else { return .folder(url) }
+            // A starred app opens what's dropped on it; a starred document takes nothing.
+            return url.pathExtension == "app" ? .application(url) : nil
+        case .recent, .starred: return nil
+        }
+    }
     func sidebarEmptyTrash() { emptyTrash() }
 
     // MARK: Quick Look
@@ -649,8 +724,30 @@ public struct BrowserTabSeed {
         if panel.isVisible { panel.orderOut(nil) } else { panel.makeKeyAndOrderFront(nil) }
     }
     private func reloadQuickLook() {
-        quickLookEntries = selectedEntries()
+        quickLookEntries = quickLookSelection()
         QLPreviewPanel.shared()?.reloadData()
+    }
+    /// The selection in the order it's shown, including inside expanded folders, so paging matches the screen.
+    private func quickLookSelection() -> [FileEntry] {
+        guard let tab = activeTab else { return [] }
+        let chosen = selectedEntries()
+        let order = tab.snapshot.visibleIDs(expanding: tab.expandedIDs)
+        var rank: [ItemID: Int] = [:]
+        for (offset, id) in order.enumerated() { rank[id] = offset }
+        return chosen.enumerated().sorted { (rank[$0.element.id] ?? order.count + $0.offset) < (rank[$1.element.id] ?? order.count + $1.offset) }
+            .map(\.element)
+    }
+    /// While the panel is open it follows the selection however it changed: clicks, Select All, an operation,
+    /// a new folder or another tab. The item on show stays on show if it's still selected.
+    private func followSelectionInQuickLook() {
+        guard QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible,
+              panel.dataSource === self else { return }
+        let next = quickLookSelection()
+        guard next.map(\.url) != quickLookEntries.map(\.url) else { return }
+        let showing = (panel.currentPreviewItem as? NSURL) as URL?
+        quickLookEntries = next
+        panel.reloadData()
+        if let showing, let index = next.firstIndex(where: { $0.url == showing }) { panel.currentPreviewItemIndex = index }
     }
     public func selectedEntries() -> [FileEntry] {
         guard let tab = activeTab else { return [] }
@@ -676,19 +773,9 @@ public struct BrowserTabSeed {
         return pasteboard.writeObjects(urls.map { $0 as NSURL })
     }
     fileprivate func previewFrame(_ entry: FileEntry) -> NSRect { shownContent?.screenFrame(of: entry.id) ?? .zero }
-}
-
-extension BrowserWindowController: NSMenuDelegate {
-    /// The sort menu shows the active tab's choice, so it's rebuilt when it opens.
-    public func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu.title == "Sort By" else { return }
-        let fresh = sortMenu()
-        menu.removeAllItems()
-        for item in fresh.items {
-            fresh.removeItem(item)
-            menu.addItem(item)
-        }
-    }
+    fileprivate func previewImage(_ entry: FileEntry) -> NSImage? { shownContent?.image(of: entry.id) }
+    /// Where an item is on screen, if it's in view.
+    func screenFrame(of id: ItemID) -> NSRect? { shownContent?.screenFrame(of: id) }
 }
 
 extension BrowserWindowController: QLPreviewPanelDataSource, QLPreviewPanelDelegate {
@@ -696,10 +783,17 @@ extension BrowserWindowController: QLPreviewPanelDataSource, QLPreviewPanelDeleg
     public func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
         previewItems[index].url as NSURL
     }
-    /// Arrow keys keep moving the selection while the panel is open, and the panel follows.
+    /// With one item, arrow keys move the selection and the panel follows, as in Finder.
+    /// With several, the panel pages through them itself.
     public func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
-        guard event.type == .keyDown, [123, 124, 125, 126].contains(Int(event.keyCode)) else { return false }
+        guard event.type == .keyDown, [123, 124, 125, 126].contains(Int(event.keyCode)), previewItems.count <= 1 else { return false }
         return forwardToContent(event)
+    }
+    /// The panel zooms out of the picture the item shows now.
+    public func previewPanel(_ panel: QLPreviewPanel!, transitionImageFor item: (any QLPreviewItem)!,
+                             contentRect: UnsafeMutablePointer<NSRect>!) -> Any! {
+        guard let url = item.previewItemURL, let entry = previewItems.first(where: { $0.url == url }) else { return nil }
+        return previewImage(entry)
     }
     public func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
         guard let url = item.previewItemURL, let entry = previewItems.first(where: { $0.url == url }) else { return .zero }

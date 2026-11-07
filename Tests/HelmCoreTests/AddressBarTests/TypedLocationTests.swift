@@ -113,3 +113,68 @@ final class ExpandedChildrenTests: XCTestCase {
         XCTAssertEqual(done.selection, [added.id])
     }
 }
+
+/// Sorts read in plain words, and drives get proper names.
+final class SortChoiceAndCloudDriveTests: XCTestCase {
+    func testEverySortAndDirectionHasItsOwnWords() {
+        for field in [ItemSort.Field.name, .size, .dateModified, .kind] {
+            for ascending in [true, false] {
+                let choice = SortChoice.matching(ItemSort(field: field, ascending: ascending))
+                XCTAssertEqual(choice.field, field); XCTAssertEqual(choice.ascending, ascending)
+            }
+        }
+        XCTAssertEqual(Set(SortChoice.all.map(\.title)).count, 8)
+        XCTAssertEqual(SortChoice.matching(.relevance), .bestMatch)
+    }
+    func testChoosingASortKeepsFoldersOnTopSetting() {
+        let sort = ItemSort(field: .name, ascending: true, directoriesFirst: false)
+        let next = SortChoice.all[3].applied(to: sort)
+        XCTAssertEqual(next.field, .dateModified); XCTAssertTrue(next.ascending); XCTAssertFalse(next.directoriesFirst)
+    }
+    func testCloudFolderNames() {
+        XCTAssertEqual(CloudDriveNaming.provider(ofFolder: "GoogleDrive-me@example.com"), "Google Drive")
+        XCTAssertEqual(CloudDriveNaming.provider(ofFolder: "OneDrive-Personal"), "OneDrive")
+        XCTAssertEqual(CloudDriveNaming.provider(ofFolder: "Dropbox"), "Dropbox")
+        XCTAssertEqual(CloudDriveNaming.provider(ofFolder: "Box-Box"), "Box")
+    }
+    func testTwoAccountsCanBeToldApart() {
+        let names = CloudDriveNaming.names(forFolders: ["GoogleDrive-a@x.com", "GoogleDrive-b@x.com", "Dropbox"])
+        XCTAssertEqual(names["GoogleDrive-a@x.com"], "Google Drive (a@x.com)")
+        XCTAssertEqual(names["GoogleDrive-b@x.com"], "Google Drive (b@x.com)")
+        XCTAssertEqual(names["Dropbox"], "Dropbox")
+    }
+    func testFileTextSizeIsBounded() {
+        XCTAssertEqual(SettingsSchema.defaultValue(for: .fileTextSize), .double(14))
+        XCTAssertEqual(SettingsSchema.validated(.double(99), for: .fileTextSize), .double(24))
+        XCTAssertEqual(SettingsSchema.validated(.double(1), for: .fileTextSize), .double(11))
+        XCTAssertEqual(SettingsSchema.validated(.double(140), for: .windowTransparency), .double(100))
+        XCTAssertEqual(SettingsSchema.validated(.double(-5), for: .windowTransparency), .double(0))
+    }
+    func testPressingTheSortedFieldReversesIt() {
+        let byName = ItemSort(field: .name, ascending: true, directoriesFirst: false)
+        XCTAssertEqual(SortField.pressing(.name, on: byName), ItemSort(field: .name, ascending: false, directoriesFirst: false))
+        XCTAssertEqual(SortField.pressing(.name, on: SortField.pressing(.name, on: byName)), byName)
+        // A new field starts in its own direction: newest and largest first, names and kinds from A.
+        XCTAssertEqual(SortField.pressing(.dateModified, on: byName), ItemSort(field: .dateModified, ascending: false, directoriesFirst: false))
+        XCTAssertEqual(SortField.pressing(.size, on: byName), ItemSort(field: .size, ascending: false, directoriesFirst: false))
+        XCTAssertEqual(SortField.pressing(.kind, on: ItemSort(field: .size, ascending: true)), ItemSort(field: .kind, ascending: true))
+        XCTAssertEqual(SortField.direction(.dateModified, ascending: false), "Newest first")
+        XCTAssertEqual(SortField.direction(.name, ascending: false), "Z to A")
+    }
+    func testTextStepsByTenPercent() {
+        XCTAssertEqual(ContentZoom.textPercent(14), 100)
+        XCTAssertEqual(ContentZoom.textPercent(ContentZoom.steppedText(14, by: 1)), 110)
+        XCTAssertEqual(ContentZoom.textPercent(ContentZoom.steppedText(14, by: -2)), 80)
+        // A size between steps moves to the next step in the direction pressed.
+        XCTAssertEqual(ContentZoom.textPercent(ContentZoom.steppedText(15, by: 1)), 110)
+        XCTAssertEqual(ContentZoom.textPercent(ContentZoom.steppedText(15, by: -1)), 100)
+        // The ends hold, and an old size outside the steps never moves the wrong way.
+        XCTAssertFalse(ContentZoom.canStepText(ContentZoom.textPoints(percent: 170), by: 1))
+        XCTAssertFalse(ContentZoom.canStepText(24, by: 1))
+        XCTAssertFalse(ContentZoom.canStepText(11, by: -1))
+        XCTAssertTrue(ContentZoom.canStepText(24, by: -1))
+        XCTAssertEqual(ContentZoom.steppedIcons(96, by: 1), 112)
+        XCTAssertEqual(ContentZoom.steppedIcons(128, by: 1), 128)
+        XCTAssertEqual(ContentZoom.iconPercent(48), 50)
+    }
+}

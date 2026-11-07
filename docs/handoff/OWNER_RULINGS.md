@@ -51,7 +51,7 @@ No ruling authorizes a push, a release or any other external action. The product
 |---|---|---|
 | OK2-35 | **A.** Rename to `FileDropSession`, `FileDropOperation`, `FileDropProposal`, `HelmToolbarItem`. | Clears the guard, so a red `run_all.sh` means something new. |
 | Q6 (Xcode project) | **Generated, not committed.** Listed in `.gitignore`. | `xcodegen` regenerates it from `App/project.yml`. |
-| Q7 | **A.** Work leaves this Mac by a push to `HuseynAkh/Helm`, once Huseyn approves that exact push. | Nothing has been pushed. |
+| Q7 | **A.** Work leaves this Mac by a push to `HuseynAkh/Helm`, once Huseyn approves that exact push. | On 2026-11-07 Huseyn approved pushing `handoff/mac-fixups`, authored by him alone. Each later push needs its own approval. |
 
 ## Delegated: features
 

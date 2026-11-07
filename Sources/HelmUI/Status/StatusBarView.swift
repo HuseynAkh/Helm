@@ -8,13 +8,13 @@ public struct StatusBarView: View {
     public init(status: StatusPresentation) { text = StatusText.format(status) }
     public var body: some View {
         Text(text)
-            .font(.system(size: 11))
+            .font(.system(size: 12.5))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 24)
+            .frame(height: 28)
             .overlay(alignment: .top) { Divider() }
             .accessibilityLabel(text)
     }

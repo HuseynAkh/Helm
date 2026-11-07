@@ -22,7 +22,7 @@ public struct PlacesModel: Sendable {
         self.starred = Self.places(starred, kind: .starred, home: home)
         self.devices = VolumeFilter.filtered(volumes, showAll: showAllVolumes).map {
             Place(id: "volume-\($0.url.path)", name: $0.name, destination: .directory($0.url),
-                  iconName: $0.isRemovable ? "externaldrive" : "internaldrive", kind: .device)
+                  iconName: $0.isCloud ? "cloud" : ($0.isRemovable ? "externaldrive" : "internaldrive"), kind: .device)
         }
     }
     public var allPlaces: [Place] {

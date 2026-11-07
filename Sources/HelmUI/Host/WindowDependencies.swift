@@ -22,11 +22,15 @@ import HelmPersistence
     /// Fixture runs use a private pasteboard and save no window frames, so they leave the user's clipboard and preferences alone.
     public let pasteboard: NSPasteboard
     public let persistsWindowFrames: Bool
+    /// The apps you've chosen for each kind of file, for Open With.
+    public let openWith: OpenWithStore
     public init(settings: SettingsStore, bookmarks: any AppBookmarkStoring, stars: any AppStarStoring,
                 recents: any AppRecentStoring, trashOrigins: any AppTrashOriginStoring, viewOptions: any AppViewOptionsStoring, fileSystem: any FileSystem,
                 operations: OperationCoordinator, home: URL, volumes: VolumeCenter, icons: IconCache,
-                clock: any HelmClock, pasteboard: NSPasteboard = .general, persistsWindowFrames: Bool = true) {
+                clock: any HelmClock, pasteboard: NSPasteboard = .general, persistsWindowFrames: Bool = true,
+                openWith: OpenWithStore? = nil) {
         self.pasteboard = pasteboard; self.persistsWindowFrames = persistsWindowFrames
+        self.openWith = openWith ?? OpenWithStore()
         self.settings = settings; self.bookmarks = bookmarks; self.stars = stars; self.recents = recents
         self.trashOrigins = trashOrigins; self.viewOptions = viewOptions; self.fileSystem = fileSystem; self.operations = operations
         self.home = home; self.volumes = volumes; self.icons = icons; self.clock = clock

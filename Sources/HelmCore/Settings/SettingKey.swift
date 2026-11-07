@@ -25,6 +25,8 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     case crossVolumeDragDefault = "helm.crossVolumeDragDefault"
     case askOnConflict = "helm.askOnConflict"
     case restoreSessionOnLaunch = "helm.restoreSessionOnLaunch"
+    case fileTextSize = "helm.fileTextSize"
+    case windowTransparency = "helm.windowTransparency"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

@@ -8,7 +8,7 @@ The rebuild now compiles on this Mac, including `HelmUI`, `HelmApp` and a tempor
 
 | ID | Item | State |
 |---|---|---|
-| B1 | S3: `HelmCore` did not compile on Darwin | Resolved. Huseyn chose "Allow Darwin-only fixes", offered as the README's line `Also compile-fix Darwin-only branches of portable modules, no contract changes.` Fix is commit `a2d1c4a` |
+| B1 | S3: `HelmCore` did not compile on Darwin | Resolved. Huseyn chose "Allow Darwin-only fixes", offered as the README's line `Also compile-fix Darwin-only branches of portable modules, no contract changes.` Fix is commit `53f958a` |
 | B2 | `F14MonitorRecoveryTests.testRecoveryThroughStoreRetainsReplacementThenReceivesChange` aborts its test process | Open, FAIL. 3 of 3 runs. Not edited |
 | B3 | 12 `HelmCoreTests` cases fail under Apple Foundation | Open, FAIL. Not edited |
 | B4 | Real folder browsing | Open, not part of this run. Blocked on OK2-1 and OK2-8 |
@@ -53,7 +53,7 @@ Sources/HelmCore/Content/GridGeometry.swift:80:76: error: value of type 'CGRect'
 
 The file imports only `Foundation`. With this toolchain, that makes the `CGRect` type visible but not its CoreGraphics members. This is the only file in `HelmCore` that uses `CGRect`, `CGPoint` or `CGSize`. The cause is inferred from the diagnostics and from the fix below working; it was not traced further.
 
-### B1 fix, applied in `a2d1c4a` after approval
+### B1 fix, applied in `53f958a` after approval
 
 ```diff
 --- a/Sources/HelmCore/Content/GridGeometry.swift
@@ -269,7 +269,7 @@ All test runs finished without hanging. I did not watch the screen during them, 
 
 | Kind | File | Change |
 |---|---|---|
-| Portable compile fix, approved | `Sources/HelmCore/Content/GridGeometry.swift` | Guarded `import CoreGraphics` (`a2d1c4a`) |
+| Portable compile fix, approved | `Sources/HelmCore/Content/GridGeometry.swift` | Guarded `import CoreGraphics` (`53f958a`) |
 | Portable fixes proposed, not made | None | B2 and B3 are test failures, not compile errors, so they are recorded only |
 | Scaffold compile fix | `Sources/Helm/main.swift` | Wrapped top-level code in `MainActor.assumeIsolated`. The compiler rejected `call to main actor-isolated static method 'install(in:arguments:)' in a synchronous nonisolated context` at `main.swift:6:13` |
 | New scaffold files | `Sources/Helm/main.swift`, `Sources/HelmApp/macOS/DevScaffold.swift`, `App/main.swift`, `App/project.yml`, `App/Info.plist`, `App/Helm.entitlements` | Added per Stage 3 |

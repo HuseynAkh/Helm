@@ -22,27 +22,31 @@ import HelmCore
         outline.host = { [weak self] in self?.host }
         outline.entryAtRow = { [weak self] row in self?.entry(atRow: row) }
         outline.selectedEntries = { [weak self] in self?.selectedEntries() ?? [] }
+        // The first click on a column goes the way you'd want first: A–Z, newest, largest.
         let columns: [(Column, String, CGFloat, Bool)] = [
-            (.name, "Name", 320, true), (.size, "Size", 80, true),
-            (.dateModified, "Date Modified", 170, true), (.kind, "Kind", 150, true)]
-        for (column, title, width, sortable) in columns {
+            (.name, "Name", 340, true), (.size, "Size", 90, false),
+            (.dateModified, "Modified", 180, false), (.kind, "Kind", 160, true)]
+        for (column, title, width, ascendingFirst) in columns {
             let value = NSTableColumn(identifier: .init(column.rawValue))
             value.title = title; value.width = width; value.minWidth = 50
-            if sortable { value.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true) }
+            value.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: ascendingFirst)
+            value.headerCell = FileHeaderCell(textCell: title)
             outline.addTableColumn(value)
             if column == .name { outline.outlineTableColumn = value }
         }
         let location = NSTableColumn(identifier: .init(Column.location.rawValue))
         location.title = "Location"; location.width = 240; location.isHidden = true
+        location.headerCell = FileHeaderCell(textCell: "Location")
         outline.addTableColumn(location)
         locationColumn = location
         outline.usesAlternatingRowBackgroundColors = false
         outline.allowsMultipleSelection = true; outline.allowsEmptySelection = true
-        outline.allowsTypeSelect = true; outline.style = .inset; outline.rowHeight = 24
+        outline.allowsTypeSelect = true; outline.style = .inset; outline.rowHeight = 32
+        outline.backgroundColor = .clear
         outline.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         outline.dataSource = self; outline.delegate = self
         outline.doubleAction = #selector(doubleClicked); outline.target = self
-        outline.registerForDraggedTypes([.fileURL])
+        outline.registerForDraggedTypes(FileDrag.acceptedTypes)
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.every, forLocal: true)
         outline.setAccessibilityLabel("Files")
@@ -60,7 +64,11 @@ import HelmCore
         let changed = force || tab.id != tabID || tab.snapshot.id != snapshotID || tab.snapshot.location != snapshot?.location
         let cutChanged = tab.cutIDs != cut
         cut = tab.cutIDs
-        if changed {
+        let textSize = host?.fileTextSize ?? 14
+        let rowHeight = ceil(textSize * 2.25)
+        let textChanged = outline.rowHeight != rowHeight
+        if textChanged { outline.rowHeight = rowHeight }
+        if changed || textChanged {
             let keepingScroll = tab.id == tabID && tab.snapshot.location == snapshot?.location
             let origin = scroll.contentView.bounds.origin
             snapshot = tab.snapshot; tabID = tab.id; snapshotID = tab.snapshot.id
@@ -72,7 +80,25 @@ import HelmCore
         if outline.sortDescriptors.first?.key != descriptor.key || outline.sortDescriptors.first?.ascending != descriptor.ascending {
             outline.sortDescriptors = [descriptor]
         }
+        showSortDirection(tab.snapshot.sort)
         applySelection(tab.selection)
+    }
+
+    /// The sorted column's title carries a plain arrow: up for ascending, down for descending.
+    private func showSortDirection(_ sort: ItemSort) {
+        let names: [String: String] = [Column.name.rawValue: "Name", Column.size.rawValue: "Size",
+                                       Column.dateModified.rawValue: "Modified", Column.kind.rawValue: "Kind"]
+        for column in outline.tableColumns {
+            guard let name = names[column.identifier.rawValue], let cell = column.headerCell as? FileHeaderCell else { continue }
+            let active = column.identifier.rawValue == sort.field.rawValue
+            let title = active ? "\(name)  \(sort.ascending ? "↑" : "↓")" : name
+            if cell.stringValue != title || cell.isSorted != active {
+                cell.isSorted = active
+                cell.stringValue = title
+                cell.font = .systemFont(ofSize: 13, weight: active ? .semibold : .regular)
+                outline.headerView?.needsDisplay = true
+            }
+        }
     }
 
     /// Right-click a column header to show or hide columns. The name always stays.
@@ -131,7 +157,19 @@ import HelmCore
         guard row >= 0, let window = view.window else { return nil }
         let rect = outline.rect(ofRow: row)
         guard outline.visibleRect.intersects(rect) else { return nil }
+        // Zoom from the icon, as Finder does, rather than from the whole row.
+        if let cell = nameCell(row: row) {
+            return window.convertToScreen(cell.iconView.convert(cell.iconView.bounds, to: nil))
+        }
         return window.convertToScreen(outline.convert(rect, to: nil))
+    }
+    func image(of id: ItemID) -> NSImage? {
+        let row = outline.row(forItem: box(id))
+        return row >= 0 ? nameCell(row: row)?.iconView.image : nil
+    }
+    private func nameCell(row: Int) -> ListNameCell? {
+        guard let column = outline.tableColumns.firstIndex(where: { $0.identifier.rawValue == Column.name.rawValue }) else { return nil }
+        return outline.view(atColumn: column, row: row, makeIfNecessary: false) as? ListNameCell
     }
 
     private func box(_ id: ItemID) -> ItemBox {
@@ -171,7 +209,8 @@ import HelmCore
             let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? ListNameCell) ?? ListNameCell(identifier: id)
             var shown = entry
             shown.isStarred = host?.starred.contains(entry.id) ?? false
-            cell.apply(shown, isCut: cut.contains(entry.id), icons: host?.icons)
+            cell.apply(shown, isCut: cut.contains(entry.id), icons: host?.icons, textSize: host?.fileTextSize ?? 14,
+                       scale: view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
             return cell
         case .size: return textCell(outlineView, "size", entry.sizeText, alignment: .right, entry: entry)
         case .dateModified: return textCell(outlineView, "date", entry.dateText, alignment: .left, entry: entry)
@@ -182,7 +221,7 @@ import HelmCore
     private func textCell(_ outlineView: NSOutlineView, _ name: String, _ text: String, alignment: NSTextAlignment, entry: FileEntry) -> NSView {
         let id = NSUserInterfaceItemIdentifier(name)
         let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? ListTextCell) ?? ListTextCell(identifier: id)
-        cell.apply(text, alignment: alignment)
+        cell.apply(text, alignment: alignment, textSize: (host?.fileTextSize ?? 14) - 1)
         cell.alphaValue = ContentLeafPresentation.opacity(isHidden: entry.isHidden, isCut: cut.contains(entry.id))
         return cell
     }
@@ -222,23 +261,43 @@ import HelmCore
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         entry(item)?.url as NSURL?
     }
+    /// A folder or app row takes the drop; anywhere else means the folder being shown, which lights up whole.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
-        let urls = droppedURLs(info)
-        // A folder row takes the drop; anywhere else means the folder being shown.
-        if let entry = entry(item), entry.isDirectoryLike, index == NSOutlineViewDropOnItemIndex,
-           host?.contentCanAcceptDrop(into: entry.url, from: urls) == true {
-            return host?.contentDragOperation(from: urls, into: entry.url) ?? []
+        if index == NSOutlineViewDropOnItemIndex, let entry = entry(item), entry.takesDrops {
+            let operation = host?.contentDropOperation(info, onto: entry) ?? []
+            if operation != [] { return operation }
+        }
+        // A drop between rows is retargeted to the folder inside which those rows sit.
+        if let parent = parentFolder(of: item, index: index) {
+            let operation = host?.contentDropOperation(info, onto: parent) ?? []
+            if operation != [] { outlineView.setDropItem(box(parent.id), dropChildIndex: NSOutlineViewDropOnItemIndex); return operation }
         }
         outlineView.setDropItem(nil, dropChildIndex: NSOutlineViewDropOnItemIndex)
-        guard host?.contentCanAcceptDrop(into: nil, from: urls) == true else { return [] }
-        return host?.contentDragOperation(from: urls, into: nil) ?? []
+        return host?.contentDropOperation(info, onto: nil) ?? []
     }
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
-        host?.contentAcceptDrop(droppedURLs(info), into: entry(item)?.url) ?? false
+        if let entry = entry(item), entry.takesDrops, host?.contentDropOperation(info, onto: entry) != [] {
+            return host?.contentPerformDrop(info, onto: entry) ?? false
+        }
+        return host?.contentPerformDrop(info, onto: nil) ?? false
     }
-    private func droppedURLs(_ info: NSDraggingInfo) -> [URL] {
-        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    /// The expanded folder a between-rows drop falls inside, if any.
+    private func parentFolder(of item: Any?, index: Int) -> FileEntry? {
+        if index != NSOutlineViewDropOnItemIndex, let entry = entry(item), entry.isDirectoryLike { return entry }
+        if index == NSOutlineViewDropOnItemIndex, let item, let parent = entry(outline.parent(forItem: item)), parent.isDirectoryLike { return parent }
+        return nil
     }
+}
+
+/// A column heading without the system's small sort chevron, since the title shows the direction itself.
+final class FileHeaderCell: NSTableHeaderCell {
+    var isSorted = false
+    override init(textCell string: String) {
+        super.init(textCell: string)
+        font = .systemFont(ofSize: 13)
+    }
+    required init(coder: NSCoder) { super.init(coder: coder) }
+    override func drawSortIndicator(withFrame cellFrame: NSRect, in controlView: NSView, ascending: Bool, priority: Int) {}
 }
 
 /// Keeps the checkmarks in the column menu true.
@@ -257,6 +316,8 @@ import HelmCore
     var host: (() -> FileContentHost?)?
     var entryAtRow: ((Int) -> FileEntry?)?
     var selectedEntries: (() -> [FileEntry])?
+    override func draggingExited(_ sender: NSDraggingInfo?) { super.draggingExited(sender); host?()?.contentDragEnded() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { super.draggingEnded(sender); host?()?.contentDragEnded() }
     override func keyDown(with event: NSEvent) {
         if host?()?.contentKeyDown(event) == true { return }
         super.keyDown(with: event)
@@ -286,6 +347,8 @@ import HelmCore
     private let label = NSTextField(labelWithString: "")
     private let star = NSImageView()
     private var path: String?
+    private var iconWidth: NSLayoutConstraint?
+    private var iconHeight: NSLayoutConstraint?
     init(identifier: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         self.identifier = identifier
@@ -298,24 +361,36 @@ import HelmCore
         label.lineBreakMode = .byTruncatingMiddle; label.font = .systemFont(ofSize: 13)
         star.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Starred")
         star.contentTintColor = .systemYellow; star.symbolConfiguration = .init(pointSize: 10, weight: .regular)
+        let width = icon.widthAnchor.constraint(equalToConstant: 22), height = icon.heightAnchor.constraint(equalToConstant: 22)
+        iconWidth = width; iconHeight = height
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 18), icon.heightAnchor.constraint(equalToConstant: 18),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6), label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            width, height,
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), label.centerYAnchor.constraint(equalTo: centerYAnchor),
             star.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 4), star.centerYAnchor.constraint(equalTo: centerYAnchor),
             star.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4)
         ])
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
     required init?(coder: NSCoder) { nil }
-    func apply(_ entry: FileEntry, isCut: Bool, icons: IconCache?) {
+    private var ticket: IconCache.Ticket?
+    private weak var icons: IconCache?
+    /// The icon's frame, for Quick Look's zoom.
+    var iconView: NSImageView { icon }
+    func apply(_ entry: FileEntry, isCut: Bool, icons: IconCache?, textSize: CGFloat, scale: CGFloat) {
         label.stringValue = entry.displayName
+        label.font = .systemFont(ofSize: textSize)
+        let side = ceil(textSize * 1.6)
+        iconWidth?.constant = side; iconHeight?.constant = side
         star.isHidden = !entry.isStarred
         alphaValue = ContentLeafPresentation.opacity(isHidden: entry.isHidden, isCut: isCut)
         setAccessibilityLabel(entry.name)
         path = entry.url.path
-        icon.image = icons?.placeholder(for: entry)
-        icons?.load(for: entry, pixels: 36, thumbnails: false) { [weak self] image in
+        self.icons?.cancel(ticket); ticket = nil
+        self.icons = icons
+        // Previews show in the list too, as Finder's "Show icon preview" does by default.
+        icon.image = icons?.cachedImage(for: entry, points: side, scale: scale) ?? icons?.placeholder(for: entry)
+        ticket = icons?.load(for: entry, points: side, scale: scale, previews: true) { [weak self] image in
             if self?.path == entry.url.path { self?.icon.image = image }
         }
     }
@@ -336,6 +411,9 @@ import HelmCore
         ])
     }
     required init?(coder: NSCoder) { nil }
-    func apply(_ text: String, alignment: NSTextAlignment) { label.stringValue = text; label.alignment = alignment }
+    func apply(_ text: String, alignment: NSTextAlignment, textSize: CGFloat) {
+        label.stringValue = text; label.alignment = alignment
+        label.font = .systemFont(ofSize: textSize)
+    }
 }
 #endif

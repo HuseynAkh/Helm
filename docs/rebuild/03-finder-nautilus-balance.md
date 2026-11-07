@@ -6,9 +6,9 @@ This is the rule that settles those together. When a feature could go either way
 
 ## The rule
 
-**What happens to your files follows macOS. How you get around follows Nautilus.**
+**What happens to your files follows macOS. How Helm looks and how you get around follow Nautilus.**
 
-If a behaviour affects what's on disk or how other Mac apps see it, Helm does what Finder does, so nothing surprises you when you switch between them. If a behaviour is about moving through folders and choosing things, Helm does what Nautilus does, because that's why Helm exists.
+If a behaviour affects what's on disk or how other Mac apps see it, Helm does what Finder does, so nothing surprises you when you switch between them. If it's about how the app looks, or moving through folders and choosing things, Helm does what Nautilus does, because that's why Helm exists. Huseyn, 2026-11-06: "I meant that it should have Finder functionality", with the feel of Nautilus and the transparency of the original Helm.
 
 | Finder decides | Nautilus decides |
 |---|---|
@@ -16,9 +16,40 @@ If a behaviour affects what's on disk or how other Mac apps see it, Helm does wh
 | Moving to the real Trash, and Put Back | A path bar that turns into a typed location |
 | Which names count as the same name | A flat Places sidebar with Starred and Recent |
 | Finder tags, aliases, packages as single items | Grid and list only, with expandable folders in the list |
-| Quick Look, Open With, Share, Services | A quiet header bar with few controls |
+| Quick Look, Open With, Share, Services | A flat header bar, drawn by Helm instead of macOS's glass toolbar |
 | Spotlight for search, Connect to Server for mounts | Cut and Paste for files |
 | Whether a drag copies or moves | Search starts in the folder you're in |
+
+## The look
+
+| Part | What it is |
+|---|---|
+| Header bar | Flat icon buttons that light up under the pointer: sidebar, back, forward, then the path, then search, sort and view options, grid or list, and the main menu |
+| Path bar | One rounded field reading `Home / Documents / Reports`, with the current folder in bold. It starts from Home or the drive, not `/Users/you`. A trailing `…` opens the folder's menu. |
+| Sidebar | One full-height translucent pane with monochrome icons, soft selection and thin lines between groups instead of headings |
+| Transparency | On by default at 50%: the desktop shows through the sidebar, and less through the files so text stays readable. Settings › View has a slider from solid to clear, where the sidebar clears first, and a switch to turn it off. |
+| Text | 14 pt names by default, in both views, shown as 100%. Text steps by 10% from 80% to 170%, with the percentage between − and + in the view options popover; clicking the percentage resets it. Cmd+Plus and Cmd+Minus scale text and icons together. |
+| Tabs | Flat, with a soft fill on the active tab and the close button on the right |
+| Sorting | A button in the header always names the current sort, such as "A to Z" or "Newest first". Its popover lists Name, Modified, Size and Kind: pick one, and pick it again to reverse it, as with a column heading. A new field starts in its natural direction, newest or largest first for dates and sizes. In the list, the sorted column shows an arrow. |
+| App icon | A small horned Norse helmet sitting on a blue folder, on a rounded-square tile. Drawn in code by `scripts/rebuild/make_app_icon.swift`, so every size is sharp. |
+
+## Drag and drop, previews and Open With
+
+These follow Finder, because they decide what happens to files and which app gets them.
+
+| Part | What Helm does |
+|---|---|
+| Drop targets | The grid, the list, sidebar places, path segments and tabs all use one set of rules, so the pointer's badge is what will happen. |
+| Modifiers | Option copies, Cmd moves, Option and Cmd leave an alias. Otherwise a drop moves within a volume and copies across volumes. |
+| Refused drops | A folder can't go into itself or a folder inside it. Moving something to where it already is isn't offered. Both are refused while you're dragging. |
+| Apps | Files dropped on an app open in it if it can open them. |
+| Documents | A drop on a document goes into the folder it's in, and the whole view lights up. |
+| File promises | Pictures from Photos, Mail attachments and Safari images are accepted. They're written to a private folder on the destination's volume, then copied in, so a name that's taken asks first and Undo removes them. |
+| Spring-loaded folders | Hold a drag over a folder, sidebar place, path segment or tab and it opens. This follows the system's spring-loading switch and delay. |
+| Previews | Every file with content gets a Quick Look preview: pictures, films, PDFs, text, and office and iWork documents. Previews are made at the size shown and the screen's real pixel density, in the grid and the list. A quick low-resolution version shows first, and a better image is never replaced by a worse one. Cloud files that aren't downloaded keep their icon. |
+| Quick Look | It follows the selection however it changes. With several items it pages through them in display order. It zooms out of the item's own thumbnail. |
+| Open With | The default app first, then apps you've used for this kind of file, newest first. Then Recommended, ranked by how closely each app claims the type (an owner before an alternate, an editor before a viewer). Apps that only accept any file go under Other Apps. Each app is listed once, even with several copies installed. |
+| Default app | Hold Option for "Always Open With", or use Change Default App… or the chooser's "Always open … files with this app". This changes the default for that kind of file, as Finder's Get Info › Change All does. Helm never changes a default on its own. |
 
 ## 1. Where the two disagree
 

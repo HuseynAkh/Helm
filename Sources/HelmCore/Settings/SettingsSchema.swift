@@ -8,6 +8,8 @@ public enum SettingsSchema {
         case .defaultSortField: return .string("name")
         case .crossVolumeDragDefault: return .string("copy")
         case .gridIconSize: return .double(96)
+        case .fileTextSize: return .double(14)
+        case .windowTransparency: return .double(50) // Percent. 50 is Helm's own look.
         case .directoryCacheTTL: return .double(1.5)
         case .maxCachedIcons: return .integer(800)
         case .maxCachedThumbnails: return .integer(400)
@@ -16,6 +18,7 @@ public enum SettingsSchema {
         case .completionDebounceMilliseconds: return .integer(100)
         case .defaultSortAscending, .directoriesFirst, .liveMonitoringEnabled,
              .enableDirectoryCache, .searchPreferUserFolders, .restoreSessionOnLaunch,
+             .sidebarLiquidGlass, // Transparency is part of Helm's look; this turns it off.
              .askOnConflict: return .bool(true) // Finder asks; a surprise "name 2" isn't what it does (Q9).
         default: return .bool(false)
         }
@@ -56,7 +59,12 @@ public enum SettingsSchema {
             }
         case (.double, .double(let number)):
             guard number.isFinite else { return fallback }
-            return .double(key == .gridIconSize ? min(128, max(48, number)) : min(5, max(0.1, number)))
+            switch key {
+            case .gridIconSize: return .double(min(128, max(48, number)))
+            case .fileTextSize: return .double(min(24, max(11, number)))
+            case .windowTransparency: return .double(min(100, max(0, number)))
+            default: return .double(min(5, max(0.1, number)))
+            }
         default: return fallback
         }
     }

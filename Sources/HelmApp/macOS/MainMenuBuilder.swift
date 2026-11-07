@@ -24,7 +24,7 @@ import HelmUI
                 menu.addItem(withTitle: "Helm Help", action: #selector(NSApplication.showHelp(_:)), keyEquivalent: "?")
             }
             if model.title == "Go" { addAliases(to: menu) }
-            if model.title == "View" { addViewAliases(to: menu) }
+            if model.title == "View" { addViewItems(to: menu, target: target) }
             if model.title == "Window" { addTabAliases(to: menu) }
             if model.title == "File" { addQuickLookAlias(to: menu) }
             top.submenu = menu
@@ -42,6 +42,12 @@ import HelmUI
         switch row.command {
         case .about, .settings, .advancedOptions, .quit, .hide, .hideOthers, .showAll, .bringAllToFront, .newWindow:
             item.target = target
+        case .openWith:
+            // Filled as it opens from the front window's selection, as Finder's File › Open With is.
+            let submenu = NSMenu(title: "Open With")
+            submenu.delegate = target
+            item.submenu = submenu
+            item.action = nil
         case .services:
             let submenu = NSMenu(title: "Services")
             item.submenu = submenu
@@ -92,17 +98,27 @@ import HelmUI
         item.allowsKeyEquivalentWhenHidden = true
         return item
     }
-    /// Finder's key for hidden files, beside Helm's Cmd+.
-    private static func addViewAliases(to menu: NSMenu) {
+    /// Sort By and sizes in the menu bar too, plus Finder's key for hidden files beside Helm's Cmd+.
+    private static func addViewItems(to menu: NSMenu, target: AppController) {
         menu.addItem(hidden("Show Hidden Files", .hidden, ".", [.command, .shift]))
-        for (title, key, selector) in [("Bigger Icons", "+", #selector(BrowserWindowController.biggerIcons(_:))),
-                                       ("Bigger Icons", "=", #selector(BrowserWindowController.biggerIcons(_:))),
-                                       ("Smaller Icons", "-", #selector(BrowserWindowController.smallerIcons(_:)))] {
+        menu.addItem(.separator())
+        let sort = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Sort By")
+        submenu.delegate = target
+        sort.submenu = submenu
+        menu.addItem(sort)
+        menu.addItem(.separator())
+        for (title, key, selector) in [("Zoom In", "=", #selector(BrowserWindowController.zoomIn(_:))),
+                                       ("Zoom Out", "-", #selector(BrowserWindowController.zoomOut(_:))),
+                                       ("Actual Size", "0", #selector(BrowserWindowController.resetSizes(_:)))] {
             let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
             item.keyEquivalentModifierMask = .command
-            item.isHidden = true; item.allowsKeyEquivalentWhenHidden = true
             menu.addItem(item)
         }
+        let plus = NSMenuItem(title: "Zoom In", action: #selector(BrowserWindowController.zoomIn(_:)), keyEquivalent: "+")
+        plus.keyEquivalentModifierMask = .command
+        plus.isHidden = true; plus.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(plus)
     }
     private static func addTabAliases(to menu: NSMenu) {
         menu.addItem(hidden("Show Next Tab", .nextTab, "\t", .control))

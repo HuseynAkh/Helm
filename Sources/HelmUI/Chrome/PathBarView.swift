@@ -7,81 +7,108 @@ import HelmCore
     func pathBarOpenInNewTab(_ url: URL)
     func pathBarBeginEditing()
     func pathBarAction(_ action: AddressEditorAction)
-    func pathBarAcceptDrop(_ urls: [URL], into url: URL) -> Bool
+    func pathBarDropOperation(_ info: NSDraggingInfo, into url: URL?) -> NSDragOperation
+    func pathBarPerformDrop(_ info: NSDraggingInfo, into url: URL) -> Bool
+    func pathBarDragEnded()
+    func pathBarFolderMenu() -> NSMenu?
 }
 
-/// The Nautilus-style location control. An ancestor navigates, the current folder or empty space
-/// switches to typing (Q1), and typing accepts paths and URLs (balance document, section 3).
+/// One piece of the path as it's shown.
+struct PathBarSegment: Equatable {
+    let title: String
+    let url: URL?
+    let symbol: String?
+}
+
+/// The Nautilus path bar: one rounded field holding `Home / Documents / Reports`, with the current folder in bold.
+/// A parent navigates, the current folder or empty space switches to typing (Q1), and typing accepts paths and URLs
+/// (balance document, section 3).
 @MainActor final class PathBarView: NSView, NSTextFieldDelegate {
     weak var delegate: PathBarDelegate?
-    private let background = NSVisualEffectView()
-    private var segments: [(title: String, url: URL?)] = []
+    private var segments: [PathBarSegment] = []
     private var buttons: [PathSegmentButton] = []
+    private var separators: [NSTextField] = []
     private let overflowButton = NSButton(title: "…", target: nil, action: nil)
-    private var hiddenSegments: [(title: String, url: URL?)] = []
+    private var hiddenSegments: [PathBarSegment] = []
     private var stack = NSStackView()
     private let field = LocationTextField()
     private let ghost = NSTextField(labelWithString: "")
     private let popup = CompletionPopup()
+    private let folderMenuButton = FlatMenuButton(symbol: "ellipsis", label: "Folder Menu")
     private var editing = false
     private var applyingText = false
+    private var fieldTrailing: NSLayoutConstraint?
+    private static let textSize: CGFloat = 14
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 7
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.09).cgColor
+        layer?.cornerRadius = 9
         setAccessibilityRole(.group)
         setAccessibilityLabel("Location")
         stack.orientation = .horizontal; stack.spacing = 0; stack.alignment = .centerY
         stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.setHuggingPriority(.init(1), for: .horizontal)
         addSubview(stack)
         overflowButton.isBordered = false
+        overflowButton.font = .systemFont(ofSize: Self.textSize)
         overflowButton.target = self; overflowButton.action = #selector(showHidden(_:))
         overflowButton.setAccessibilityLabel("Show enclosing folders")
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
-        field.font = .systemFont(ofSize: 13); field.delegate = self; field.isHidden = true
+        field.font = .systemFont(ofSize: Self.textSize); field.delegate = self; field.isHidden = true
         field.cell?.isScrollable = true; field.cell?.wraps = false; field.lineBreakMode = .byClipping
         field.setAccessibilityLabel("Location path")
         field.translatesAutoresizingMaskIntoConstraints = false
         addSubview(field)
-        ghost.textColor = .tertiaryLabelColor; ghost.font = .systemFont(ofSize: 13); ghost.isHidden = true
+        ghost.textColor = .tertiaryLabelColor; ghost.font = .systemFont(ofSize: Self.textSize); ghost.isHidden = true
         ghost.lineBreakMode = .byClipping
         addSubview(ghost)
+        folderMenuButton.menuProvider = { [weak self] in self?.delegate?.pathBarFolderMenu() }
+        addSubview(folderMenuButton)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -6),
-            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: folderMenuButton.leadingAnchor, constant: -2),
+            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             field.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
             field.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 28)
+            folderMenuButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -1),
+            folderMenuButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 34)
         ])
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes(FileDrag.acceptedTypes)
         field.onAction = { [weak self] action in self?.delegate?.pathBarAction(action) }
         popup.onSelect = { [weak self] index in
             self?.delegate?.pathBarAction(.select(index))
             self?.delegate?.pathBarAction(.acceptSelection)
             self?.window?.makeFirstResponder(self?.field)
         }
+        updateBackground()
     }
     required init?(coder: NSCoder) { nil }
 
+    override var mouseDownCanMoveWindow: Bool { false }
     var isEditingLocation: Bool { editing }
-    /// Flexible: the toolbar decides how wide this is.
-    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 28) }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateBackground() }
+    private func updateBackground() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let alpha: CGFloat = editing ? 0.14 : 0.08
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(alpha).cgColor
+        }
+    }
 
     /// Applies the tab's state. Rebuilds segments only when the location actually changed.
-    func render(location: Location, editor: AddressEditorState) {
-        let next = Self.segments(for: location)
-        if next.map(\.url) != segments.map(\.url) || next.map(\.title) != segments.map(\.title) {
+    func render(location: Location, home: URL, editor: AddressEditorState) {
+        let next = Self.segments(for: location, home: home)
+        if next != segments {
             segments = next
             rebuild()
         }
         if editor.isEditing != editing {
             editing = editor.isEditing
             stack.isHidden = editing; field.isHidden = !editing
-            ghost.isHidden = !editing
+            ghost.isHidden = !editing; folderMenuButton.isHidden = editing
+            updateBackground()
             if editing {
                 window?.makeFirstResponder(field)
             } else {
@@ -93,7 +120,10 @@ import HelmCore
         if field.stringValue != editor.text {
             applyingText = true
             field.stringValue = editor.text
-            field.currentEditor()?.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+            let end = NSRange(location: (editor.text as NSString).length, length: 0)
+            field.currentEditor()?.selectedRange = end
+            // A long path shows its end, where you're typing, not its start.
+            (field.currentEditor() as? NSTextView)?.scrollRangeToVisible(end)
             applyingText = false
         }
         updateGhost(editor)
@@ -112,34 +142,68 @@ import HelmCore
 
     private func updateGhost(_ editor: AddressEditorState) {
         guard let suffix = editor.ghostSuffix, !suffix.isEmpty else { ghost.isHidden = true; return }
-        let attributes: [NSAttributedString.Key: Any] = [.font: field.font ?? NSFont.systemFont(ofSize: 13)]
+        let attributes: [NSAttributedString.Key: Any] = [.font: field.font ?? NSFont.systemFont(ofSize: Self.textSize)]
         let width = (editor.text as NSString).size(withAttributes: attributes).width
         ghost.stringValue = suffix
         ghost.sizeToFit()
-        let origin = NSPoint(x: 10 + ceil(width) + 2, y: (bounds.height - ghost.frame.height) / 2)
+        let origin = NSPoint(x: 12 + ceil(width) + 2, y: (bounds.height - ghost.frame.height) / 2)
         ghost.frame = NSRect(origin: origin, size: NSSize(width: min(ghost.frame.width, max(0, bounds.width - origin.x - 10)), height: ghost.frame.height))
         ghost.isHidden = false
     }
 
-    static func segments(for location: Location) -> [(title: String, url: URL?)] {
+    /// Paths read the way Nautilus shows them: from Home or the drive you're on, not from `/Users/you`.
+    static func segments(for location: Location, home: URL) -> [PathBarSegment] {
         switch location {
-        case .recent: return [("Recent", nil)]
-        case .trash: return [("Trash", nil)]
+        case .recent: return [PathBarSegment(title: "Recent", url: nil, symbol: "clock")]
+        case .trash: return [PathBarSegment(title: "Trash", url: nil, symbol: "trash")]
         case .directory(let url):
-            let model = PathPresentation(location: location, selectedEntries: [])
-            let values = model.segments
-            if values.isEmpty { return [(url.lastPathComponent, url)] }
-            return values.map { ($0.id.path == "/" ? "/" : $0.title, $0.id) }
+            let parts = url.standardizedFileURL.pathComponents
+            let homeParts = home.standardizedFileURL.pathComponents
+            var result: [PathBarSegment] = []
+            var consumed = 1
+            if parts.count >= homeParts.count, Array(parts.prefix(homeParts.count)) == homeParts {
+                consumed = homeParts.count
+                if parts.count > consumed + 2, parts[consumed] == "Library", parts[consumed + 1] == "CloudStorage" {
+                    consumed += 3
+                    result.append(PathBarSegment(title: CloudDriveNaming.provider(ofFolder: parts[consumed - 1]),
+                                                 url: Self.url(parts, count: consumed), symbol: "cloud"))
+                } else if parts.count > consumed + 2, parts[consumed] == "Library", parts[consumed + 1] == "Mobile Documents", parts[consumed + 2] == "com~apple~CloudDocs" {
+                    consumed += 3
+                    result.append(PathBarSegment(title: "iCloud Drive", url: Self.url(parts, count: consumed), symbol: "cloud"))
+                } else {
+                    result.append(PathBarSegment(title: "Home", url: home, symbol: "house"))
+                }
+            } else if parts.count > 2, parts[1] == "Volumes" {
+                consumed = 3
+                result.append(PathBarSegment(title: parts[2], url: Self.url(parts, count: 3), symbol: "externaldrive"))
+            } else {
+                result.append(PathBarSegment(title: "Computer", url: URL(fileURLWithPath: "/", isDirectory: true), symbol: "internaldrive"))
+            }
+            if consumed < parts.count {
+                for index in consumed..<parts.count {
+                    result.append(PathBarSegment(title: parts[index], url: Self.url(parts, count: index + 1), symbol: nil))
+                }
+            }
+            return result
         }
+    }
+    private static func url(_ parts: [String], count: Int) -> URL {
+        URL(fileURLWithPath: "/" + parts.prefix(count).dropFirst().joined(separator: "/"), isDirectory: true)
     }
 
     private func rebuild() {
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
         buttons = segments.enumerated().map { index, segment in
-            let button = PathSegmentButton(title: segment.title, url: segment.url, isLast: index == segments.count - 1)
+            let button = PathSegmentButton(segment: segment, isLast: index == segments.count - 1, textSize: Self.textSize)
             button.target = self; button.action = #selector(segmentClicked(_:))
             button.onMenu = { [weak self] url in self?.menu(forSegment: url) }
             return button
+        }
+        separators = segments.dropLast().map { _ in
+            let label = NSTextField(labelWithString: "/")
+            label.font = .systemFont(ofSize: Self.textSize)
+            label.textColor = .tertiaryLabelColor
+            return label
         }
         needsLayout = true
     }
@@ -147,19 +211,23 @@ import HelmCore
     override func layout() {
         super.layout()
         // Keep the current folder and as many parents as fit, like Nautilus does when it's narrow.
-        let available = bounds.width - 12
-        let overflowWidth: CGFloat = 26
+        let available = bounds.width - 12 - 36
+        let overflowWidth: CGFloat = 40
         var used: CGFloat = 0
-        var shown: [PathSegmentButton] = []
+        var shown = 0
         for button in buttons.reversed() {
-            let width = button.intrinsicContentSize.width + 4
-            if used + width > available - (shown.count < buttons.count ? overflowWidth : 0), !shown.isEmpty { break }
-            used += width; shown.insert(button, at: 0)
+            let width = button.intrinsicContentSize.width + 14
+            if used + width > available - (shown + 1 < buttons.count ? overflowWidth : 0), shown > 0 { break }
+            used += width; shown += 1
         }
-        hiddenSegments = Array(segments.prefix(buttons.count - shown.count))
+        hiddenSegments = Array(segments.prefix(buttons.count - shown))
         var wanted: [NSView] = []
         if !hiddenSegments.isEmpty { wanted.append(overflowButton) }
-        wanted += shown as [NSView]
+        let first = buttons.count - shown
+        for index in first..<buttons.count {
+            if index > first || !hiddenSegments.isEmpty, index > 0 { wanted.append(separators[index - 1]) }
+            wanted.append(buttons[index])
+        }
         if stack.arrangedSubviews != wanted {
             for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
             for view in wanted { stack.addArrangedSubview(view) }
@@ -234,16 +302,24 @@ import HelmCore
 
     // MARK: Drops onto the path
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        segmentUnder(sender)?.url == nil ? [] : .generic
-    }
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        segmentUnder(sender)?.url == nil ? [] : .generic
-    }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { dragUpdate(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { dragUpdate(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { highlight(nil); delegate?.pathBarDragEnded() }
+    override func draggingEnded(_ sender: NSDraggingInfo) { highlight(nil); delegate?.pathBarDragEnded() }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let target = segmentUnder(sender)?.url,
-              let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] else { return false }
-        return delegate?.pathBarAcceptDrop(urls, into: target) ?? false
+        highlight(nil)
+        guard let target = segmentUnder(sender)?.url else { return false }
+        return delegate?.pathBarPerformDrop(sender, into: target) ?? false
+    }
+    /// The folder under the pointer lights up, and the pointer shows what the drop will do there.
+    private func dragUpdate(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let segment = segmentUnder(sender)
+        let operation = delegate?.pathBarDropOperation(sender, into: segment?.url) ?? []
+        highlight(operation == [] ? nil : segment)
+        return operation
+    }
+    private func highlight(_ segment: PathSegmentButton?) {
+        for button in buttons { button.isDropTarget = button === segment }
     }
     private func segmentUnder(_ sender: NSDraggingInfo) -> PathSegmentButton? {
         let point = convert(sender.draggingLocation, from: nil)
@@ -256,24 +332,53 @@ import HelmCore
     let url: URL?
     let isLast: Bool
     var onMenu: ((URL?) -> NSMenu?)?
-    init(title: String, url: URL?, isLast: Bool) {
-        self.url = url; self.isLast = isLast
+    private var trackingArea: NSTrackingArea?
+    init(segment: PathBarSegment, isLast: Bool, textSize: CGFloat) {
+        self.url = segment.url; self.isLast = isLast
         super.init(frame: .zero)
-        self.title = title
-        isBordered = false; bezelStyle = .inline
-        font = .systemFont(ofSize: 13, weight: isLast ? .semibold : .regular)
+        title = segment.title
+        isBordered = false
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        font = .systemFont(ofSize: textSize, weight: isLast ? .semibold : .regular)
         contentTintColor = isLast ? .labelColor : .secondaryLabelColor
+        attributedTitle = NSAttributedString(string: segment.title, attributes: [
+            .font: NSFont.systemFont(ofSize: textSize, weight: isLast ? .semibold : .regular),
+            .foregroundColor: isLast ? NSColor.labelColor : NSColor.secondaryLabelColor])
         lineBreakMode = .byTruncatingMiddle
         setContentHuggingPriority(.required, for: .horizontal)
-        setAccessibilityLabel(isLast ? "\(title), current folder" : title)
-        if !isLast {
-            imagePosition = .imageTrailing
-            image = NSImage(systemSymbolName: "chevron.compact.right", accessibilityDescription: nil)
-            imageScaling = .scaleProportionallyDown
+        setAccessibilityLabel(isLast ? "\(segment.title), current folder" : segment.title)
+        if let symbol = segment.symbol {
+            image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: textSize, weight: .regular))
+            imagePosition = .imageLeading
+            imageHugsTitle = true
         }
+        heightAnchor.constraint(equalToConstant: 26).isActive = true
     }
     required init?(coder: NSCoder) { nil }
+    override var intrinsicContentSize: NSSize {
+        let size = super.intrinsicContentSize
+        return NSSize(width: size.width + 12, height: size.height)
+    }
+    override var mouseDownCanMoveWindow: Bool { false }
     override func menu(for event: NSEvent) -> NSMenu? { onMenu?(url) }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(area); trackingArea = area
+    }
+    override func mouseEntered(with event: NSEvent) {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.09).cgColor
+        }
+    }
+    override func mouseExited(with event: NSEvent) { layer?.backgroundColor = isDropTarget ? Self.dropFill : nil }
+    var isDropTarget = false {
+        didSet { if isDropTarget != oldValue { layer?.backgroundColor = isDropTarget ? Self.dropFill : nil } }
+    }
+    private static var dropFill: CGColor { NSColor.controlAccentColor.withAlphaComponent(0.3).cgColor }
 }
 
 /// Keeps caret-position reports flowing to the address reducer.
@@ -305,7 +410,7 @@ import HelmCore
         scroll.drawsBackground = false; scroll.hasVerticalScroller = true
         let column = NSTableColumn(identifier: .init("name"))
         table.addTableColumn(column); table.headerView = nil; table.backgroundColor = .clear
-        table.dataSource = self; table.delegate = self; table.rowHeight = 22
+        table.dataSource = self; table.delegate = self; table.rowHeight = 28
         table.target = self; table.action = #selector(clicked)
         table.style = .plain
         scroll.documentView = table
@@ -322,7 +427,7 @@ import HelmCore
         applying = false
         guard let window = view.window else { return }
         let frame = window.convertToScreen(view.convert(view.bounds, to: nil))
-        let height = min(CGFloat(rows.count) * 24 + 8, 300)
+        let height = min(CGFloat(rows.count) * 30 + 8, 340)
         panel.setFrame(NSRect(x: frame.minX, y: frame.minY - height - 4, width: max(frame.width, 320), height: height), display: true)
         if panel.parent == nil { window.addChildWindow(panel, ordered: .above) }
         panel.orderFront(nil)
@@ -350,6 +455,7 @@ import HelmCore
         icon.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
         label.lineBreakMode = .byTruncatingMiddle
+        label.font = .systemFont(ofSize: 14)
         addSubview(icon); addSubview(label)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6), icon.centerYAnchor.constraint(equalTo: centerYAnchor),

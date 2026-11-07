@@ -9,8 +9,11 @@ public struct VolumeInfo: Hashable, Sendable {
     public let isRemovable: Bool
     public let isBrowsable: Bool
     public let isHidden: Bool
+    /// A provider's folder such as Google Drive or iCloud Drive, shown with the drives but with nothing to eject.
+    public let isCloud: Bool
     public init(url: URL, name: String, uuid: String? = nil, isInternal: Bool = false,
-                isRemovable: Bool = false, isBrowsable: Bool = true, isHidden: Bool = false) {
+                isRemovable: Bool = false, isBrowsable: Bool = true, isHidden: Bool = false, isCloud: Bool = false) {
+        self.isCloud = isCloud
         self.url = url.standardizedFileURL; self.name = name; self.uuid = uuid
         self.isInternal = isInternal; self.isRemovable = isRemovable
         self.isBrowsable = isBrowsable; self.isHidden = isHidden

@@ -15,6 +15,9 @@ targets:
     platform: macOS
     sources:
       - path: main.swift
+      # Drawn by scripts/rebuild/make_app_icon.swift.
+      - path: AppIcon.icns
+        buildPhase: resources
     dependencies:
       - package: HelmPackage
         product: HelmApp

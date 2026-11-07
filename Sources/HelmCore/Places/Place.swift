@@ -49,6 +49,9 @@ public struct Place: Identifiable, Hashable, Sendable, Codable {
             ("desktop", "Desktop", home.appendingPathComponent("Desktop"), "menubar.dock.rectangle"),
             ("documents", "Documents", home.appendingPathComponent("Documents"), "doc"),
             ("downloads", "Downloads", home.appendingPathComponent("Downloads"), "arrow.down.circle"),
+            ("pictures", "Pictures", home.appendingPathComponent("Pictures"), "photo"),
+            ("music", "Music", home.appendingPathComponent("Music"), "music.note"),
+            ("movies", "Movies", home.appendingPathComponent("Movies"), "film"),
             ("applications", "Applications", URL(fileURLWithPath: "/Applications"), "square.grid.2x2")
         ]
         return rows.map { Place(id: $0.0, name: $0.1, destination: .directory($0.2), iconName: $0.3, kind: .favorite) }

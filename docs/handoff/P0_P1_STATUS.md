@@ -1,7 +1,7 @@
 # P0 and P1 status audit
 
 Audit of the 293 P0 and P1 rows of docs/rebuild/02-finder-parity.md against the code in Sources/ and the scripted smoke run, as of 2026-11-06.
-This is an audit of code and scripted checks, not human acceptance. It was done by reading, while the code was still changing, and the rows for fixes made straight afterwards were then updated by hand.
+This is an audit of code and scripted checks, not human acceptance. It was done by reading, while the code was still changing, and the rows for fixes made straight afterwards were then updated by hand. The later interface pass (header bar, sidebar, sorting, text size, cloud drives) has not been re-audited, so some rows understate it.
 
 ## Summary
 

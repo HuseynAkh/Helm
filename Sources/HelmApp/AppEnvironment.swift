@@ -34,6 +34,8 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public let trashOrigins: any AppTrashOriginStoring
     public let tagCatalog: any AppTagCatalogStoring
     public let viewOptions: any AppViewOptionsStoring
+    /// The apps you've chosen for each kind of file.
+    public let openWith: OpenWithStore
     public let fileSystem: any FileSystem
     public let journal: OperationJournal
     public let clock: any HelmClock
@@ -44,7 +46,9 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public init(settings: SettingsStore, bookmarks: any AppBookmarkStoring, stars: any AppStarStoring,
                 recents: any AppRecentStoring, session: any AppSessionStoring, trashOrigins: any AppTrashOriginStoring,
                 tagCatalog: any AppTagCatalogStoring, viewOptions: any AppViewOptionsStoring,
-                fileSystem: any FileSystem, journal: OperationJournal, clock: any HelmClock, directories: AppDirectories) {
+                fileSystem: any FileSystem, journal: OperationJournal, clock: any HelmClock, directories: AppDirectories,
+                openWith: OpenWithStore? = nil) {
+        self.openWith = openWith ?? OpenWithStore()
         self.settings = settings; self.bookmarks = bookmarks; self.stars = stars; self.recents = recents
         self.session = session; self.trashOrigins = trashOrigins; self.fileSystem = fileSystem
         self.tagCatalog = tagCatalog; self.viewOptions = viewOptions
@@ -80,11 +84,12 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
         let origins: any AppTrashOriginStoring = await loaded("trash-origins", { try await TrashOriginStore(url: locations.trashOrigins) }, fallback: { AppMemoryTrashOrigins() })
         let tagCatalog: any AppTagCatalogStoring = await loaded("tag-catalog", { try await TagCatalogStore(url: locations.tagCatalog) }, fallback: { AppMemoryTagCatalog() })
         let viewOptions: any AppViewOptionsStoring = await loaded("view-options", { try await LocationViewOptionsStore(url: locations.viewOptions) }, fallback: { AppMemoryViewOptions() })
+        let openWith: OpenWithStore = await loaded("open-with", { try await OpenWithStore(url: locations.openWith) }, fallback: { OpenWithStore() })
         let environment = AppEnvironment(settings: SettingsStore(storage: settingsStorage), bookmarks: bookmarks,
             stars: stars, recents: recents, session: session, trashOrigins: origins,
             tagCatalog: tagCatalog, viewOptions: viewOptions,
             fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots, trash: trash), journal: OperationJournal(),
-            clock: clock, directories: directories)
+            clock: clock, directories: directories, openWith: openWith)
         environment.loadFailures = failures
         return environment
     }
@@ -113,7 +118,7 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public func flushStores() async -> [AppFlushFailure] {
         let stores: [(String, any AppFlushable)] = [("bookmarks", bookmarks), ("stars", stars),
             ("recent", recents), ("session", session), ("trash-origins", trashOrigins),
-            ("tag-catalog", tagCatalog), ("view-options", viewOptions)]
+            ("tag-catalog", tagCatalog), ("view-options", viewOptions), ("open-with", openWith)]
         var failures: [AppFlushFailure] = []
         for (name, store) in stores {
             do { try await store.flush() }

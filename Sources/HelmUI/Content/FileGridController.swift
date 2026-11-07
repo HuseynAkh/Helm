@@ -7,13 +7,14 @@ import HelmCore
     weak var host: FileContentHost?
     private let collection = FileCollectionView()
     private let scroll = NSScrollView()
-    private let layout = NSCollectionViewFlowLayout()
+    private let layout = FileGridLayout()
     private var snapshot: PresentationSnapshot?
     private var tabID: TabID?
     private var snapshotID: Generation?
     private var cut: Set<ItemID> = []
     private var applying = false
     private var iconSize = 96
+    private var textSize: CGFloat = 14
     private var rename: RenameEditor?
     private var typeSelect = TypeSelect()
 
@@ -25,7 +26,7 @@ import HelmCore
         collection.dataSource = self; collection.delegate = self
         collection.register(GridItem.self, forItemWithIdentifier: GridItem.identifier)
         collection.backgroundColors = [.clear]
-        collection.registerForDraggedTypes([.fileURL])
+        collection.registerForDraggedTypes(FileDrag.acceptedTypes)
         collection.setDraggingSourceOperationMask(.every, forLocal: false)
         collection.setDraggingSourceOperationMask(.every, forLocal: true)
         collection.setAccessibilityLabel("Files")
@@ -42,8 +43,9 @@ import HelmCore
         defer { applying = false }
         let size = host?.gridIconSize ?? 96
         let changed = force || tab.id != tabID || tab.snapshot.id != snapshotID || tab.snapshot.location != snapshot?.location
-        let refreshCells = tab.cutIDs != cut || size != iconSize
-        cut = tab.cutIDs; iconSize = size
+        let text = host?.fileTextSize ?? 14
+        let refreshCells = tab.cutIDs != cut || size != iconSize || text != textSize
+        cut = tab.cutIDs; iconSize = size; textSize = text
         if changed || refreshCells {
             let keepingScroll = tab.id == tabID && tab.snapshot.location == snapshot?.location
             let origin = scroll.contentView.bounds.origin
@@ -91,6 +93,14 @@ import HelmCore
         return window.convertToScreen(icon.convert(icon.bounds, to: nil))
     }
 
+    /// The real pixel density of the screen the window is on, so previews are made at exactly the pixels shown.
+    private var backingScale: CGFloat { view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
+
+    func image(of id: ItemID) -> NSImage? {
+        guard let index = snapshot?.index(of: id), let item = collection.item(at: IndexPath(item: index, section: 0)) else { return nil }
+        return item.imageView?.image
+    }
+
     private func selectedEntries() -> [FileEntry] {
         guard let snapshot else { return [] }
         return collection.selectionIndexPaths.sorted().compactMap { path in
@@ -115,7 +125,7 @@ import HelmCore
         guard let item = raw as? GridItem, let snapshot, indexPath.item < snapshot.sortedEntries.count else { return raw }
         var entry = snapshot.sortedEntries[indexPath.item]
         entry.isStarred = host?.starred.contains(entry.id) ?? false
-        item.apply(entry, isCut: cut.contains(entry.id), size: iconSize, icons: host?.icons)
+        item.apply(entry, isCut: cut.contains(entry.id), size: iconSize, textSize: textSize, scale: backingScale, icons: host?.icons)
         item.onDoubleClick = { [weak self] in
             guard let self else { return }
             self.host?.contentOpen(self.selectedEntries(), newTab: NSEvent.modifierFlags.contains(.command))
@@ -123,7 +133,8 @@ import HelmCore
         return item
     }
     func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
-        NSSize(width: iconSize + 44, height: iconSize + 44)
+        // Room for three lines of the name under the icon, as in Nautilus.
+        NSSize(width: CGFloat(iconSize) + 56, height: CGFloat(iconSize) + ceil(textSize * 1.3) * 3 + 18)
     }
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) { selectionChanged() }
@@ -139,33 +150,57 @@ import HelmCore
         guard let snapshot, indexPath.item < snapshot.sortedEntries.count else { return nil }
         return snapshot.sortedEntries[indexPath.item].url as NSURL
     }
+    /// A folder or app under the pointer takes the drop and lights up. Anywhere else, including over a document,
+    /// the drop goes into the folder on show, and the whole view lights up instead.
     func collectionView(_ collectionView: NSCollectionView, validateDrop draggingInfo: NSDraggingInfo, proposedIndexPath proposedDropIndexPath: AutoreleasingUnsafeMutablePointer<NSIndexPath>, dropOperation proposedDropOperation: UnsafeMutablePointer<NSCollectionView.DropOperation>) -> NSDragOperation {
-        let urls = droppedURLs(draggingInfo)
-        let path = proposedDropIndexPath.pointee as IndexPath
-        if proposedDropOperation.pointee == .on, let snapshot, path.item < snapshot.rootCount {
-            let entry = snapshot.sortedEntries[path.item]
-            if entry.isDirectoryLike, host?.contentCanAcceptDrop(into: entry.url, from: urls) == true {
-                return host?.contentDragOperation(from: urls, into: entry.url) ?? []
-            }
+        if let entry = dropEntry(at: proposedDropIndexPath.pointee as IndexPath, operation: proposedDropOperation.pointee) {
+            let operation = host?.contentDropOperation(draggingInfo, onto: entry) ?? []
+            if operation != [] { collection.isFolderDropTarget = false; return operation }
         }
         proposedDropOperation.pointee = .before
-        guard host?.contentCanAcceptDrop(into: nil, from: urls) == true else { return [] }
-        return host?.contentDragOperation(from: urls, into: nil) ?? []
+        let operation = host?.contentDropOperation(draggingInfo, onto: nil) ?? []
+        collection.isFolderDropTarget = operation != []
+        return operation
     }
     func collectionView(_ collectionView: NSCollectionView, acceptDrop draggingInfo: NSDraggingInfo, indexPath: IndexPath, dropOperation: NSCollectionView.DropOperation) -> Bool {
-        var target: URL?
-        if dropOperation == .on, let snapshot, indexPath.item < snapshot.rootCount, snapshot.sortedEntries[indexPath.item].isDirectoryLike {
-            target = snapshot.sortedEntries[indexPath.item].url
+        collection.isFolderDropTarget = false
+        if let entry = dropEntry(at: indexPath, operation: dropOperation), host?.contentDropOperation(draggingInfo, onto: entry) != [] {
+            return host?.contentPerformDrop(draggingInfo, onto: entry) ?? false
         }
-        return host?.contentAcceptDrop(droppedURLs(draggingInfo), into: target) ?? false
+        return host?.contentPerformDrop(draggingInfo, onto: nil) ?? false
     }
-    private func droppedURLs(_ info: NSDraggingInfo) -> [URL] {
-        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    private func dropEntry(at path: IndexPath, operation: NSCollectionView.DropOperation) -> FileEntry? {
+        guard operation == .on, let snapshot, path.item < snapshot.rootCount else { return nil }
+        let entry = snapshot.sortedEntries[path.item]
+        return entry.takesDrops ? entry : nil
     }
+}
+
+/// Grid layout without the insertion gap a flow layout opens during a drag: Helm folders have no manual order.
+@MainActor final class FileGridLayout: NSCollectionViewFlowLayout {
+    override func layoutAttributesForInterItemGap(before indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? { nil }
 }
 
 @MainActor final class FileCollectionView: NSCollectionView {
     var host: (() -> FileContentHost?)?
+    /// Lit while a drop would go into the folder on show.
+    var isFolderDropTarget = false { didSet { if isFolderDropTarget != oldValue { needsDisplay = true } } }
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard isFolderDropTarget else { return }
+        let frame = visibleRect.insetBy(dx: 4, dy: 4)
+        let path = NSBezierPath(roundedRect: frame, xRadius: 10, yRadius: 10)
+        NSColor.controlAccentColor.withAlphaComponent(0.08).setFill(); path.fill()
+        NSColor.controlAccentColor.withAlphaComponent(0.7).setStroke(); path.lineWidth = 2; path.stroke()
+    }
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        super.draggingExited(sender)
+        isFolderDropTarget = false; host?()?.contentDragEnded()
+    }
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        super.draggingEnded(sender)
+        isFolderDropTarget = false; host?()?.contentDragEnded()
+    }
     var selectedEntries: (() -> [FileEntry])?
     var onType: ((String) -> Bool)?
     override func keyDown(with event: NSEvent) {
@@ -205,14 +240,17 @@ import HelmCore
     private var iconWidth: NSLayoutConstraint?
     private var iconHeight: NSLayoutConstraint?
     private var path: String?
+    private var ticket: IconCache.Ticket?
+    private weak var icons: IconCache?
 
     override func loadView() {
         let root = GridItemView()
         root.onDoubleClick = { [weak self] in self?.onDoubleClick?() }
-        selectionLayer.wantsLayer = true; selectionLayer.layer?.cornerRadius = 8
+        selectionLayer.wantsLayer = true; selectionLayer.layer?.cornerRadius = 10
         icon.imageScaling = .scaleProportionallyUpOrDown
-        label.alignment = .center; label.font = .systemFont(ofSize: 11); label.maximumNumberOfLines = 2
-        label.lineBreakMode = .byTruncatingMiddle; label.isSelectable = false
+        label.alignment = .center; label.font = .systemFont(ofSize: 14); label.maximumNumberOfLines = 3
+        label.lineBreakMode = .byWordWrapping; label.isSelectable = false
+        label.cell?.truncatesLastVisibleLine = true
         star.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Starred")
         star.contentTintColor = .systemYellow
         for view in [selectionLayer, icon, label, star] as [NSView] {
@@ -238,19 +276,32 @@ import HelmCore
     override var highlightState: NSCollectionViewItem.HighlightState { didSet { updateSelection() } }
     private func updateSelection() {
         let on = isSelected || highlightState == .forSelection
-        selectionLayer.layer?.backgroundColor = on ? NSColor.selectedContentBackgroundColor.withAlphaComponent(0.25).cgColor : NSColor.clear.cgColor
+        // A folder under a drag gets a stronger fill and an outline, so it's clear what will take the drop.
+        let target = highlightState == .asDropTarget
+        let alpha: CGFloat = target ? 0.4 : (on ? 0.28 : 0)
+        selectionLayer.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(alpha).cgColor
+        selectionLayer.layer?.borderWidth = target ? 2 : 0
+        selectionLayer.layer?.borderColor = NSColor.controlAccentColor.cgColor
         view.setAccessibilitySelected(on)
     }
-    func apply(_ entry: FileEntry, isCut: Bool, size: Int, icons: IconCache?) {
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        icons?.cancel(ticket); ticket = nil
+    }
+    func apply(_ entry: FileEntry, isCut: Bool, size: Int, textSize: CGFloat, scale: CGFloat, icons: IconCache?) {
         _ = view
         iconWidth?.constant = CGFloat(size); iconHeight?.constant = CGFloat(size)
+        label.font = .systemFont(ofSize: textSize)
         label.stringValue = entry.displayName
         star.isHidden = !entry.isStarred
         view.alphaValue = ContentLeafPresentation.opacity(isHidden: entry.isHidden, isCut: isCut)
         view.setAccessibilityLabel(entry.name); view.setAccessibilityRole(.cell)
+        self.icons?.cancel(ticket); ticket = nil
         path = entry.url.path
-        icon.image = icons?.placeholder(for: entry)
-        icons?.load(for: entry, pixels: size * 2, thumbnails: true) { [weak self] image in
+        self.icons = icons
+        let points = CGFloat(size)
+        icon.image = icons?.cachedImage(for: entry, points: points, scale: scale) ?? icons?.placeholder(for: entry)
+        ticket = icons?.load(for: entry, points: points, scale: scale, previews: true) { [weak self] image in
             if self?.path == entry.url.path { self?.icon.image = image }
         }
         updateSelection()

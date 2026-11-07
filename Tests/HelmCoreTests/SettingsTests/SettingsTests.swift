@@ -8,7 +8,7 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 23)
+        XCTAssertEqual(snapshot.values.count, 25)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -16,6 +16,9 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(snapshot.double(.gridIconSize), 96)
         XCTAssertFalse(snapshot.bool(.confirmBeforeTrash))
         XCTAssertTrue(snapshot.bool(.askOnConflict))
+        XCTAssertTrue(snapshot.bool(.sidebarLiquidGlass))
+        XCTAssertEqual(snapshot.double(.fileTextSize), 14)
+        XCTAssertEqual(snapshot.double(.windowTransparency), 50)
         XCTAssertEqual(snapshot.string(.crossVolumeDragDefault), "copy")
         XCTAssertEqual(snapshot.defaultViewMode, .grid)
         XCTAssertEqual(snapshot.defaultSort, .defaultSort)

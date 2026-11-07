@@ -43,7 +43,7 @@ public struct LaunchOptions: Equatable, Sendable {
 }
 
 /// Owns everything that outlives a window: the environment, the windows, the menu, launch and quit (F-001, F-068).
-@MainActor public final class AppController: NSObject, NSApplicationDelegate, BrowserWindowHost {
+@MainActor public final class AppController: NSObject, NSApplicationDelegate, BrowserWindowHost, NSMenuDelegate {
     private let options: LaunchOptions
     private var environment: AppEnvironment?
     private var windows: [BrowserWindowController] = []
@@ -75,12 +75,13 @@ public struct LaunchOptions: Equatable, Sendable {
             coordinator = operations
             subscription = operations.inFlightChanges.subscribe { [weak self] count in self?.operationsChanged(count) }
             let settings = environment.settings
-            let volumes = VolumeCenter(isLive: !options.isIsolated) { settings.snapshot.bool(.showAllMountedVolumes) }
+            let volumes = VolumeCenter(isLive: !options.isIsolated, home: environment.directories.home) { settings.snapshot.bool(.showAllMountedVolumes) }
             dependencies = WindowDependencies(settings: environment.settings, bookmarks: environment.bookmarks, stars: environment.stars,
                 recents: environment.recents, trashOrigins: environment.trashOrigins, viewOptions: environment.viewOptions, fileSystem: environment.fileSystem,
-                operations: operations, home: environment.directories.home, volumes: volumes, icons: IconCache(), clock: environment.clock,
+                operations: operations, home: environment.directories.home, volumes: volumes, icons: IconCache(limit: settings.snapshot.integer(.maxCachedIcons), previewLimit: settings.snapshot.integer(.maxCachedThumbnails)),
+                clock: environment.clock,
                 pasteboard: options.isIsolated ? NSPasteboard(name: .init("helm.fixture.\(getpid())")) : .general,
-                persistsWindowFrames: !options.isIsolated)
+                persistsWindowFrames: !options.isIsolated, openWith: environment.openWith)
             await launchWindows(environment)
             reportLoadFailures(environment)
             if let script = options.smokeScript { HostSmokeDriver.run(script: script, app: self) }
@@ -187,16 +188,35 @@ public struct LaunchOptions: Equatable, Sendable {
             let requests = await classify(urls, fileSystem: environment.fileSystem)
             var rejected: [ExternalOpenRequest] = []
             var files: [URL] = []
+            var folders: [URL] = []
             for request in requests {
                 switch request.kind {
                 case .unavailable: rejected.append(request)
                 case .file: files.append(request.url)
-                case .folder:
-                    if let front = frontmost() { front.navigate(to: .directory(request.url)); front.showWindow(nil) }
-                    else { openWindow(at: .directory(request.url), selecting: []) }
+                case .folder: folders.append(request.url)
                 }
             }
-            if !files.isEmpty { NSWorkspace.shared.open(files, withApplicationAt: NSWorkspace.shared.urlForApplication(toOpen: files[0]) ?? URL(fileURLWithPath: "/System/Applications/TextEdit.app"), configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil) }
+            // The first folder shows in the front window and any others open beside it as tabs, so none is lost.
+            if let first = folders.first {
+                if let front = frontmost() {
+                    front.navigate(to: .directory(first))
+                    for folder in folders.dropFirst() { front.newTab(at: .directory(folder)) }
+                    front.showWindow(nil)
+                } else {
+                    openWindow(at: .directory(first), selecting: [])
+                    for folder in folders.dropFirst() { frontmost()?.newTab(at: .directory(folder)) }
+                }
+            }
+            // Each file opens in its own default app, as if double-clicked.
+            var byApp: [URL: [URL]] = [:]
+            var unclaimed: [URL] = []
+            for file in files {
+                if let app = NSWorkspace.shared.urlForApplication(toOpen: file) { byApp[app, default: []].append(file) } else { unclaimed.append(file) }
+            }
+            for (app, group) in byApp {
+                NSWorkspace.shared.open(group, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+            }
+            for file in unclaimed { NSWorkspace.shared.open(file) }
             reportRejected(rejected)
         }
     }
@@ -249,6 +269,17 @@ public struct LaunchOptions: Equatable, Sendable {
     }
 
     // MARK: Menu actions
+
+    /// View › Sort By shows the front window's sort, so it's filled as it opens.
+    public func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        if menu.title == "Open With" {
+            if let front = frontmost() { front.fillOpenWithItems(in: menu) }
+            else { menu.addItem(NSMenuItem(title: "No Window Open", action: nil, keyEquivalent: "")) }
+            return
+        }
+        frontmost()?.fillSortItems(in: menu)
+    }
 
     @objc func newWindow(_ sender: Any?) {
         if let front = frontmost(), let location = front.activeTab?.location { openWindow(at: location, selecting: []) }
