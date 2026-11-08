@@ -120,7 +120,8 @@ final class CommandsTests: XCTestCase {
             .hideOthers, .showAll, .quit, .newWindow, .bringAllToFront, .help,
             .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh,
             .home, .minimize, .zoom, .selectAll, .location, .eject, .closeWindow, .reopenClosedTab,
-            .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer]
+            .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer,
+            .viewOptions, .computer]
         let hidden: Set<CommandID> = [.putBack, .emptyTrash, .clearRecent]
         for command in CommandID.allCases {
             let expected: CommandAvailability = enabled.contains(command) ? .enabled : hidden.contains(command) ? .hidden : .disabled

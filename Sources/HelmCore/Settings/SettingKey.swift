@@ -27,6 +27,8 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     case restoreSessionOnLaunch = "helm.restoreSessionOnLaunch"
     case fileTextSize = "helm.fileTextSize"
     case windowTransparency = "helm.windowTransparency"
+    case newWindowLocation = "helm.newWindowLocation"
+    case searchFileContents = "helm.searchFileContents"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

@@ -13,11 +13,14 @@ public struct SearchQuery: Sendable, Equatable {
     public var showHidden: Bool
     public var filters: [SearchClause]
     public var limit: Int
+    /// Also match what's inside documents, through Spotlight's content index, as Finder does.
+    public var includesContents: Bool
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
-                lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = []) {
+                lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false) {
         self.text = text; self.scope = scope; self.bookmarkPaths = bookmarkPaths
         self.homeDirectory = homeDirectory; self.lastDirectory = lastDirectory
         self.showHidden = showHidden; self.limit = limit; self.filters = filters
+        self.includesContents = includesContents
     }
 }
 /// Ranked metadata preserves search ordering (F-044); smaller ordinal ranks indicate stronger matches.

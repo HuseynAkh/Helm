@@ -22,8 +22,7 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {
         switch self {
-        case .printSelection, .columns, .gallery, .previewPane, .viewOptions, .computer, .network,
-             .compress, .decompress, .tags: return true
+        case .printSelection, .columns, .gallery, .previewPane, .network, .tags: return true
         default: return false
         }
     }

@@ -9,6 +9,7 @@ import Quartz
 /// This is how the app is exercised without a person: real views, real store, real file system, temp folders only.
 @MainActor enum HostSmokeDriver {
     private static var failures = 0
+    private static var failurePrompts = 0
 
     static func run(script: URL, app: AppController) {
         guard let text = try? String(contentsOf: script, encoding: .utf8) else { finish(code: 2, "cannot read script"); return }
@@ -100,6 +101,10 @@ import Quartz
             let bits = argument.split(separator: " ").map(String.init)
             guard bits.count == 2, let key = SettingKey(rawValue: "helm." + bits[0]) else { check(false, step, "bad setting"); return }
             app.setting(key, to: bits[1] == "true")
+        case "setting-string":
+            let bits = argument.split(separator: " ").map(String.init)
+            guard bits.count == 2, let key = SettingKey(rawValue: "helm." + bits[0]) else { check(false, step, "bad setting"); return }
+            app.setting(key, toString: bits[1])
         case "expand":
             guard let tab, let entry = tab.snapshot.sortedEntries.first(where: { $0.name == argument }) else { check(false, step, "no such row"); return }
             window.store.send(.tab(tab.id, .expand(entry.id)))
@@ -192,6 +197,93 @@ import Quartz
             await wait(seconds: 0.3)
         case "bookmarked":
             check(window.dependencies.bookmarks.records.contains { URL(fileURLWithPath: $0.path).lastPathComponent == argument }, step)
+        case "bookmarks-are":
+            let order = window.dependencies.bookmarks.records.map { URL(fileURLWithPath: $0.path).lastPathComponent }
+            check(order.joined(separator: ",") == argument, step, order.joined(separator: ","))
+        case "bookmark-move":
+            // "<index> <folder>": moves a bookmark, as dragging it within the sidebar does.
+            let bits = argument.split(separator: " ", maxSplits: 1)
+            guard bits.count == 2, let index = Int(bits[0]) else { check(false, step, "usage"); return }
+            window.sidebarMoveBookmark(String(bits[1]), to: index)
+            await wait(seconds: 0.2)
+        case "bookmark-at":
+            // "<index> <folder>": adds a bookmark at a position, as dropping between two bookmarks does.
+            let bits = argument.split(separator: " ", maxSplits: 1)
+            guard bits.count == 2, let index = Int(bits[0]) else { check(false, step, "usage"); return }
+            window.sidebarInsertBookmarks([URL(fileURLWithPath: String(bits[1]), isDirectory: true)], at: index)
+            await wait(seconds: 0.4)
+        case "open-external":
+            // As another app's "Show in Finder" arrives when Helm is the file viewer, or `open -a Helm <path>`.
+            app.application(NSApp, open: argument.split(separator: "|").map { URL(fileURLWithPath: String($0)) })
+            await wait(seconds: 0.9)
+        case "service-show":
+            let pasteboard = NSPasteboard(name: .init("helm.smoke.service.\(getpid())"))
+            pasteboard.clearContents()
+            pasteboard.writeObjects([URL(fileURLWithPath: argument) as NSURL])
+            var error: NSString?
+            app.showInHelm(pasteboard, userData: nil, error: &error)
+            check(error == nil, step, error as String? ?? "")
+            await wait(seconds: 0.9)
+        case "search-scope":
+            // "here" or "mac": the search field's scope menu.
+            window.setSearchScopeForTesting(everywhere: argument == "mac")
+            await wait(seconds: 1.2)
+        case "search-scope-is":
+            let scope = tab?.search?.query.scope
+            let reads: String
+            switch scope {
+            case .currentFolder?: reads = "here"
+            case .thisMac?: reads = "mac"
+            default: reads = "none"
+            }
+            check(reads == argument, step, reads)
+        case "fail-answer":
+            // Answers the Skip / Try Again / Stop prompt, counting how often it was asked.
+            let decision: FailureDecision
+            switch argument {
+            case "skip": decision = .skip
+            case "skip-all": decision = .skipAll
+            case "retry": decision = .retry
+            default: decision = .stop
+            }
+            failurePrompts = 0
+            window.failureObserver = { failure in
+                failurePrompts += 1
+                print("ASKED \(failure.name) remaining \(failure.remaining) retry \(failure.canRetry)"); fflush(stdout)
+                return decision
+            }
+        case "asked":
+            check(failurePrompts == Int(argument), step, "asked \(failurePrompts)")
+        case "file-viewer":
+            // The Settings switch, against a stand-in that changes nothing outside Helm.
+            app.showSettingsWindow(nil)
+            guard let model = app.fileViewerForTesting else { check(false, step, "no model"); return }
+            model.setHelmDefault(argument == "helm")
+            await wait(seconds: 0.2)
+            check(model.isHelmDefault == (argument == "helm"), step)
+            app.settingsWindowForTesting?.close()
+        case "first-in-dock":
+            // The Dock switch, against the stand-in: nothing outside Helm changes.
+            app.showSettingsWindow(nil)
+            guard let model = app.fileViewerForTesting else { check(false, step, "no model"); return }
+            model.setFirstInDock(argument == "true")
+            check(model.isFirstInDock == (argument == "true") && model.problem == nil, step)
+            app.settingsWindowForTesting?.close()
+        case "settings-shot":
+            // "<pane> <file>": shows one Settings pane and captures it.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            guard bits.count == 2, let pane = SettingsPane.allCases.first(where: { $0.rawValue.lowercased() == bits[0] }) else {
+                check(false, step, "usage"); return
+            }
+            app.showSettingsWindow(nil)
+            app.settingsControllerForTesting?.select(pane)
+            await wait(seconds: 0.8)
+            guard let view = app.settingsWindowForTesting?.contentView?.superview,
+                  let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, step, "no window"); return }
+            view.cacheDisplay(in: view.bounds, to: image)
+            try? image.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: bits[1]))
+            check(FileManager.default.fileExists(atPath: bits[1]), step)
+            app.settingsWindowForTesting?.close()
         case "view-is":
             check(tab?.viewMode.rawValue == argument, step, tab?.viewMode.rawValue ?? "")
         case "sorted-by":

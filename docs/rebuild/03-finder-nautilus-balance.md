@@ -31,7 +31,7 @@ If a behaviour affects what's on disk or how other Mac apps see it, Helm does wh
 | Text | 14 pt names by default, in both views, shown as 100%. Text steps by 10% from 80% to 170%, with the percentage between − and + in the view options popover; clicking the percentage resets it. Cmd+Plus and Cmd+Minus scale text and icons together. |
 | Tabs | Flat, with a soft fill on the active tab and the close button on the right |
 | Sorting | A button in the header always names the current sort, such as "A to Z" or "Newest first". Its popover lists Name, Modified, Size and Kind: pick one, and pick it again to reverse it, as with a column heading. A new field starts in its natural direction, newest or largest first for dates and sizes. In the list, the sorted column shows an arrow. |
-| App icon | A small horned Norse helmet sitting on a blue folder, on a rounded-square tile. Drawn in code by `scripts/rebuild/make_app_icon.swift`, so every size is sharp. |
+| App icon | Variant 4, Isometric: three slabs in isometric projection on dark slate, the middle one pulled out as an amber drawer. Chosen by Huseyn on 2026-11-08 from the five in `docs/brand/logo-variants/`, and drawn in code by `swift scripts/rebuild/make_logo_variants.swift --app-icon`, so every size is sharp. It replaced the earlier horned helmet on a folder. |
 
 ## Drag and drop, previews and Open With
 

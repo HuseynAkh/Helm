@@ -117,7 +117,14 @@ final class K13PersistenceTests: XCTestCase {
         let store = try await BookmarkStore(url: dir.appendingPathComponent("bookmarks.json"), home: URL(fileURLWithPath: "/home"))
         XCTAssertTrue(store.add(URL(fileURLWithPath: "/z/same"), isDirectory: true))
         XCTAssertTrue(store.add(URL(fileURLWithPath: "/a/same"), isDirectory: true))
+        // Bookmarks keep the order they were added in, and can be moved (P-188).
+        XCTAssertEqual(store.records.map(\.path), ["/z/same", "/a/same"])
+        store.move(path: "/a/same", to: 0)
         XCTAssertEqual(store.records.map(\.path), ["/a/same", "/z/same"])
+        XCTAssertTrue(store.insert(URL(fileURLWithPath: "/m/mid"), isDirectory: true, at: 1))
+        XCTAssertEqual(store.records.map(\.path), ["/a/same", "/m/mid", "/z/same"])
+        store.move(path: "/a/same", to: 3)
+        XCTAssertEqual(store.records.map(\.path), ["/m/mid", "/z/same", "/a/same"])
         try await store.flush()
     }
 

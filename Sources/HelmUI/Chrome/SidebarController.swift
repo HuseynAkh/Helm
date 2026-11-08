@@ -8,6 +8,9 @@ import HelmPersistence
     func sidebarRemoveBookmark(_ place: Place)
     func sidebarEject(_ place: Place)
     func sidebarAddBookmarks(_ urls: [URL])
+    /// Adds bookmarks at a position in the bookmark list, or at the end when nil.
+    func sidebarInsertBookmarks(_ urls: [URL], at index: Int?)
+    func sidebarMoveBookmark(_ path: String, to index: Int)
     func sidebarDropOperation(_ info: NSDraggingInfo, onto place: Place) -> NSDragOperation
     func sidebarPerformDrop(_ info: NSDraggingInfo, onto place: Place) -> Bool
     func sidebarDragEnded()
@@ -26,6 +29,8 @@ import HelmPersistence
     private var rows: [Row] = []
     /// Boxed so the outline view gets a stable object per row.
     private var items: [NSString] = []
+    /// The bookmark being dragged, so dropping it outside the sidebar removes it, as in Finder.
+    private var draggedBookmark: Place?
 
     override func loadView() {
         effect.material = .sidebar
@@ -44,9 +49,10 @@ import HelmPersistence
         outline.floatsGroupRows = false; outline.indentationPerLevel = 0
         outline.dataSource = self; outline.delegate = self
         outline.target = self; outline.action = #selector(clicked)
-        outline.registerForDraggedTypes(FileDrag.acceptedTypes)
+        outline.registerForDraggedTypes(FileDrag.acceptedTypes + [.helmBookmark])
         outline.onDragEnded = { [weak self] in self?.delegate?.sidebarDragEnded() }
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
+        outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.setAccessibilityLabel("Places")
         outline.menuProvider = { [weak self] row in self?.menu(forRow: row) }
         scroll.documentView = outline
@@ -173,26 +179,86 @@ import HelmPersistence
 
     // MARK: Drops: onto a place moves, copies or opens as Finder would, onto Trash trashes, between rows bookmarks.
 
+    // MARK: Dragging bookmarks: reorder within the list, drop outside to remove (P-188)
+
+    /// Where the bookmark rows sit in the list, if there are any.
+    private var bookmarkRows: ClosedRange<Int>? {
+        let indices = rows.indices.filter { if case .place(let place) = rows[$0] { return place.kind == .bookmark }; return false }
+        guard let first = indices.first, let last = indices.last else { return nil }
+        return first...last
+    }
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        // Only bookmarks move. They carry a private type, so dropping one on a folder can't move the real folder.
+        guard let place = place(item), place.kind == .bookmark, let url = place.url else { return nil }
+        let entry = NSPasteboardItem()
+        entry.setString(url.path, forType: .helmBookmark)
+        return entry
+    }
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forItems draggedItems: [Any]) {
+        draggedBookmark = draggedItems.first.flatMap { place($0) }
+    }
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        defer { draggedBookmark = nil }
+        guard let place = draggedBookmark, operation == [], !isInsideSidebar(screenPoint) else { return }
+        NSAnimationEffect.disappearingItemDefault.show(centeredAt: screenPoint, size: NSSize(width: 36, height: 36))
+        delegate?.sidebarRemoveBookmark(place)
+    }
+    func outlineView(_ outlineView: NSOutlineView, draggingSession session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+        // Outside the sidebar the bookmark doesn't slide back: letting go removes it.
+        guard draggedBookmark != nil else { return }
+        session.animatesToStartingPositionsOnCancelOrFail = isInsideSidebar(screenPoint)
+    }
+    private func isInsideSidebar(_ screenPoint: NSPoint) -> Bool {
+        guard let window = view.window else { return true }
+        let point = view.convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        return view.bounds.contains(point)
+    }
+    /// The list position nearest `index` that lies among the bookmarks, or after the last one.
+    private func bookmarkInsertion(near index: Int, item: Any?) -> Int? {
+        guard let range = bookmarkRows else { return nil }
+        var target = index
+        if index == NSOutlineViewDropOnItemIndex, let value = item as? NSString, let row = items.firstIndex(where: { $0 === value }) { target = row }
+        if target < 0 { target = range.upperBound + 1 }
+        return min(max(target, range.lowerBound), range.upperBound + 1)
+    }
+
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        if info.draggingPasteboard.types?.contains(.helmBookmark) == true {
+            guard let position = bookmarkInsertion(near: index, item: item) else { return [] }
+            outlineView.setDropItem(nil, dropChildIndex: position)
+            return .move
+        }
         if let place = place(item), index == NSOutlineViewDropOnItemIndex {
             let operation = delegate?.sidebarDropOperation(info, onto: place) ?? []
             if operation != [] { return operation }
         }
         delegate?.sidebarDragEnded()
-        // Anywhere else in the list bookmarks the dragged items. Promised files don't exist yet, so they can't be.
+        // Anywhere else in the list bookmarks the dragged items, where they're dropped among the bookmarks.
+        // Promised files don't exist yet, so they can't be.
         guard !BrowserWindowController.fileURLs(info).isEmpty else { return [] }
-        outlineView.setDropItem(nil, dropChildIndex: rows.count)
+        outlineView.setDropItem(nil, dropChildIndex: bookmarkInsertion(near: index, item: item) ?? rows.count)
         return .link
     }
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        if let path = info.draggingPasteboard.string(forType: .helmBookmark) {
+            guard let range = bookmarkRows else { return false }
+            delegate?.sidebarMoveBookmark(path, to: max(0, index - range.lowerBound))
+            return true
+        }
         if let place = place(item), index == NSOutlineViewDropOnItemIndex {
             return delegate?.sidebarPerformDrop(info, onto: place) ?? false
         }
         let urls = BrowserWindowController.fileURLs(info)
         guard !urls.isEmpty else { return false }
-        delegate?.sidebarAddBookmarks(urls)
+        let position = bookmarkRows.map { min(max(0, index - $0.lowerBound), $0.count) }
+        delegate?.sidebarInsertBookmarks(urls, at: position)
         return true
     }
+}
+
+extension NSPasteboard.PasteboardType {
+    /// A bookmark dragged within the sidebar.
+    static let helmBookmark = NSPasteboard.PasteboardType("com.helm.sidebar-bookmark")
 }
 
 private extension Place {

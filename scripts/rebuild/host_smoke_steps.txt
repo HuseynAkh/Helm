@@ -249,6 +249,13 @@ search q2
 wait 0.6
 has q2.txt
 screenshot @SHOTS@/full-search.png
+# The scope pill widens a search to the whole Mac and back (P-170)
+search-scope-is here
+search-scope mac
+search-scope-is mac
+search-scope here
+search-scope-is here
+has q2.txt
 search
 wait 0.4
 has alpha.md
@@ -370,9 +377,80 @@ exists @FIX@/home/Documents/Reports/q1.txt
 go @FIX@/home/Documents/Reports
 openwith-ranked q1.txt
 go @FIX@/home/Documents
-# Sidebar bookmarks
+# Sidebar bookmarks: added at the end, dropped between two, and reordered by dragging (P-188)
 bookmark @FIX@/home/Documents/Reports
 bookmarked Reports
+bookmark @FIX@/home/Downloads
+bookmarks-are Reports,Downloads
+bookmark-at 1 @FIX@/home/Desktop
+bookmarks-are Reports,Desktop,Downloads
+bookmark-move 0 @FIX@/home/Downloads
+bookmarks-are Downloads,Reports,Desktop
+# Show in Finder from another app, Open in Helm and Show in Helm: files are shown selected, not launched
+open-external @FIX@/home/Documents/Reports/q1.txt
+location @FIX@/home/Documents/Reports
+selected q1.txt
+open-external @FIX@/home/Desktop
+location @FIX@/home/Desktop
+service-show @FIX@/home/Documents/Reports
+location @FIX@/home/Documents
+selected Reports
+# Compress one item and several, as Finder names them
+go @FIX@/home/Documents/Reports
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/q1.txt.zip
+selected q1.txt.zip
+select 2026,q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/Archive.zip
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/q1.txt 2.zip
+# One unreadable item doesn't stop the batch: Skip goes on with the rest (P-139)
+go @FIX@/home/Locked
+select 1-locked.txt,2-open.txt,3-open.txt
+cmd copy
+go @FIX@/home/Desktop
+fail-answer skip
+cmd paste
+wait 1.2
+asked 1
+has 2-open.txt
+has 3-open.txt
+lacks 1-locked.txt
+# Stop leaves the rest undone
+go @FIX@/home/Locked
+select 1-locked.txt,2-open.txt
+cmd copy
+go @FIX@/home/Downloads
+fail-answer stop
+cmd paste
+wait 1.2
+asked 1
+lacks 2-open.txt
+fail-answer stop
+# New windows open where Settings says
+setting-string newWindowLocation downloads
+cmd newWindow
+wait 0.6
+location @FIX@/home/Downloads
+cmd closeWindow
+wait 0.4
+setting-string newWindowLocation current
+# Default file viewer switch (a stand-in: nothing outside Helm changes), and each Settings pane
+file-viewer helm
+file-viewer finder
+first-in-dock true
+first-in-dock false
+settings-shot general @SHOTS@/settings-general.png
+settings-shot view @SHOTS@/settings-view.png
+settings-shot appearance @SHOTS@/settings-appearance.png
+settings-shot search @SHOTS@/settings-search.png
+settings-shot advanced @SHOTS@/settings-advanced.png
 # Per-folder view memory
 go @FIX@/home/Downloads
 view list

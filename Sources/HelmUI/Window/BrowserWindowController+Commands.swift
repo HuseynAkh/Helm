@@ -53,6 +53,7 @@ extension BrowserWindowController {
         case .star:
             let starred = !selectedEntries().isEmpty && selectedEntries().allSatisfy { dependencies.stars.isStarred($0.url) }
             item.title = starred ? "Remove from Starred" : "Star"
+        case .compress: item.title = compressTitle()
         default: break
         }
     }
@@ -105,7 +106,7 @@ extension BrowserWindowController {
         case .sidebar: toggleSidebar()
         case .find: beginSearch()
         // Windows and tabs
-        case .newWindow: host?.openWindow(at: tab.location, selecting: [])
+        case .newWindow: host?.openWindow(at: newWindowLocation, selecting: [])
         case .newTab: newTab(at: tab.location)
         case .closeTab: closeCurrentTab()
         case .closeWindow: window?.performClose(nil)
@@ -160,8 +161,12 @@ extension BrowserWindowController {
         case .settings: host?.showSettings()
         case .about, .advancedOptions, .services, .hide, .hideOthers, .showAll, .quit, .bringAllToFront, .help: break
         case .moveItemsHere: moveItemsHere()
-        case .printSelection, .columns, .gallery, .previewPane, .viewOptions,
-             .computer, .network, .compress, .decompress, .tags: break
+        case .compress: compressSelection()
+        case .decompress: expandSelection()
+        case .viewOptions: header.showViewOptions()
+        // Every mounted disk, as Finder's Computer shows them.
+        case .computer: navigate(to: .directory(URL(fileURLWithPath: "/Volumes", isDirectory: true)))
+        case .printSelection, .columns, .gallery, .previewPane, .network, .tags: break
         }
     }
 
@@ -193,6 +198,26 @@ extension BrowserWindowController {
         guard tabs.count > 1, let index = tabs.firstIndex(of: activeTabID) else { return }
         store.send(.window(.activate(tabs[(index + delta + tabs.count) % tabs.count])))
     }
+    /// Where File › New Window opens, from Settings › General (P-017). Virtual places such as Recent
+    /// stay as they are when the setting follows the front window.
+    public var newWindowLocation: Location {
+        let choice = NewWindowLocation(rawValue: dependencies.settings.snapshot.string(.newWindowLocation)) ?? .current
+        if choice == .current, let location = activeTab?.location { return location }
+        return .directory(choice.folder(current: activeTab?.location.mutationTarget, home: dependencies.home))
+    }
+
+    /// Shows a folder, with some of its items selected: how other apps' "Show in Finder" and Services arrive.
+    public func show(folder: URL, selecting items: [URL]) {
+        guard !items.isEmpty else { navigate(to: .directory(folder)); return }
+        let ids = Set(items.map { ItemID(url: $0) })
+        select(ids, in: activeTabID)
+        if let here = activeTab?.location.mutationTarget, Self.isSame(here, folder) {
+            store.send(.tab(activeTabID, .refreshSelecting(ids)))
+        } else {
+            navigate(to: .directory(folder))
+        }
+    }
+
     public func revealInCurrentTab(_ url: URL) {
         let parent = url.deletingLastPathComponent()
         select([ItemID(url: url)], in: activeTabID)
@@ -370,11 +395,96 @@ extension BrowserWindowController {
         let scope = OperationCoordinator.scope(of: command)
         let resolver = conflictResolver()
         let operations = dependencies.operations, history = history
-        Task { @MainActor [weak self] in
-            let outcome = await operations.run(command, sources: scope.sources, destinations: scope.destinations, history: history, resolver: resolver)
-            await self?.refreshHistory()
-            self?.handle(outcome, explicit: explicit, completion: completion)
+        let asked = FailurePromptRecord()
+        let onFailure: OperationCoordinator.FailureResolver = { [weak self] failure in
+            guard let self else { return .stop }
+            asked.didAsk = true
+            return await self.askAboutFailure(failure, verb: OperationText.verb(for: command))
         }
+        Task { @MainActor [weak self] in
+            let outcome = await operations.run(command, sources: scope.sources, destinations: scope.destinations, history: history,
+                                               resolver: resolver, onFailure: onFailure)
+            await self?.refreshHistory()
+            let told = await self?.settleReconciliation(outcome, alreadyAsked: asked.didAsk) ?? false
+            self?.handle(outcome, explicit: explicit, completion: completion, alreadyAsked: asked.didAsk || told)
+        }
+    }
+
+    /// A batch that ended partly done leaves Undo unsure of what's on disk, and the window's history refuses
+    /// everything else until someone confirms they know (B-038). Without this, one unreadable file left every
+    /// later copy, move and rename in the window beeping. Say what happened, then let work go on.
+    /// Returns whether it told the person something.
+    func settleReconciliation(_ outcome: Result<OperationResult, OperationCoordinator.Failure>, alreadyAsked: Bool) async -> Bool {
+        guard historyState.reconciliation != nil else { return false }
+        var told = false
+        if !alreadyAsked, case .success(let result) = outcome {
+            await confirmPartlyDone(result)
+            told = true
+        }
+        await history.acknowledgeReconciliation()
+        await refreshHistory()
+        return told
+    }
+    private func confirmPartlyDone(_ result: OperationResult) async {
+        let verb = OperationText.verb(for: result.command)
+        let failed = result.outcomes.filter { if case .failure(let error) = $0.result { return error != .notAttempted }; return false }
+        let done = result.outcomes.filter(\.succeeded).count
+        let unsure = result.outcomes.filter(\.requiresReconciliation)
+        let name = failed.first.flatMap { $0.step.source?.lastPathComponent ?? $0.step.destination?.lastPathComponent } ?? "An item"
+        let title = failed.count > 1 ? "\(failed.count) items couldn’t be \(verb)." : "“\(name)” couldn’t be \(verb)."
+        var detail = result.error.map { OperationRowModel.message(for: $0) + " " } ?? ""
+        detail += "\(done) of \(result.outcomes.count) finished."
+        if let first = unsure.first {
+            let item = first.destination?.lastPathComponent ?? first.step.source?.lastPathComponent ?? "One item"
+            detail += " “\(item)” may be only partly there, so check it before you use it."
+        }
+        detail += " This can’t be undone."
+        if let messageObserver { messageObserver(title + " " + detail); return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: "OK")
+        let shown = unsure.first?.destination.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        if shown != nil { alert.addButton(withTitle: "Show Item") }
+        guard let window else { return }
+        let response = await withCheckedContinuation { continuation in
+            alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+        }
+        if response == .alertSecondButtonReturn, let shown { show(folder: shown.deletingLastPathComponent(), selecting: [shown]) }
+    }
+
+    /// One item failed partway through a batch: Skip, Try Again or Stop, as Finder asks (P-139).
+    func askAboutFailure(_ failure: StepFailure, verb: String) async -> FailureDecision {
+        if let failureObserver { return failureObserver(failure) }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "“\(failure.name)” couldn’t be \(verb)."
+        var detail = OperationRowModel.message(for: failure.error)
+        if failure.remaining > 0 {
+            detail += failure.remaining == 1 ? " 1 more item is still to do." : " \(failure.remaining) more items are still to do."
+        }
+        alert.informativeText = detail
+        var answers: [FailureDecision] = []
+        if failure.remaining > 0 { alert.addButton(withTitle: "Skip"); answers.append(.skip) }
+        if failure.canRetry { alert.addButton(withTitle: "Try Again"); answers.append(.retry) }
+        alert.addButton(withTitle: "Stop"); answers.append(.stop)
+        if failure.remaining > 1 {
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Skip any other items that can’t be \(verb)"
+        }
+        let response: NSApplication.ModalResponse
+        if let window {
+            response = await withCheckedContinuation { continuation in
+                alert.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+            }
+        } else {
+            response = alert.runModal()
+        }
+        let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        let decision = answers.indices.contains(index) ? answers[index] : .stop
+        if decision == .skip, alert.suppressionButton?.state == .on { return .skipAll }
+        return decision
     }
     private func conflictResolver() -> OperationCoordinator.ConflictResolver? {
         guard dependencies.settings.snapshot.bool(.askOnConflict) else { return nil }
@@ -383,14 +493,16 @@ extension BrowserWindowController {
             return await self.resolve(conflicts)
         }
     }
-    private func handle(_ outcome: Result<OperationResult, OperationCoordinator.Failure>, explicit: Set<ItemID>?, completion: ((OperationResult) -> Void)?) {
+    private func handle(_ outcome: Result<OperationResult, OperationCoordinator.Failure>, explicit: Set<ItemID>?,
+                        completion: ((OperationResult) -> Void)?, alreadyAsked: Bool = false) {
         switch outcome {
         case .failure(.cancelled): return
         case .failure(.busy): NSSound.beep()
         case .failure(.message(let message)): show(message: message)
         case .success(let result):
             completion?(result)
-            if let error = result.error, error != .cancelled {
+            // Someone who already chose Skip or Stop for a failure has seen it; the panel keeps the details.
+            if let error = result.error, error != .cancelled, !alreadyAsked {
                 show(message: OperationRowModel.message(for: error))
             }
             let outputs = Set(result.outcomes.filter { $0.succeeded && $0.step.kind != .trash && $0.step.kind != .verifyCopy }.compactMap(\.destination).map { ItemID(url: $0) })
@@ -414,7 +526,8 @@ extension BrowserWindowController {
         Task { @MainActor [weak self] in
             let outcome = await operations.undo(history: history)
             await self?.refreshHistory()
-            self?.handle(outcome, explicit: nil, completion: nil)
+            let told = await self?.settleReconciliation(outcome, alreadyAsked: false) ?? false
+            self?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
         }
     }
     private func runRedo() {
@@ -423,7 +536,8 @@ extension BrowserWindowController {
         Task { @MainActor [weak self] in
             let outcome = await operations.redo(history: history, resolver: resolver)
             await self?.refreshHistory()
-            self?.handle(outcome, explicit: nil, completion: nil)
+            let told = await self?.settleReconciliation(outcome, alreadyAsked: false) ?? false
+            self?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
         }
     }
     private func trashSelection() {

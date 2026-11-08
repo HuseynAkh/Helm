@@ -60,6 +60,32 @@ public struct OperationResult: Sendable {
     }
 }
 /// Honest primitive-level progress for F-061; no invented byte estimates.
+/// One item that couldn't be done, offered to the person before the batch goes on (P-139).
+public struct StepFailure: Sendable, Equatable {
+    /// The item's name, as shown in the prompt.
+    public let name: String
+    public let error: OperationError
+    /// Trying again is offered only when nothing was half done, so a retry can't trip over a partial copy.
+    public let canRetry: Bool
+    /// Items still to do after this one. With none, Skip and Stop end the same way.
+    public let remaining: Int
+    public init(name: String, error: OperationError, canRetry: Bool, remaining: Int) {
+        self.name = name; self.error = error; self.canRetry = canRetry; self.remaining = remaining
+    }
+}
+
+/// What the person chose for a failed item, as in Finder's Skip and Stop prompt.
+public enum FailureDecision: Sendable, Equatable {
+    /// Leave this item and go on with the rest.
+    case skip
+    /// Leave this item and every later one that fails, without asking again.
+    case skipAll
+    /// Try the same item again.
+    case retry
+    /// Stop here. Items not yet reached aren't attempted.
+    case stop
+}
+
 public struct OperationProgress: Sendable, Equatable {
     public let id: OperationID
     public let itemsDone: Int

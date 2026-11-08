@@ -22,7 +22,8 @@ public actor OperationExecutor {
     /// Busy refusals also have a genuine journal entry and an admission callback (B-043).
     public func execute(_ plan: OperationPlan,
                         progress: @Sendable (OperationProgress) async -> Void = { _ in },
-                        admission: @Sendable (OperationID, OperationPlan) async -> Bool = { _, _ in true }) async -> OperationResult {
+                        admission: @Sendable (OperationID, OperationPlan) async -> Bool = { _, _ in true },
+                        decide: @Sendable (StepFailure) async -> FailureDecision = { _ in .stop }) async -> OperationResult {
         // Actor reentrancy must not interleave two mutation sequences.
         guard !running, !quarantined else {
             let id = await journal.begin(plan)
@@ -59,7 +60,13 @@ public actor OperationExecutor {
                 } catch { failure = (error as? OperationError) ?? .sourceChanged(url); break }
             }
         }
-        for step in plan.steps {
+        // A failed item can be skipped, so the batch goes on (P-139). The first skipped failure is the result's error.
+        var skipped: OperationError?
+        var skipsAll = false
+        var index = 0
+        while index < plan.steps.count {
+            let step = plan.steps[index]
+            index += 1
             if failure == nil && Task.isCancelled { failure = .cancelled }
             if failure != nil {
                 outcomes.append(ItemOutcome(step: step, destination: step.destination, result: .failure(.notAttempted)))
@@ -118,11 +125,34 @@ public actor OperationExecutor {
                 // an earlier completed output still requires reconciliation (B-038/B-041).
                 let uncertain = (executionFailure != nil && !(cause is ConditionalMutationError) && mapped != .conflict)
                     || (mapped == .verificationUnavailable && (forward.isMissing(step.source) || forward.isMissing(step.destination)))
+                // Ask what to do, unless nothing else can safely happen: a cancelled, timed-out or quarantined run stops.
+                let askable = !quarantined && mapped != .cancelled && mapped != .timedOut && mapped != .busy && mapped != .invalidPlan
+                var decision: FailureDecision = .stop
+                if askable {
+                    if skipsAll { decision = .skip }
+                    else {
+                        let name = step.source?.lastPathComponent ?? step.destination?.lastPathComponent ?? ""
+                        decision = await decide(StepFailure(name: name, error: mapped, canRetry: !uncertain,
+                                                            remaining: plan.steps.count - index))
+                        if decision == .retry && uncertain { decision = .stop }
+                    }
+                }
+                if decision == .retry, !Task.isCancelled {
+                    failure = nil
+                    index -= 1
+                    continue
+                }
                 let outcome = ItemOutcome(step: step, destination: executionFailure?.destination ?? step.destination,
                                           result: .failure(mapped), requiresReconciliation: uncertain)
                 outcomes.append(outcome); await journal.record(outcome, for: id)
+                if decision == .skip || decision == .skipAll {
+                    if decision == .skipAll { skipsAll = true }
+                    if skipped == nil { skipped = mapped }
+                    failure = nil
+                }
             }
         }
+        if failure == nil, let skipped { failure = skipped }
         let result = OperationResult(id: id, command: plan.command, outcomes: outcomes, error: failure)
         await journal.complete(result)
         await progress(OperationProgress(id: id, itemsDone: outcomes.filter(\.succeeded).count, itemsTotal: plan.steps.count, currentName: nil))

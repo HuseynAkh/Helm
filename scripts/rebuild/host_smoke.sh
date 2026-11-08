@@ -17,6 +17,10 @@ echo a > "$fix/home/Documents/alpha.md"
 echo r > "$fix/home/Documents/Reports/q1.txt"
 echo z > "$fix/home/Documents/Reports/2026/q2.txt"
 echo .hidden > "$fix/home/Documents/.secret"
+# An unreadable file among readable ones, for Skip / Stop. Unlocked again at the end so the fixture can go.
+mkdir -p "$fix/home/Locked"
+echo locked > "$fix/home/Locked/1-locked.txt"; echo two > "$fix/home/Locked/2-open.txt"; echo three > "$fix/home/Locked/3-open.txt"
+chmod 000 "$fix/home/Locked/1-locked.txt"
 ln -s "$fix/home/Documents/Reports" "$fix/home/Documents/link-to-reports"
 xattr -w com.example.keep yes "$fix/home/Documents/notes.txt"
 touch -t 202001020304 "$fix/home/Documents/notes.txt"
@@ -38,7 +42,10 @@ swift build --scratch-path "$scratch" --target HelmDev || exit 1
 bin="$(swift build --scratch-path "$scratch" --show-bin-path)/HelmDev"
 "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/steps.txt" 2>&1 | tee "$root/result.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
 code=${PIPESTATUS[0]}
+# The first run ends with a real Quit, which exits 0 whatever happened before it, so failures are read from the log.
+grep -q '^FAIL' "$root/result.log" && code=1
 "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/restore.txt" 2>&1 | tee "$root/restore.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
 restore_code=${PIPESTATUS[0]}
+chmod 644 "$fix/home/Locked/1-locked.txt" 2>/dev/null
 echo "First run exit $code, restore run exit $restore_code. PASS lines: $(cat "$root/result.log" "$root/restore.log" | grep -c '^PASS'). Screenshots and logs: $root"
 (( code == 0 && restore_code == 0 ))

@@ -16,15 +16,20 @@ import HelmPersistence
     let home: URL
     init(home: URL) { self.home = home.standardizedFileURL }
     func add(_ url: URL, isDirectory: Bool, at date: Date) -> Bool {
+        insert(url, isDirectory: isDirectory, at: records.count, date: date)
+    }
+    func insert(_ url: URL, isDirectory: Bool, at index: Int, date: Date) -> Bool {
         guard url.isFileURL, isDirectory else { return false }
         let url = url.standardizedFileURL
         guard !records.contains(where: { $0.path == url.path }) else { return false }
-        records.append(BookmarkRecord(path: url.path, name: url == home ? "Home" : (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent), addedAt: date))
-        records.sort {
-            let comparison = $0.name.localizedStandardCompare($1.name)
-            return comparison == .orderedSame ? $0.path < $1.path : comparison == .orderedAscending
-        }
+        records.insert(BookmarkRecord(path: url.path, name: url == home ? "Home" : (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent), addedAt: date),
+                       at: min(max(0, index), records.count))
         changes.send(records); return true
+    }
+    func move(path: String, to index: Int) {
+        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard let from = records.firstIndex(where: { $0.path == normalized }) else { return }
+        records = BookmarkOrder.moved(records, from: from, to: index); changes.send(records)
     }
     func remove(path: String) {
         records.removeAll { $0.path == URL(fileURLWithPath: path).standardizedFileURL.path }; changes.send(records)

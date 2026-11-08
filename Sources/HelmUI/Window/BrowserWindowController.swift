@@ -89,6 +89,8 @@ struct WindowTints: Equatable {
     private var pendingSelections: [TabID: Set<ItemID>] = [:]
     private var pendingRename: (tab: TabID, id: ItemID)?
     private var freeBytes: [String: Int64] = [:]
+    /// Shown in the status bar while the window works on something with no operations row, such as compressing.
+    private var busyMessage: String?
     private var freeRequested: String?
     private var searchDebounce: Task<Void, Never>?
     var closedTabs: [Location] = []
@@ -102,6 +104,8 @@ struct WindowTints: Equatable {
     public var confirmsForTesting = false
     /// Scripted runs read messages here, since nobody is there to dismiss a sheet.
     public var messageObserver: ((String) -> Void)?
+    /// Scripted runs answer failure prompts here instead of in a sheet.
+    public var failureObserver: ((StepFailure) -> FailureDecision)?
 
     public init(dependencies: WindowDependencies, host: BrowserWindowHost, frameName: String, seeds: [BrowserTabSeed], activeIndex: Int) {
         self.dependencies = dependencies; self.host = host; self.frameName = frameName
@@ -401,7 +405,8 @@ struct WindowTints: Equatable {
             if !entry.isDirectoryLike && entry.kind != .package { total = total.addingReportingOverflow(entry.size).partialValue }
         }
         var activity: StatusActivity = .idle
-        if case .failed(.permissionDenied, _) = tab.snapshot.phase { activity = .denied }
+        if let busyMessage { activity = .working(busyMessage) }
+        else if case .failed(.permissionDenied, _) = tab.snapshot.phase { activity = .denied }
         else if tab.search?.isGathering == true { activity = .searching }
         else if tab.isLoading { activity = .gathering }
         var free: Int64?
@@ -412,7 +417,12 @@ struct WindowTints: Equatable {
         // A selected folder's size isn't known without walking it, so say nothing rather than "Zero KB".
         let hasFile = selected.contains { !$0.isDirectoryLike && $0.kind != .package }
         statusHost.rootView = StatusBarView(status: StatusPresentation(itemCount: tab.snapshot.rootCount, selectedCount: selected.count,
-                                                                       selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity))
+                                                                       selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
+                                                                       isSearch: tab.search != nil))
+    }
+    func setBusy(_ busy: Bool, message: String?) {
+        busyMessage = busy ? message : nil
+        if let tab = activeTab { renderStatus(tab) }
     }
     private func requestFreeSpace(_ url: URL) {
         guard freeRequested != url.path, freeBytes[url.path] == nil else { return }
@@ -546,6 +556,13 @@ struct WindowTints: Equatable {
             self?.search(text)
         }
     }
+    func headerSearchScopeChanged() {
+        searchDebounce?.cancel()
+        let typed = header.searchText
+        search(typed.isEmpty ? (activeTab?.search?.query.text ?? "") : typed)
+    }
+    /// Scripted runs: searches the whole Mac or the folder, as the scope menu does.
+    public func setSearchScopeForTesting(everywhere: Bool) { header.chooseSearchScopeForTesting(everywhere: everywhere) }
     func headerSearchClosed() {
         searchDebounce?.cancel()
         store.send(.tab(activeTabID, .searchEnded))
@@ -558,11 +575,12 @@ struct WindowTints: Equatable {
         }
         let settings = dependencies.settings.snapshot
         // Nautilus searches where you are; virtual locations have no folder to search within (OK2-23).
+        // The scope pill in the search field widens it to the whole Mac, as Finder's "This Mac" does (P-170).
         let scope: SearchScope
-        if let url = tab.location.mutationTarget { scope = .currentFolder(url) } else { scope = .thisMac }
+        if let url = tab.location.mutationTarget, !header.searchesEverywhere { scope = .currentFolder(url) } else { scope = .thisMac }
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
-                                limit: settings.integer(.searchResultLimit))
+                                limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents))
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     func beginSearch() { header.beginSearch() }
@@ -676,15 +694,22 @@ struct WindowTints: Equatable {
     }
     func sidebarRemoveBookmark(_ place: Place) { if let url = place.url { dependencies.bookmarks.remove(path: url.path) } }
     func sidebarEject(_ place: Place) { if let url = place.url { dependencies.volumes.eject(url) } }
-    func sidebarAddBookmarks(_ urls: [URL]) {
+    public func sidebarAddBookmarks(_ urls: [URL]) { sidebarInsertBookmarks(urls, at: nil) }
+    public func sidebarInsertBookmarks(_ urls: [URL], at index: Int?) {
         let fileSystem = dependencies.fileSystem, bookmarks = dependencies.bookmarks, clock = dependencies.clock
         Task { @MainActor in
+            var position = index
             for url in urls {
                 let directory = await fileSystem.isDirectory(url, resolvingSymlinks: true)
-                _ = bookmarks.add(url, isDirectory: directory, at: clock.now())
+                if let at = position {
+                    if bookmarks.insert(url, isDirectory: directory, at: at, date: clock.now()) { position = at + 1 }
+                } else {
+                    _ = bookmarks.add(url, isDirectory: directory, at: clock.now())
+                }
             }
         }
     }
+    public func sidebarMoveBookmark(_ path: String, to index: Int) { dependencies.bookmarks.move(path: path, to: index) }
     func sidebarDropOperation(_ info: NSDraggingInfo, onto place: Place) -> NSDragOperation {
         guard let destination = dropDestination(for: place) else { springs.cancel(); return [] }
         let operation = dropOperation(info, into: destination)

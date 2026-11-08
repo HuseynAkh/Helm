@@ -13,7 +13,7 @@ final class LeafPresentationTests: XCTestCase {
             let row = OperationRowModel(id: id, title: "Copy",
                 progress: OperationProgress(id: id, itemsDone: done, itemsTotal: 2, currentName: "a"))
             XCTAssertEqual(row.fraction, expected)
-            XCTAssertTrue(row.status.contains("steps")); XCTAssertTrue(row.canCancel)
+            XCTAssertTrue(row.status.contains(" of ")); XCTAssertTrue(row.canCancel)
         }
         let cancelling = OperationRowModel(id: id, title: "Copy", cancellationRequested: true)
         XCTAssertFalse(cancelling.canCancel); XCTAssertEqual(cancelling.status, "Cancelling…")
@@ -32,9 +32,9 @@ final class LeafPresentationTests: XCTestCase {
         let row = OperationRowModel(id: id, title: "Copy", result: result)
         XCTAssertFalse(row.canCancel); XCTAssertEqual(row.details.count, 3)
         XCTAssertTrue(row.details[0].contains("/b 2"))
-        XCTAssertTrue(row.details[1].contains("Check filesystem state"))
-        XCTAssertFalse(row.details[2].contains("Check filesystem state"))
-        XCTAssertTrue(row.status.contains("1 steps completed, 2 unsuccessful"))
+        XCTAssertTrue(row.details[1].contains("partly done"))
+        XCTAssertFalse(row.details[2].contains("partly done"))
+        XCTAssertTrue(row.status.contains("1 of 3 done"))
         XCTAssertNil(OperationRowModel(id: OperationID(), title: "Other", result: result).result)
         let wrongProgress = OperationProgress(id: OperationID(), itemsDone: 1, itemsTotal: 2, currentName: nil)
         XCTAssertNil(OperationRowModel(id: id, title: "Other", progress: wrongProgress).progress)

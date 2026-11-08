@@ -278,7 +278,12 @@ final class SpotlightSearch: @unchecked Sendable {
         self.limit = max(query.limit * 3, 450)
         super.init()
         // The text is bound as a value, never interpolated into the predicate's syntax.
-        metadata.predicate = NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemFSNameKey, "*\(query.text)*")
+        let names = NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemFSNameKey, "*\(query.text)*")
+        if query.includesContents, let contents = Self.contentsPredicate(query.text) {
+            metadata.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [names, contents])
+        } else {
+            metadata.predicate = names
+        }
         switch query.scope {
         case .currentFolder(let url): metadata.searchScopes = [url.path]
         case .home, .userFolders: metadata.searchScopes = [NSMetadataQueryUserHomeScope]
@@ -290,6 +295,14 @@ final class SpotlightSearch: @unchecked Sendable {
                 MainActor.assumeIsolated { self?.publish() }
             })
         }
+    }
+    /// Words found inside documents, matched the way Spotlight and Finder match them: each word as a prefix,
+    /// ignoring case and accents. Every word must appear.
+    static func contentsPredicate(_ text: String) -> NSPredicate? {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init).filter { !$0.isEmpty }
+        guard !words.isEmpty else { return nil }
+        let parts = words.map { NSPredicate(format: "kMDItemTextContent LIKE[cd] %@", "\($0)*") }
+        return parts.count == 1 ? parts[0] : NSCompoundPredicate(andPredicateWithSubpredicates: parts)
     }
     func start() -> Bool { metadata.start() }
     func stop() {

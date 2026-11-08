@@ -15,7 +15,14 @@ public struct LaunchOptions: Equatable, Sendable {
     public var open: [URL] = []
     public var smokeScript: URL?
     public var screenshot: URL?
+    /// `--default-viewer helm|finder`: the Settings switch, from the command line. Helm does it and quits.
+    public var defaultViewer: Bool?
+    /// `--dock-first on|off`: the Dock switch, from the command line. Helm does it and quits.
+    public var dockFirst: Bool?
+    /// `--viewer-status`: prints who the file viewer is, who opens folders, and where Helm is in the Dock.
+    public var viewerStatus = false
     public var isIsolated: Bool { home != nil || support != nil }
+    public var isRoleCommand: Bool { defaultViewer != nil || dockFirst != nil || viewerStatus }
     public init() {}
 
     public static func parse(_ arguments: [String]) -> LaunchOptions? {
@@ -31,6 +38,11 @@ public struct LaunchOptions: Equatable, Sendable {
             case "--support": guard let path = value() else { return nil }; options.support = URL(fileURLWithPath: path, isDirectory: true)
             case "--smoke": guard let path = value() else { return nil }; options.smokeScript = URL(fileURLWithPath: path)
             case "--screenshot": guard let path = value() else { return nil }; options.screenshot = URL(fileURLWithPath: path)
+            case "--default-viewer":
+                switch value() { case "helm": options.defaultViewer = true; case "finder": options.defaultViewer = false; default: return nil }
+            case "--dock-first":
+                switch value() { case "on": options.dockFirst = true; case "off": options.dockFirst = false; default: return nil }
+            case "--viewer-status": options.viewerStatus = true
             default:
                 let raw = arguments[index]
                 // AppKit passes its own -NS… and -Apple… defaults through the arguments.
@@ -52,7 +64,8 @@ public struct LaunchOptions: Equatable, Sendable {
     private var ids: [ObjectIdentifier: AppWindowID] = [:]
     private var quit = QuitCoordinator()
     private var dependencies: WindowDependencies?
-    private var settingsWindow: NSWindow?
+    private var settingsWindow: SettingsWindowController?
+    private var fileViewer: FileViewerModel?
     private var pendingOpens: [URL] = []
     private var isLaunched = false
     private var subscription: Any?
@@ -64,6 +77,9 @@ public struct LaunchOptions: Equatable, Sendable {
         MainMenuBuilder.install(target: self)
     }
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        // Services › Open in Helm and Show in Helm, declared in Info.plist.
+        NSApp.servicesProvider = self
+        if !options.isIsolated { NSUpdateDynamicServices() }
         Task { @MainActor in await self.compose() }
     }
 
@@ -152,10 +168,16 @@ public struct LaunchOptions: Equatable, Sendable {
     private func classify(_ urls: [URL], fileSystem: any FileSystem) async -> [ExternalOpenRequest] {
         var requests: [ExternalOpenRequest] = []
         for url in urls {
-            guard let entry = try? await fileSystem.entry(at: url) else {
-                requests.append(ExternalOpenRequest(url: url, kind: .unavailable)); continue
+            do {
+                let entry = try await fileSystem.entry(at: url)
+                requests.append(ExternalOpenRequest(url: url, kind: entry.isDirectoryLike ? .folder : .file))
+            } catch let error as FileSystemError where error == .notFound {
+                requests.append(ExternalOpenRequest(url: url, kind: .unavailable))
+            } catch {
+                // A disk that's slow, or a folder macOS is still asking permission for, isn't a missing item:
+                // show it in its folder, which then says what's wrong.
+                requests.append(ExternalOpenRequest(url: url, kind: url.hasDirectoryPath ? .folder : .file))
             }
-            requests.append(ExternalOpenRequest(url: url, kind: entry.isDirectoryLike ? .folder : .file))
         }
         return requests
     }
@@ -180,46 +202,69 @@ public struct LaunchOptions: Equatable, Sendable {
         windows.append(controller)
     }
 
-    // MARK: External opens: folders navigate the key window, files launch (OK2-10).
+    // MARK: External opens: folders open, files are shown in their folder (OK2-10, amended).
 
+    /// Folders open in the front window. A file is shown selected in its folder rather than launched: when
+    /// Helm is the default file viewer, macOS delivers every "Show in Finder" from other apps this way, as a
+    /// plain request to open the file. Several places open as tabs beside the first, so none is lost.
     public func application(_ application: NSApplication, open urls: [URL]) {
         guard isLaunched, let environment else { pendingOpens += urls; return }
         Task { @MainActor in
             let requests = await classify(urls, fileSystem: environment.fileSystem)
             var rejected: [ExternalOpenRequest] = []
-            var files: [URL] = []
-            var folders: [URL] = []
+            var places: [(folder: URL, selecting: [URL])] = []
             for request in requests {
                 switch request.kind {
                 case .unavailable: rejected.append(request)
-                case .file: files.append(request.url)
-                case .folder: folders.append(request.url)
+                case .folder: places.append((request.url, []))
+                case .file:
+                    let parent = request.url.deletingLastPathComponent()
+                    if let index = places.firstIndex(where: { !$0.selecting.isEmpty && BrowserWindowController.isSame($0.folder, parent) }) {
+                        places[index].selecting.append(request.url)
+                    } else {
+                        places.append((parent, [request.url]))
+                    }
                 }
             }
-            // The first folder shows in the front window and any others open beside it as tabs, so none is lost.
-            if let first = folders.first {
-                if let front = frontmost() {
-                    front.navigate(to: .directory(first))
-                    for folder in folders.dropFirst() { front.newTab(at: .directory(folder)) }
-                    front.showWindow(nil)
+            if let first = places.first {
+                let front: BrowserWindowController?
+                if let window = frontmost() {
+                    window.show(folder: first.folder, selecting: first.selecting)
+                    front = window
                 } else {
-                    openWindow(at: .directory(first), selecting: [])
-                    for folder in folders.dropFirst() { frontmost()?.newTab(at: .directory(folder)) }
+                    openWindow(at: .directory(first.folder), selecting: first.selecting)
+                    front = frontmost()
                 }
+                for place in places.dropFirst() { front?.newTab(at: .directory(place.folder), selecting: place.selecting) }
+                if let front { show(front) }
+                if options.smokeScript == nil { NSApp.activate(ignoringOtherApps: true) }
             }
-            // Each file opens in its own default app, as if double-clicked.
-            var byApp: [URL: [URL]] = [:]
-            var unclaimed: [URL] = []
-            for file in files {
-                if let app = NSWorkspace.shared.urlForApplication(toOpen: file) { byApp[app, default: []].append(file) } else { unclaimed.append(file) }
-            }
-            for (app, group) in byApp {
-                NSWorkspace.shared.open(group, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
-            }
-            for file in unclaimed { NSWorkspace.shared.open(file) }
             reportRejected(rejected)
         }
     }
+
+    // MARK: Services: Open in Helm, Show in Helm (P-238)
+
+    /// Services › Open in Helm: folders open, anything else is shown in its folder.
+    @objc func openInHelm(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = Self.fileURLs(on: pasteboard)
+        guard !urls.isEmpty else { error.pointee = "Nothing to open." as NSString; return }
+        application(NSApp, open: urls)
+    }
+    /// Services › Show in Helm: every item, folders included, is shown selected in its enclosing folder.
+    @objc func showInHelm(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = Self.fileURLs(on: pasteboard)
+        guard let first = urls.first else { error.pointee = "Nothing to show." as NSString; return }
+        let folder = first.deletingLastPathComponent()
+        let items = urls.filter { BrowserWindowController.isSame($0.deletingLastPathComponent(), folder) }
+        if let front = frontmost() { front.show(folder: folder, selecting: items); show(front) }
+        else { openWindow(at: .directory(folder), selecting: items) }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    static func fileURLs(on pasteboard: NSPasteboard) -> [URL] {
+        pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
     private func reportRejected(_ requests: [ExternalOpenRequest]) {
         guard let first = requests.first else { return }
         let alert = NSAlert()
@@ -257,8 +302,11 @@ public struct LaunchOptions: Equatable, Sendable {
             ?? windows.last
     }
     var allWindows: [BrowserWindowController] { windows }
-    var settingsWindowForTesting: NSWindow? { settingsWindow }
+    var settingsWindowForTesting: NSWindow? { settingsWindow?.window }
+    var settingsControllerForTesting: SettingsWindowController? { settingsWindow }
+    var fileViewerForTesting: FileViewerModel? { fileViewer }
     func setting(_ key: SettingKey, to value: Bool) { environment?.settings.set(.bool(value), for: key) }
+    func setting(_ key: SettingKey, toString value: String) { environment?.settings.set(.string(value), for: key) }
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -282,8 +330,11 @@ public struct LaunchOptions: Equatable, Sendable {
     }
 
     @objc func newWindow(_ sender: Any?) {
-        if let front = frontmost(), let location = front.activeTab?.location { openWindow(at: location, selecting: []) }
-        else if let home = environment?.directories.home { openWindow(at: .directory(home), selecting: []) }
+        if let front = frontmost() { openWindow(at: front.newWindowLocation, selecting: []) }
+        else if let environment {
+            let choice = NewWindowLocation(rawValue: environment.settings.snapshot.string(.newWindowLocation)) ?? .current
+            openWindow(at: .directory(choice.folder(current: nil, home: environment.directories.home)), selecting: [])
+        }
     }
     @objc func quit(_ sender: Any?) { NSApp.terminate(sender) }
     @objc func orderFrontAbout(_ sender: Any?) {
@@ -291,15 +342,15 @@ public struct LaunchOptions: Equatable, Sendable {
     }
     @objc func showSettingsWindow(_ sender: Any?) {
         guard let environment else { return }
-        if let settingsWindow { settingsWindow.makeKeyAndOrderFront(nil); return }
-        let host = NSHostingController(rootView: SettingsRoot(store: environment.settings))
-        let window = NSWindow(contentViewController: host)
-        window.title = "Helm Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.isReleasedWhenClosed = false
-        window.center()
-        settingsWindow = window
-        window.makeKeyAndOrderFront(nil)
+        if settingsWindow == nil {
+            let role: any FileViewerRegistering = options.isIsolated ? MemoryFileViewerRole() : SystemFileViewerRole()
+            let model = FileViewerModel(role: role)
+            fileViewer = model
+            settingsWindow = SettingsWindowController(store: environment.settings, fileViewer: model)
+        }
+        fileViewer?.refresh()
+        settingsWindow?.showWindow(nil)
+        settingsWindow?.window?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: Quit: wait for operations, save, then go (F-068, OK2-29).
@@ -381,24 +432,4 @@ public struct LaunchOptions: Equatable, Sendable {
     func hasStoredSetting(for key: SettingKey, domain: String) -> Bool { false }
 }
 
-/// The settings window: one tab per pane, redrawn from the store's snapshot.
-private struct SettingsRoot: View {
-    let store: SettingsStore
-    @State private var snapshot: SettingsSnapshot
-    init(store: SettingsStore) { self.store = store; _snapshot = State(initialValue: store.snapshot) }
-    var body: some View {
-        TabView {
-            ForEach(SettingsPane.allCases) { pane in
-                ScrollView {
-                    SettingsPaneView(pane: pane, snapshot: snapshot) { key, value in
-                        store.set(value, for: key)
-                        snapshot = store.snapshot
-                    }.padding(20)
-                }
-                .tabItem { Text(pane.rawValue.capitalized) }
-            }
-        }
-        .frame(width: 560, height: 460)
-    }
-}
 #endif

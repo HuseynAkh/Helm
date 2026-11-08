@@ -64,12 +64,16 @@ public struct PlacesModel: Sendable {
         }
     }
     private static func places(_ urls: [URL], kind: Place.PlaceKind, home: URL) -> [Place] {
-        let unique = Set(urls.filter(\.isFileURL).map(\.standardizedFileURL))
-        return unique.map { url in
+        var seen = Set<URL>()
+        let unique = urls.filter(\.isFileURL).map(\.standardizedFileURL).filter { seen.insert($0).inserted }
+        let places = unique.map { url in
             Place(id: "\(kind.rawValue)-\(url.path)",
                   name: url.path == home.standardizedFileURL.path ? "Home" : (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent),
                   destination: .directory(url), iconName: kind == .bookmark ? "bookmark.fill" : "star.fill", kind: kind)
-        }.sorted {
+        }
+        // Bookmarks stay in the order you put them (P-188). Starred items are listed by name.
+        if kind == .bookmark { return places }
+        return places.sorted {
             let order = $0.name.localizedStandardCompare($1.name)
             return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
         }

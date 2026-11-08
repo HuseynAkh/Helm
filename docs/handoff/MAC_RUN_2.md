@@ -29,9 +29,36 @@ Huseyn's second round: the sidebar highlight bounced, sort and text size needed 
 - **Drag and drop:** one set of rules for every drop target. It covers file promises, opening files on an app, spring-loaded folders, drops on tabs, and refusing a folder into itself while dragging. The audit found that a drop on an app icon fell through and moved the file into the app's folder. That's fixed.
 - **Previews:** every file with content gets a preview, at the screen's real density, in both views. Quick Look follows the selection and zooms out of the thumbnail.
 - **Open With:** Default, Recently Used, Recommended and Other Apps, ranked from each app's own declarations. Helm remembers your choices in `open-with.json`. Defaults change with Option, Change Default App…, or the chooser. Double-clicking several files now opens each in its own default app.
-- **Icon:** a horned helmet on a folder, drawn by `scripts/rebuild/make_app_icon.swift`.
+- **Icon:** a horned helmet on a folder at first. The third pass replaced it with logo variant 4 (Isometric).
 
 Not done from the audit: dragging places out of the sidebar and reordering bookmarks, a stacked drag image for several items, and text clippings and `.webloc` files from dropped text and links. The volume test for copy-or-move still reads paths, so it can't block on a stalled disk.
+
+## Third pass: default file manager
+
+Huseyn asked what Helm still lacks to replace Finder, for the UX to be refined, and for logo alternatives. The analysis and the full list of what changed are in `DEFAULT_FILE_MANAGER.md`. In short:
+
+- **Default file viewer:** Settings › General can make Helm the app that answers "Show in Finder" and folder opens from other apps, and can restore Finder. A probe on this Mac showed that macOS hands such requests over as ordinary open requests, so files sent to Helm are now shown in their folder rather than launched (OK2-10 amended).
+- **Services:** Open in Helm and Show in Helm are in the Services menu. Helm can also open at login.
+- **Compress and Expand Archive:** Compress works as in Finder. Expand Archive hands the archive to Archive Utility.
+- **Failures:** Skip, Try Again and Stop when one item fails partway.
+- **Bug fixed:** one partly done batch used to block every later operation in its window until Helm restarted.
+- **Search:** finds words inside documents, and a scope pill switches between the folder you're in and This Mac.
+- **Smaller additions:**
+  - a setting for where new windows open
+  - bookmarks that keep your order, take drops between them, and can be dragged into order or out to remove
+  - ⌘J for View Options
+  - Go › Computer
+- **Settings:** a toolbar window with five panes and plain wording.
+- **Polish:**
+  - plain-language operation messages
+  - search results counted as results
+  - type icons for text files in list rows
+- **Smoke harness:** a failure before the Quit step now fails the run.
+- **On this Mac:**
+  - Helm is now the file viewer (`NSFileViewer`) and the first app in the Dock after Finder. Both were set with Huseyn's go-ahead, and both can be undone in Settings or with `--default-viewer finder` and `--dock-first off`.
+  - macOS 26 kept Finder as the folder handler.
+  - A `.docx` default change to ONLYOFFICE waited on macOS's confirmation while the screen was locked; `.docx` still opens in Pages.
+- **Logo alternatives:** five abstract variants (Swiss, Glass, Monoline, Isometric, Op-art neon) are in `docs/brand/logo-variants/`, drawn by `scripts/rebuild/make_logo_variants.swift`. Huseyn chose variant 4, Isometric, as the app icon. `--app-icon` writes it to `App/AppIcon.icns` and to the legacy project's asset catalog, and the helmet script was removed.
 
 ## Results
 
@@ -39,7 +66,7 @@ Not done from the audit: dragging places out of the sidebar and reordering bookm
 |---|---|---|
 | All tests | `swift test --filter 'Helm(Core\|FileSystem\|Persistence\|Operations\|Search\|TestKit\|UI\|App)Tests'` | PASS: 1,431 run, 1 skipped by design, 0 failed |
 | Portable gate | `HELM_K11_SCRATCH=/tmp/build-MAC-HANDOFF HELM_PLAN_DIR="$PWD/docs/rebuild" bash scripts/rebuild/run_all.sh` | PASS: exit 0. 1,359 executed, no failed checks |
-| Scripted app run | `bash scripts/rebuild/host_smoke.sh` | PASS: 181 checks against the real window, then a relaunch |
+| Scripted app run | `bash scripts/rebuild/host_smoke.sh` | PASS: 214 checks against the real window, then a relaunch (181 before the third pass) |
 | Xcode app | `xcodebuild -project App/Helm.xcodeproj -scheme Helm -destination 'platform=macOS' -derivedDataPath /tmp/build-MAC-HANDOFF/dd build` | PASS: ad hoc signature, no team |
 | P0 and P1 rows | Audit in `P0_P1_STATUS.md` | 293 rows: 31 verified, 101 built but unverified, 69 partial, 69 missing, 23 ruled out |
 

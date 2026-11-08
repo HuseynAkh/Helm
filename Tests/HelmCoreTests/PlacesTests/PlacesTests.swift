@@ -51,7 +51,7 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(model.handleBookmarkDrop([file], isDirectory: { _ in false }))
         XCTAssertEqual(model.bookmarks.count, 1)
         XCTAssertTrue(model.handleBookmarkDrop([home, home.appendingPathComponent("../test")], isDirectory: { _ in true }))
-        XCTAssertEqual(model.bookmarks.map(\.name), ["Home", "z"])
+        XCTAssertEqual(model.bookmarks.map(\.name), ["z", "Home"]) // Added at the end, in order (P-188).
         XCTAssertFalse(model.handleBookmarkDrop([], isDirectory: { _ in true }))
         let remote = try XCTUnwrap(URL(string: "https://example.invalid/a"))
         XCTAssertFalse(model.handleBookmarkDrop([remote], isDirectory: { _ in true }))

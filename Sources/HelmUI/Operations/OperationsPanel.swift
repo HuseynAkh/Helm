@@ -12,15 +12,17 @@ public struct OperationsPanel: View {
         self.rows = rows; self.cancel = cancel; self.dismiss = dismiss
     }
     public var body: some View {
+        VStack(spacing: 0) {
+        Divider()
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(rows) { row in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(row.title).font(.caption).fontWeight(.medium)
-                                Text(row.status).font(.caption2)
-                                if let name = row.progress?.currentName { Text(name).lineLimit(1).help(name) }
+                                Text(row.title).font(.callout).fontWeight(.medium)
+                                Text(row.status).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                    .help(row.progress?.currentName ?? row.status)
                             }
                             Spacer()
                             if row.result == nil {
@@ -36,12 +38,14 @@ public struct OperationsPanel: View {
                             else { ProgressView().controlSize(.small) }
                         }
                         if row.requiresReconciliation {
-                            Text("Check filesystem state before retrying.").font(.caption).foregroundStyle(.orange)
+                            Text("Some items may be only partly done. Check them before trying again.").font(.caption).foregroundStyle(.orange)
                         }
                         if row.hasDetails { OperationDetailsView(row: row) }
                     }.padding(.horizontal, 12).padding(.vertical, 6)
                 }
             }
+        }
+        .background(.bar)
         }
     }
 }

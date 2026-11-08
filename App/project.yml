@@ -15,7 +15,7 @@ targets:
     platform: macOS
     sources:
       - path: main.swift
-      # Drawn by scripts/rebuild/make_app_icon.swift.
+      # Variant 4 (Isometric), drawn by `swift scripts/rebuild/make_logo_variants.swift --app-icon`.
       - path: AppIcon.icns
         buildPhase: resources
     dependencies:

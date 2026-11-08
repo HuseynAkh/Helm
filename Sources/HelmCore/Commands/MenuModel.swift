@@ -64,7 +64,7 @@ public struct MenuModel: Equatable, Sendable {
             sections.insert([
                 item("Duplicate", .duplicate, isNew: true), item("Make Alias", .makeAlias, "a", [.command, .control], isNew: true),
                 item("Make Symbolic Link", .makeSymbolicLink, isNew: true), item("Show Original", .showOriginal, isNew: true),
-                item("Compress", .compress, isNew: true), item("Decompress", .decompress, isNew: true)], at: 4)
+                item("Compress", .compress, isNew: true), item("Expand Archive", .decompress, isNew: true)], at: 4)
             sections.append([item("Put Back", .putBack, isNew: true), item("Delete Immediately...", .permanentDelete, "\u{8}", [.command, .option], isNew: true),
                 item("Empty Trash...", .emptyTrash, "\u{8}", [.command, .shift], isNew: true),
                 item("Eject", .eject, "e", isNew: true), item("Share", .share, isNew: true), item("Tags...", .tags, isNew: true),
@@ -74,11 +74,11 @@ public struct MenuModel: Equatable, Sendable {
             sections.append([item("Copy as Pathname", .copyAsPathname, "c", [.command, .option], isNew: true), item("Move Items Here", .moveItemsHere, "v", [.command, .option], isNew: true)])
         case "View":
             sections[0] += [item("as Columns", .columns, isNew: true), item("as Gallery", .gallery, isNew: true)]
-            sections.append([item("Show Preview", .previewPane, isNew: true), item("Show View Options", .viewOptions, isNew: true)])
+            sections.append([item("Show Preview", .previewPane, isNew: true), item("Show View Options", .viewOptions, "j", isNew: true)])
         case "Go":
             sections.append([item("Recents", .recents, "F", isNew: true), item("Desktop", .desktop, "D", isNew: true), item("Documents", .documents, "O", isNew: true),
                 item("Downloads", .downloads, "l", [.command, .option], isNew: true), item("Applications", .applications, "A", isNew: true),
-                item("Utilities", .utilities, "U", isNew: true), item("Computer", .computer, isNew: true), item("Network", .network, isNew: true)])
+                item("Utilities", .utilities, "U", isNew: true), item("Computer", .computer, "C", isNew: true), item("Network", .network, isNew: true)])
             sections.append([item("Connect to Server...", .connectToServer, "k", isNew: true), item("Clear Recent", .clearRecent, isNew: true),
                 item("Show in Enclosing Folder", .reveal, isNew: true), item("Add to Sidebar", .addToSidebar, isNew: true)])
         case "Window":

@@ -1,30 +1,30 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import SwiftUI
 import HelmCore
 
 extension SettingsPaneView {
     var general: some View {
         Group {
-            Picker("Default view mode:", selection: string(.defaultViewMode)) {
-                Text("Grid").tag("grid")
-                Text("List").tag("list")
+            #if os(macOS)
+            if let fileViewer { FileViewerSection(model: fileViewer) }
+            #endif
+            Section {
+                Picker("New windows open", selection: string(.newWindowLocation)) {
+                    ForEach(NewWindowLocation.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+                }
+                Toggle("Reopen windows and tabs from last time", isOn: bool(.restoreSessionOnLaunch))
+                if supportsSingleClick {
+                    Toggle("Open items with a single click", isOn: bool(.singleClickToOpen))
+                }
+            } header: {
+                Text("Windows")
             }
-            Toggle("Show hidden files by default", isOn: bool(.showHiddenFiles))
-            Toggle("Confirm before moving to Trash", isOn: bool(.confirmBeforeTrash))
-            Picker("Sort by:", selection: string(.defaultSortField)) {
-                Text("Name").tag("name")
-                Text("Size").tag("size")
-                Text("Date Modified").tag("dateModified")
-                Text("Kind").tag("kind")
-            }
-            Toggle("Sort ascending", isOn: bool(.defaultSortAscending))
-            Toggle("Directories first", isOn: bool(.directoriesFirst))
-            Toggle("Restore session on launch", isOn: bool(.restoreSessionOnLaunch))
-            Toggle("Ask when files conflict", isOn: bool(.askOnConflict))
-            if supportsSingleClick {
-                Toggle("Single click to open items", isOn: bool(.singleClickToOpen))
-                Text("When enabled, a single click opens files and folders (like Nautilus). When disabled, double-click to open (like Finder).")
-                    .font(.caption).foregroundStyle(.secondary)
+            Section {
+                Toggle("Ask before moving items to the Trash", isOn: bool(.confirmBeforeTrash))
+                Toggle("Ask when an item with the same name is already there", isOn: bool(.askOnConflict))
+            } header: {
+                Text("Safety")
+            } footer: {
+                note("Edit › Undo puts items back from the Trash, and undoes moves, copies and renames.")
             }
         }
     }

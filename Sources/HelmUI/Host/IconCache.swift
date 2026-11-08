@@ -87,7 +87,7 @@ import UniformTypeIdentifiers
     func load(for entry: FileEntry, points: CGFloat, scale: CGFloat, previews wantsPreview: Bool,
                      deliver: @escaping (NSImage) -> Void) -> Ticket? {
         let key = Self.key(entry, points: points, scale: scale)
-        let preview = wantsPreview && Self.wantsPreview(entry)
+        let preview = wantsPreview && Self.wantsPreview(entry, points: points)
         if let stored = best(for: key) {
             deliver(stored.image)
             if stored.final || (!preview && stored.quality >= .fileIcon) { return nil }
@@ -99,7 +99,7 @@ import UniformTypeIdentifiers
         }
         let load = Load()
         load.waiters[id] = deliver
-        load.canPreview = Self.wantsPreview(entry)
+        load.canPreview = Self.wantsPreview(entry, points: points)
         loads[key] = load
         let url = entry.url, size = NSSize(width: key.points, height: key.points)
         if best(for: key) != nil { load.iconDone = true } else {
@@ -172,8 +172,16 @@ import UniformTypeIdentifiers
 
     /// Every file with content gets a preview: pictures, films, PDFs, text, office and iWork documents, fonts, 3D.
     /// Folders and apps keep their icons, and a cloud file that isn't downloaded isn't fetched just to preview it.
-    private static func wantsPreview(_ entry: FileEntry) -> Bool {
+    /// Below this size a page of text can't be read, so a text file's preview is just a white rectangle.
+    /// List rows show such files with their type's icon instead, as Finder's list does; pictures still preview.
+    static let smallestTextPreview: CGFloat = 40
+
+    static func wantsPreview(_ entry: FileEntry, points: CGFloat) -> Bool {
         guard entry.kind == .regular || entry.kind == .package, entry.cloudAvailability != .evicted else { return false }
+        if points < smallestTextPreview, let identifier = entry.contentTypeIdentifier, let type = UTType(identifier),
+           type.conforms(to: .text) {
+            return false
+        }
         if entry.kind == .package {
             // Document packages such as Keynote and Pages files have previews; apps and bundles don't.
             guard let identifier = entry.contentTypeIdentifier, let type = UTType(identifier) else { return false }

@@ -11,6 +11,8 @@ import HelmCore
     func headerMainMenu() -> NSMenu?
     func headerSearchChanged(_ text: String)
     func headerSearchClosed()
+    /// The search moved between the folder you're in and the whole Mac.
+    func headerSearchScopeChanged()
 }
 
 /// The Nautilus header bar: back and forward, the path in the middle, then search, view options and the main menu.
@@ -35,6 +37,10 @@ import HelmCore
         translatesAutoresizingMaskIntoConstraints = false
         searchField.onChange = { [weak self] text in self?.delegate?.headerSearchChanged(text) }
         searchField.onCancel = { [weak self] in self?.endSearch(); self?.delegate?.headerSearchClosed() }
+        searchField.onScope = { [weak self] everywhere in
+            self?.searchesEverywhere = everywhere
+            self?.delegate?.headerSearchScopeChanged()
+        }
         searchField.isHidden = true
         searchField.translatesAutoresizingMaskIntoConstraints = false
         sortButton.openHandler = { [weak self] button in self?.delegate?.headerShowViewOptions(from: button) }
@@ -90,12 +96,21 @@ import HelmCore
         sortButton.toolTip = "Sorted by \(described). Click for sort and view options."
         sortButton.setAccessibilityLabel("Sort and view options, currently \(described)")
         if tab.search == nil, !isSearching { searchField.stringValue = "" }
+        let folder = tab.location.mutationTarget.map { FileManager.default.displayName(atPath: $0.path) }
+        if folder == nil { searchesEverywhere = false }
+        searchField.setScope(folder: folder, everywhere: searchesEverywhere)
     }
+    /// Whether searches cover the whole Mac rather than the folder you're in (P-170). Each new search starts in the folder.
+    private(set) var searchesEverywhere = false
+    var searchText: String { searchField.stringValue }
 
-    func openViewOptionsForTesting() { sortButton.openHandler?(sortButton) }
+    /// View › Show View Options (⌘J) opens the same popover as the button.
+    func showViewOptions() { sortButton.openHandler?(sortButton) }
+    func openViewOptionsForTesting() { showViewOptions() }
     /// The sort button stays lit while its popover is open.
     func setViewOptionsShown(_ shown: Bool) { sortButton.isOn = shown }
 
+    func chooseSearchScopeForTesting(everywhere: Bool) { searchField.chooseScopeForTesting(everywhere: everywhere) }
     func beginSearch() {
         isSearching = true
         searchButton.isOn = true
@@ -105,6 +120,7 @@ import HelmCore
     func endSearch() {
         guard isSearching else { return }
         isSearching = false
+        searchesEverywhere = false
         searchButton.isOn = false
         searchField.stringValue = ""
         searchField.isHidden = true; pathBar.isHidden = false
@@ -126,8 +142,13 @@ import HelmCore
     private let field = NSTextField()
     private let icon = NSImageView()
     private let clear = NSButton()
+    /// Where the search looks: the folder you're in, or the whole Mac, as Finder's scope bar offers (P-170).
+    private let scope = NSButton()
+    private var folderName: String?
+    private var everywhere = false
     var onChange: ((String) -> Void)?
     var onCancel: (() -> Void)?
+    var onScope: ((Bool) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -150,7 +171,16 @@ import HelmCore
         clear.contentTintColor = .tertiaryLabelColor
         clear.target = self; clear.action = #selector(clearText)
         clear.isHidden = true
-        for view in [icon, field, clear] as [NSView] {
+        scope.bezelStyle = .inline
+        scope.controlSize = .small
+        scope.font = .systemFont(ofSize: 12, weight: .medium)
+        scope.image = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+        scope.imagePosition = .imageTrailing
+        scope.target = self; scope.action = #selector(chooseScope)
+        scope.setContentHuggingPriority(.required, for: .horizontal)
+        scope.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for view in [icon, field, clear, scope] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -159,7 +189,8 @@ import HelmCore
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), field.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.trailingAnchor.constraint(equalTo: clear.leadingAnchor, constant: -4),
-            clear.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), clear.centerYAnchor.constraint(equalTo: centerYAnchor),
+            clear.trailingAnchor.constraint(equalTo: scope.leadingAnchor, constant: -6), clear.centerYAnchor.constraint(equalTo: centerYAnchor),
+            scope.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7), scope.centerYAnchor.constraint(equalTo: centerYAnchor),
             clear.widthAnchor.constraint(equalToConstant: 20), clear.heightAnchor.constraint(equalToConstant: 20)
         ])
         updateBackground()
@@ -196,5 +227,38 @@ import HelmCore
         onChange?("")
         focus()
     }
+
+    /// Shows where the search looks. Virtual places such as Recent have no folder, so they search the Mac.
+    func setScope(folder: String?, everywhere: Bool) {
+        folderName = folder
+        self.everywhere = everywhere || folder == nil
+        let place = self.everywhere ? "This Mac" : (folder ?? "This Mac")
+        scope.title = place
+        scope.isHidden = folder == nil
+        field.placeholderString = "Search \(place)"
+        field.setAccessibilityLabel("Search \(place)")
+        scope.setAccessibilityLabel("Search in \(place). Click to change.")
+    }
+    @objc private func chooseScope() {
+        guard let folderName else { return }
+        let menu = NSMenu()
+        let here = NSMenuItem(title: folderName, action: #selector(searchHere), keyEquivalent: "")
+        here.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
+        here.state = everywhere ? .off : .on
+        let mac = NSMenuItem(title: "This Mac", action: #selector(searchEverywhere), keyEquivalent: "")
+        mac.image = NSImage(systemSymbolName: "desktopcomputer", accessibilityDescription: nil)
+        mac.state = everywhere ? .on : .off
+        for item in [here, mac] { item.target = self; menu.addItem(item) }
+        menu.popUp(positioning: nil, at: NSPoint(x: scope.frame.minX, y: scope.frame.minY - 4), in: self)
+    }
+    @objc private func searchHere() { pick(everywhere: false) }
+    @objc private func searchEverywhere() { pick(everywhere: true) }
+    private func pick(everywhere: Bool) {
+        setScope(folder: folderName, everywhere: everywhere)
+        onScope?(everywhere)
+        focus()
+    }
+    /// For scripted runs: the scope as if chosen from its menu.
+    func chooseScopeForTesting(everywhere: Bool) { pick(everywhere: everywhere) }
 }
 #endif

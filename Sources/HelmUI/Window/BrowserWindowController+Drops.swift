@@ -180,7 +180,7 @@ extension BrowserWindowController {
         let parts = url.standardizedFileURL.pathComponents
         return parts.count > 2 && parts[1] == "Volumes" ? "/Volumes/" + parts[2] : "/"
     }
-    static func isSame(_ a: URL, _ b: URL) -> Bool { components(a) == components(b) }
+    public static func isSame(_ a: URL, _ b: URL) -> Bool { components(a) == components(b) }
     /// Whether `target` is `source` or somewhere inside it.
     static func isSameOrInside(_ target: URL, _ source: URL) -> Bool {
         let inner = components(target), outer = components(source)

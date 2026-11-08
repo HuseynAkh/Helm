@@ -75,8 +75,11 @@ public enum CommandValidation {
              .applications, .utilities, .connectToServer: return .window
         case .makeAlias, .makeSymbolicLink, .newFolderWithSelection: return .mutationSelection
         case .eject: return .application
-        case .printSelection, .columns, .gallery, .previewPane, .viewOptions,
-             .computer, .network, .compress, .decompress, .tags: return .planned
+        case .printSelection, .columns, .gallery, .previewPane,
+             .network, .tags: return .planned
+        case .compress: return .mutationSelection
+        case .decompress: return .selection
+        case .viewOptions, .computer: return .window
         }
     }
 

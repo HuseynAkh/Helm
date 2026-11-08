@@ -25,13 +25,16 @@ public struct OperationRowModel: Sendable, Identifiable {
     }
     public var status: String {
         if let result = result {
-            let counts = "\(result.succeededCount) steps completed, \(result.failedCount) unsuccessful"
-            if let error = result.error { return counts + " — " + Self.message(for: error) }
+            let total = result.outcomes.count
+            let counts = result.failedCount == 0 ? "Done" : "\(result.succeededCount) of \(total) done"
+            if let error = result.error { return counts + ". " + Self.message(for: error) }
             return counts
         }
         if cancellationRequested { return "Cancelling…" }
         guard let progress = progress, progress.itemsTotal > 0 else { return "Preparing…" }
-        return "\(min(max(0, progress.itemsDone), progress.itemsTotal)) of \(progress.itemsTotal) steps"
+        let done = min(max(0, progress.itemsDone), progress.itemsTotal)
+        if let name = progress.currentName, !name.isEmpty { return "\(done) of \(progress.itemsTotal) · \(name)" }
+        return "\(done) of \(progress.itemsTotal)"
     }
     /// F-061 uncertain outcomes remain visible even when Details is collapsed (B-100).
     public var requiresReconciliation: Bool { result?.outcomes.contains { $0.requiresReconciliation } ?? false }
@@ -51,23 +54,38 @@ public struct OperationRowModel: Sendable, Identifiable {
             let path = source + (destination.map { " → \($0.path)" } ?? "")
             let state: String
             switch outcome.result {
-            case .success: state = "Completed"
+            case .success: state = "Done"
             case .failure(let error): state = Self.message(for: error)
             }
-            return path + ": " + state + (outcome.requiresReconciliation ? " — Check filesystem state before retrying." : "")
+            return path + ": " + state + (outcome.requiresReconciliation ? " — may be only partly done; check it before trying again." : "")
     }
+    /// Plain words for what went wrong, never an internal code name such as "permissionDenied".
     public static func message(for error: OperationError) -> String {
         switch error {
-        case .cancelled: return "Cancelled"
-        case .notAttempted: return "Not attempted"
-        case .invalidPlan: return "Invalid operation plan"
-        case .busy: return "Another operation is running"
-        case .verificationUnavailable: return "Copy verification unavailable"
-        case .verificationFailed: return "Copy verification failed"
-        case .conflict: return "Destination conflict"
-        case .timedOut: return "Timed out; completion is uncertain"
-        case .sourceChanged(let url): return "Source changed: \(url.path)"
-        case .other(let message): return message
+        case .cancelled: return "Stopped."
+        case .notAttempted: return "Not started."
+        case .invalidPlan: return "Helm couldn’t work out how to do this."
+        case .busy: return "Another operation is still running."
+        case .verificationUnavailable: return "Helm couldn’t check that the copy is complete."
+        case .verificationFailed: return "The copy doesn’t match the original."
+        case .conflict: return "An item with that name is already there."
+        case .timedOut: return "The disk stopped responding, so this may be only partly done."
+        case .sourceChanged(let url): return "“\(url.lastPathComponent)” changed while Helm was working."
+        case .other(let message): return plain(message)
+        }
+    }
+    /// File-system failures arrive as their case names. Turn the known ones into sentences.
+    static func plain(_ raw: String) -> String {
+        switch raw {
+        case "permissionDenied": return "You don’t have permission."
+        case "notFound": return "It’s no longer there."
+        case "timedOut": return "The disk stopped responding."
+        case "unsupported": return "This disk doesn’t support that."
+        case _ where raw.hasPrefix("collision"): return "An item with that name is already there."
+        case _ where raw.hasPrefix("other(\"") && raw.hasSuffix("\")"):
+            return plain(String(raw.dropFirst(7).dropLast(2)))
+        case "No space": return "There isn’t enough space on the disk."
+        default: return raw
         }
     }
 }

@@ -14,11 +14,13 @@ final class K13PlacesTests: XCTestCase {
         let model = PlacesModel(home: URL(fileURLWithPath: "/home"), bookmarks: [URL(fileURLWithPath: "/offline/a"), URL(fileURLWithPath: "/offline/b/../a")])
         XCTAssertEqual(model.bookmarks.count, 1)
     }
-    /// F-028, B-113: equal display names use stable identities.
+    /// F-028, B-113: equal display names use stable identities. Bookmarks keep the order they're given (P-188);
+    /// starred items, which have no order of their own, sort the same however they arrive.
     func testEqualNamesDeterministic() throws {
         let urls = [URL(fileURLWithPath: "/z/مرحبا"), URL(fileURLWithPath: "/a/مرحبا")]
         let home = URL(fileURLWithPath: "/home")
-        XCTAssertEqual(PlacesModel(home: home, bookmarks: urls).bookmarks.map(\.id), PlacesModel(home: home, bookmarks: urls.reversed()).bookmarks.map(\.id))
+        XCTAssertEqual(PlacesModel(home: home, bookmarks: urls).bookmarks.map(\.id), ["bookmark-/z/مرحبا", "bookmark-/a/مرحبا"])
+        XCTAssertEqual(PlacesModel(home: home, starred: urls).starred.map(\.id), PlacesModel(home: home, starred: urls.reversed()).starred.map(\.id))
     }
     /// F-028: non-file URLs cannot become bookmarks.
     func testRejectedDropPreservesBookmarks() throws {

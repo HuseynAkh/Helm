@@ -7,6 +7,7 @@ public enum SettingsSchema {
         case .defaultViewMode: return .string("grid")
         case .defaultSortField: return .string("name")
         case .crossVolumeDragDefault: return .string("copy")
+        case .newWindowLocation: return .string("current") // Where the front window is, as before.
         case .gridIconSize: return .double(96)
         case .fileTextSize: return .double(14)
         case .windowTransparency: return .double(50) // Percent. 50 is Helm's own look.
@@ -18,6 +19,7 @@ public enum SettingsSchema {
         case .completionDebounceMilliseconds: return .integer(100)
         case .defaultSortAscending, .directoriesFirst, .liveMonitoringEnabled,
              .enableDirectoryCache, .searchPreferUserFolders, .restoreSessionOnLaunch,
+             .searchFileContents, // Finder matches names and contents.
              .sidebarLiquidGlass, // Transparency is part of Helm's look; this turns it off.
              .askOnConflict: return .bool(true) // Finder asks; a surprise "name 2" isn't what it does (Q9).
         default: return .bool(false)
@@ -29,7 +31,7 @@ public enum SettingsSchema {
         case .defaultViewMode, .showHiddenFiles, .defaultSortField, .defaultSortAscending,
              .directoriesFirst, .restoreSessionOnLaunch, .searchPreferUserFolders,
              .searchIncludeSystemLocations, .searchResultLimit, .searchDebounceMilliseconds,
-             .completionDebounceMilliseconds: return false
+             .completionDebounceMilliseconds, .newWindowLocation, .searchFileContents: return false
         default: return true
         }
     }
@@ -46,6 +48,7 @@ public enum SettingsSchema {
             case .defaultViewMode: allowed = ["grid", "list"]
             case .defaultSortField: allowed = ["name", "size", "dateModified", "kind"]
             case .crossVolumeDragDefault: allowed = ["copy", "move"]
+            case .newWindowLocation: allowed = NewWindowLocation.allCases.map(\.rawValue)
             default: allowed = []
             }
             return allowed.contains(text) ? value : fallback

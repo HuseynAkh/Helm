@@ -19,6 +19,8 @@ public struct LocalizedStatusByteFormatter: StatusByteFormatting {
 /// Explicit progress/error text prevents failed listings appearing empty (B-017).
 public enum StatusActivity: Sendable, Equatable {
     case idle, searching, gathering, denied
+    /// Something the window started that has no row in the operations panel, such as compressing.
+    case working(String)
 }
 
 /// Legacy wording is the F-064 default; fractional selection wording is opt-in.
@@ -31,8 +33,11 @@ public struct StatusPresentation: Sendable {
     public let selectedBytes: Int64?
     public let freeBytes: Int64?
     public let activity: StatusActivity
+    /// Search results are counted as results, so the bar doesn't read as the folder's own contents.
+    public let isSearch: Bool
     public init(itemCount: Int, selectedCount: Int = 0, selectedBytes: Int64? = nil,
-                freeBytes: Int64? = nil, activity: StatusActivity = .idle) {
+                freeBytes: Int64? = nil, activity: StatusActivity = .idle, isSearch: Bool = false) {
+        self.isSearch = isSearch
         self.itemCount = max(0, itemCount)
         self.selectedCount = min(max(0, selectedCount), max(0, itemCount))
         self.selectedBytes = selectedBytes
@@ -52,12 +57,14 @@ extension StatusText {
         case .idle: break
         case .searching: parts.append("Searching…")
         case .gathering: parts.append("Gathering items…")
+        case .working(let text): parts.append(text)
         case .denied: return "Permission denied"
         }
         if selectionWording == .fraction && value.selectedCount > 0 {
             parts.append("\(value.selectedCount) of \(value.itemCount) selected")
         } else {
-            parts.append(value.itemCount == 1 ? "1 item" : "\(value.itemCount) items")
+            let noun = value.isSearch ? "result" : "item"
+            parts.append(value.itemCount == 1 ? "1 \(noun)" : "\(value.itemCount) \(noun)s")
             if value.selectedCount > 0 { parts.append("\(value.selectedCount) selected") }
         }
         if value.selectedCount > 0, let size = value.selectedBytes, size >= 0 {

@@ -11,6 +11,8 @@ import HelmPersistence
     public enum Failure: Error, Equatable { case busy, cancelled, message(String) }
     /// Decides what to do about existing names, or nil to stop before anything happens.
     public typealias ConflictResolver = @MainActor ([Conflict]) async -> ConflictPolicy?
+    /// Decides what to do when one item fails partway through: skip it, try it again or stop (P-139).
+    public typealias FailureResolver = @MainActor (StepFailure) async -> FailureDecision
 
     private let executor: OperationExecutor
     private let fileSystem: any FileSystem
@@ -35,14 +37,15 @@ import HelmPersistence
     /// Plans against the disk as it is now, asks about conflicts, runs, and records the result in `history`.
     @discardableResult
     public func run(_ command: Command, sources: [URL], destinations: [URL], history: WindowOperationHistory,
-                    resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
+                    resolver: ConflictResolver?, onFailure: FailureResolver? = nil) async -> Result<OperationResult, Failure> {
         guard let request = await history.beginForward(command) else { return .failure(.busy) }
         return await runReserved(request: request, command: command, sources: sources, destinations: destinations,
-                                 history: history, resolver: resolver)
+                                 history: history, resolver: resolver, onFailure: onFailure)
     }
 
     private func runReserved(request: HistoryRequestID, command: Command, sources: [URL], destinations: [URL],
-                             history: WindowOperationHistory, resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
+                             history: WindowOperationHistory, resolver: ConflictResolver?,
+                             onFailure: FailureResolver? = nil) async -> Result<OperationResult, Failure> {
         running += 1; inFlightChanges.send(running)
         defer { running -= 1; inFlightChanges.send(running) }
         let plan: OperationPlan
@@ -75,7 +78,7 @@ import HelmPersistence
         }
         let result = await execute(plan, title: OperationText.title(for: command), admission: { id, plan in
             await history.bindExecution(request: request, operation: id, plan: plan)
-        })
+        }, onFailure: onFailure)
         let entry = await executor.journal.entry(result.id)
         if let entry { await history.completeForward(request: request, entry: entry) }
         return .success(result)
@@ -136,7 +139,8 @@ import HelmPersistence
     }
 
     private func execute(_ plan: OperationPlan, title: String,
-                         admission: @escaping @Sendable (OperationID, OperationPlan) async -> Bool) async -> OperationResult {
+                         admission: @escaping @Sendable (OperationID, OperationPlan) async -> Bool,
+                         onFailure: FailureResolver? = nil) async -> OperationResult {
         let previous = tail
         let executor = executor
         let box = OperationBox()
@@ -147,6 +151,10 @@ import HelmPersistence
             }, admission: { id, plan in
                 await MainActor.run { self?.register(id, title: title, box: box) }
                 return await admission(id, plan)
+            }, decide: { failure in
+                // With nothing left and nothing to retry, Skip and Stop are the same: don't ask.
+                guard let onFailure, failure.remaining > 0 || failure.canRetry else { return .stop }
+                return await onFailure(failure)
             })
         }
         box.cancel = { task.cancel() }
@@ -195,8 +203,23 @@ import HelmPersistence
 
 private final class OperationBox: @unchecked Sendable { var cancel: (() -> Void)? }
 
+/// Whether a run asked about a failure, so the window doesn't report the same failure twice.
+@MainActor final class FailurePromptRecord { var didAsk = false }
+
 /// Words for operations, in one place so they read the same everywhere.
 public enum OperationText {
+    /// The past participle for "couldn't be …", as in "“Report.pdf” couldn’t be copied."
+    public static func verb(for command: Command) -> String {
+        switch command {
+        case .copy: return "copied"
+        case .move: return "moved"
+        case .duplicate: return "duplicated"
+        case .trash: return "moved to the Trash"
+        case .rename, .batchRename: return "renamed"
+        case .createFolder, .createFile: return "created"
+        case .recovery: return "recovered"
+        }
+    }
     public static func title(for command: Command) -> String {
         switch command {
         case .copy(let sources, _): return count("Copying", sources)

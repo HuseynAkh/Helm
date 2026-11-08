@@ -36,7 +36,7 @@ No ruling authorizes a push, a release or any other external action. The product
 | OK2-8 | **A.** Store protocols move into `HelmPersistence`. | Lets `HelmUI` name them without depending on `HelmApp`, and keeps memory fakes. |
 | OK2-9 | **A.** A store that won't load goes read-only and browsing continues. | A damaged preference file must not stop someone reaching their files. |
 | OK2-6 | **A.** One app-lifetime coordinator with per-window histories. | Cmd+Z in one window must not reverse work done in another. |
-| OK2-10 | **A.** Folders navigate the key window, files launch. | What both Finder and Nautilus do. |
+| OK2-10 | **A, amended 2026-11-08.** Folders navigate the key window; files are shown selected in their folder. | Files launched at first. To be the default file viewer, Helm receives other apps' "Show in Finder" as plain open requests, which can't be told apart, so a file sent to Helm is shown rather than launched. See DEFAULT_FILE_MANAGER.md. |
 
 ## Delegated: judgement calls with no recommendation in the docs
 

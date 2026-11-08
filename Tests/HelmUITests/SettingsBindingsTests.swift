@@ -31,6 +31,6 @@ final class SettingsBindingsTests: XCTestCase {
         XCTAssertEqual(view.number(.gridIconSize).wrappedValue, 128)
         XCTAssertEqual(view.string(.defaultViewMode).wrappedValue, "list")
         XCTAssertTrue(view.supportsSingleClick)
-        XCTAssertEqual(SettingsPane.allCases.map(\.id), ["General", "Sidebar", "View", "Search", "Advanced"])
+        XCTAssertEqual(SettingsPane.allCases.map(\.id), ["General", "View", "Appearance", "Search", "Advanced"])
     }
 }
