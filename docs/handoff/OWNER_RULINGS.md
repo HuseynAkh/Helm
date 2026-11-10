@@ -107,13 +107,53 @@ These had working defaults in `01-architecture.md` sections 14.1 and 14.5. The n
 | Compress, Get Info editing, preview pane, column and gallery views, localization | Later |
 | Linux toolchain, macOS CI | No action. Nothing installed, provisioned or spent |
 
+## Asked by Huseyn on 2026-11-09
+
+Huseyn's requests after using the 8a6657d build: the search field stayed in focus; sidebar rows couldn't be arranged or hidden, "both by dragging and in settings"; Movies and Music showed a file over the folder icon; Recent should keep folders apart from files; two three-line buttons in the header looked wrong; folders opening in the list weren't smooth; the Trash asked for Full Disk Access with no way to give it; and Helm should say from the start that it works best with Full Disk Access, with an onboarding flow. He also found the window edges hard to grab. What was built is in [`MAC_RUN_3.md`](MAC_RUN_3.md).
+
+### Delegated choices in Mac run 3
+
+Huseyn can overrule any of these.
+
+| Topic | Choice | Why |
+|---|---|---|
+| Search focus | **The header follows the tab.** An empty search closes when you click away; one with words keeps its results and gives the keys back to the files. Going anywhere ends it. | What Finder and Nautilus both do. |
+| Header buttons | **Search, a Grid \| List switch, the sort button with words and a chevron, then the main menu as dots in a circle.** | Two three-line buttons became one switch and one dots button, in the existing style. The circle tells the main menu apart from the path's own ⋯. |
+| Window edges | **macOS 26's own resizing, unchanged.** Smoke checks make sure nothing of Helm's covers the resize band. | Finder's edges behave the same on macOS 26; Helm's content wasn't in the way. |
+| Sidebar | **Rows move within their own group. Any row can be hidden, Recent and Trash included. Go › Trash is added so a hidden Trash stays reachable. The drives group is called Locations in Settings.** | Moving a drive among Favorites would mix kinds of place. |
+| Access | **A card in place of the listing, with Grant Access…, Open in Finder for the Trash, and Try Again. A once-only welcome. Signing stays ad hoc.** | Signing with a real identity is Huseyn's call (see Open in `MAC_RUN_3.md`). |
+| Protected folders | **A plain folder icon,** decided by the folder's path, not the system's drop box picture. | The drop box means "you can put things in but not look", which isn't what's happening. |
+| List motion | **One 0.28 s ease-in-ease-out curve** for opening and closing; Reduce Motion fades only. | About as long as before, but smooth. |
+| Recent | **Folders and Files sections, sorted by Last Opened.** | Keeps the folders Huseyn likes seeing, apart from the files. |
+
+### Asked by Huseyn later in the same run (2026-11-10)
+
+| Topic | Huseyn's words, in short | What was built |
+|---|---|---|
+| Privacy | Helm collects nothing about the person and exports nothing; everything stays on the Mac. | Three audits found no network code or telemetry, and nothing that reads who you are or which Mac this is; disks' IDs are read only to tell disks apart, and kept only in memory. The release binary is stripped of build paths and has no entitlements, a source and a binary check guard it, and smoke runs block the network by default. Recent can be turned off, and Helm keeps less. |
+| Install | A full release that people can download, audit and install, perhaps a DMG. | A DMG with an Applications shortcut, a zip, SHA-256 checksums and release notes, from `scripts/release/make_release.sh`. A GitHub workflow that runs only for a pushed tag or when started by hand builds them, with provenance attestations, as a draft. |
+| Onboarding | Minimal: one screen, two at most, only what matters, with Helm replacing Finder set up there. | One setup screen: Use Helm instead of Finder, Full Disk Access, and Move to Applications only when needed. |
+| Text | Onboarding and Settings text massively de-loaded, one sentence at most per explanation. | Several passes over 129 strings; two Settings › Advanced rows that did nothing are hidden. |
+| Finder | Opening an archive in Finder shouldn't jump to Helm, and shouldn't open Home. Finder's own actions stay Finder's. | Requests from Finder's helpers go back to Finder; Helm-started ones and other apps' Show in Finder stay with Helm. |
+| Open With | It was greyed out. | The cause and the fix are in `MAC_RUN_3.md`. |
+| Names | Long names shortened on show until clicked, in a controlled way, not excessive in the list. | Finder's rule in the grid: two lines, one middle cut that keeps the extension, the full name when selected or hovered. The list is unchanged. |
+
+### Delegated choices, 2026-11-10
+
+| Topic | Choice | Why |
+|---|---|---|
+| Open With on folders | **No Always Open With or Change Default App… for folders.** | A folder's default app is the one for every folder, the setting Helm's own file viewer switch uses. Finder offers neither. |
+| Archive Utility starting Helm | **A launch while Archive Utility runs, naming nothing, opens no window.** | That launch is Archive Utility's last request after a double-click in Finder. A click on Helm's Dock icon still opens a window. |
+| Dead settings | **"Remember folder contents briefly" and "Remember for" are hidden.** Their keys stay, so stored settings still read. | No window load used them. |
+| Release | **Draft releases only, built on a pushed tag or by hand.** | A person publishes each release, and no workflow runs on ordinary pushes or pull requests. |
+
 ## Ruled but not built yet
 
 The app works without these, but each ruling above is still owed. Row-level status is in [`P0_P1_STATUS.md`](P0_P1_STATUS.md).
 
 | ID | What's left |
 |---|---|
-| OK2-22 | Settings still has the five panes General, Sidebar, View, Search and Advanced, not F-065's four. |
+| OK2-22 | Settings has six panes, General, View, Appearance, Sidebar, Search and Advanced, not F-065's four. Huseyn asked on 2026-11-09 to arrange and hide sidebar rows "both by dragging and in settings", and that got a pane of its own. |
 | OK1-2 | `.notCloud` isn't added. Nothing in the app consults `CloudActionPlan`, so no file is refused today. |
 | OK1-3 | Search streams live Spotlight results in the host. The shared search contracts weren't changed to match. |
 | OK1-5 | Navigation lands on the real folder, so a symlinked starting point no longer arises. Searching inside a package still skips it. |

@@ -1479,7 +1479,8 @@ One `SettingsSchema` in `HelmCore` declares every key with type, default, range 
 | `helm.completionDebounceMilliseconds` | int 100, floor 30 | address bar (next request) |
 | `helm.crossVolumeDragDefault` (new) | string `copy` | drop planner (live) |
 | `helm.askOnConflict` (new) | bool, false | planner/conflict sheet; Settings toggle |
-| `helm.restoreSessionOnLaunch` (new) | bool, true | launch sequence |
+| `helm.restoreSessionOnLaunch` (new) | bool, true | launch sequence; off, session.json is deleted and not written |
+| `helm.rememberRecentItems` (new) | bool, true | Recent and Open With (live); off, both are cleared and nothing new is kept |
 
 `SettingsStore` (HelmPersistence, `@MainActor public final class`) registers defaults, exposes SettingsSnapshot and `public let changes: Broadcast<SettingsSnapshot>`, and is the only writer. Consumers observe the keys they need; nothing observes `UserDefaults.didChangeNotification` any more (B-058). The SwiftUI settings views bind to the HelmUI SettingsModel ObservableObject adapter, not to `@AppStorage`, so the two parallel systems become one (B-059). Existing keys are kept; run the cross-domain migration before defaults registration so registered values cannot mask absence; the `UserDefaults` suite is the app's standard domain for `com.helm.filemanager`.
 
@@ -1491,9 +1492,10 @@ User data moves out of `UserDefaults` into `~/Library/Application Support/Helm/`
 |---|---|---|
 | `stars.json` | `{schemaVersion, items: [{path, addedAt}]}` | `com.helm.starredFiles` |
 | `bookmarks.json` | `{schemaVersion, items: [{path, name, addedAt, bookmarkData?}]}` | `helm.bookmarks` |
-| `recent.json` | `{schemaVersion, items: [{path, lastAccessedAt, kind}]}` capped at 300 | `helm.recentAccessRecords` |
-| `trash-origins.json` | `{schemaVersion, items: [{trashedPath, originalPath, trashedAt}]}` | new |
-| `session.json` | `{schemaVersion, items: [{frameAutosaveName, tabs: [{location, viewMode, sort, showHidden}], activeTabIndex}]}` | new |
+| `recent.json` | `{schemaVersion, items: [{path, lastAccessedAt, kind}]}` capped at 300; kept only while Settings › General › Remember recent items is on, and emptied when it's turned off | `helm.recentAccessRecords` |
+| `trash-origins.json` | `{schemaVersion, items: [{trashedPath, originalPath, trashedAt}]}`; a record goes when its item leaves the Trash (Put Back, Empty Trash, Delete Immediately, or found gone at launch); at launch only the newest 1,000 are kept, and none goes for room while Helm runs, so Undo of a big Move to Trash still works | new |
+| `session.json` | `{schemaVersion, items: [{frameAutosaveName, tabs: [{location, viewMode, sort, showHidden}], activeTabIndex}]}`; written only while Reopen windows and tabs is on, and deleted when it's off | new |
+| `open-with.json` | `{schemaVersion, items: [{contentType, application, lastUsed}]}`; the apps used for each kind of file, cleared by Go › Clear Recent and by turning Remember recent items off | new |
 
 ```swift
 public struct VersionedDocument<Payload: Codable & Sendable>: Codable, Sendable {

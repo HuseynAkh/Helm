@@ -3,13 +3,15 @@
 Audit of the 293 P0 and P1 rows of docs/rebuild/02-finder-parity.md against the code in Sources/ and the scripted smoke run, as of 2026-11-06.
 This is an audit of code and scripted checks, not human acceptance. It was done by reading, while the code was still changing, and the rows for fixes made straight afterwards were then updated by hand. The later interface pass (header bar, sidebar, sorting, text size, cloud drives) has not been re-audited, so some rows understate it.
 
+Rows that Mac run 3 (2026-11-09 and 10) changed were updated by hand: P-021, P-026, P-064, P-184, P-188, P-189, P-035, P-197, P-225 to P-228, P-268 and P-306, and the evidence for P-002, P-200 and P-295. P-139, P-171 and P-238, built in Mac run 2, were brought up to date at the same time.
+
 ## Summary
 
 | Priority | Verified | Built, unverified | Partial | Missing | Ruled out | Total |
 |---|---|---|---|---|---|---|
-| P0 | 29 | 62 | 38 | 3 | 2 | 134 |
-| P1 | 2 | 39 | 31 | 66 | 21 | 159 |
-| Total | 31 | 101 | 69 | 69 | 23 | 293 |
+| P0 | 39 | 58 | 33 | 2 | 2 | 134 |
+| P1 | 6 | 39 | 29 | 64 | 21 | 159 |
+| Total | 45 | 97 | 62 | 66 | 23 | 293 |
 
 Reading notes:
 - Verified needs the real entry path exercised by a smoke step of scripts/rebuild/host_smoke_steps.txt (cited by section heading) or a test on the real file system; pure-logic model tests count only where the window passes the model straight through.
@@ -20,28 +22,24 @@ Reading notes:
 
 Missing or Partial P0 rows, most damaging to daily use first.
 
-1. P-139 Partial failure (Partial): a failed item stops the batch and reports it, with no Skip, Retry or Stop prompt
-2. P-171 Name versus contents (Partial): search matches names only; no contents search, no scope bar (P-170), no Smart Folders (P-336)
-3. P-120 Progress window (Partial): a step bar in the window, with no byte counts or time remaining
-4. P-013 Session and window restoration (Partial): relaunch restores windows, tabs, locations, view and sort, but not selection or scroll
-5. P-188 Editing Favorites (Partial): drop appends a bookmark; no reorder, drag-out or insertion position
-6. P-036 List view columns (Partial): Name, Size, Date Modified and Kind only
-7. P-202 Eject (Partial): no eject glyph or Option-eject-all, and never run on a real volume
-8. P-127 Empty Trash (Partial): no no-prompt key, and the real Trash has never been exercised
-9. P-225 Open With submenu (Partial): no App Store entry or Always Open With
-10. P-233 Share (Partial): no toolbar item
-11. P-152 Display names (Partial): no hidden-extension handling or localized folder names
-12. P-010 Go menu locations (Partial): no Computer, Network, AirDrop or iCloud
-13. P-072 Quick Look keys (Partial): no Option-Space
-14. P-001 Multiple windows (Partial): not cascaded, and no setting for where new windows open
-15. P-002 Window tabs (Partial): no overflow handling or show/hide control
+1. P-120 Progress window (Partial): a step bar in the window, with no byte counts or time remaining
+2. P-013 Session and window restoration (Partial): relaunch restores windows, tabs, locations, view and sort, but not selection or scroll
+3. P-036 List view columns (Partial): Name, Size, Date Modified and Kind only
+4. P-202 Eject (Partial): no eject glyph or Option-eject-all, and never run on a real volume
+5. P-127 Empty Trash (Partial): no no-prompt key, and the real Trash has never been exercised
+6. P-233 Share (Partial): no toolbar item
+7. P-152 Display names (Partial): no hidden-extension handling or localized folder names
+8. P-010 Go menu locations (Partial): no Computer, Network, AirDrop or iCloud
+9. P-072 Quick Look keys (Partial): no Option-Space
+10. P-001 Multiple windows (Partial): not cascaded, and no setting for where new windows open
+11. P-002 Window tabs (Partial): no show/hide control or open-in-tabs setting
 
 ## P0 rows
 
 | ID | Item | Status | Evidence or what is missing |
 |---|---|---|---|
 | P-001 | Multiple windows | Partial | Smoke 'Windows' (newWindow, windows 2); not cascaded, opens at current folder, no 'new windows show' setting |
-| P-002 | Window tabs | Partial | Custom tab strip, smoke 'Tabs' (newTab, tabs 2); no overflow, no show/hide bar, no open-in-tabs setting; native tabs off by ruling |
+| P-002 | Window tabs | Partial | Custom tab strip, smoke 'Tabs' (newTab, tabs 2); many tabs shorten their names, then the strip scrolls to the tab on show (smoke.d/hunt-navigation.txt); no show/hide bar, no open-in-tabs setting; native tabs off by ruling |
 | P-004 | Keyboard tab switching | Partial | Ctrl-Tab and Show Next/Previous Tab wired (smoke 'Tabs' cmd nextTab); Cmd-1/2 switch views, Cmd-3/4 ruled out; key chords not driven |
 | P-008 | Back / Forward | Partial | Smoke 'Navigation and history' back/forward; buttons disable at ends; no click-and-hold history menu |
 | P-009 | Enclosing folder and open | Partial | Up (smoke cmd up), Open via Cmd-Down/Cmd-O (smoke symlink cmd open); Ctrl-Cmd-Up (enclosing folder in new window) absent |
@@ -51,11 +49,11 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-015 | Window title and proxy icon | Partial | window.title and representedURL set, but titleVisibility is .hidden so no visible title or proxy icon |
 | P-018 | Opening folders from outside | Built, unverified | application(_:open:) plus public.folder document type, OK2-10 (folders to key window, files launch); needs a real `open -a` run |
 | P-020 | Breadcrumb ancestor click | Built, unverified | Ancestor segment navigates, current segment edits (Q1) in PathBarView; no click test |
-| P-021 | Keyboard focus model | Built, unverified | focusContent after launch, tab and view switch; autorecalculatesKeyViewLoop; no step |
+| P-021 | Keyboard focus model | Verified | Mac run 3: a tab switch, a navigation, Escape and a closed search give the files the keys; keys never go into a hidden listing (smoke.d/header.txt, HeaderWindowTests) |
 | P-024 | Show enclosing folder of a result | Built, unverified | Show in Enclosing Folder (Go menu and context) wired; Cmd-R is Refresh by ruling; not run in smoke |
-| P-026 | Loading, empty and denied states | Built, unverified | Failure overlay, 'Folder is empty' and loading/denied status wired; no step opens a permission-denied folder |
+| P-026 | Loading, empty and denied states | Verified | Mac run 3: cards for refused, waiting, missing, disconnected and timed-out places replace the listing, and empty states let clicks through (smoke.d/permissions.txt, with fixture folders locked by chmod; macOS privacy itself not exercised) |
 | P-027 | Icon size | Partial | Cmd-+/- and Settings slider resize grid icons globally; list fixed; no status slider, not per folder |
-| P-035 | Icon labels | Partial | Two-line middle-truncated labels with selection highlight; no hover tooltip |
+| P-035 | Icon labels | Verified | Mac run 3: two lines; a longer name gets one middle cut that keeps its end and extension; the selected item shows its whole name over the row below; a tooltip shows shortened names (smoke.d/grid-names.txt) |
 | P-036 | List view columns | Partial | Name, Size, Date Modified, Kind (+Location in search); Created, Last Opened, Added, Version, Comments, Tags absent |
 | P-037 | Column management | Partial | Header right-click show/hide plus native resize/reorder; not persisted, no Use as Defaults |
 | P-038 | Header-click sorting | Built, unverified | Header sort indicator wired; smoke 'sort' calls contentSetSort directly, not a header click |
@@ -70,7 +68,7 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-057 | Keep folders on top | Verified | Smoke 'lists' shows folders first; Settings and Sort menu toggle; one toggle, no Desktop variant |
 | P-061 | `.DS_Store` policy | Built, unverified | No code writes .DS_Store; view memory uses Helm's own store; absence untested |
 | P-063 | Natural, locale-aware name sort | Verified | localizedStandardCompare; smoke 'lists' order, K31LoadingTests.testNaturalOrderHiddenFilteringAndGrouping |
-| P-064 | Sort in virtual locations | Built, unverified | Search ranks by relevance, Recent via RecentSource; no step checks default order |
+| P-064 | Sort in virtual locations | Verified | Search ranks by relevance; Recent sorts by Last Opened, newest first, and keeps another sort chosen there (smoke.d/recent.txt) |
 | P-067 | Type-select | Built, unverified | Native outline type-select; grid uses TypeSelect; no step |
 | P-068 | Arrow navigation | Built, unverified | Native arrow keys in outline and collection views; Option-Up/Down jumps absent; no step |
 | P-069 | Selection gestures | Built, unverified | Native click, Shift/Cmd-click, Cmd-A (selectAll) and empty-click deselect; no step |
@@ -109,21 +107,21 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-136 | Batch rename | Built, unverified | Smoke opens the batch sheet (cmd rename, 2 items); BatchRename view-model tests; running a batch untested |
 | P-137 | Undo for every entry point | Verified | Undo shown for paste, cut, duplicate, rename, trash, new folder and drag (smoke); batch rename undo untested |
 | P-138 | Operations outlive the view | Built, unverified | Coordinator is app-wide, tasks do not die with the window; no step closes a window mid-copy |
-| P-139 | Partial failure | Partial | Failures stay in the panel with outcomes and refresh touched folders; no Skip/Retry/Stop prompt |
+| P-139 | Partial failure | Verified | Mac run 2: Skip, Try Again (when nothing was half done) or Stop, with 'Skip any other items' (smoke fail-answer); run 3 made Skip of a Replace skip the whole item |
 | P-140 | Preflight | Verified | Smoke 'Move a folder into itself is refused' and 'A folder into itself is refused' |
 | P-141 | Cross-volume move | Built, unverified | Planner copy-then-remove logic tested (K15 transfer tests); needs a second volume |
 | P-149 | Opening items | Built, unverified | NSWorkspace.open with default app, several files at once, packages as files; smoke only opens folders |
 | P-152 | Display names | Partial | Applications drop .app; no hasHiddenExtension or localized folder names |
 | P-157 | Expand | Built, unverified | Open hands archives to the default app via NSWorkspace; decompress isPlanned; no step |
 | P-170 | Scope bar | Missing | No scope bar; scope fixed by OK2-23 (folder in directories, everywhere in Recent) |
-| P-171 | Name versus contents | Partial | Name only (NSMetadataItemFSNameKey plus folder walk); no contents search or name/contents choice |
+| P-171 | Name versus contents | Built, unverified | Mac run 2: names first, then Spotlight's content index, and Settings › Search turns contents off; fixture homes aren't indexed, so no smoke step covers contents |
 | P-176 | Result location | Built, unverified | Location column in search results and Show in Enclosing Folder wired; not asserted |
 | P-178 | Result order | Built, unverified | SearchRanker and relevance sort wired; no step checks order |
 | P-181 | Spotlight privacy | Built, unverified | NSMetadataQuery honours the index exclusions; the folder walk does not; untested |
 | P-183 | Query lifecycle | Verified | Smoke 'Search' (search, then clear); debounce cancels, reducer drops stale results (T3CancellationTests) |
-| P-184 | Field behaviour | Built, unverified | Cmd-F focuses field, Esc clears, query lives on the tab; keystrokes not driven |
+| P-184 | Field behaviour | Verified | Mac run 3: Cmd-F opens or reselects, Escape closes from the field or the files, an empty search closes on blur, going anywhere ends a search, each tab keeps its own (smoke.d/header.txt) |
 | P-187 | Sections | Partial | Recent, Favorites, Bookmarks, Starred, Devices, Trash; no collapse, iCloud or Tags section, no visibility setting |
-| P-188 | Editing Favorites | Partial | Smoke 'Sidebar bookmarks' (drop adds); Remove Bookmark in menu; no insert position, drag-out, reorder or key |
+| P-188 | Editing Favorites | Verified | Mac run 3: rows reorder within their group by drag, hide by menu, drag-out or Settings › Sidebar, and Restore Defaults; bookmarks insert where dropped (smoke.d/sidebar.txt drives the drop and drag-end code, not a real pointer drag) |
 | P-190 | Sidebar drop targets | Built, unverified | Trash drop now trashes; folder places move or copy (Option copies); sidebar drops not driven by a real drag |
 | P-192 | Eject buttons | Partial | Eject only in the context menu, no glyph; busy volume shows the system error alert |
 | P-195 | Starred place | Built, unverified | Starred section and star toggle wired (SidebarModelTests); starred files reveal rather than open |
@@ -135,18 +133,18 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-204 | Disk images | Built, unverified | Double-click hands .dmg to the system; needs a real image |
 | P-209 | Volume capacity | Partial | Free space shown in status text (availableCapacity); no capacity or format in Properties; not asserted |
 | P-211 | System volume presentation | Built, unverified | VolumeFilter hides helper mounts (tests); needs real volumes |
-| P-225 | Open With submenu | Partial | Default first and marked, sorted, all selected items, Other…; no App Store entry or Always checkbox |
+| P-225 | Open With submenu | Verified | Mac run 3: the row is on in the right-click menu and File › Open With, default first, Recently Used, Recommended, Other Apps, Choose App…, in HelmDev and an Xcode Release build (smoke.d/open-with.txt); no App Store entry |
 | P-230 | Open With bookkeeping | Built, unverified | Open With records Recents and shows failures in the window; needs a person to open a real app |
 | P-231 | Open from an app's Dock icon | Built, unverified | Drag source offers file URLs to other apps; needs a person |
 | P-232 | Services for files | Built, unverified | validRequestor and writeSelection send the selected files to the Services menu; needs a person to run a Service |
 | P-233 | Share | Partial | File > Share opens the picker; context Share submenu; no toolbar item; never run |
-| P-238 | "Open in Helm" Service | Missing | No Open in Helm Service (no NSServices) |
+| P-238 | "Open in Helm" Service | Verified | Mac run 2: Open in Helm and Show in Helm in the Services menu (smoke service-show) |
 | P-251 | Status bar text | Built, unverified | Counts, selected size and free space shown (StatusAndTagsTests); text not asserted; .DS_Store not special-cased |
 | P-255 | Toggle hidden files | Verified | Smoke 'Hidden files' (cmd hidden); persists, applies to all tabs via settingsChanged |
 | P-256 | What counts as hidden | Built, unverified | Dot files verified (smoke 'Hidden files'); isHiddenKey flag covered by API; FinderInfo bit and /.hidden list not handled |
 | P-259 | Show Package Contents | Built, unverified | Show Package Contents in context menu; packages open as files; no step |
 | P-261 | Hidden rule everywhere | Built, unverified | showHidden reaches children, completion, search, Recent, Trash; only folder listing exercised (smoke) |
-| P-268 | Denied folders and Full Disk Access | Built, unverified | Denied overlay names the folder; Full Disk Access hint for Trash only; needs a protected folder |
+| P-268 | Denied folders and Full Disk Access | Verified | Mac run 3: cards name the place and offer Grant Access… (Full Disk Access or Files & Folders guide), Open in Finder for the Trash and Try Again; once-only welcome; Help › Full Disk Access… (smoke.d/permissions.txt on fixture folders; the real Full Disk Access list not tried) |
 | P-269 | Drag source | Built, unverified | File URLs on drag, all operations offered; real drag not driven |
 | P-270 | Drag destination from other apps | Built, unverified | Accepts file URLs, modifier rules in dragOperation; smoke drives acceptDrop, not another app |
 | P-274 | Live modifier feedback | Built, unverified | validateDrop re-runs on modifier change; needs a person |
@@ -159,7 +157,7 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-292 | VoiceOver file browsing | Built, unverified | Labels on Files, Places and rows; no VoiceOver pass |
 | P-293 | Accessible tabs and toolbar | Built, unverified | Tab labels, selected state, Close/New Tab names; no VoiceOver pass |
 | P-294 | Accessible location completion | Partial | Field and breadcrumbs labelled; suggestion popup rows carry no announcements |
-| P-295 | Keyboard-only task completion | Built, unverified | Most commands have keys; sidebar arrows do not navigate; no keyboard-only run |
+| P-295 | Keyboard-only task completion | Built, unverified | Most commands have keys; sidebar arrows and Return navigate (smoke.d/hunt-sidebar-settings.txt); no keyboard-only run |
 | P-300 | Accessible progress and errors | Partial | Cancel labelled, errors in sheets; Core announcement logic never posted (no NSAccessibility.post) |
 | P-302 | Settings window and live changes | Verified | Smoke 'Settings window' and setting steps; changes apply live via settings.changes |
 | P-313 | Preference migration and defaults | Verified | EnvironmentTests migration and corrupt-preference tests; no reset action |
@@ -247,11 +245,11 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-179 | Unindexed locations | Verified | Smoke 'Search' (q2 found in an unindexed fixture through the folder walk); Spotlight side unverified |
 | P-180 | System file exclusion | Built, unverified | SearchSpecification skips hidden entries; system-file rule not tested in the window |
 | P-186 | System Recents | Missing | Recent stays an app-local log (RecentStore), not a Spotlight last-used query |
-| P-189 | Standard favourites | Partial | Fixed Home, Desktop, Documents, Downloads, Applications; no Movies/Music/Pictures/AirDrop, no checkboxes |
+| P-189 | Standard favourites | Partial | Recent, Home, Desktop, Documents, Downloads, Pictures, Music, Movies, Applications and Trash, each can be hidden or moved (Mac run 3); no AirDrop |
 | P-191 | Sidebar icon size | Built, unverified | Source list uses system row size; not checked |
 | P-193 | Locations content | Partial | Mounted volumes only (VolumeReader); no iCloud, cloud providers, Bonjour or servers section |
-| P-197 | Sidebar context menus | Partial | Open in New Tab, Remove Bookmark, Eject, Empty Trash; no Open in New Window, Show in Enclosing Folder, Get Info, Clear Recents |
-| P-200 | Keyboard in the sidebar | Partial | Arrow keys change row selection but only a click navigates |
+| P-197 | Sidebar context menus | Partial | Open in New Tab, Remove Bookmark, Hide from Sidebar, Sidebar Settings…, Eject, Empty Trash; no Open in New Window, Show in Enclosing Folder, Get Info, Clear Recents |
+| P-200 | Keyboard in the sidebar | Partial | Arrows and type-select open the place the highlight lands on, and Return opens the highlighted row (smoke.d/hunt-sidebar-settings.txt); ⌘Return for a new tab is unverified |
 | P-206 | Connect to Server | Partial | Cmd-K prompt and typed smb:// hand off to macOS; no recent servers, favourites or Browse |
 | P-207 | Network location | Missing | Go > Network isPlanned (disabled) |
 | P-208 | Connected servers | Built, unverified | Mounted network volumes appear as devices via VolumeReader; needs a real share |
@@ -260,9 +258,9 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-218 | Download Now and Remove Download | Missing | No Download Now or Remove Download |
 | P-219 | Third-party providers | Missing | No CloudStorage provider places |
 | P-220 | Avoid accidental materialization | Built, unverified | Thumbnails skip evicted files, listing reads metadata only; untested with a real provider |
-| P-226 | Always Open With | Missing | No Always Open With |
-| P-227 | Change All | Missing | No Change All |
-| P-228 | Multi-item Open With | Partial | Submenu built from the first selected item only |
+| P-226 | Always Open With | Verified | Mac run 3: Option turns each app into Always Open With, which sets the default for each selected kind (stand-in launcher in fixture runs); not offered for folders |
+| P-227 | Change All | Verified | Mac run 3: Change Default App… sets the default for every file of the selected kinds (stand-in in fixture runs); not offered for folders |
+| P-228 | Multi-item Open With | Verified | Mac run 3: several items list the apps that open all of them, each ranked by the item it suits least, with their shared default first |
 | P-229 | Open in Terminal | Missing | No Open in Terminal |
 | P-234 | AirDrop from Share | Built, unverified | AirDrop appears among system sharing services; needs a person |
 | P-235 | Quick Actions submenu | Missing | No Quick Actions submenu |
@@ -292,7 +290,7 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-301 | Voice Control, Switch Control and text scale | Built, unverified | Native controls; not exercised |
 | P-304 | General: window destination and tab preference | Missing | No new-window folder or tab preference |
 | P-305 | Tags preferences | Ruled out | Tags deferred; no Tags pane |
-| P-306 | Sidebar preferences | Partial | Only show-all-volumes toggle works; glass toggle inert; no favourite visibility |
+| P-306 | Sidebar preferences | Verified | Mac run 3: Settings › Sidebar lists every row with a checkbox and a drag handle, plus Show system volumes and Restore Defaults (smoke.d/sidebar.txt) |
 | P-307 | Advanced: all extensions | Missing | No setting; extensions always shown |
 | P-308 | Advanced: folders on top | Partial | One Directories first setting (smoke 'lists'); no Desktop variant |
 | P-309 | Advanced: extension-change warning | Missing | No extension-change warning |
