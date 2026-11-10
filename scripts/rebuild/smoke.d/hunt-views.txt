@@ -1,0 +1,171 @@
+# Views: the list, the grid, the sort words and the status bar, on a folder of their own (hunt-views.fixture.sh).
+# Works in its own tab, so the tab that's saved at quit is left as it was.
+cmd newTab
+wait 0.3
+go @FIX@/home/HuntViews
+view list
+sort-choose Name A–Z
+wait 0.3
+list-rows Apps,Box,Deep,Scroll,Search,top.txt
+# Option-click on a triangle opens the folder and every folder inside it, as in Finder
+hunt-disclose-all Deep
+list-open Deep
+list-open Inner
+list-open Innermost
+list-in-step
+list-rows Apps,Box,Deep,Inner,Innermost,z.txt,i.txt,d.txt,Scroll,Search,top.txt
+# Option-Left closes them all, and Option-Right opens them all again
+select Deep
+hunt-option-arrow left
+list-closed Deep
+list-rows Apps,Box,Deep,Scroll,Search,top.txt
+hunt-option-arrow right
+list-open Innermost
+list-rows Apps,Box,Deep,Inner,Innermost,z.txt,i.txt,d.txt,Scroll,Search,top.txt
+hunt-option-arrow left
+list-closed Deep
+# The column menu ticks every column on show, the sorted one too, whose heading carries an arrow
+sort-choose Largest First
+hunt-column-menu-is Size:on,Modified:on,Kind:on
+sort-choose Newest First
+hunt-column-menu-is Size:on,Modified:on,Kind:on
+sort-choose Name A–Z
+# The status bar counts the rows on show and what's selected among them, inside an open folder too
+disclose Box
+select item-1.txt,item-2.txt,item-3.txt,item-4.txt,item-5.txt,item-6.txt,item-7.txt
+list-selected item-1.txt,item-2.txt,item-3.txt,item-4.txt,item-5.txt,item-6.txt,item-7.txt
+hunt-status-has 14 items  •  7 selected
+# The grid can't show what's inside the open folder, so none of it stays selected, and Move to Trash has nothing to move
+view grid
+wait 0.5
+selected
+menu trash disabled
+cmd trash
+exists @FIX@/home/HuntViews/Box/item-1.txt
+hunt-status-has 6 items
+view list
+wait 0.3
+list-open Box
+# Inside an open folder a renamed file stays selected, and Move to Trash hands the selection to the next file
+select item-2.txt
+inline-rename item-2b.txt
+wait 1.0
+exists @FIX@/home/HuntViews/Box/item-2b.txt
+selected item-2b.txt
+list-selected item-2b.txt
+select item-3.txt
+cmd trash
+wait 1.0
+missing @FIX@/home/HuntViews/Box/item-3.txt
+selected item-4.txt
+list-selected item-4.txt
+disclose Box
+# A slow folder keeps its Loading row while the list is rebuilt for something else, here a new sort
+child-delay 3
+disclose-now Scroll
+wait 0.6
+list-loading Scroll
+sort-choose Name Z–A
+wait 0.5
+list-open Scroll
+list-loading Scroll
+wait 3.0
+child-delay 0
+list-in-step
+sort-choose Name A–Z
+disclose Scroll
+# Kind says what Finder's Kind says
+hunt-kind-finder @FIX@/home/HuntViews/Box
+hunt-kind-finder @FIX@/home/HuntViews/top.txt
+# The grid brings a selection made by Back into view once, then stays where it's scrolled when the folder changes
+go @FIX@/home/HuntViews/Scroll
+view grid
+wait 0.6
+hunt-scroll-top
+select file-58.txt
+cmd up
+wait 0.5
+cmd back
+wait 0.8
+location @FIX@/home/HuntViews/Scroll
+selected file-58.txt
+hunt-scrolled-away
+hunt-scroll-top
+watch-external @FIX@/home/HuntViews/Scroll/zz-new.txt
+wait 2.0
+has zz-new.txt
+hunt-scrolled-top
+hunt-remove @FIX@/home/HuntViews/Scroll/zz-new.txt
+# During a search the sort button, View › Sort By and Name all go by the results' Best Match order, and the
+# Location column fits beside the others. The folder's own sort is back when the search ends.
+go @FIX@/home/HuntViews/Search
+view list
+sort-choose Name A–Z
+sort-title-is A to Z
+search-type q
+wait 1.2
+lists q-file.txt,aq-file.txt
+sort-title-is Best Match
+hunt-sort-menu-is Best Match
+hunt-column-on-screen location
+screenshot @SHOTS@/hunt-views-search.png
+sort-press Name
+lists aq-file.txt,q-file.txt
+sort-title-is A to Z
+escape-files
+sort-title-is A to Z
+sort-is Name A–Z
+# The free space follows the disk: a refresh reads it again
+go @FIX@/home/HuntViews
+wait 1.0
+hunt-free-save
+hunt-write-megabytes @FIX@/home/HuntViews/big.bin 200
+cmd refresh
+wait 1.0
+has big.bin
+hunt-free-changed
+hunt-remove @FIX@/home/HuntViews/big.bin
+# An app's size reads "—", as a folder's does. Renamed with Return and nothing typed, it keeps its name, in the list
+# and in the grid; new words keep ".app"
+go @FIX@/home/HuntViews/Apps
+view list
+lists Gadget.app,Tool.app
+hunt-name-shown Tool.app=Tool
+hunt-cell-is Tool.app|size|—
+hunt-kind-finder @FIX@/home/HuntViews/Apps/Tool.app
+select Tool.app
+cmd rename
+wait 0.3
+commit-rename
+wait 1.0
+exists @FIX@/home/HuntViews/Apps/Tool.app
+missing @FIX@/home/HuntViews/Apps/Tool
+select Tool.app
+cmd rename
+wait 0.3
+hunt-rename-cancel
+hunt-name-shown Tool.app=Tool
+select Gadget.app
+cmd rename
+wait 0.3
+hunt-rename-type Widget
+commit-rename
+wait 1.0
+exists @FIX@/home/HuntViews/Apps/Widget.app
+missing @FIX@/home/HuntViews/Apps/Widget
+lists Tool.app,Widget.app
+hunt-name-shown Widget.app=Widget
+view grid
+wait 0.4
+select Tool.app
+cmd rename
+wait 0.3
+commit-rename
+wait 1.0
+exists @FIX@/home/HuntViews/Apps/Tool.app
+missing @FIX@/home/HuntViews/Apps/Tool
+lists Tool.app,Widget.app
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

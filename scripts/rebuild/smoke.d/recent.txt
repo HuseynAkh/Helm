@@ -1,0 +1,100 @@
+# Recent keeps its folders apart from its files, in both views, most recent first. Works in its own tab, so the
+# tab that's saved at quit is left as it was.
+cmd newTab
+wait 0.3
+recent
+cmd clearRecent
+wait 0.4
+go @FIX@/home/RecentCase/Alpha Folder
+go @FIX@/home/RecentCase/Beta Folder
+recent-record @FIX@/home/RecentCase/first.txt
+wait 0.1
+recent-record @FIX@/home/RecentCase/second.txt
+recent
+wait 0.4
+location recent
+sort-is Most Recent First
+folders-first on
+view grid
+wait 0.4
+lists Beta Folder,Alpha Folder,second.txt,first.txt
+sections Folders 2,Files 2
+screenshot @SHOTS@/recent-grid.png
+popover-shot @SHOTS@/recent-view-options.png
+# Down from a folder goes on into the files below
+select Beta Folder
+content-key down
+selected second.txt
+view list
+wait 0.4
+sections Folders 2,Files 2
+list-rows Beta Folder,Alpha Folder,second.txt,first.txt
+screenshot @SHOTS@/recent-list.png
+# The arrow keys pass over the Files heading
+select Alpha Folder
+content-key down
+selected second.txt
+content-key up
+selected Alpha Folder
+# A folder opened in the list keeps its rows inside the Folders group, and lists its files A to Z, as the folder does
+disclose Alpha Folder
+list-rows Beta Folder,Alpha Folder,apple.txt,Banana.txt,file2.txt,file10.txt,inside.txt,second.txt,first.txt
+sections Folders 2,Files 2
+list-in-step
+screenshot @SHOTS@/recent-list-open-folder.png
+disclose Alpha Folder
+list-rows Beta Folder,Alpha Folder,second.txt,first.txt
+# With Folders on top off, or during a search, it's one plain run; ending the search brings the groups back
+folders-first off
+sections none
+lists second.txt,first.txt,Beta Folder,Alpha Folder
+folders-first on
+sections Folders 2,Files 2
+search zzhelmrecentnomatch
+sections none
+search
+wait 0.4
+sections Folders 2,Files 2
+# Last Opened reverses when pressed again
+sort-last-opened
+sort-is Least Recent First
+lists Alpha Folder,Beta Folder,first.txt,second.txt
+sort-last-opened
+sort-is Most Recent First
+view grid
+wait 0.3
+sections Folders 2,Files 2
+# Files only: no headings
+cmd clearRecent
+wait 0.4
+recent-record @FIX@/home/RecentCase/first.txt
+cmd refresh
+wait 0.4
+sections none
+lists first.txt
+# Leaving Recent puts back the order the tab had: here Kind Z–A, carried into a folder with no order of its own
+go @FIX@/home/RecentCase
+sort-choose Kind Z–A
+go @FIX@/home/RecentCase/Beta Folder
+sort-is Kind Z–A
+recent
+sort-is Most Recent First
+go @FIX@/home/RecentCase/Beta Folder
+sort-is Kind Z–A
+# An order chosen in Recent is kept there, even Name A–Z in the grid, which matches every folder's defaults
+recent
+view grid
+sort-choose Name A–Z
+go @FIX@/home/RecentCase
+sort-is Kind Z–A
+recent
+sort-is Name A–Z
+view-is grid
+sort-last-opened
+sort-is Most Recent First
+go @FIX@/home/RecentCase/Beta Folder
+sort-is Kind Z–A
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

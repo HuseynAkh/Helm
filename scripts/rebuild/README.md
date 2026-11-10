@@ -3,7 +3,8 @@
 
 Run `bash scripts/rebuild/run_all.sh` from any directory. It activates the installed
 toolchain, builds the six portable targets explicitly, runs all six XCTest targets,
-runs rebuild and static-check Python unit tests, K1 static checks, SDK-name guards,
+runs rebuild, static-check and privacy-check Python unit tests, K1 static checks and
+the privacy check (both through `scripts/static_checks.sh`), SDK-name guards,
 UI syntax checks and coverage report-only.
 Logs and Swift artifacts remain in `/tmp/build-K11`; override with
 `HELM_K11_SCRATCH`. Override external plan paths with `HELM_PLAN_DIR`, then `PLAN_DIR` as fallback.

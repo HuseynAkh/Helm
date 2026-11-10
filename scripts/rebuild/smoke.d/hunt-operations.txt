@@ -1,0 +1,138 @@
+# File operations. Works in its own tab and in HuntOps, so the tab saved at quit and every other step's files are left as they were.
+cmd newTab
+wait 0.3
+dismiss-operations
+# Replace, then Skip the item that couldn't be read: the file already there stays, and nothing goes to the Trash
+setting askOnConflict true
+fixture-chmod 000 @FIX@/home/HuntOps/Source/1-locked.txt
+go @FIX@/home/HuntOps/Source
+select 1-locked.txt,2-open.txt
+cmd copy
+go @FIX@/home/HuntOps/Target
+conflict replace
+fail-answer skip
+cmd paste
+wait 1.5
+asked 1
+contents @FIX@/home/HuntOps/Target/1-locked.txt=keep
+exists @FIX@/home/HuntOps/Target/2-open.txt
+missing @FIX@/home/HuntOps/Target/.helm-stage
+missing @FIX@/home/.Trash/1-locked.txt
+# The panel counts items, not steps, and names the one that failed
+hunt-op-status 1 of 2 done. “1-locked.txt”: You don’t have permission.
+fail-answer stop
+fixture-chmod 644 @FIX@/home/HuntOps/Source/1-locked.txt
+setting askOnConflict false
+dismiss-operations
+# Renaming an app in place keeps it an app: Return without typing changes nothing, and a new name keeps .app
+hunt-make-app @FIX@/home/HuntOps/Apps/Tool.app
+hunt-make-app @FIX@/home/HuntOps/Apps/Gadget.app
+go @FIX@/home/HuntOps/Apps
+view grid
+select Tool.app
+cmd rename
+wait 0.5
+commit-rename
+wait 0.8
+exists @FIX@/home/HuntOps/Apps/Tool.app
+missing @FIX@/home/HuntOps/Apps/Tool
+select Gadget.app
+inline-rename Widget
+exists @FIX@/home/HuntOps/Apps/Widget.app
+missing @FIX@/home/HuntOps/Apps/Widget
+view list
+select Tool.app
+cmd rename
+wait 0.5
+commit-rename
+wait 0.8
+exists @FIX@/home/HuntOps/Apps/Tool.app
+# Compress inside an open folder: the archive goes next to the item, numbered when the name is taken
+go @FIX@/home/HuntOps/Inside
+view list
+expand Sub
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/HuntOps/Inside/Sub/q1.txt.zip
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/HuntOps/Inside/Sub/q1.txt 2.zip
+missing @FIX@/home/HuntOps/Inside/q1.txt.zip
+select alpha.md,q1.txt
+hunt-cmd-says compress Items from different folders can’t go in one archive.
+# Undo right after Compress, which can't be undone, doesn't reach back to the rename before it
+select alpha.md
+rename beta.md
+undo-title Rename
+select beta.md
+cmd compress
+wait 1.5
+exists @FIX@/home/HuntOps/Inside/beta.md.zip
+undo-title
+hunt-cmd-says undo Nothing to undo.
+exists @FIX@/home/HuntOps/Inside/beta.md
+# Make Alias goes through the operations, so Undo takes the alias away and nothing else
+select beta.md
+cmd makeAlias
+wait 0.8
+exists @FIX@/home/HuntOps/Inside/beta.md alias
+undo-title Make Alias
+cmd undo
+wait 0.8
+missing @FIX@/home/HuntOps/Inside/beta.md alias
+exists @FIX@/home/HuntOps/Inside/beta.md
+# Put Back items from two folders: both go back, and the Trash on show stops listing them
+go @FIX@/home/HuntOps/Bin/One
+select one.txt
+cmd trash
+wait 0.8
+go @FIX@/home/HuntOps/Bin/Two
+select two.txt
+cmd trash
+wait 0.8
+open-trash
+has one.txt
+has two.txt
+select one.txt,two.txt
+cmd putBack
+wait 1.5
+exists @FIX@/home/HuntOps/Bin/One/one.txt
+exists @FIX@/home/HuntOps/Bin/Two/two.txt
+lacks one.txt
+lacks two.txt
+# A card for a place that couldn't open stays up through the refresh an operation causes
+go @FIX@/home/HuntOps/Bin
+select notes.txt
+cmd duplicate
+wait 0.8
+has notes 2.txt
+fixture-chmod 000 @FIX@/home/Private
+go @FIX@/home/Private
+card-reads You don’t have permission to see inside “Private”
+cmd undo
+wait 0.8
+missing @FIX@/home/HuntOps/Bin/notes 2.txt
+card-reads You don’t have permission to see inside “Private”
+listing-hidden true
+fixture-chmod 755 @FIX@/home/Private
+# A folder open inside an open folder, moved to the Trash, just closes: the status bar doesn't say it no longer exists
+go @FIX@/home/HuntOps/Nest
+view list
+expand Open
+expand Gone
+select Gone
+cmd trash
+wait 1
+missing @FIX@/home/HuntOps/Nest/Open/Gone
+lacks Gone
+selected keep.txt
+hunt-status-lacks no longer exists
+# Back where the steps before left off
+cmd closeTab
+wait 0.4
+dismiss-operations
+tabs 2
+location @FIX@/home/Documents
+view-is list

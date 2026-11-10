@@ -1,0 +1,4 @@
+# After the relaunch, Helm keeps where a trashed item came from only while the item is still in the Trash
+wait 0.5
+trash-origin trash-c.txt no
+trash-origin trash-d.txt yes

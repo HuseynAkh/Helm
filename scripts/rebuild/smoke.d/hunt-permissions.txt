@@ -1,0 +1,92 @@
+# Permissions hunt: refusal cards, and what the rest of the window does around them. Works in its own tab, so the
+# tab that's saved at quit is left as it was. Verbs that start with hunt- are in HostSmokeDriver+HuntPermissions.swift.
+cmd newTab
+wait 0.3
+dismiss-operations
+# Open With, Share and New File open their submenus, from the right-click menu and the menu bar
+go @FIX@/home/Documents
+view list
+select alpha.md
+selected alpha.md
+hunt-context-item enabled Properties
+hunt-context-item enabled Open With
+hunt-context-item enabled Share
+hunt-menubar-item enabled File › Open With
+hunt-menubar-item enabled Helm › Services
+hunt-context-bg enabled New Folder
+hunt-context-bg enabled New File
+# While a card is up, the window names the place it's about, as the sidebar does, and nothing reaches the files
+# hidden under it: not File › Open With, Services or a search. (A scripted run's window isn't key, so Quick Look
+# isn't driven here; HuntPermissionsWindowTests covers it.)
+select alpha.md
+fixture-chmod 000 @FIX@/home/Private
+go @FIX@/home/Private
+card-reads You don’t have permission to see inside “Private”
+location @FIX@/home/Documents
+sidebar-on Home
+path-reads Home / Private
+hunt-title-is Private
+hunt-proxy-is @FIX@/home/Private
+hunt-search-placeholder Search Private
+menu find disabled
+hunt-file-openwith Select a File
+hunt-services-offered false
+# Show Hidden Files reloads the folder under the card, and the card stays
+cmd hidden
+wait 1
+card-reads You don’t have permission to see inside “Private”
+listing-hidden true
+sidebar-on Home
+cmd hidden
+wait 1
+card-reads You don’t have permission to see inside “Private”
+# New Tab opens the place on show
+cmd newTab
+location @FIX@/home/Private
+card-reads You don’t have permission to see inside “Private”
+cmd closeTab
+card-reads You don’t have permission to see inside “Private”
+# Back takes the card down, and search comes back with the listing
+cmd back
+card-none
+location @FIX@/home/Documents
+hunt-title-is Documents
+menu find enabled
+fixture-chmod 755 @FIX@/home/Private
+# An operation finishing under a card leaves the card up
+go @FIX@/home/HuntPermissions/Drop
+fixture-chmod 000 @FIX@/home/Private
+go @FIX@/home/Private
+card-reads You don’t have permission to see inside “Private”
+drop move-me.txt @FIX@/home/HuntPermissions/Drop/Into
+wait 1
+exists @FIX@/home/HuntPermissions/Drop/Into/move-me.txt
+card-reads You don’t have permission to see inside “Private”
+listing-hidden true
+cmd back
+card-none
+location @FIX@/home/HuntPermissions/Drop
+fixture-chmod 755 @FIX@/home/Private
+# A link that leads nowhere says so, not that its owner or its permissions refuse
+go @FIX@/home/HuntPermissions/Links/Old Projects
+card-reads Helm couldn’t open “Old Projects”
+card-says The item this link points to can’t be found.
+screenshot @SHOTS@/hunt-link-gone.png
+go @FIX@/home/HuntPermissions/Links/Loop
+card-reads Helm couldn’t open “Loop”
+card-says The item this link points to can’t be found.
+cmd back
+card-none
+# A folder that can't be opened in place by its triangle says why in the status bar
+fixture-chmod 000 @FIX@/home/Movies/TV
+go @FIX@/home/Movies
+view list
+disclose TV
+wait 0.6
+list-closed TV
+hunt-status-says “TV”
+screenshot @SHOTS@/hunt-expand-refused.png
+select Empty
+hunt-status-lacks “TV”
+fixture-chmod 755 @FIX@/home/Movies/TV
+cmd closeTab

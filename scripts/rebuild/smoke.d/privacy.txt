@@ -1,0 +1,115 @@
+# Privacy: Helm keeps less about you, and reads the clipboard only when you paste. Works in its own tab, so the tab
+# that's saved at quit is left as it was.
+cmd newTab
+wait 0.3
+go @FIX@/home/PrivacyCase
+# Copy writes the items and their names, as Finder does. Copy as Pathname still writes full paths.
+select alpha.txt,beta.txt
+cmd copy
+clipboard-files 2
+clipboard-text alpha.txt,beta.txt
+cmd copyAsPathname
+clipboard-text @FIX@/home/PrivacyCase/alpha.txt,@FIX@/home/PrivacyCase/beta.txt
+# Menus check only what kind of thing is on the clipboard; its contents are read when you paste
+clipboard-lazy text a password
+menu paste disabled
+clipboard-read no
+clipboard-lazy files @FIX@/home/PrivacyCase/Inbox/gamma.txt
+menu paste enabled
+clipboard-read no
+cmd paste
+wait 0.8
+has gamma.txt
+clipboard-read yes
+# Where a trashed item came from is kept only while it's in the Trash
+select trash-a.txt
+cmd trash
+wait 0.8
+trash-origin trash-a.txt yes
+open-trash
+select trash-a.txt
+cmd putBack
+wait 1
+exists @FIX@/home/PrivacyCase/trash-a.txt
+trash-origin trash-a.txt no
+# Undo puts it back in the Trash with its record, so a second Undo still knows where it came from
+cmd undo
+wait 1
+missing @FIX@/home/PrivacyCase/trash-a.txt
+trash-origin trash-a.txt yes
+cmd undo
+wait 1
+exists @FIX@/home/PrivacyCase/trash-a.txt
+trash-origin trash-a.txt no
+go @FIX@/home/PrivacyCase
+select trash-b.txt
+cmd trash
+wait 0.8
+trash-origin trash-b.txt yes
+empty-trash
+trash-origin trash-b.txt no
+wait 0.7
+file-lacks @FIX@/support/trash-origins.json=trash-b.txt
+# An item that leaves the Trash behind Helm's back keeps its record until the next launch (privacy.restore.txt)
+select trash-c.txt,trash-d.txt
+cmd trash
+wait 0.8
+trash-origin trash-c.txt yes
+trash-origin trash-d.txt yes
+hunt-fixture-remove @FIX@/home/.Trash/trash-c.txt
+trash-origin trash-c.txt yes
+# Remember recent items off: Recent and the apps you've used are cleared, and neither opening a file nor a visit
+# adds anything. Earlier steps opened files too, so this starts from none.
+cmd clearRecent
+wait 0.4
+openwith-count 0
+openwith-record /System/Applications/TextEdit.app @FIX@/home/PrivacyCase/alpha.txt
+openwith-count 1
+setting rememberRecentItems false
+wait 0.3
+openwith-count 0
+recent
+lists
+openwith-record /System/Applications/TextEdit.app @FIX@/home/PrivacyCase/alpha.txt
+openwith-count 0
+go @FIX@/home/PrivacyCase/Inbox
+recent
+lists
+wait 0.7
+file-lacks @FIX@/support/recent.json=PrivacyCase
+setting rememberRecentItems true
+go @FIX@/home/PrivacyCase/Inbox
+recent
+lists Inbox
+# Go › Clear Recent forgets the apps you've used too
+openwith-record /System/Applications/TextEdit.app @FIX@/home/PrivacyCase/alpha.txt
+openwith-count 1
+cmd clearRecent
+wait 0.4
+lists
+openwith-count 0
+# Reopen windows and tabs off: session.json is deleted, and closing a window doesn't write it again
+cmd newWindow
+wait 0.5
+windows 2
+close-window
+windows 1
+wait 0.8
+exists @FIX@/support/session.json
+setting restoreSessionOnLaunch false
+wait 0.3
+missing @FIX@/support/session.json
+cmd newWindow
+wait 0.5
+close-window
+windows 1
+wait 0.8
+missing @FIX@/support/session.json
+setting restoreSessionOnLaunch true
+# Nothing for macOS to bring back from Settings or a browser window
+restorable
+# Back where the steps before left off
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

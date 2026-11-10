@@ -1,0 +1,22 @@
+(version 1)
+; The sandbox for smoke runs: everything is allowed except the network.
+; Any try at the network kills the process at once, so the run fails with exit 137.
+; scripts/rebuild/host_smoke.sh runs HelmDev with: sandbox-exec -f scripts/rebuild/deny-network.sb HelmDev ...
+(allow default)
+
+; Connections to any IP address, on this Mac or off it.
+(deny network-outbound (remote ip) (with send-signal SIGKILL))
+
+; Name lookups. getaddrinfo reaches macOS's DNS service through this socket.
+(deny network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")) (with send-signal SIGKILL))
+; URLSession and Network.framework reach the same service over XPC, so the socket rule alone misses them.
+(deny mach-lookup (global-name "com.apple.dnssd.service") (with send-signal SIGKILL))
+
+; Background downloads. URLSession hands them to nsurlsessiond, which would connect outside this sandbox.
+(deny mach-lookup (global-name "com.apple.nsurlsessiond") (with send-signal SIGKILL))
+
+; Listening for connections.
+(deny network-bind (local ip) (with send-signal SIGKILL))
+(deny network-inbound (local ip) (with send-signal SIGKILL))
+
+; Other local sockets stay allowed. Apple's frameworks use them, for example to write to the system log.

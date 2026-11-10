@@ -1,0 +1,27 @@
+# The sidebar comes back as it was left: order and hidden rows survive a relaunch
+wait 0.5
+sidebar-rows favorites Recent,Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-rows locations iCloud Drive
+sidebar-settings favorites Recent,Downloads,Home,Desktop,Documents,Pictures,-Music,Movies,Applications,Trash
+sidebar-settings locations iCloud Drive,-Google Drive
+sidebar-highlight Documents
+# Restore Defaults shows every row in its original order, and leaves the bookmarks' order alone
+sidebar-reset
+sidebar-drawn Recent,Home,Desktop,Documents,Downloads,Pictures,Music,Movies,Applications,Trash,|,Downloads,Reports,|,alpha.md,|,Google Drive,iCloud Drive
+bookmarks-are Downloads,Reports
+# Then Restore Defaults has nothing to do. Hiding a starred item gives it something, and unstarring that item
+# takes it away again, since there's no row left to restore, and sidebar.json no longer names it. Starred again,
+# the item is back in view
+sidebar-settings-can-restore no
+sidebar-hide starred alpha.md
+sidebar-settings-can-restore yes
+select alpha.md
+cmd star
+unstarred alpha.md
+sidebar-settings-can-restore no
+wait 1
+file-lacks @FIX@/support/sidebar.json=alpha.md
+cmd star
+starred alpha.md
+sidebar-rows starred alpha.md
+sidebar-settings-can-restore no

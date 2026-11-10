@@ -1,0 +1,12 @@
+# A fixture run never opens the welcome checklist by itself, and its permission, file viewer and mover are stand-ins
+onboarding-is closed
+fda-is denied
+viewer-is finder
+dock-is not-first
+# Nothing the first run set up outlives it, so the first launch's checklist opens again when asked, still with no move row
+setting-is onboardingCompleted false
+setup-first-launch
+onboarding-is setup
+setup-rows viewer,access
+onboarding close
+setting-is onboardingCompleted true

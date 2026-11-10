@@ -1,0 +1,107 @@
+# Open With, from every menu that offers it: the row is on, every row in it is on, the default app comes first, and
+# choosing an app hands the files to it. A fixture run hands them to a stand-in, so no app opens and no default app
+# changes. Works in its own tab, so the tab that's saved at quit is left as it was. Verbs that start with openwith-
+# are in HostSmokeDriver+OpenWith.swift.
+cmd newTab
+wait 0.3
+openwith-stand-in
+go @FIX@/home/OpenWith
+sort-choose Name A–Z
+sort-is Name A–Z
+# One file, in the list and in the grid
+view list
+select notes.txt
+selected notes.txt
+openwith-context default
+openwith-pick context default
+openwith-pick context second
+view grid
+select letter.txt
+selected letter.txt
+openwith-context default
+openwith-pick context default
+# Several files: the apps that open all of them, with the default they share first
+select letter.txt,notes.txt
+selected letter.txt,notes.txt
+openwith-context default
+openwith-pick context default
+view list
+select letter.txt,notes.txt
+openwith-context default
+openwith-pick context second
+# Files of different kinds: only the apps that open every one
+select notes.txt,readme.md
+openwith-context
+openwith-pick context first
+# A folder, in the list and in the grid
+select Project
+selected Project
+openwith-context default
+openwith-pick context default
+view grid
+select Project
+openwith-context default
+# A link: the apps for the file it points to, not only Terminal, and that file is what the app gets
+view list
+select notes-link
+selected notes-link
+openwith-like notes.txt
+openwith-context default
+openwith-pick context default
+# File › Open With in the menu bar, for one file and for several
+view list
+select notes.txt
+menu openWith enabled
+openwith-menubar default
+openwith-pick menubar default
+select letter.txt,notes.txt
+menu openWith enabled
+openwith-menubar default
+openwith-pick menubar second
+# Choose App… and Change Default App… bring up the chooser for the same files; picking an app in it opens them
+select notes.txt
+openwith-chooser context choose second
+openwith-chooser menubar choose first
+select letter.txt,notes.txt
+openwith-chooser context choose first
+# Always Open With (Option) and Change Default App… make the app the default for that kind of file, then open it.
+# It's the default from then on (here only the stand-in's).
+select readme.md
+openwith-always context second
+openwith-context default
+select letter.txt,notes.txt
+openwith-chooser menubar change second
+openwith-context default
+# In Recent: the files just opened are there, in the list and in the grid
+recent
+wait 0.4
+location recent
+view list
+select notes.txt
+selected notes.txt
+openwith-context default
+openwith-pick context default
+view grid
+select notes.txt
+openwith-context default
+select letter.txt,notes.txt
+openwith-context default
+openwith-menubar default
+# In search results, in the grid and in the list
+go @FIX@/home/OpenWith
+view grid
+search notes
+wait 0.6
+has notes.txt
+select notes.txt
+selected notes.txt
+openwith-context default
+openwith-pick context default
+view list
+select notes.txt
+openwith-context default
+openwith-menubar default
+search
+wait 0.4
+cmd closeTab
+wait 0.3

@@ -54,6 +54,7 @@ if (( tests == 0 || tests == skipped || test_failures != 0 )); then
 fi
 run_check python-tests python3 -m unittest discover -s scripts/rebuild -p 'test_*.py' -v
 run_check static-tests python3 -m unittest discover -s scripts -p 'test_static_checks.py' -v
+run_check privacy-tests python3 -I -B -m unittest discover -s scripts -p 'test_privacy_check.py' -v
 run_check static bash scripts/static_checks.sh
 run_check core-type-name-fixtures python3 scripts/rebuild/check_core_type_names.py --self-test
 run_check core-type-names python3 scripts/rebuild/check_core_type_names.py

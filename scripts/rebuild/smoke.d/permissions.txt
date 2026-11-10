@@ -1,0 +1,512 @@
+# Access: status cards, the Full Disk Access guide and the welcome checklist, against the fixture's stand-ins
+app-icon App/AppIcon.icns
+appearance light
+dismiss-operations
+go @FIX@/home/Documents
+fda-is denied
+# An ordinary permissions refusal: honest words, no Settings button, and the old listing is gone
+fixture-chmod 000 @FIX@/home/Private
+select alpha.md
+go @FIX@/home/Private
+card-reads You don’t have permission to see inside “Private”
+card-buttons Try Again
+card-announced You don’t have permission to see inside “Private”
+listing-hidden true
+location @FIX@/home/Documents
+# The sidebar follows the card: Private has no row of its own, so Home, which holds it, is highlighted, not Documents underneath
+sidebar-on Home
+# Nothing reaches the hidden listing: nothing selected to trash, nowhere to make a folder, nothing to select
+menu trash disabled
+menu newFolder disabled
+menu selectAll disabled
+view grid
+focus-in-listing false
+view list
+focus-in-listing false
+card-press Try Again
+card-reads You don’t have permission to see inside “Private”
+screenshot @SHOTS@/card-ownership.png
+# Back returns to the folder the card covered, selection included, without touching history
+cmd back
+card-none
+listing-hidden false
+location @FIX@/home/Documents
+has alpha.md
+selected alpha.md
+sidebar-on Documents
+menu trash enabled
+fixture-chmod 755 @FIX@/home/Private
+# macOS's TV library: its own Settings row, or Full Disk Access
+fixture-chmod 000 @FIX@/home/Movies/TV
+go @FIX@/home/Movies/TV
+card-reads Helm can’t open “TV”
+card-style problem
+card-buttons Grant Access…,Full Disk Access…,Try Again
+listing-hidden true
+screenshot @SHOTS@/card-media-light.png
+appearance dark
+screenshot @SHOTS@/card-media-dark.png
+appearance light
+card-press Grant Access…
+opened-pane Privacy_Media
+# With Full Disk Access on, the library's own switch is still the way in, and nothing says to reopen Helm
+fda granted
+card-says Helm has Full Disk Access, but macOS also guards your TV and music libraries
+card-buttons Grant Access…,Try Again
+screenshot @SHOTS@/card-media-granted.png
+fda denied
+# Up from the card goes to the folder holding TV, not the one the card covered
+menu up enabled
+cmd up
+card-none
+location @FIX@/home/Movies
+fixture-chmod 755 @FIX@/home/Movies/TV
+# iCloud Drive and the folders macOS asks about point at Files & Folders
+fixture-chmod 000 @FIX@/home/Library/Mobile Documents/com~apple~CloudDocs/Drafts
+go @FIX@/home/Library/Mobile Documents/com~apple~CloudDocs/Drafts
+card-reads Helm can’t open “Drafts”
+card-buttons Grant Access…,Try Again
+card-press Grant Access…
+opened-pane Privacy_FilesAndFolders
+screenshot @SHOTS@/card-files-and-folders.png
+fixture-chmod 755 @FIX@/home/Library/Mobile Documents/com~apple~CloudDocs/Drafts
+# Other apps' data needs Full Disk Access: its button opens the guide
+fixture-chmod 000 @FIX@/home/Library/Containers/com.example.notes
+go @FIX@/home/Library/Containers/com.example.notes
+card-reads Helm can’t open “com.example.notes”
+card-says Give Helm Full Disk Access
+screenshot @SHOTS@/card-other-apps.png
+card-press Grant Access…
+onboarding-is guide
+onboarding close
+onboarding-is closed
+fixture-chmod 755 @FIX@/home/Library/Containers/com.example.notes
+# A place that's gone
+go @FIX@/home/Gone
+card-reads “Gone” no longer exists
+card-buttons Go to Home
+screenshot @SHOTS@/card-not-found.png
+# The Trash without Full Disk Access: the guide, Finder, or try again
+fixture-chmod 000 @FIX@/home/.Trash
+open-trash
+card-reads Helm can’t show the Trash
+card-buttons Grant Access…,Open in Finder,Try Again
+sidebar-on Trash
+listing-hidden true
+screenshot @SHOTS@/card-trash-light.png
+appearance dark
+screenshot @SHOTS@/card-trash-dark.png
+appearance light
+card-press Open in Finder
+trash-in-finder 1
+# Empty Trash without Full Disk Access shows the guide rather than a bare refusal
+empty-trash
+onboarding-is guide
+onboarding close
+# With Full Disk Access on, a Trash that still refuses gets a plain message, not the guide
+fda granted
+empty-trash-says You don’t have permission
+onboarding-is closed
+fda denied
+# In a new tab with no history, Back still leaves the card. New Tab opens the place on show, which here is the Trash,
+# so this tab goes back to its folder first, and opens the Trash again once the new tab has closed.
+cmd back
+card-none
+cmd newTab
+tabs 3
+open-trash
+card-reads Helm can’t show the Trash
+menu back enabled
+cmd back
+card-none
+cmd closeTab
+tabs 2
+open-trash
+card-reads Helm can’t show the Trash
+card-press Grant Access…
+# The guide is the welcome window with only the Full Disk Access row, Helm's icon to drag, and one button
+onboarding-is guide
+setup-rows access
+setup-buttons Not Now,Open System Settings
+onboarding-reads Full Disk Access is off
+onboarding-shot @SHOTS@/guide-off-light.png
+appearance dark
+onboarding-shot @SHOTS@/guide-off-dark.png
+appearance light
+onboarding-press Open System Settings
+opened-pane Privacy_AllFiles
+setup-row access waiting
+setup-buttons Done
+onboarding-reads Waiting for Full Disk Access
+onboarding-shot @SHOTS@/guide-opened.png
+# A scripted run never floats the guide over other apps, not even over System Settings
+onboarding-frontmost com.apple.systempreferences
+onboarding-level normal
+onboarding-frontmost none
+# Access arrives: the guide shows a check mark and closes by itself, and the Trash opens by itself
+fixture-chmod 755 @FIX@/home/.Trash
+fda granted
+onboarding-reads Full Disk Access is on
+setup-row access done
+onboarding-shot @SHOTS@/guide-on.png
+wait 2
+onboarding-is closed
+location trash
+listing-hidden false
+# Full Disk Access is on but the Trash still refuses: its own permissions, which reopening Helm won't change
+fixture-chmod 000 @FIX@/home/.Trash
+cmd refresh
+card-reads Helm can’t show the Trash
+card-says the Trash’s own permissions
+card-buttons Try Again,Open in Finder
+screenshot @SHOTS@/card-trash-granted.png
+fixture-chmod 755 @FIX@/home/.Trash
+card-press Try Again
+listing-hidden false
+location trash
+fda denied
+# Empty Trash empties what it can and names what it can't, such as a locked item
+fixture-mkdir @FIX@/home/.Trash/Stuck
+watch-external @FIX@/home/.Trash/Stuck/inner.txt
+watch-external @FIX@/home/.Trash/loose.txt
+fixture-chmod 555 @FIX@/home/.Trash/Stuck
+empty-trash-says “Stuck” couldn’t be deleted
+missing @FIX@/home/.Trash/loose.txt
+exists @FIX@/home/.Trash/Stuck/inner.txt
+onboarding-is closed
+fixture-chmod 755 @FIX@/home/.Trash/Stuck
+window-empty-trash
+# States a fixture can't produce, built the way the window builds them, for a look
+card-preview waiting
+card-reads Waiting for permission
+card-style waiting
+card-says may be asking
+screenshot @SHOTS@/card-waiting-light.png
+appearance dark
+screenshot @SHOTS@/card-waiting-dark.png
+appearance light
+card-preview cloud-slow
+card-reads “Google Drive” isn’t responding
+card-style problem
+screenshot @SHOTS@/card-cloud-slow.png
+card-preview granted-other-apps
+card-reads You don’t have permission to see inside “com.example.notes”
+card-buttons Try Again
+screenshot @SHOTS@/card-granted-other-apps.png
+card-preview disk
+screenshot @SHOTS@/card-disk.png
+card-preview disconnected
+screenshot @SHOTS@/card-disconnected.png
+card-preview other
+screenshot @SHOTS@/card-other.png
+card-preview not-indexed
+screenshot @SHOTS@/card-not-indexed.png
+card-preview likely-private
+card-reads Helm can’t open “Calendars”
+card-says Full Disk Access may help
+card-buttons Full Disk Access…,Try Again
+screenshot @SHOTS@/card-likely-private.png
+card-preview trash
+screenshot @SHOTS@/empty-trash.png
+card-preview recent
+screenshot @SHOTS@/empty-recent.png
+card-preview no-results
+screenshot @SHOTS@/empty-no-results.png
+card-preview none
+# Empty states stay quiet, and the listing underneath still takes clicks and drops
+go @FIX@/home/Movies/Empty
+card-reads Folder is empty
+card-style empty
+listing-hidden false
+screenshot @SHOTS@/empty-folder-light.png
+appearance dark
+screenshot @SHOTS@/empty-folder-dark.png
+appearance light
+# The welcome window: one screen with a short checklist. Opening it isn't seeing it
+setting onboardingCompleted false
+viewer-is finder
+dock-is not-first
+fda-is denied
+panes-mark
+onboarding open
+onboarding-is setup
+setting-is onboardingCompleted false
+setup-rows viewer,access
+setup-checked viewer,access
+setup-row viewer pending
+setup-row access pending
+setup-buttons Not Now,Set Up
+onboarding-shot @SHOTS@/setup-fresh-light.png
+appearance dark
+onboarding-shot @SHOTS@/setup-fresh-dark.png
+appearance light
+# Not Now closes it and changes nothing, but counts as seen
+onboarding-press Not Now
+onboarding-is closed
+setting-is onboardingCompleted true
+viewer-is finder
+dock-is not-first
+panes-opened 0
+# So does the close button
+setting onboardingCompleted false
+onboarding open
+setup-check viewer off
+onboarding close
+onboarding-is closed
+setting-is onboardingCompleted true
+viewer-is finder
+panes-opened 0
+# A row that's unchecked is left alone; ticking it again puts it back. Reopening starts with every box ticked
+setting onboardingCompleted false
+onboarding open
+setup-checked viewer,access
+setup-check viewer off
+setup-checked access
+setup-check viewer on
+setup-checked viewer,access
+# Set Up does every checked row: Helm becomes the file viewer, goes first in the Dock, and System Settings opens
+# at Full Disk Access with Helm's icon to drag into its list
+onboarding-press Set Up
+setting-is onboardingCompleted true
+viewer-is helm
+dock-is first
+setup-row viewer done
+setup-checked access
+setup-row access waiting
+opened-pane Privacy_AllFiles
+panes-opened 1
+setup-buttons Done
+onboarding-reads Waiting for Full Disk Access
+onboarding-shot @SHOTS@/setup-waiting-light.png
+appearance dark
+onboarding-shot @SHOTS@/setup-waiting-dark.png
+appearance light
+# It waits for Full Disk Access, floating over System Settings only for a person, never in a scripted run
+onboarding-frontmost com.apple.systempreferences
+onboarding-level normal
+onboarding-frontmost none
+wait 1
+onboarding-is setup
+# Access arrives: a check mark, a moment to see it, and the window closes by itself. VoiceOver hears both
+fda granted
+setup-row access done
+onboarding-announced Full Disk Access is on. Everything you chose is set up.
+onboarding-is setup
+wait 2
+onboarding-is closed
+# With every row done, the first launch doesn't open the window at all, and that counts as seen
+setting onboardingCompleted false
+setup-first-launch
+onboarding-is closed
+setting-is onboardingCompleted true
+# Help › Set Up Helm… opens it any time with live status: every row done shows only its check mark
+help-menu Set Up Helm…
+onboarding-is setup
+setup-rows viewer,access
+setup-row viewer done
+setup-row access done
+setup-checked none
+setup-buttons Done
+onboarding-shot @SHOTS@/setup-done-light.png
+appearance dark
+onboarding-shot @SHOTS@/setup-done-dark.png
+appearance light
+onboarding-press Done
+onboarding-is closed
+# Back to Finder and no access, through the same switches Settings uses
+file-viewer finder
+first-in-dock false
+fda denied
+# Helm in Applications already shows no move row. One running from a disk image does, through a stand-in mover
+onboarding open
+setup-rows viewer,access
+setup-preview move
+setup-rows viewer,access,move
+setup-checked viewer,access,move
+setup-unavailable none
+setup-row move pending
+setup-buttons Not Now,Set Up
+onboarding-shot @SHOTS@/setup-move-light.png
+appearance dark
+onboarding-shot @SHOTS@/setup-move-dark.png
+appearance light
+# From a disk image, Use Helm instead of Finder goes only with the move: the Dock would lose Helm once it's ejected.
+# Ticking the move again brings the choice back
+setup-check move off
+setup-unavailable viewer
+setup-checked access
+onboarding-shot @SHOTS@/setup-move-unticked.png
+setup-check move on
+setup-unavailable none
+setup-checked viewer,access,move
+# The same from macOS's temporary copy of a download
+setup-preview translocated
+setup-check move off
+setup-unavailable viewer
+setup-check move on
+setup-preview move
+# The move goes first, and this copy leaves everything else to the copy it reopens, so the file viewer and the Dock
+# point at Applications. The rows are saved for that copy before anything quits
+panes-mark
+onboarding-press Set Up
+setup-moves 1
+setup-relaunched viewer,access,move
+setup-carried viewer,access,move
+viewer-is finder
+dock-is not-first
+panes-opened 0
+# The stand-in never quits, as when saving fails and the person cancels the quit: no endless spinner, but what to do
+setup-row move failed
+setup-buttons Not Now,Set Up
+onboarding-announced Move to Applications didn’t work. Couldn’t reopen from /Applications, so quit Helm and open it there.
+onboarding-shot @SHOTS@/setup-move-not-reopened.png
+# Trying again only reopens the copy already made
+onboarding-press Set Up
+setup-moves 1
+setup-relaunched viewer,access,move
+setup-row move failed
+onboarding close
+setup-preview none
+# That copy, opened by hand without the flag, still carries on with the saved rows, once
+setup-launch
+onboarding-is setup
+setup-rows viewer,access,move
+setup-row move done
+setup-row viewer done
+setup-row access waiting
+setup-carried none
+viewer-is helm
+dock-is first
+panes-opened 1
+onboarding close
+setup-launch
+onboarding-is closed
+file-viewer finder
+first-in-dock false
+# The reopened copy shows the window again and carries on: moved, the file viewer and Dock, then Full Disk Access
+panes-mark
+setup-continue viewer,access,move
+onboarding-is setup
+setup-rows viewer,access,move
+setup-row move done
+setup-row viewer done
+setup-row access waiting
+viewer-is helm
+dock-is first
+panes-opened 1
+onboarding close
+file-viewer finder
+first-in-dock false
+# The first launch opens the checklist while something is left to do. Quitting with it open counts as seen
+setting onboardingCompleted false
+setup-first-launch
+onboarding-is setup
+onboarding-quitting
+setting-is onboardingCompleted true
+onboarding close
+# The guide on its own isn't the welcome
+setting onboardingCompleted false
+help-menu Full Disk Access…
+onboarding-is guide
+onboarding-quitting
+setting-is onboardingCompleted false
+onboarding close
+setting-is onboardingCompleted false
+setting onboardingCompleted true
+# Help › Set Up Helm… and Help › Full Disk Access… bring them back
+help-menu Set Up Helm…
+onboarding-is setup
+onboarding close
+help-menu Full Disk Access…
+onboarding-is guide
+onboarding close
+# Asking for the guide while the checklist is open keeps the checklist, which has the same row. That row now shows
+# Helm's icon and its own Open System Settings button, which changes nothing else
+help-menu Set Up Helm…
+setup-row access pending
+help-menu Full Disk Access…
+onboarding-is setup
+panes-mark
+onboarding-press Open System Settings
+panes-opened 1
+opened-pane Privacy_AllFiles
+setup-row access waiting
+viewer-is finder
+dock-is not-first
+setup-buttons Not Now,Set Up
+onboarding close
+# The same from a card's Grant Access…
+help-menu Set Up Helm…
+fixture-chmod 000 @FIX@/home/Library/Containers/com.example.notes
+go @FIX@/home/Library/Containers/com.example.notes
+card-press Grant Access…
+onboarding-is setup
+setup-buttons Not Now,Set Up
+onboarding-shot @SHOTS@/setup-access-asked.png
+panes-mark
+onboarding-press Open System Settings
+panes-opened 1
+viewer-is finder
+dock-is not-first
+fixture-chmod 755 @FIX@/home/Library/Containers/com.example.notes
+onboarding close
+# The guide waiting on System Settings becomes the checklist still waiting, with its icon and button
+help-menu Full Disk Access…
+onboarding-is guide
+panes-mark
+onboarding-press Open System Settings
+setup-row access waiting
+help-menu Set Up Helm…
+onboarding-is setup
+setup-row access waiting
+setup-checked viewer,access
+setup-buttons Not Now,Set Up
+onboarding-reads Waiting for Full Disk Access
+onboarding-press Open System Settings
+panes-opened 2
+onboarding close
+# Asked for again just as it was about to close by itself, it stays until it's closed
+onboarding open
+setup-check viewer off
+onboarding-press Set Up
+setup-row access waiting
+fda granted
+setup-row access done
+help-menu Set Up Helm…
+wait 2
+onboarding-is setup
+onboarding close
+fda denied
+# With VoiceOver on, the window says everything is set up and waits for the person to close it
+setup-voiceover on
+onboarding open
+setup-check viewer off
+onboarding-press Set Up
+fda granted
+onboarding-announced Full Disk Access is on. Everything you chose is set up.
+wait 2
+onboarding-is setup
+onboarding-press Done
+onboarding-is closed
+setup-voiceover off
+fda denied
+viewer-is finder
+dock-is not-first
+go @FIX@/home/Documents
+# Settings › General shows the Access section, and its buttons open the guide and the welcome
+settings-access setup
+onboarding-is guide
+onboarding close
+settings-access welcome
+onboarding-is setup
+onboarding close
+setting-is onboardingCompleted true
+settings-shot general @SHOTS@/settings-general-access-light.png
+appearance dark
+settings-shot general @SHOTS@/settings-general-access-dark.png
+# Back where the main steps left off
+appearance system
+go @FIX@/home/Documents
+location @FIX@/home/Documents
+view-is list
+card-none

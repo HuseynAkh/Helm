@@ -1,0 +1,222 @@
+# Header: these start in the Documents tab, in list view, with two tabs open, and leave it that way, sort and all.
+# The Grid | List switch shows the view you're in, and the sort button says the sort
+header-view-is list
+sort-fits
+sort-save
+header-shot @SHOTS@/header-list.png
+view grid
+header-view-is grid
+sort-choose Newest First
+sort-title-is Newest first
+header-shot @SHOTS@/header-grid.png
+header-tooltips
+view-options open
+header-shot @SHOTS@/header-sort-open.png
+view-options close
+menu-lit true
+header-shot @SHOTS@/header-menu-lit.png
+menu-lit false
+appearance light
+header-shot @SHOTS@/header-grid-light.png
+appearance system
+# Search: an empty search closes when you click away, and the path comes back
+search-open
+focus-is search
+search-looks typing
+header-shot @SHOTS@/header-search-empty.png
+focus-files
+search-shown false
+focus-is files
+path-reads Home / Documents
+# A search with words keeps its results when you click the files, in the path bar's resting fill
+search-type q2
+wait 0.8
+has q2.txt
+search-looks typing
+header-shot @SHOTS@/header-search-typing.png
+focus-files
+search-shown true
+search-text-is q2
+search-looks resting
+focus-is files
+has q2.txt
+header-shot @SHOTS@/header-search-resting.png
+# Cmd+F puts the caret back in it, and Return keeps the search and the caret
+cmd find
+focus-is search
+search-looks typing
+search-key return
+search-shown true
+focus-is search
+# Escape in the field closes it, and the files have the keys
+search-key escape
+search-shown false
+focus-is files
+lacks q2.txt
+# Escape in the files closes it too
+search-type q2
+wait 0.8
+focus-files
+escape-files
+search-shown false
+focus-is files
+lacks q2.txt
+# Go › Documents while you're typing in Documents goes nowhere, but it ends the search and the field closes
+search-type q2
+wait 0.8
+has q2.txt
+focus-is search
+cmd documents
+search-shown false
+focus-is files
+path-reads Home / Documents
+lacks q2.txt
+# Choosing a view while you type leaves the caret, and the empty search, in the field
+search-open
+header-switch list
+header-view-is list
+view-is list
+focus-is search
+search-shown true
+header-switch grid
+view-is grid
+focus-is search
+search-key escape
+search-shown false
+focus-is files
+# Going somewhere else ends the search, and the files get the keys
+search-type q2
+wait 0.8
+go @FIX@/home/Downloads
+search-shown false
+focus-is files
+path-reads Home / Downloads
+cmd back
+location @FIX@/home/Documents
+search-type q2
+wait 0.8
+cmd forward
+search-shown false
+focus-is files
+location @FIX@/home/Downloads
+cmd back
+location @FIX@/home/Documents
+# Escape in the location bar gives the keys back to the files
+cmd location
+focus-is path
+location-escape
+focus-is files
+# Cmd+L during a search closes it and edits the location in the path bar you can see
+search-type q2
+wait 0.8
+cmd location
+search-shown false
+focus-is path
+return
+focus-is files
+location @FIX@/home/Documents
+lacks q2.txt
+# Each tab keeps its own search
+search-type q2
+wait 0.8
+focus-files
+cmd newTab
+search-shown false
+focus-is files
+path-reads Home / Documents
+cmd previousTab
+search-shown true
+search-text-is q2
+search-looks resting
+focus-is files
+has q2.txt
+cmd nextTab
+search-shown false
+cmd closeTab
+tabs 2
+search-shown true
+search-text-is q2
+escape-files
+search-shown false
+# The Down arrow takes the keys from the field to the results
+search-type q2
+wait 0.8
+search-key down
+focus-is files
+selected q2.txt
+search-shown true
+escape-files
+search-shown false
+# Straight after typing too: the first result is selected once it comes in
+search-type q2
+search-key down
+focus-is files
+wait 0.8
+selected q2.txt
+escape-files
+search-shown false
+# A search typed just before going elsewhere doesn't start late and undo the trip
+search-type q2
+go @FIX@/home/Downloads
+wait 0.8
+location @FIX@/home/Downloads
+search-shown false
+lacks q2.txt
+go @FIX@/home/Documents
+# A narrow window drops the sort's words first, before the sidebar gives up any width, and they come back
+sidebar-width-save
+window-width 760
+sort-title-is none
+sidebar-width-kept
+header-shot @SHOTS@/header-narrow.png
+window-width 1040
+sort-title-is Newest first
+sidebar-width-kept
+# With the sidebar hidden, the window still goes down to its 620-point minimum: the words go rather than it growing
+cmd sidebar
+header-leading-is 84
+window-width 620
+sort-title-is none
+header-shot @SHOTS@/header-narrow-no-sidebar.png
+search-open
+header-shot @SHOTS@/header-narrow-search.png
+search-key escape
+search-shown false
+window-width 1040
+sort-title-is Newest first
+cmd sidebar
+header-leading-is 8
+sidebar-width-kept
+# Dragging the sidebar shut moves the header's buttons clear of the window buttons, and back
+sidebar-collapse true
+header-leading-is 84
+sidebar-visible-is false
+header-shot @SHOTS@/header-no-sidebar.png
+sidebar-collapse false
+header-leading-is 8
+sidebar-visible-is true
+sidebar-divider 0
+header-leading-is 84
+sidebar-visible-is false
+sidebar-divider 232
+header-leading-is 8
+sidebar-visible-is true
+# The window's edges stay macOS's own, in each view, with tabs and without the sidebar
+window-edges-native
+view list
+header-view-is list
+window-edges-native
+title-bar-fits-header
+header-buttons-even
+cmd newTab
+window-edges-native
+cmd closeTab
+cmd sidebar
+header-leading-is 84
+window-edges-native
+cmd sidebar
+header-leading-is 8
+sort-restore
+tabs 2
+location @FIX@/home/Documents
+view-is list
