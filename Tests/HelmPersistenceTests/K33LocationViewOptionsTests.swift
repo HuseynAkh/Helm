@@ -28,6 +28,31 @@ final class K33LocationViewOptionsTests: XCTestCase {
         XCTAssertEqual(restored.options(for: location), options)
         XCTAssertNotEqual(LocationViewOptionsStore.stableKey(for: .recent), LocationViewOptionsStore.stableKey(for: .directory(URL(fileURLWithPath: "/recent"))))
     }
+    /// Recent has its own default order, so a record that matches the general defaults still has to count.
+    @MainActor func testHasOptionsCountsARecordThatMatchesTheDefaults() async throws {
+        let directory = try temporaryStoreDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("views.json")
+        let store = try await LocationViewOptionsStore(url: url)
+        XCTAssertFalse(store.hasOptions(for: .recent))
+        try store.set(ViewOptions(), for: .recent)
+        XCTAssertTrue(store.hasOptions(for: .recent))
+        XCTAssertEqual(store.options(for: .recent), store.defaults)
+        XCTAssertFalse(store.hasOptions(for: .trash))
+        // Asking isn't a use, so it leaves the least-recently-used order alone.
+        try store.set(ViewOptions(iconSize: 120), for: .trash)
+        let order = store.keysLeastRecentlyUsedFirst
+        XCTAssertTrue(store.hasOptions(for: .recent))
+        XCTAssertEqual(store.keysLeastRecentlyUsedFirst, order)
+        // Recent's Last Opened order is kept across a save.
+        try store.set(ViewOptions(viewMode: .list, sort: ItemSort(field: .lastOpened, ascending: false)), for: .recent)
+        try await store.flush()
+        let restored = try await LocationViewOptionsStore(url: url)
+        XCTAssertTrue(restored.hasOptions(for: .recent))
+        XCTAssertEqual(restored.options(for: .recent).sort, ItemSort(field: .lastOpened, ascending: false))
+        try restored.removeRecords(forVanishedLocations: [.recent])
+        XCTAssertFalse(restored.hasOptions(for: .recent))
+    }
     @MainActor func testLRUEvictionReadTouchAndExplicitRemoval() async throws {
         let directory = try temporaryStoreDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

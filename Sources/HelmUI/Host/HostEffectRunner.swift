@@ -34,7 +34,9 @@ import HelmSearch
         case .startSearch(let query, let generation):
             return search(query, generation: generation, tab: tab, send: send)
         case .recordRecent(let url):
-            dependencies.recents.recordAccess(to: url, kind: .directory, at: dependencies.clock.now())
+            if dependencies.remembersRecentItems {
+                dependencies.recents.recordAccess(to: url, kind: .directory, at: dependencies.clock.now())
+            }
             return nil
         case .persistShowHidden(let value):
             dependencies.settings.set(.bool(value), for: .showHiddenFiles)
@@ -92,11 +94,16 @@ import HelmSearch
         }
     }
 
+    /// Scripted runs set this to stand in for a slow disk or share; it's zero otherwise.
+    static var childListingDelayForTesting: TimeInterval = 0
+
     private func loadChildren(_ url: URL, id: ItemID, generation: Generation, options: LoadOptions, tab: TabID,
                               send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let fileSystem = dependencies.fileSystem
+        let delay = Self.childListingDelayForTesting
         let task = Task.detached {
             do {
+                if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
                 var entries: [FileEntry] = []
                 let enumeration = EnumerationOptions(includeHidden: options.showHidden, batchSize: options.batchSize)
                 for try await batch in fileSystem.enumerate(url, options: enumeration) { entries += batch }
@@ -114,6 +121,9 @@ import HelmSearch
 
     // MARK: Search
 
+    /// Tests stand in for Spotlight here with answers of their own; nil asks Spotlight.
+    static var spotlightAnswersForTesting: ((SearchQuery) -> AsyncStream<[URL]>)?
+
     private func search(_ query: SearchQuery, generation: Generation, tab: TabID,
                         send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let fileSystem = dependencies.fileSystem
@@ -121,21 +131,31 @@ import HelmSearch
         let home = dependencies.home
         let volumes = dependencies.volumes.volumes.filter { !$0.isInternal }.map(\.url)
         let spotlight = SpotlightSearch(query: query)
+        let standIn = Self.spotlightAnswersForTesting?(query)
+        let context = Self.rankingContext(query, settings: dependencies.settings.snapshot)
         // Current-folder searches also walk the folder, which finds what Spotlight hasn't indexed.
         let walk = Task.detached { () -> [SearchCandidate] in
             let resolver = SearchRootResolver(home: home, computerRoots: [home], removableVolumeRoots: volumes)
             let engine = SearchEngine(fileSystem: fileSystem, resolver: resolver, clock: clock)
             let request = SearchRequest(query: query)
             guard case .currentFolder = query.scope else { return [] }
-            let batch = try? await engine.collect(request, context: SearchRankingContext(query: query))
+            let batch = try? await engine.collect(request, context: context)
             return batch?.results.map { SearchCandidate(entry: $0.entry, isDocumentLike: $0.isDocumentLike) } ?? []
         }
         let task = Task.detached {
             let walked = await walk.value
             try? Task.checkCancellation()
             guard !Task.isCancelled else { return }
-            send(.tab(tab, .searchResults(generation, rank(walked, query: query, clock: clock))))
-            for await urls in await spotlight.updates() {
+            // Any batch ends the gathering. Outside the folder you're in nothing was walked, so only Spotlight's
+            // answer can say there are no results, and the search keeps saying Searching… until it comes.
+            var answered = false
+            if case .currentFolder = query.scope {
+                send(.tab(tab, .searchResults(generation, rank(walked, context: context, clock: clock))))
+                answered = true
+            }
+            let answers: AsyncStream<[URL]>
+            if let standIn { answers = standIn } else { answers = await spotlight.updates() }
+            for await urls in answers {
                 guard !Task.isCancelled else { break }
                 var merged = walked
                 var seen = Set(walked.map(\.entry.id))
@@ -143,13 +163,23 @@ import HelmSearch
                     guard let entry = try? await fileSystem.entry(at: url), seen.insert(entry.id).inserted else { continue }
                     merged.append(SearchCandidate(entry: entry))
                 }
-                send(.tab(tab, .searchResults(generation, rank(merged, query: query, clock: clock))))
+                send(.tab(tab, .searchResults(generation, rank(merged, context: context, clock: clock))))
+                answered = true
             }
+            // Spotlight couldn't start, so what was found is all there is.
+            if !answered, !Task.isCancelled { send(.tab(tab, .searchResults(generation, rank(walked, context: context, clock: clock)))) }
         }
         return StoreEffectCancellation {
             walk.cancel(); task.cancel()
             Task { await spotlight.stop() }
         }
+    }
+    /// How results are ordered, from Settings › Search as it is when the search starts: results in your own folders
+    /// (Documents, Desktop, Downloads and the like) come first only while that switch is on, and macOS's system
+    /// folders sink to the bottom unless they're included.
+    static func rankingContext(_ query: SearchQuery, settings: SettingsSnapshot) -> SearchRankingContext {
+        SearchRankingContext(query: query, preferredRoots: settings.bool(.searchPreferUserFolders) ? nil : [],
+                             includeSystemLocations: settings.bool(.searchIncludeSystemLocations))
     }
 
     // MARK: Location bar
@@ -159,8 +189,13 @@ import HelmSearch
         switch effect {
         case .requestCompletions(let request):
             let engine = PathCompletionEngine(listing: LiveCompletionListing(fileSystem: dependencies.fileSystem))
+            // Suggestions wait until typing pauses (Settings › Advanced). The next key cancels this request, wait and all.
+            // Only the pause's lower end is kept in bounds, and a Duration holds any number of milliseconds without
+            // overflowing, so a pause edited by hand only holds suggestions back.
+            let pause = Duration.milliseconds(max(0, dependencies.settings.snapshot.integer(.completionDebounceMilliseconds)))
             let task = Task.detached {
                 do {
+                    try await Task.sleep(for: pause)
                     let rows = try await engine.complete(request)
                     try Task.checkCancellation()
                     send(.tab(tab, .addressBar(.completions(request.generation, rows))))
@@ -199,12 +234,19 @@ import HelmSearch
 }
 
 /// The path as the file system spells it. Finder also lands on the real folder, so paths never run through a link.
-enum CanonicalPath {
-    static func resolve(_ url: URL) -> URL {
+public enum CanonicalPath {
+    public static func resolve(_ url: URL) -> URL {
         let directory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         guard let real = realpath(url.path, nil) else { return url }
         defer { free(real) }
         return URL(fileURLWithPath: String(cString: real), isDirectory: directory)
+    }
+    /// An item as the file system spells it: every folder on the way to it as the disk has it, through any link, and
+    /// its own name in the disk's case. Unlike `resolve`, a link stays a link, so showing one selects the link itself,
+    /// as Finder's reveal does.
+    public static func spelling(of url: URL) -> URL {
+        guard let path = try? url.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath else { return url }
+        return URL(fileURLWithPath: path, isDirectory: url.hasDirectoryPath)
     }
 }
 
@@ -218,8 +260,8 @@ func loadError(_ error: Error) -> LoadError {
     }
 }
 
-private func rank(_ candidates: [SearchCandidate], query: SearchQuery, clock: any HelmClock) -> [SearchResult] {
-    SearchRanker.rank(candidates, context: SearchRankingContext(query: query), clock: clock).results
+private func rank(_ candidates: [SearchCandidate], context: SearchRankingContext, clock: any HelmClock) -> [SearchResult] {
+    SearchRanker.rank(candidates, context: context, clock: clock).results
 }
 
 /// Lists a folder for the location bar's completions.

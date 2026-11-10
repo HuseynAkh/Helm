@@ -22,17 +22,13 @@ extension SettingsPaneView {
             } header: {
                 Text("Folders")
             } footer: {
-                note("Folders start out this way. A folder you've changed keeps its own view.")
-            }
-            Section {
-                Toggle("Show system and recovery volumes", isOn: bool(.showAllMountedVolumes))
-            } header: {
-                Text("Sidebar")
-            } footer: {
-                note("macOS mounts helper volumes of its own. Helm leaves them out unless this is on.")
+                note(Self.foldersNote)
             }
         }
     }
+    /// What the Folders choices apply to. As in Finder, a tab keeps its view as you go from folder to folder, and a new
+    /// tab takes the one it came from, so only a new window starts from here (BrowserWindowController.applyRememberedViewOptions).
+    static let foldersNote = "New windows use these, except in folders you’ve changed."
     var appearance: some View {
         Group {
             Section {
@@ -42,8 +38,6 @@ extension SettingsPaneView {
                           label: "\(ContentZoom.iconPercent(snapshot.double(.gridIconSize)))%")
             } header: {
                 Text("Size")
-            } footer: {
-                note("⌘+ and ⌘− change these too. Click the percentage in View Options to go back to 100%.")
             }
             Section {
                 Toggle("Transparent window", isOn: bool(.sidebarLiquidGlass))
@@ -52,8 +46,6 @@ extension SettingsPaneView {
                     .disabled(!snapshot.bool(.sidebarLiquidGlass))
             } header: {
                 Text("Window")
-            } footer: {
-                note("50% is Helm's own look. The sidebar clears first, then the files. Colors follow Light and Dark mode.")
             }
         }
     }

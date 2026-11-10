@@ -19,6 +19,7 @@ public actor InMemoryFileSystem: FileSystem {
     private let identityScope = UUID().uuidString
     private var tick: TimeInterval = 0
     private var latencyNanoseconds: UInt64 = 0
+    private var capacity = Int64.max
     public init(caseSensitive: Bool = true) {
         self.init(caseSensitive: caseSensitive, volumeIDs: [:])
     }
@@ -226,7 +227,9 @@ public actor InMemoryFileSystem: FileSystem {
         }?.value ?? "memory"
     }
     public func volumeIdentifier(for url: URL) async throws -> String { _ = try node(url); return volumeID(for: url) }
-    public func availableCapacity(of url: URL) async throws -> Int64 { _ = try node(url); return Int64.max }
+    public func availableCapacity(of url: URL) async throws -> Int64 { _ = try node(url); return capacity }
+    /// What `availableCapacity` reports from now on, as a disk filling up or emptying would.
+    public func setAvailableCapacity(_ bytes: Int64) { capacity = bytes }
     /// Bulk fixture setup avoids actor hops while retaining ordinary collision checks (F-035).
     public func seedFiles(in directory: URL, count: Int) throws {
         for index in 0..<max(0, count) { try insert(directory.appendingPathComponent("file\(index)"), kind: .regular) }

@@ -34,6 +34,26 @@ public struct OperationResult: Sendable {
     public let error: OperationError?
     public var succeededCount: Int { outcomes.filter(\.succeeded).count }
     public var failedCount: Int { outcomes.filter { !$0.succeeded }.count }
+    /// The items a person chose, which is what they count: one replaced file is one item, however many steps it took.
+    public var items: PlanItems { PlanItems(outcomes.map(\.step)) }
+    /// Items whose every step succeeded.
+    public var succeededItemCount: Int {
+        let items = items
+        var failed: Set<Int> = []
+        for (index, outcome) in outcomes.enumerated() where !outcome.succeeded { failed.insert(items.ordinal(ofStepAt: index)) }
+        return items.count - failed.count
+    }
+    /// The names of the items that failed, in order, leaving out items that were never reached.
+    public var failedItemNames: [String] {
+        let items = items
+        var seen: Set<Int> = [], names: [String] = []
+        for (index, outcome) in outcomes.enumerated() {
+            guard case .failure(let error) = outcome.result, error != .notAttempted,
+                  seen.insert(items.ordinal(ofStepAt: index)).inserted else { continue }
+            names.append(items.name(ofStepAt: index))
+        }
+        return names
+    }
     /// Only completed original cut sources may be removed from clipboard metadata (B-037).
     public var completedMoveSources: Set<URL> {
         completedMoveSources(visit: {})

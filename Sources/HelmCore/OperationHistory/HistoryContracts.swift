@@ -63,6 +63,9 @@ public enum HistoryAction: Sendable {
     case beginRedoForward(HistoryRequestID)
     /// Retire the blocked undo entry after the host presents journal evidence and gets user confirmation.
     case acknowledgeReconciliation
+    /// A change the history can't undo just happened, such as a new archive. Undo and Redo mustn't reach back past it
+    /// to older changes, so both stacks are let go. Journal evidence stays.
+    case discardEntries
 }
 
 /// Intent only: the history reducer never performs file mutations (F-059/B-041).

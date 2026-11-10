@@ -25,13 +25,13 @@ No network access, commits, pushes or external actions were performed.
   returned next ID against the latest snapshot before starting its editor. Apply
   completion before reconciling away the renamed ID. Focus-loss cancellation,
   menu validation and text-first responder routing remain host responsibilities.
-- `GridCellView` and `ListRowView` are passive leaves; supply selection from
+- `ListRowView` is a passive leaf; supply selection from
   `SelectionModel.selected`, cut membership, tags and an already-resolved icon.
-  Neither reads the filesystem nor starts thumbnail/download requests. Tags reuse
+  It neither reads the filesystem nor starts thumbnail/download requests. Tags reuse
   `TagDotView`; stars remain separate. Local/unknown cloud metadata has no badge.
-  Grid retains the 96-point default icon, icon+44 cell dimensions, 11-point name,
-  two-line limit/middle truncation and 20% accent selection with radius 8 (F-035).
   List provides the 24-point name cell, 18-point icon and 13-point name (F-036).
+  The grid's cell is `GridItem` (GridItem.swift), an `NSCollectionViewItem`; its
+  name follows `GridNameShortener` in GridNameLines.swift (F-035, P-035).
   The outline host owns other columns, alternating backgrounds and disclosure.
   Hidden and cut opacity multiply; selection background remains fully visible.
 - `RubberBandOverlay` uses top-left grid content coordinates, clips decoration to

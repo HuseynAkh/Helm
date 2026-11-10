@@ -6,7 +6,7 @@ public enum NewWindowLocation: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .current: return "Same Folder as the Front Window"
+        case .current: return "Current folder"
         case .home: return "Home"
         case .desktop: return "Desktop"
         case .documents: return "Documents"

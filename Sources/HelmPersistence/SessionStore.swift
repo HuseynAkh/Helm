@@ -13,5 +13,7 @@ import HelmCore
         try await file.load()
     }
     public func replace(windows: [SessionWindow]) { file.replace(with: windows) }
+    /// Forgets the windows and deletes session.json, as when Reopen windows and tabs is off.
+    public func remove() { file.remove() }
     public func flush() async throws { try await file.flush() }
 }

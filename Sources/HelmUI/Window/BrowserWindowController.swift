@@ -14,9 +14,12 @@ public struct BrowserTabSeed {
     public let sort: ItemSort?
     public let showHidden: Bool?
     public let selecting: [URL]
-    public init(location: Location, viewMode: ViewMode? = nil, sort: ItemSort? = nil, showHidden: Bool? = nil, selecting: [URL] = []) {
+    /// `.restore` for a tab from the saved session, `.open` for a new window opened at a place, which Recent records.
+    public let intent: NavigationIntent
+    public init(location: Location, viewMode: ViewMode? = nil, sort: ItemSort? = nil, showHidden: Bool? = nil, selecting: [URL] = [],
+                intent: NavigationIntent = .restore) {
         self.location = location; self.viewMode = viewMode; self.sort = sort
-        self.showHidden = showHidden; self.selecting = selecting
+        self.showHidden = showHidden; self.selecting = selecting; self.intent = intent
     }
 }
 
@@ -75,30 +78,53 @@ struct WindowTints: Equatable {
     /// Per drag: whether an app can open what's dragged over it.
     var appDropAnswers: [String: Bool] = [:]
     let tabStrip = TabStripView()
-    private let contentContainer = NSView()
+    let contentContainer = NSView()
     private let list = FileListController()
     private let grid = FileGridController()
     private let statusHost = NSHostingView(rootView: StatusBarView(status: StatusPresentation(itemCount: 0)))
-    private let overlay = NSTextField(wrappingLabelWithString: "")
+    private var shownStatus = StatusPresentation(itemCount: 0)
+    /// Why the listing is empty, or why a place couldn't open, shown in its place.
+    let statePage = ContentStatePage()
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
     private var operationsHeight: NSLayoutConstraint?
     private var tabStripHeight: NSLayoutConstraint?
-    private var shownContent: FileContentPresenting?
+    private(set) var shownContent: FileContentPresenting?
     private var shownMode: ViewMode?
     private var subscriptions: [Any] = []
     private var pendingSelections: [TabID: Set<ItemID>] = [:]
     private var pendingRename: (tab: TabID, id: ItemID)?
-    private var freeBytes: [String: Int64] = [:]
+    /// Each folder's free space, with when it was read. A reading that failed keeps the last one known.
+    private var freeSpace: [String: (bytes: Int64?, read: Date)] = [:]
     /// Shown in the status bar while the window works on something with no operations row, such as compressing.
     private var busyMessage: String?
-    private var freeRequested: String?
+    /// Folders whose free space is being read now.
+    private var freeRequested: Set<String> = []
     private var searchDebounce: Task<Void, Never>?
+    /// Whether folders on show follow changes on disk by themselves (Settings › Advanced).
+    private var watchesDisk = true
+    /// Show Hidden Files as the tabs last heard it. A tab can list hidden items of its own accord, as it does to show one
+    /// asked for by name, and only a change to this setting overrides that.
+    private var showsHiddenFiles = false
+    /// The Down arrow took the keys to results that hadn't come in yet: the first is selected when they do.
+    var firstResultWanted: (tab: TabID, search: Generation)?
     var closedTabs: [Location] = []
-    var cutTransaction: ClipboardTransaction?
+    /// The app's cut, shared with every window, since they share one pasteboard.
+    var cutTransaction: ClipboardTransaction? { dependencies.cut.transaction }
+    /// This window's file operations, run one after another in the order they were asked for. The window's undo
+    /// history takes one at a time, so a request made while another runs waits its turn instead of being refused.
+    var operationQueue: Task<Void, Never>?
+    /// Operations asked for in this window that haven't finished yet, running or waiting their turn.
+    var pendingOperations = 0
     private var lastRenderedTab: TabID?
     private var starredIDs: Set<ItemID> = []
     private var quickLookEntries: [FileEntry] = []
     private var rememberedLocations: [TabID: Location] = [:]
+    /// The order each tab had before Recent switched it to Last Opened, so leaving Recent puts it back.
+    var sortsBeforeRecent: [TabID: ItemSort] = [:]
+    /// Tabs searching in Recent when what's recent changed. Each lists Recent again once its search ends.
+    var recentTabsBehind: Set<TabID> = []
+    /// The Open With chooser on show, if any.
+    var openWithChooser: OpenWithChooserSession?
     /// Scripted runs answer dialogs through these, since nobody is there to click.
     public var conflictChoiceForTesting: ConflictResolution?
     public var confirmsForTesting = false
@@ -113,12 +139,15 @@ struct WindowTints: Equatable {
         let seeds = seeds.isEmpty ? [BrowserTabSeed(location: .directory(dependencies.home))] : seeds
         var tabs: [TabState] = []
         var selections: [TabID: Set<ItemID>] = [:]
+        var intents: [TabID: NavigationIntent] = [:]
         for seed in seeds {
             var tab = TabState(location: seed.location, homeDirectory: dependencies.home, settings: settings)
             if let mode = seed.viewMode { tab.viewMode = mode }
-            if let sort = seed.sort { tab.sort = sort }
+            // Best Match only orders search results; a session saved by an older build may still hold it.
+            if let sort = seed.sort, sort.field != .relevance { tab.sort = sort }
             if let hidden = seed.showHidden { tab.showHidden = hidden }
             tabs.append(tab)
+            intents[tab.id] = seed.intent
             if !seed.selecting.isEmpty { selections[tab.id] = Set(seed.selecting.map { ItemID(url: $0) }) }
         }
         let active = tabs[min(max(0, activeIndex), tabs.count - 1)].id
@@ -126,13 +155,17 @@ struct WindowTints: Equatable {
         let loader = DirectoryLoader(fileSystem: dependencies.fileSystem)
         // Monitor reloads must use the tab's own hidden-files and sort choices, not the defaults.
         let storeBox = StoreBox()
-        let live = settings.bool(.liveMonitoringEnabled)
-        // With live monitoring off, no watch is started and folders refresh only on request.
-        let noMonitor: @MainActor (Location) -> (any DirectoryMonitor)? = { _ in nil }
+        watchesDisk = settings.bool(.liveMonitoringEnabled)
+        showsHiddenFiles = settings.bool(.showHiddenFiles)
+        // With live monitoring off, no watch is started and folders refresh only on request. Asked each time a
+        // watch starts, so turning it off or on reaches windows that are already open (see settingsChanged).
+        let liveSettings = dependencies.settings
         directoryRunner = DirectoryEffectRunner(loader: loader, options: { id in
             guard let tab = storeBox.store?.state.tabs[id] else { return LoadOptions() }
             return LoadOptions(showHidden: tab.showHidden, sort: tab.sort)
-        }, fallback: effects, monitorFactory: live ? nil : noMonitor)
+        }, fallback: effects, monitorFactory: { location in
+            liveSettings.snapshot.bool(.liveMonitoringEnabled) ? loader.monitor(location) : nil
+        })
         store = WindowStore(window: WindowState(tabs: tabs.map(\.id), activeTabID: active), tabs: tabs, runner: directoryRunner,
                             clock: dependencies.clock,
                             context: ReducerContext(now: dependencies.clock.now(), homeDirectory: dependencies.home, settings: settings))
@@ -145,7 +178,7 @@ struct WindowTints: Equatable {
         effects.window = self
         configureWindow(window)
         subscribe()
-        for tab in tabs { store.send(.tab(tab.id, .navigate(tab.location, .restore))) }
+        for tab in tabs { store.send(.tab(tab.id, .navigate(tab.location, intents[tab.id] ?? .restore))) }
         render(store.state)
         focusContent()
     }
@@ -174,6 +207,10 @@ struct WindowTints: Equatable {
         sidebarItem.canCollapse = true
         sidebarItem.holdingPriority = .init(260)
         self.sidebarItem = sidebarItem
+        // Dragging the divider shut or open collapses the item without the toggle, so the header follows the item.
+        subscriptions.append(sidebarItem.observe(\.isCollapsed) { [weak self] item, _ in
+            MainActor.assumeIsolated { self?.sidebarVisibilityChanged(!item.isCollapsed) }
+        })
         sidebar.delegate = self
         springs.open = { [weak self] url in self?.navigate(to: .directory(url)) }
         let contentController = NSViewController()
@@ -196,7 +233,7 @@ struct WindowTints: Equatable {
         window.toolbarStyle = .unified
 
         list.host = self; grid.host = self
-        pathBar.delegate = self; tabStrip.delegate = self; header.delegate = self
+        pathBar.delegate = self; tabStrip.delegate = self; header.delegate = self; header.home = dependencies.home
         applyTransparency()
     }
 
@@ -204,12 +241,12 @@ struct WindowTints: Equatable {
         let root = contentEffect
         root.blendingMode = .behindWindow
         root.state = .active
-        for view in [contentTint, header, tabStrip, contentContainer, overlay, operationsHost, statusHost] as [NSView] {
+        let stateView = statePage.view
+        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
-        overlay.alignment = .center; overlay.textColor = .secondaryLabelColor; overlay.font = .systemFont(ofSize: 16)
-        overlay.isHidden = true; overlay.isSelectable = false
+        stateView.isHidden = true
         let stripHeight = tabStrip.heightAnchor.constraint(equalToConstant: 0)
         tabStripHeight = stripHeight
         let operations = operationsHost.heightAnchor.constraint(equalToConstant: 0)
@@ -225,8 +262,10 @@ struct WindowTints: Equatable {
             contentContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
             contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: operationsHost.topAnchor),
-            overlay.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor), overlay.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
-            overlay.widthAnchor.constraint(lessThanOrEqualTo: contentContainer.widthAnchor, multiplier: 0.8),
+            // Centred in the content area and never pinned to the window's edges.
+            stateView.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor), stateView.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+            stateView.widthAnchor.constraint(lessThanOrEqualTo: contentContainer.widthAnchor, constant: -16),
+            stateView.heightAnchor.constraint(lessThanOrEqualTo: contentContainer.heightAnchor),
             operationsHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), operationsHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             operations,
             operationsHost.bottomAnchor.constraint(equalTo: statusHost.topAnchor),
@@ -257,37 +296,65 @@ struct WindowTints: Equatable {
         })
         starredIDs = Set(dependencies.stars.records.map { ItemID(rawValue: $0.path) })
         subscriptions.append(dependencies.volumes.changes.subscribe { [weak self] _ in self?.renderSidebar() })
+        subscriptions.append(dependencies.sidebarLayout.changes.subscribe { [weak self] _ in self?.renderSidebar() })
+        subscriptions.append(dependencies.recents.changes.subscribe { [weak self] _ in self?.recentsChanged() })
         subscriptions.append(dependencies.operations.changes.subscribe { [weak self] rows in self?.renderOperations(rows) })
+        subscriptions.append(dependencies.cut.changes.subscribe { [weak self] _ in self?.dropCutMarks() })
         subscriptions.append(dependencies.settings.changes.subscribe { [weak self] settings in self?.settingsChanged(settings) })
+        subscriptions.append(subscribeToPermissions())
     }
 
     private func settingsChanged(_ settings: SettingsSnapshot) {
-        for id in store.state.window.tabs { store.send(.tab(id, .settingsChanged(settings))) }
+        // Every tab follows Show Hidden Files when it changes, here or in another window. Other settings, such as ⌘+,
+        // leave a tab's own hidden items alone, so an item it was asked to show stays on show.
+        if settings.bool(.showHiddenFiles) != showsHiddenFiles {
+            showsHiddenFiles = settings.bool(.showHiddenFiles)
+            for id in store.state.window.tabs { store.send(.tab(id, .settingsChanged(settings))) }
+        }
+        if settings.bool(.liveMonitoringEnabled) != watchesDisk {
+            watchesDisk = settings.bool(.liveMonitoringEnabled)
+            restartWatches()
+        }
         applyTransparency()
         renderContent(force: true)
         if viewOptions.isShown { refreshViewOptions() }
         dependencies.volumes.reload()
     }
+    /// Updates from disk stop or start at once in the folders on show, not only in windows opened later. A watch
+    /// that starts again catches up with anything that changed while it was off.
+    private func restartWatches() {
+        for id in store.state.window.tabs { store.send(.tab(id, .restartMonitor)) }
+    }
 
     // MARK: Rendering
 
     private func render(_ snapshot: WindowStoreSnapshot) {
+        catchUpRecent(snapshot)
         guard let tab = snapshot.tabs[snapshot.window.activeTabID] else { return }
         applyRememberedViewOptions(tab)
-        window?.title = title(for: tab)
-        if case .directory(let url) = tab.location, tab.search == nil { window?.representedURL = url } else { window?.representedURL = nil }
-        pathBar.render(location: tab.location, home: dependencies.home, editor: tab.addressBar)
+        // The path, the tab and the title name the place on show: while a card is up, the place it's about.
+        let place = Self.placeOnShow(tab)
+        window?.title = TabStripView.title(tab)
+        if case .directory(let url) = place, tab.search == nil { window?.representedURL = url } else { window?.representedURL = nil }
+        pathBar.render(location: place, home: dependencies.home, editor: tab.addressBar)
         let many = snapshot.window.tabs.count > 1
         tabStripHeight?.constant = many ? 36 : 0
         tabStrip.isHidden = !many
         if many { tabStrip.render(window: snapshot.window, tabs: snapshot.tabs) }
+        let switchedTab = lastRenderedTab != nil && lastRenderedTab != tab.id
         renderContent(tab: tab, force: lastRenderedTab != tab.id)
         lastRenderedTab = tab.id
+        // Another tab's files take the keys (P-021), before the header shows that tab's search without the caret.
+        if switchedTab { focusContent() }
         updateChrome(tab)
         renderSidebar(for: tab)
         renderStatus(tab)
         finishPendingWork(tab)
+        selectFirstResultIfWanted(tab)
         followSelectionInQuickLook()
+        // A field that had the keys can go away, such as the location bar after Return or a search that closed,
+        // which leaves the window itself holding them. The files take them, so arrows and Space keep working.
+        if let window, window.firstResponder === window, window.attachedSheet == nil { focusContent() }
     }
 
     /// A folder you've set up keeps its view and sort when you come back. Elsewhere the tab keeps its current choice.
@@ -295,14 +362,16 @@ struct WindowTints: Equatable {
         guard rememberedLocations[tab.id] != tab.location else { return }
         rememberedLocations[tab.id] = tab.location
         let saved = dependencies.viewOptions.options(for: tab.location)
-        guard saved != dependencies.viewOptions.defaults else { return }
+        let hasSaved = hasSavedViewOptions(saved, at: tab.location)
+        settleRecentSort(tab, hasSavedOptions: hasSaved)
+        guard hasSaved else { return }
         if saved.viewMode != tab.viewMode { store.send(.tab(tab.id, .setViewMode(saved.viewMode))) }
         if saved.sort != tab.sort, tab.search == nil { store.send(.tab(tab.id, .setSort(saved.sort))) }
     }
     func rememberViewOptions(mode: ViewMode? = nil, sort: ItemSort? = nil) {
         guard let tab = activeTab, tab.search == nil else { return }
         let current = dependencies.viewOptions.options(for: tab.location)
-        let next = ViewOptions(viewMode: mode ?? tab.viewMode, sort: sort ?? tab.sort, groupBy: current.groupBy,
+        let next = ViewOptions(viewMode: mode ?? tab.viewMode, sort: storableSort(sort ?? tab.sort, at: tab.location), groupBy: current.groupBy,
                                iconSize: current.iconSize, showColumns: current.showColumns, textSize: current.textSize)
         // A store that went read-only at launch keeps this for the session only (OK2-9).
         try? dependencies.viewOptions.set(next, for: tab.location)
@@ -314,6 +383,9 @@ struct WindowTints: Equatable {
     private func renderContent(tab: TabState, force: Bool) {
         let content: FileContentPresenting = tab.viewMode == .grid ? grid : list
         if shownMode != tab.viewMode || shownContent == nil {
+            // The new view takes the keys only if the old one had them, so choosing a view while you type in the
+            // search leaves the caret there. Asked before the old view goes, which takes its keys with it.
+            let hadFocus = shownContent.map { window?.firstResponder === $0.keyResponder } ?? false
             shownContent?.view.removeFromSuperview()
             let contentView = content.view
             contentView.translatesAutoresizingMaskIntoConstraints = false
@@ -322,58 +394,16 @@ struct WindowTints: Equatable {
                 contentView.topAnchor.constraint(equalTo: contentContainer.topAnchor), contentView.bottomAnchor.constraint(equalTo: contentContainer.bottomAnchor),
                 contentView.leadingAnchor.constraint(equalTo: contentContainer.leadingAnchor), contentView.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor)
             ])
-            let hadFocus = shownContent != nil
+            // The view takes its size before it renders, so what it brings into view or fits to its width is measured
+            // against the real thing.
+            contentContainer.layoutSubtreeIfNeeded()
             shownContent = content; shownMode = tab.viewMode
             content.render(tab, force: true)
             if hadFocus { content.focusContent() }
         } else {
             content.render(tab, force: force)
         }
-        overlay.stringValue = overlayText(tab) ?? ""
-        overlay.isHidden = overlay.stringValue.isEmpty
-    }
-
-    private func overlayText(_ tab: TabState) -> String? {
-        switch tab.snapshot.phase {
-        case .failed(let error, let attempted):
-            return Self.message(for: error, attempted: attempted)
-        case .loading:
-            return nil
-        case .ready:
-            guard tab.snapshot.rootCount == 0 else { return nil }
-            if tab.search != nil { return tab.search?.isGathering == true ? nil : "No results" }
-            switch tab.location {
-            case .trash: return "Trash is empty"
-            case .recent: return "No recent items"
-            case .directory: return tab.isLoading ? nil : "Folder is empty"
-            }
-        }
-    }
-    static func message(for error: LoadError, attempted: Location) -> String {
-        let name: String
-        if case .directory(let url) = attempted { name = "“\(url.lastPathComponent)”" } else if case .trash = attempted { name = "the Trash" } else { name = "this location" }
-        switch error {
-        case .notFound: return "\(name.prefix(1).uppercased() + name.dropFirst()) no longer exists."
-        case .permissionDenied:
-            if case .trash = attempted {
-                return "Helm doesn’t have permission to read the Trash. Allow Helm in System Settings › Privacy & Security › Full Disk Access."
-            }
-            return "You don’t have permission to view \(name)."
-        case .volumeUnmounted: return "The disk holding \(name) was disconnected."
-        case .timedOut: return "The disk holding \(name) stopped responding."
-        case .notIndexed: return "This location isn’t indexed by Spotlight."
-        case .cancelled: return ""
-        case .other(let message): return "Couldn’t open \(name): \(message)"
-        }
-    }
-
-    private func title(for tab: TabState) -> String {
-        if let search = tab.search { return "Search: \(search.query.text)" }
-        switch tab.location {
-        case .recent: return "Recent"
-        case .trash: return "Trash"
-        case .directory(let url): return url.path == "/" ? "/" : url.lastPathComponent
-        }
+        renderContentState(tab)
     }
 
     private func updateChrome(_ tab: TabState) {
@@ -383,15 +413,12 @@ struct WindowTints: Equatable {
 
     private func renderSidebar() { if let tab = activeTab { renderSidebar(for: tab) } }
     private func renderSidebar(for tab: TabState) {
-        let places = PlacesModel(home: dependencies.home,
-                                 bookmarks: dependencies.bookmarks.records.map { URL(fileURLWithPath: $0.path, isDirectory: true) },
-                                 starred: dependencies.stars.records.map { URL(fileURLWithPath: $0.path) },
-                                 volumes: dependencies.volumes.volumes,
-                                 showAllVolumes: dependencies.settings.snapshot.bool(.showAllMountedVolumes))
+        let places = dependencies.placesModel()
         // The highlight follows where the tab is going, so a click doesn't flick back to the old place while the
-        // new folder loads. If that load fails, the pending target clears and the highlight returns (F-027).
+        // new folder loads. If that load fails, the pending target clears and the highlight returns (F-027),
+        // unless the place that failed is what's on show: then it stays on that place.
         let destination: PlaceDestination
-        switch tab.pendingNavigation?.target ?? tab.location {
+        switch tab.pendingNavigation?.target ?? Self.placeOnShow(tab) {
         case .directory(let url): destination = .directory(url)
         case .recent: destination = .recent
         case .trash: destination = .trash
@@ -399,41 +426,60 @@ struct WindowTints: Equatable {
         sidebar.render(SidebarModel(places: places, committedDestination: destination))
     }
 
-    private func renderStatus(_ tab: TabState) {
+    func renderStatus(_ tab: TabState) {
         let selected = tab.selection.compactMap { tab.snapshot.entry($0) }
         let bytes = selected.reduce(into: Int64(0)) { total, entry in
             if !entry.isDirectoryLike && entry.kind != .package { total = total.addingReportingOverflow(entry.size).partialValue }
         }
         var activity: StatusActivity = .idle
         if let busyMessage { activity = .working(busyMessage) }
-        else if case .failed(.permissionDenied, _) = tab.snapshot.phase { activity = .denied }
+        else if let failure = ContentStatePresentation.statusActivity(for: tab, home: dependencies.home,
+                                                                      fullDiskAccess: dependencies.permissions.fullDiskAccess) { activity = failure }
         else if tab.search?.isGathering == true { activity = .searching }
         else if tab.isLoading { activity = .gathering }
         var free: Int64?
         if case .directory(let url) = tab.location {
-            free = freeBytes[url.path]
+            free = freeSpace[url.path]?.bytes
             requestFreeSpace(url)
         }
+        if case .directory = tab.location, let override = Self.freeSpaceOverrideForTesting { free = override }
         // A selected folder's size isn't known without walking it, so say nothing rather than "Zero KB".
         let hasFile = selected.contains { !$0.isDirectoryLike && $0.kind != .package }
-        statusHost.rootView = StatusBarView(status: StatusPresentation(itemCount: tab.snapshot.rootCount, selectedCount: selected.count,
-                                                                       selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
-                                                                       isSearch: tab.search != nil))
+        // The rows inside the list's open folders are on show too, so they count, and what's selected among them.
+        let shown = tab.shownExpandedIDs.isEmpty || tab.snapshot.children.isEmpty ? tab.snapshot.rootCount : tab.shownIDs.count
+        shownStatus = StatusPresentation(itemCount: shown, selectedCount: selected.count,
+                                         selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
+                                         isSearch: tab.search != nil)
+        statusHost.rootView = StatusBarView(status: shownStatus)
     }
+    /// What the status bar says now.
+    public var statusTextForTesting: String { StatusText.format(shownStatus) }
     func setBusy(_ busy: Bool, message: String?) {
         busyMessage = busy ? message : nil
         if let tab = activeTab { renderStatus(tab) }
     }
+    /// How long a reading of a folder's free space is shown before the status bar reads it again.
+    static let freeSpaceLifetime: TimeInterval = 5
+    /// Reads the free space again once it's a few seconds old, or after `forgetFreeSpace`, so the status bar follows
+    /// downloads, copies and an emptied Trash. The last reading stays on show while the next one comes.
     private func requestFreeSpace(_ url: URL) {
-        guard freeRequested != url.path, freeBytes[url.path] == nil else { return }
-        freeRequested = url.path
+        let path = url.path, clock = dependencies.clock
+        if let known = freeSpace[path], clock.now().timeIntervalSince(known.read) < Self.freeSpaceLifetime { return }
+        guard freeRequested.insert(path).inserted else { return }
         let fileSystem = dependencies.fileSystem
         Task { [weak self] in
             let value = try? await fileSystem.availableCapacity(of: url)
-            guard let self, let value else { return }
-            self.freeBytes[url.path] = value
-            if let tab = self.activeTab { self.renderStatus(tab) }
+            guard let self else { return }
+            self.freeRequested.remove(path)
+            // A failed reading waits as long as a good one before the next try.
+            self.freeSpace[path] = (value ?? self.freeSpace[path]?.bytes, clock.now())
+            if value != nil, let tab = self.activeTab { self.renderStatus(tab) }
         }
+    }
+    /// A refresh or a finished operation may have changed the free space: the next status reads it again.
+    func forgetFreeSpace() {
+        for path in freeSpace.keys { freeSpace[path]?.read = .distantPast }
+        if let tab = activeTab { renderStatus(tab) }
     }
 
     private func renderOperations(_ rows: [OperationRowModel]) {
@@ -443,7 +489,8 @@ struct WindowTints: Equatable {
         }
         let operations = dependencies.operations
         operationsHost.rootView = AnyView(OperationsPanel(rows: rows, cancel: { operations.cancel($0) }, dismiss: { operations.dismiss($0) }))
-        operationsHeight?.constant = min(CGFloat(rows.count) * 56 + 8, 200)
+        // Each row as tall as it needs, so a failed row's Details stays in view; past a few rows the panel scrolls.
+        operationsHeight?.constant = min(rows.reduce(8) { $0 + $1.panelHeight }, 240)
     }
 
     /// Work that waits for a listing to arrive: selecting pasted items, or naming a new folder.
@@ -463,7 +510,14 @@ struct WindowTints: Equatable {
     func expectRename(of id: ItemID) { pendingRename = (activeTabID, id) }
     func shownRename(_ entry: FileEntry) { shownContent?.beginRename(entry) }
     func select(_ ids: Set<ItemID>, in tab: TabID) { pendingSelections[tab] = ids }
-    func focusContent() { shownContent?.focusContent() }
+    /// The files take the keys, unless something has hidden them, such as a page saying a place couldn't open:
+    /// keys in a hidden listing would act on files you can't see.
+    func focusContent() {
+        guard let content = shownContent, !content.view.isHiddenOrHasHiddenAncestor else { return }
+        content.focusContent()
+    }
+    /// The view that takes the files' keys.
+    var contentKeyResponder: NSResponder? { shownContent?.keyResponder }
 
     // MARK: NSWindowDelegate
 
@@ -490,13 +544,12 @@ struct WindowTints: Equatable {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
             sidebarItem.animator().isCollapsed = hide
+            sidebarVisibilityChanged(!hide)
         }
-        header.setSidebarVisible(!hide)
-        store.send(.window(.setSidebarVisible(!hide)))
     }
     func headerBack() { perform(.back) }
     func headerForward() { perform(.forward) }
-    func headerToggleViewMode() { perform(activeTab?.viewMode == .grid ? .list : .grid) }
+    func headerSetViewMode(_ mode: ViewMode) { perform(mode == .grid ? .grid : .list) }
     func headerShowViewOptions(from button: NSView) {
         let model = viewOptions.model
         model.pressSort = { [weak self] in self?.pressSort($0) }
@@ -521,22 +574,23 @@ struct WindowTints: Equatable {
     private func refreshViewOptions() {
         guard let tab = activeTab else { return }
         let settings = dependencies.settings.snapshot
-        let next = HeaderViewOptionsState(sort: tab.sort, searching: tab.search != nil, showHidden: tab.showHidden, isGrid: tab.viewMode == .grid,
-                                    textPoints: settings.double(.fileTextSize), iconPixels: settings.double(.gridIconSize))
+        let next = HeaderViewOptionsState(sort: tab.shownSort, searching: tab.search != nil, showHidden: tab.showHidden, isGrid: tab.viewMode == .grid,
+                                    textPoints: settings.double(.fileTextSize), iconPixels: settings.double(.gridIconSize),
+                                    inRecent: tab.location == .recent)
         if viewOptions.model.state != next { viewOptions.model.state = next }
     }
     /// Nautilus's main menu: what you reach for without going to the menu bar.
     func headerMainMenu() -> NSMenu? {
         let menu = NSMenu()
         for (title, command) in [("New Window", CommandID.newWindow), ("New Tab", .newTab), ("New Folder", .newFolder)] {
-            menu.addItem(commandItem(title, command))
+            menu.addItem(shortcutItem(title, command))
         }
         menu.addItem(.separator())
-        menu.addItem(commandItem("Undo", .undo))
-        menu.addItem(commandItem("Redo", .redo))
+        menu.addItem(shortcutItem("Undo", .undo))
+        menu.addItem(shortcutItem("Redo", .redo))
         menu.addItem(.separator())
-        menu.addItem(commandItem("Connect to Server…", .connectToServer))
-        menu.addItem(commandItem("Settings…", .settings))
+        menu.addItem(shortcutItem("Connect to Server…", .connectToServer))
+        menu.addItem(shortcutItem("Settings…", .settings))
         return menu
     }
     func commandItem(_ title: String, _ command: CommandID) -> NSMenuItem {
@@ -549,13 +603,18 @@ struct WindowTints: Equatable {
 
     func headerSearchChanged(_ text: String) {
         let delay = dependencies.settings.snapshot.integer(.searchDebounceMilliseconds)
+        let tab = activeTabID
         searchDebounce?.cancel()
         searchDebounce = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(max(0, delay)) * 1_000_000)
-            guard !Task.isCancelled else { return }
-            self?.search(text)
+            // A click elsewhere, Escape or another tab since the last key leaves this search unstarted, so it can't
+            // cancel the navigation you've just begun.
+            guard !Task.isCancelled, let self, self.header.isSearching, self.activeTabID == tab else { return }
+            self.search(text)
         }
     }
+    /// Drops a search that's still waiting for typing to pause.
+    func cancelPendingSearch() { searchDebounce?.cancel() }
     func headerSearchScopeChanged() {
         searchDebounce?.cancel()
         let typed = header.searchText
@@ -566,7 +625,7 @@ struct WindowTints: Equatable {
     func headerSearchClosed() {
         searchDebounce?.cancel()
         store.send(.tab(activeTabID, .searchEnded))
-        shownContent?.focusContent()
+        focusContent()
     }
     public func search(_ text: String) {
         guard let tab = activeTab else { return }
@@ -583,7 +642,12 @@ struct WindowTints: Equatable {
                                 limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents))
         store.send(.tab(tab.id, .searchStarted(query)))
     }
-    func beginSearch() { header.beginSearch() }
+    /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is
+    /// hidden, so there's no search until the card goes.
+    func beginSearch() {
+        if let tab = activeTab, ContentStatePresentation.hidesListing(tab), !header.isSearching { NSSound.beep(); return }
+        header.beginSearch()
+    }
 
     // MARK: FileContentHost
 
@@ -635,10 +699,11 @@ struct WindowTints: Equatable {
 
     func pathBarNavigate(to url: URL) { navigate(to: .directory(url)) }
     func pathBarOpenInNewTab(_ url: URL) { newTab(at: .directory(url)) }
+    func pathBarCopyPath(_ url: URL) { copyPaths(of: [url]) }
     func pathBarBeginEditing() { store.send(.tab(activeTabID, .addressBar(.beginEditing))) }
     func pathBarAction(_ action: AddressEditorAction) {
         store.send(.tab(activeTabID, .addressBar(action)))
-        if case .cancel = action { shownContent?.focusContent() }
+        if case .cancel = action { focusContent() }
     }
     func pathBarDropOperation(_ info: NSDraggingInfo, into url: URL?) -> NSDragOperation {
         guard let url else { springs.cancel(); return [] }
@@ -655,19 +720,24 @@ struct WindowTints: Equatable {
 
     func tabStripActivate(_ id: TabID) { store.send(.window(.activate(id))) }
     func tabStripClose(_ id: TabID) { closeTab(id) }
-    func tabStripNewTab() { newTab(at: activeTab?.location ?? .directory(dependencies.home)) }
+    func tabStripNewTab() { newTab(at: activeTab.map(Self.placeOnShow) ?? .directory(dependencies.home)) }
     func tabStripDropOperation(_ info: NSDraggingInfo, onto id: TabID) -> NSDragOperation {
         if id != activeTabID { springs.hover(id) { [weak self] in self?.store.send(.window(.activate(id))) } }
-        guard let tab = store.state.tabs[id], tab.search == nil else { return [] }
-        if case .trash = tab.location { return dropOperation(info, into: .trash) }
-        guard let url = tab.mutationTarget else { return [] }
-        return dropOperation(info, into: .folder(url))
+        guard let destination = tabDropTarget(id) else { return [] }
+        return dropOperation(info, into: destination)
     }
     func tabStripPerformDrop(_ info: NSDraggingInfo, onto id: TabID) -> Bool {
-        guard let tab = store.state.tabs[id], tab.search == nil else { return false }
-        if case .trash = tab.location { return performDrop(info, into: .trash) }
-        guard let url = tab.mutationTarget else { return false }
-        return performDrop(info, into: .folder(url))
+        guard let destination = tabDropTarget(id) else { return false }
+        return performDrop(info, into: destination)
+    }
+    /// Where a drop on a tab goes: the place the tab is named for. Search results and Recent aren't folders, and while
+    /// a card stands in for a tab's listing there's no folder on show to put things in, as for the window's commands:
+    /// the folder under the card is hidden. The Trash takes items either way, as its sidebar row does.
+    private func tabDropTarget(_ id: TabID) -> WindowDropTarget? {
+        guard let tab = store.state.tabs[id], tab.search == nil else { return nil }
+        if case .trash = Self.placeOnShow(tab) { return .trash }
+        guard !ContentStatePresentation.hidesListing(tab) else { return nil }
+        return tab.mutationTarget.map(WindowDropTarget.folder)
     }
     func tabStripDragEnded() { springs.cancel() }
 
@@ -678,8 +748,9 @@ struct WindowTints: Equatable {
         switch place.destination {
         case .directory(let url):
             if place.kind == .starred, !isDirectory(url) {
-                // A starred file reveals in its folder rather than launching (F-029).
-                revealInCurrentTab(url); return
+                // A starred file reveals in its folder rather than launching (F-029), in a tab of its own when asked.
+                if newTab { self.newTab(at: .directory(url.deletingLastPathComponent()), selecting: [url]) } else { revealInCurrentTab(url) }
+                return
             }
             location = .directory(url)
         case .recent: location = .recent
@@ -694,22 +765,7 @@ struct WindowTints: Equatable {
     }
     func sidebarRemoveBookmark(_ place: Place) { if let url = place.url { dependencies.bookmarks.remove(path: url.path) } }
     func sidebarEject(_ place: Place) { if let url = place.url { dependencies.volumes.eject(url) } }
-    public func sidebarAddBookmarks(_ urls: [URL]) { sidebarInsertBookmarks(urls, at: nil) }
-    public func sidebarInsertBookmarks(_ urls: [URL], at index: Int?) {
-        let fileSystem = dependencies.fileSystem, bookmarks = dependencies.bookmarks, clock = dependencies.clock
-        Task { @MainActor in
-            var position = index
-            for url in urls {
-                let directory = await fileSystem.isDirectory(url, resolvingSymlinks: true)
-                if let at = position {
-                    if bookmarks.insert(url, isDirectory: directory, at: at, date: clock.now()) { position = at + 1 }
-                } else {
-                    _ = bookmarks.add(url, isDirectory: directory, at: clock.now())
-                }
-            }
-        }
-    }
-    public func sidebarMoveBookmark(_ path: String, to index: Int) { dependencies.bookmarks.move(path: path, to: index) }
+    public func sidebarAddBookmarks(_ urls: [URL]) { sidebarInsertBookmarks(urls, before: nil) }
     func sidebarDropOperation(_ info: NSDraggingInfo, onto place: Place) -> NSDragOperation {
         guard let destination = dropDestination(for: place) else { springs.cancel(); return [] }
         let operation = dropOperation(info, into: destination)
@@ -763,10 +819,12 @@ struct WindowTints: Equatable {
             .map(\.element)
     }
     /// While the panel is open it follows the selection however it changed: clicks, Select All, an operation,
-    /// a new folder or another tab. The item on show stays on show if it's still selected.
+    /// a new folder or another tab. The item on show stays on show if it's still selected. A card that hides the
+    /// files closes it, rather than leave it previewing a file nobody can see.
     private func followSelectionInQuickLook() {
         guard QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(), panel.isVisible,
               panel.dataSource === self else { return }
+        if let tab = activeTab, ContentStatePresentation.hidesListing(tab) { panel.orderOut(nil); return }
         let next = quickLookSelection()
         guard next.map(\.url) != quickLookEntries.map(\.url) else { return }
         let showing = (panel.currentPreviewItem as? NSURL) as URL?
@@ -774,8 +832,10 @@ struct WindowTints: Equatable {
         panel.reloadData()
         if let showing, let index = next.firstIndex(where: { $0.url == showing }) { panel.currentPreviewItemIndex = index }
     }
+    /// The selected items. While a card stands in for the listing, nothing counts as selected, so nothing reaches the
+    /// files hidden under it: not File › Open With, the Services menu or Quick Look.
     public func selectedEntries() -> [FileEntry] {
-        guard let tab = activeTab else { return [] }
+        guard let tab = activeTab, !ContentStatePresentation.hidesListing(tab) else { return [] }
         return tab.snapshot.sortedEntries.filter { tab.selection.contains($0.id) }
     }
     fileprivate var previewItems: [FileEntry] { quickLookEntries }

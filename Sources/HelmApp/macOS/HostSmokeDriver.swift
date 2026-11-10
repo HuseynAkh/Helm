@@ -28,12 +28,12 @@ import Quartz
         fflush(stdout)
         exit(code)
     }
-    private static func check(_ condition: Bool, _ step: String, _ detail: @autoclosure () -> String = "") {
+    static func check(_ condition: Bool, _ step: String, _ detail: @autoclosure () -> String = "") {
         print("\(condition ? "PASS" : "FAIL") \(step)\(condition ? "" : " :: \(detail())")")
         fflush(stdout)
         if !condition { failures += 1 }
     }
-    private static func wait(seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+    static func wait(seconds: Double) async { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
 
     private static func perform(_ step: String, app: AppController) async {
         let parts = step.split(separator: " ", maxSplits: 1).map(String.init)
@@ -52,6 +52,13 @@ import Quartz
             check(window.store.state.window.tabs.count == Int(argument), step, "count \(window.store.state.window.tabs.count)")
         case "cmd":
             guard let command = CommandID(rawValue: argument) else { check(false, step, "unknown command"); return }
+            // Undo and Redo turn a person away while the window's last change is still finishing, and a busy Mac can
+            // stretch that past a step's fixed wait. A script waits for the change first, as a person would. One that
+            // never finishes is still turned away after 10 s, and the checks after it fail.
+            if command == .undo || command == .redo {
+                var waited = 0.0
+                while window.isRunningOperationsForTesting, waited < 10 { await wait(seconds: 0.05); waited += 0.05 }
+            }
             window.perform(command)
             await wait(seconds: 0.5)
         case "go":
@@ -393,6 +400,7 @@ import Quartz
             try? data?.write(to: URL(fileURLWithPath: argument))
             check(data != nil, step)
         default:
+            if await performTrackVerb(verb, argument, step: step, window: window, app: app) { return }
             check(false, step, "unknown step")
         }
     }

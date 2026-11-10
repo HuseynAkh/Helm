@@ -18,9 +18,8 @@ public struct DirectoryLoader: LocationSource {
             let task = Task {
                 do {
                     guard case .directory(let url) = location else { throw FileSystemError.unsupported }
-                    let root = try await fileSystem.entry(at: url)
-                    guard root.isReadable else { throw FileSystemError.permissionDenied }
-                    guard root.isDirectoryLike || root.kind == .package else { throw FileSystemError.other("Not a directory") }
+                    let root = try await ListingRoot.entry(at: url, fileSystem: fileSystem)
+                    try ListingRoot.check(root)
                     // Validate open permission even when metadata and cache are available.
                     var entries: [FileEntry] = []
                     for try await batch in fileSystem.enumerate(url, options: EnumerationOptions(
@@ -42,8 +41,8 @@ public struct DirectoryLoader: LocationSource {
     public func snapshot(_ location: Location, options: LoadOptions = LoadOptions()) async throws -> [FileEntry] {
         try Task.checkCancellation()
         if options.useCache, case .directory(let url) = location {
-            let root = try await fileSystem.entry(at: url)
-            guard root.isReadable else { throw FileSystemError.permissionDenied }
+            let root = try await ListingRoot.entry(at: url, fileSystem: fileSystem)
+            try ListingRoot.check(root)
             if let cached = await cache.entries(for: location, showHidden: options.showHidden, token: root.changeToken) {
                 // Opening an iterator validates directory access even if metadata is cached.
                 var validation = fileSystem.enumerate(url, options: EnumerationOptions(

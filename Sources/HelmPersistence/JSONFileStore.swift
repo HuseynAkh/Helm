@@ -46,6 +46,13 @@ private actor JSONDisk<Payload: Codable & Sendable> {
         try data.write(to: url, options: .atomic)
         lastRevision = revision
     }
+    /// Deletes the file. A file that's already gone is fine.
+    func remove(revision: UInt64) throws {
+        guard revision >= lastRevision else { return }
+        do { try FileManager.default.removeItem(at: url) }
+        catch CocoaError.fileNoSuchFile {}
+        lastRevision = revision
+    }
 }
 private struct DocumentHeader: Decodable { let schemaVersion: Int }
 
@@ -62,6 +69,8 @@ private struct DocumentHeader: Decodable { let schemaVersion: Int }
     private var loading: Bool = false
     private var pending: Task<Void, Never>?
     private var writable: Bool = false
+    /// The file was deleted on purpose, and nothing has changed since: saving then writes nothing.
+    private var removed: Bool = false
     public init(url: URL, empty: Payload) { self.items = empty; self.empty = empty; self.disk = JSONDisk(url: url) }
     // Internal read seam permits permission/IO regression tests without privileged filesystem assumptions.
     init(url: URL, empty: Payload, read: @escaping @Sendable (URL) async throws -> Data) {
@@ -80,12 +89,24 @@ private struct DocumentHeader: Decodable { let schemaVersion: Int }
     }
     public func replace(with value: Payload) {
         guard writable, !loading else { return }
-        items = value; revision &+= 1
+        items = value; revision &+= 1; removed = false
         let current = revision
         pending?.cancel()
         pending = Task { [weak self] in
             do { try await Task.sleep(nanoseconds: 500_000_000) } catch { return }
             guard let self, self.revision == current else { return }
+            do { try await self.flush() } catch { self.lastError = error }
+        }
+        changes.send(items)
+    }
+    /// Empties the document and deletes its file straight away, for a record Settings says not to keep.
+    /// Saving writes nothing until the next change, which writes the file again.
+    public func remove() {
+        guard writable, !loading, !removed else { return }
+        items = empty; revision &+= 1; removed = true
+        pending?.cancel()
+        pending = Task { [weak self] in
+            guard let self else { return }
             do { try await self.flush() } catch { self.lastError = error }
         }
         changes.send(items)
@@ -99,7 +120,7 @@ private struct DocumentHeader: Decodable { let schemaVersion: Int }
         }
         let current = revision
         do {
-            try await disk.save(items, revision: current)
+            if removed { try await disk.remove(revision: current) } else { try await disk.save(items, revision: current) }
             persistedRevision = max(persistedRevision, current)
             if revision == current { lastError = nil }
         } catch { lastError = error; throw error }

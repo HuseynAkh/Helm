@@ -21,10 +21,14 @@ public struct SortChoice: Equatable, Sendable {
         SortChoice(title: "Kind Z–A", shortTitle: "Kind Z–A", field: .kind, ascending: false)
     ]
     public static let bestMatch = SortChoice(title: "Best Match", shortTitle: "Best Match", field: .relevance, ascending: true)
+    /// Recent's own orders. They're kept out of `all`, which every folder offers.
+    public static let mostRecentFirst = SortChoice(title: "Most Recent First", shortTitle: "Most Recent", field: .lastOpened, ascending: false)
+    public static let leastRecentFirst = SortChoice(title: "Least Recent First", shortTitle: "Least Recent", field: .lastOpened, ascending: true)
 
     /// The choice describing a sort. Relevance has one direction, so it always reads the same.
     public static func matching(_ sort: ItemSort) -> SortChoice {
         if sort.field == .relevance { return bestMatch }
+        if sort.field == .lastOpened { return sort.ascending ? leastRecentFirst : mostRecentFirst }
         return all.first { $0.field == sort.field && $0.ascending == sort.ascending } ?? all[0]
     }
     public func applied(to sort: ItemSort) -> ItemSort {
@@ -49,12 +53,21 @@ public struct SortField: Equatable, Sendable, Identifiable {
         SortField(field: .size, title: "Size", startsAscending: false),
         SortField(field: .kind, title: "Kind", startsAscending: true)
     ]
+    /// Recent's own field: the last time Helm opened each item, most recent first. Only Recent offers it,
+    /// so it isn't in `all`.
+    public static let lastOpened = SortField(field: .lastOpened, title: "Last Opened", startsAscending: false)
+
+    /// The field a sort uses, Recent's Last Opened included, for naming it ("Sorted by Last Opened"). Nil for
+    /// Best Match, which isn't a field you choose.
+    public static func describing(_ field: ItemSort.Field) -> SortField? {
+        (all + [lastOpened]).first { $0.field == field }
+    }
 
     /// Choosing the field that's already sorted reverses it. Choosing another starts it in its own direction.
     public static func pressing(_ field: ItemSort.Field, on sort: ItemSort) -> ItemSort {
         if field == .relevance { return ItemSort(field: .relevance, ascending: true, directoriesFirst: sort.directoriesFirst) }
         if field == sort.field { return ItemSort(field: field, ascending: !sort.ascending, directoriesFirst: sort.directoriesFirst) }
-        let start = all.first { $0.field == field }?.startsAscending ?? true
+        let start = describing(field)?.startsAscending ?? true
         return ItemSort(field: field, ascending: start, directoriesFirst: sort.directoriesFirst)
     }
 
@@ -65,6 +78,7 @@ public struct SortField: Equatable, Sendable, Identifiable {
         case .dateModified: return ascending ? "Oldest first" : "Newest first"
         case .size: return ascending ? "Smallest first" : "Largest first"
         case .relevance: return "Best first"
+        case .lastOpened: return ascending ? "Least recent first" : "Most recent first"
         }
     }
 }

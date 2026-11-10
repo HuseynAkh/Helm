@@ -48,6 +48,19 @@ after a successful flush; show errors and allow retry or cancellation otherwise.
 The host owns operation counts; journal entries do not establish executor liveness.
 Cancellation during flushing is deliberately disabled to avoid stale completion.
 
+`AppEnvironment+Privacy` keeps only what Settings allows. Call `followPrivacySettings()`
+once after launch. With Reopen windows and tabs off, session.json is deleted, and
+`saveSession(_:)` keeps nothing. With Remember recent items off, Recent and the apps
+used for each kind of file are cleared. `forgetItemsGoneFromTrash()` runs after launch,
+off the launch path. It drops the record of a trashed item that's gone from a Trash
+that's still there, and keeps records for a Trash it can't reach, such as an unplugged disk.
+Every environment forgets a starred item's or bookmark's row in sidebar.json when the star
+or bookmark goes, however it goes. A rename or a move updates the layout before the stores,
+so a row that only moved isn't forgotten. `live` also drops rows an earlier Helm kept for
+stars and bookmarks already gone, but only when no document failed to load. A damaged file
+that a store set aside as .corrupt-… and started over counts as read, so its rows go too.
+A drive's row stays while the drive is unplugged.
+
 ## Needed changes elsewhere / review questions
 
 - Manifest owner adds HelmApp/HelmAppTests on macOS; staged patches linked below. No manifest edits

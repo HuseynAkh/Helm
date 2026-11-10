@@ -11,6 +11,9 @@ public enum Command: Hashable, Sendable {
     case rename(RenamePair), batchRename([RenamePair])
     case createFolder(parent: URL, name: ValidFileName)
     case createFile(parent: URL, name: ValidFileName, template: URL?)
+    /// An alias or symbolic link to each item, named "<name> alias" or "<name> link", in `destinationDirectory` or,
+    /// when that's nil, next to the item. Undo moves them to the Trash.
+    case link(sources: [URL], destinationDirectory: URL?, alias: Bool)
     case recovery
 }
 /// F-052 conflict decisions; replacing a directory never means merging it.
@@ -45,7 +48,7 @@ public enum PlanningIssue: Hashable, Sendable {
 }
 /// Sequential mutation primitives retain exact temporary rename paths (F-055/B-038).
 public struct PlannedStep: Hashable, Sendable, Identifiable {
-    public enum Kind: String, Hashable, Sendable { case copy, move, trash, createDirectory, createFile, verifyCopy }
+    public enum Kind: String, Hashable, Sendable { case copy, move, trash, createDirectory, createFile, verifyCopy, createAlias, createSymbolicLink }
     public let id: StepID
     public let kind: Kind
     public let source: URL?
@@ -54,11 +57,42 @@ public struct PlannedStep: Hashable, Sendable, Identifiable {
     public let retryKeepBoth: Bool
     public let collisionName: String?
     public let verificationDestination: URL?
+    /// The item this step is part of, shared by every step of one item: a replacement's copy, check, retirement and
+    /// install, or a move between disks, are one item to the person who chose it. Nil: the step is an item of its own.
+    public let item: StepID?
     public init(id: StepID = StepID(), kind: Kind, source: URL? = nil, destination: URL? = nil,
-                contents: Data = Data(), retryKeepBoth: Bool = false, collisionName: String? = nil, verificationDestination: URL? = nil) {
+                contents: Data = Data(), retryKeepBoth: Bool = false, collisionName: String? = nil, verificationDestination: URL? = nil,
+                item: StepID? = nil) {
         self.id = id; self.kind = kind; self.source = source; self.destination = destination
         self.contents = contents; self.retryKeepBoth = retryKeepBoth; self.collisionName = collisionName; self.verificationDestination = verificationDestination
+        self.item = item
     }
+}
+/// How a plan's steps make up the items a person chose (P-139). Skip, Skip All and every count a person reads are
+/// about items: one replaced file is one item, not four steps. The planner keeps each item's steps together.
+public struct PlanItems: Sendable, Equatable {
+    private let ordinals: [Int]
+    private let names: [String]
+    public init(_ steps: [PlannedStep]) {
+        var ordinals: [Int] = [], names: [String] = []
+        var current: StepID?
+        for step in steps {
+            // A step with no item is one on its own; steps that name the same item, one after another, are one.
+            if step.item == nil || step.item != current {
+                // The first step names the item: its source, or what it creates. Never a later step's private stage.
+                names.append(step.source?.lastPathComponent ?? step.destination?.lastPathComponent ?? "")
+                current = step.item
+            }
+            ordinals.append(names.count - 1)
+        }
+        self.ordinals = ordinals; self.names = names
+    }
+    public var count: Int { names.count }
+    /// The position of the step's item among the plan's items.
+    public func ordinal(ofStepAt index: Int) -> Int { ordinals.indices.contains(index) ? ordinals[index] : names.count }
+    public func name(ofStepAt index: Int) -> String { ordinals.indices.contains(index) ? names[ordinals[index]] : "" }
+    /// Items still to do after the one this step belongs to.
+    public func remaining(afterStepAt index: Int) -> Int { max(0, names.count - ordinal(ofStepAt: index) - 1) }
 }
 /// Immutable executable plan preserves exact source/destination pairing (B-042).
 public struct OperationPlan: Equatable, Sendable {

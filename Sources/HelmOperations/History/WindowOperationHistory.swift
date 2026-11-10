@@ -155,6 +155,15 @@ public actor WindowOperationHistory {
         return (request, command)
     }
 
+    /// A change outside the history, such as a new archive, happened in this window: Undo mustn't reach back past it.
+    /// Refused while an operation holds the history.
+    @discardableResult
+    public func discardEntries() -> Bool {
+        guard state.pending == nil else { return false }
+        OperationHistoryReducer.reduce(&state, .discardEntries)
+        return true
+    }
+
     /// Reports redo availability without performing it.
     public func beginRedo() -> HistoryAvailability {
         OperationHistoryReducer.reduce(&state, .beginRedo)

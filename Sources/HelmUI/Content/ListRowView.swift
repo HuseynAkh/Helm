@@ -32,4 +32,17 @@ public struct ListRowView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
+
+/// Shared badges preserve stars as distinct from Finder tags (F-029/F-036).
+struct ContentMetadataBadges: View {
+    let entry: FileEntry
+    var body: some View {
+        HStack(spacing: 3) {
+            if entry.isStarred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
+            if let badge = ContentLeafPresentation.cloudBadge(entry.cloudAvailability) {
+                Image(systemName: badge.symbol).accessibilityLabel(badge.label).help(badge.label)
+            }
+        }.font(.system(size: 11))
+    }
+}
 #endif

@@ -61,8 +61,10 @@ public actor OperationExecutor {
             }
         }
         // A failed item can be skipped, so the batch goes on (P-139). The first skipped failure is the result's error.
+        // Questions are about items: a step of a replaced file is named and counted as that file.
         var skipped: OperationError?
         var skipsAll = false
+        let items = PlanItems(plan.steps)
         var index = 0
         while index < plan.steps.count {
             let step = plan.steps[index]
@@ -73,7 +75,7 @@ public actor OperationExecutor {
                 continue
             }
             await progress(OperationProgress(id: id, itemsDone: outcomes.count, itemsTotal: plan.steps.count,
-                                             currentName: step.source?.lastPathComponent ?? step.destination?.lastPathComponent))
+                                             currentName: items.name(ofStepAt: index - 1)))
             do {
                 try Task.checkCancellation()
                 let destination = try await perform(step, context: plan.context, expectedTokens: expectedTokens, expectedKinds: expectedKinds, undoVerification: plan.undoVerification, forward: forward, cache: cache)
@@ -131,9 +133,8 @@ public actor OperationExecutor {
                 if askable {
                     if skipsAll { decision = .skip }
                     else {
-                        let name = step.source?.lastPathComponent ?? step.destination?.lastPathComponent ?? ""
-                        decision = await decide(StepFailure(name: name, error: mapped, canRetry: !uncertain,
-                                                            remaining: plan.steps.count - index))
+                        decision = await decide(StepFailure(name: items.name(ofStepAt: index - 1), error: mapped, canRetry: !uncertain,
+                                                            remaining: items.remaining(afterStepAt: index - 1)))
                         if decision == .retry && uncertain { decision = .stop }
                     }
                 }
@@ -149,6 +150,13 @@ public actor OperationExecutor {
                     if decision == .skipAll { skipsAll = true }
                     if skipped == nil { skipped = mapped }
                     failure = nil
+                    // Skip leaves the whole item. The rest of its steps never run: a replacement whose copy failed
+                    // must not go on to put the item it would have replaced in the Trash.
+                    while index < plan.steps.count, let item = step.item, plan.steps[index].item == item {
+                        let rest = plan.steps[index]
+                        index += 1
+                        outcomes.append(ItemOutcome(step: rest, destination: rest.destination, result: .failure(.notAttempted)))
+                    }
                 }
             }
         }
@@ -314,6 +322,14 @@ public actor OperationExecutor {
             catch { throw StepExecutionFailure(destination: destination, underlying: error) }
         case .createFile:
             do { try await fileSystem.createFileExclusively(at: destination, contents: step.contents) }
+            catch { throw StepExecutionFailure(destination: destination, underlying: error) }
+        case .createAlias:
+            guard let source = step.source else { throw OperationError.invalidPlan }
+            do { try await fileSystem.createAlias(for: source, at: destination) }
+            catch { throw StepExecutionFailure(destination: destination, underlying: error) }
+        case .createSymbolicLink:
+            guard let source = step.source else { throw OperationError.invalidPlan }
+            do { try await fileSystem.createSymbolicLink(at: destination, destination: source) }
             catch { throw StepExecutionFailure(destination: destination, underlying: error) }
         case .trash, .verifyCopy: throw OperationError.invalidPlan
         }

@@ -92,6 +92,11 @@ public enum OperationHistoryReducer {
             // Retire it without creating redo authority or discarding journal evidence.
             if !state.undoEntries.isEmpty { state.undoEntries.removeLast() }
             state.reconciliation = nil
+        case .discardEntries:
+            // Never under a reservation: a running undo still owns the top entry.
+            guard state.pending == nil else { return [] }
+            state.undoEntries.removeAll()
+            state.redoEntries.removeAll()
         case .beginRedo:
             guard state.pending == nil, state.reconciliation == nil, !state.redoEntries.isEmpty else { return [] }
             state.lastOutcome = .unsupported("Redo requires fresh intent validation and ownership evidence")

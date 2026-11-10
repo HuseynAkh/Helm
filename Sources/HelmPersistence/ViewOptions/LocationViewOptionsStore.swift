@@ -55,6 +55,11 @@ internal struct LocationOptionsRecord: Codable, Sendable {
         document.records.append(record); revision &+= 1
         return record.options
     }
+    /// Whether the place has a record of its own, even one that matches the defaults. It doesn't count as a use.
+    public func hasOptions(for location: Location) -> Bool {
+        let key = Self.stableKey(for: location)
+        return document.records.contains { $0.key == key }
+    }
     public func set(_ options: ViewOptions, for location: Location) throws {
         try checkWritable()
         let key = Self.stableKey(for: location)

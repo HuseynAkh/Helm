@@ -199,6 +199,8 @@ final class TabReducerTests: XCTestCase {
     }
     func testExpandedSelectionAndCollapse() {
         var state = loaded()
+        // Folders open in the list; the grid shows only the folder's own items.
+        state.viewMode = .list
         let folder = FileEntry(url: URL(fileURLWithPath: "/a/folder"), kind: .directory)
         let child = entry("/a/folder/child")
         let snapshot = SnapshotBuilder.build(location: a, entries: [folder], children: [folder.id: [child]])

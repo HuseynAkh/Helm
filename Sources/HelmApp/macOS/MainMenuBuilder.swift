@@ -23,6 +23,7 @@ import HelmUI
             if model.title == "Help", menu.items.isEmpty {
                 menu.addItem(withTitle: "Helm Help", action: #selector(NSApplication.showHelp(_:)), keyEquivalent: "?")
             }
+            if model.title == "Help" { addAccessItems(to: menu, target: target) }
             if model.title == "Go" { addAliases(to: menu) }
             if model.title == "View" { addViewItems(to: menu, target: target) }
             if model.title == "Window" { addTabAliases(to: menu) }
@@ -35,7 +36,7 @@ import HelmUI
         NSApp.mainMenu = bar
     }
 
-    private static func item(for row: CommandMenuItem, target: AppController) -> NSMenuItem {
+    static func item(for row: CommandMenuItem, target: AppController) -> NSMenuItem {
         let item = NSMenuItem(title: row.title, action: action(for: row.command), keyEquivalent: row.binding?.key ?? "")
         item.keyEquivalentModifierMask = modifiers(row.binding?.modifiers ?? [])
         item.representedObject = row.command.rawValue
@@ -43,16 +44,18 @@ import HelmUI
         case .about, .settings, .advancedOptions, .quit, .hide, .hideOthers, .showAll, .bringAllToFront, .newWindow:
             item.target = target
         case .openWith:
-            // Filled as it opens from the front window's selection, as Finder's File › Open With is.
+            // Filled as it opens from the front window's selection, as Finder's File › Open With is. The action goes
+            // before the submenu comes, so AppKit gives the row the submenu's own action, which keeps it enabled: a
+            // row whose action is cleared afterwards is greyed out, and its submenu can't be opened.
+            item.action = nil
             let submenu = NSMenu(title: "Open With")
             submenu.delegate = target
             item.submenu = submenu
-            item.action = nil
         case .services:
+            item.action = nil
             let submenu = NSMenu(title: "Services")
             item.submenu = submenu
             NSApp.servicesMenu = submenu
-            item.action = nil
         default: break
         }
         return item
@@ -61,7 +64,8 @@ import HelmUI
     private static func action(for command: CommandID) -> Selector {
         switch command {
         case .about: return #selector(AppController.orderFrontAbout(_:))
-        case .settings, .advancedOptions: return #selector(AppController.showSettingsWindow(_:))
+        case .settings: return #selector(AppController.showSettingsWindow(_:))
+        case .advancedOptions: return #selector(AppController.showAdvancedOptions(_:))
         case .quit: return #selector(AppController.quit(_:))
         case .hide: return #selector(NSApplication.hide(_:))
         case .hideOthers: return #selector(NSApplication.hideOtherApplications(_:))

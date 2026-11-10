@@ -7,6 +7,10 @@ public enum GenerationLane: Hashable, Sendable { case load, monitor, search, com
 public enum TabAction: Sendable {
     case navigate(Location, NavigationIntent)
     case goBack, goForward, goUp, refresh
+    /// Takes down a card about a place that couldn't open from here, so the listing it covered shows again: Back from
+    /// the card. Any other reload of the tab's own folder, such as Show Hidden Files or an operation finishing, leaves
+    /// such a card up.
+    case returnToListing
     case loadProgress(Generation, PresentationSnapshot), loadFinished(Generation, PresentationSnapshot)
     case loadFailed(Generation, LoadError)
     /// WindowStore stamps every monitor-work reply before enqueueing it (B-009/B-014).
@@ -18,6 +22,9 @@ public enum TabAction: Sendable {
     case monitorEvent(Generation, MonitorEvent), monitorSnapshot(Generation, PresentationSnapshot)
     case setSelection(Set<ItemID>, source: SelectionSource), setSort(ItemSort), setViewMode(ViewMode)
     case toggleHidden, settingsChanged(SettingsSnapshot)
+    /// Lists hidden items in this tab only, leaving the setting and other tabs as they are: for a hidden item asked for
+    /// by name, such as a typed `~/.zshrc` or another app's Show in Finder, which would otherwise be left out.
+    case showHiddenItems
     case expand(ItemID), collapse(ItemID)
     /// Replies carry the load generation they were requested under, so a navigation retires them (FB2-10).
     case childrenLoaded(ItemID, Generation, [FileEntry])
@@ -27,6 +34,8 @@ public enum TabAction: Sendable {
     case searchStarted(SearchQuery), searchResults(Generation, [SearchResult]), searchEnded
     case addressBar(AddressEditorAction)
     case activated, deactivated
+    /// The folder on show gets a new watch, as when updates from disk are turned on or off in Settings.
+    case restartMonitor
     case setScrollAnchor(ItemID?), beginInlineRename(ItemID), endInlineRename
     case cutSetChanged(Set<ItemID>)
 }

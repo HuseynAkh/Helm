@@ -50,6 +50,10 @@ final class EnvironmentTests: XCTestCase {
         try first.viewOptions.set(options, for: .recent)
         XCTAssertEqual(first.viewOptions.options(for: .recent), options)
         XCTAssertEqual(second.viewOptions.options(for: .recent), ViewOptions())
+        // A record that matches the defaults still counts as the place's own.
+        XCTAssertTrue(first.viewOptions.hasOptions(for: .recent)); XCTAssertFalse(second.viewOptions.hasOptions(for: .recent))
+        try first.viewOptions.set(ViewOptions(), for: .trash)
+        XCTAssertTrue(first.viewOptions.hasOptions(for: .trash))
         let failures = await first.flushStores()
         XCTAssertTrue(failures.isEmpty)
     }

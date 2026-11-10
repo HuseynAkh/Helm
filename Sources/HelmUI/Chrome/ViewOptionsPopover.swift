@@ -11,6 +11,8 @@ struct HeaderViewOptionsState: Equatable {
     var isGrid = true
     var textPoints = ContentZoom.defaultTextPoints
     var iconPixels = ContentZoom.defaultIconPixels
+    /// Recent adds its own Last Opened order to the list.
+    var inRecent = false
 }
 
 @MainActor final class HeaderViewOptionsModel: ObservableObject {
@@ -28,13 +30,23 @@ struct HeaderViewOptionsState: Equatable {
 /// with the current percentage between the buttons.
 struct HeaderViewOptionsView: View {
     @ObservedObject var model: HeaderViewOptionsModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let state = model.state
+        let hint = Self.hint(for: state.sort)
         VStack(alignment: .leading, spacing: 2) {
             heading("Sort by")
             if state.searching {
                 SortRow(title: "Best Match", active: state.sort.field == .relevance, detail: nil, ascending: nil) { model.pressSort(.relevance) }
+            }
+            if state.inRecent && !state.searching {
+                let active = state.sort.field == .lastOpened
+                // The longest row: its words stay on one line, a hair smaller if they must.
+                SortRow(title: SortField.lastOpened.title, active: active,
+                        detail: active ? SortField.direction(.lastOpened, ascending: state.sort.ascending) : nil,
+                        ascending: active ? state.sort.ascending : nil) { model.pressSort(.lastOpened) }
+                    .lineLimit(1).minimumScaleFactor(0.85)
             }
             ForEach(SortField.all) { field in
                 let active = state.sort.field == field.field
@@ -42,9 +54,13 @@ struct HeaderViewOptionsView: View {
                         detail: active ? SortField.direction(field.field, ascending: state.sort.ascending) : nil,
                         ascending: active ? state.sort.ascending : nil) { model.pressSort(field.field) }
             }
-            Text("Press the current sort again to reverse it.")
+            Text(hint)
                 .font(.system(size: 12)).foregroundStyle(.secondary)
+                // A long hint, such as Recent's Last Opened one, takes a second line rather than lose its end.
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 10).padding(.top, 2)
+                .contentTransition(.opacity)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: hint)
             Divider().padding(.vertical, 8)
             SwitchRow(title: "Folders on top", isOn: state.sort.directoriesFirst) { model.toggleFoldersFirst() }
             SwitchRow(title: "Show hidden files", isOn: state.showHidden) { model.toggleHidden() }
@@ -62,27 +78,67 @@ struct HeaderViewOptionsView: View {
         .frame(width: 290)
     }
 
+    /// What pressing the current sort again does, such as "Press Name again for Z to A." A field that isn't in
+    /// `fields`, such as one only some places offer, gets the general hint rather than Best Match's.
+    static func hint(for sort: ItemSort, fields: [SortField] = SortField.all + [SortField.lastOpened]) -> String {
+        if sort.field == .relevance { return "Best Match puts the closest results first." }
+        guard let field = fields.first(where: { $0.field == sort.field }) else {
+            return "Press the current sort again to reverse it."
+        }
+        let words = SortField.direction(field.field, ascending: !sort.ascending)
+        // "A to Z" keeps its capitals; "Oldest first" reads mid-sentence as "oldest first".
+        let next = field.field == .name || field.field == .kind ? words : words.prefix(1).lowercased() + words.dropFirst()
+        return "Press \(field.title) again for \(next)."
+    }
+
     private func heading(_ title: String) -> some View {
         Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
             .padding(.horizontal, 10).padding(.bottom, 4)
     }
 }
 
-/// A row that lights up under the pointer, like a libadwaita popover row.
+/// The fill behind a popover button: a resting fill, a stronger one under the pointer and the strongest while it's
+/// held down, easing between them unless Reduce Motion is on.
+private struct FillButtonStyle<S: Shape>: ButtonStyle {
+    let shape: S
+    var resting: Double = 0
+    var hover: Double = 0.08
+    var pressed: Double = 0.14
+    func makeBody(configuration: Configuration) -> some View {
+        FillBody(configuration: configuration, shape: shape, resting: resting, hover: hover, pressed: pressed)
+    }
+    private struct FillBody: View {
+        let configuration: ButtonStyleConfiguration
+        let shape: S
+        let resting: Double
+        let hover: Double
+        let pressed: Double
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        var body: some View {
+            let fill = !isEnabled ? resting : configuration.isPressed ? pressed : hovering ? hover : resting
+            configuration.label
+                .background(shape.fill(Color.primary.opacity(fill))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: fill))
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+/// A row that lights up under the pointer and more while it's pressed, like a libadwaita popover row.
 private struct HoverRow<Content: View>: View {
+    var restingFill: Double = 0
     let action: () -> Void
     @ViewBuilder let content: () -> Content
-    @State private var hovering = false
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) { content() }
                 .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .contentShape(Rectangle())
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hovering ? 0.08 : 0)))
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .buttonStyle(FillButtonStyle(shape: RoundedRectangle(cornerRadius: 7), resting: restingFill))
     }
 }
 
@@ -92,16 +148,23 @@ private struct SortRow: View {
     let detail: String?
     let ascending: Bool?
     let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        HoverRow(action: action) {
+        // The sort in use keeps a faint fill, so it stands out without the pointer.
+        HoverRow(restingFill: active ? 0.06 : 0, action: action) {
             Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).opacity(active ? 1 : 0).frame(width: 14)
             Text(title).font(.system(size: 14, weight: active ? .semibold : .regular))
             Spacer(minLength: 8)
             if let detail {
                 Text(detail).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .contentTransition(.opacity)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: detail)
             }
             if let ascending {
-                Image(systemName: ascending ? "arrow.up" : "arrow.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                // One arrow that turns over when the sort reverses, rather than two that swap.
+                Image(systemName: "arrow.up").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(ascending ? 0 : 180))
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: ascending)
             }
         }
         .accessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
@@ -110,19 +173,35 @@ private struct SortRow: View {
     }
 }
 
+/// A switch whose whole row toggles it. The row isn't a button: a switch drawn inside a button's label loses its
+/// accent colour.
 private struct SwitchRow: View {
     let title: String
     let isOn: Bool
     let toggle: () -> Void
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(title).font(.system(size: 14))
             Spacer()
+            // Clicks on the switch fall through to the row, so one click toggles once.
             Toggle(title, isOn: Binding(get: { isOn }, set: { _ in toggle() }))
                 .toggleStyle(.switch).controlSize(.small).labelsHidden()
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, 10)
-        .frame(minHeight: 32)
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .contentShape(Rectangle())
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hovering ? 0.08 : 0))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering))
+        .onHover { hovering = $0 }
+        .onTapGesture { toggle() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityAction { toggle() }
     }
 }
 
@@ -134,17 +213,21 @@ private struct ZoomRow: View {
     let canGrow: Bool
     let step: (Int) -> Void
     let reset: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         HStack(spacing: 6) {
             Text(title).font(.system(size: 14))
             Spacer()
             RoundButton(symbol: "minus", label: "Smaller \(title.lowercased())", enabled: canShrink) { step(-1) }
             Button(action: reset) {
+                // The digits roll to the new value.
                 Text("\(percent)%").font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .contentTransition(.numericText(value: Double(percent)))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: percent)
                     .frame(width: 50, height: 26)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(percent == 100 ? 0 : 0.06)))
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FillButtonStyle(shape: RoundedRectangle(cornerRadius: 6), resting: percent == 100 ? 0 : 0.06))
             .help(percent == 100 ? "\(title) is at the default" : "Reset \(title.lowercased()) to 100%")
             .accessibilityLabel("\(title) \(percent) percent. Reset to 100 percent.")
             RoundButton(symbol: "plus", label: "Larger \(title.lowercased())", enabled: canGrow) { step(1) }
@@ -159,18 +242,15 @@ private struct RoundButton: View {
     let label: String
     let enabled: Bool
     let action: () -> Void
-    @State private var hovering = false
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: 12, weight: .semibold))
                 .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.primary.opacity(hovering && enabled ? 0.14 : 0.07)))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FillButtonStyle(shape: Circle(), resting: 0.07, hover: 0.14, pressed: 0.2))
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.35)
-        .onHover { hovering = $0 }
         .help(label)
         .accessibilityLabel(label)
     }
@@ -193,7 +273,12 @@ private struct RoundButton: View {
         popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
         self.popover = popover
     }
-    func close() { popover?.performClose(nil) }
+    /// Closes at once rather than fading, so whoever closes it can rely on it being gone. Scripted runs, which have
+    /// no one to click, are the only callers, and a fade can stall in a window that isn't in front.
+    func close() {
+        popover?.animates = false
+        popover?.performClose(nil)
+    }
     var contentView: NSView? { popover?.contentViewController?.view }
     func popoverDidClose(_ notification: Notification) {
         popover = nil

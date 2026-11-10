@@ -36,12 +36,16 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public let viewOptions: any AppViewOptionsStoring
     /// The apps you've chosen for each kind of file.
     public let openWith: OpenWithStore
+    /// The sidebar's order and hidden rows. In memory unless live() loads sidebar.json, as it records load failures.
+    public private(set) var sidebarLayout: SidebarLayoutStore
     public let fileSystem: any FileSystem
     public let journal: OperationJournal
     public let clock: any HelmClock
     public let directories: AppDirectories
     /// Documents that couldn't be read at launch. Their originals are untouched, and edits this session stay in memory (OK2-9).
     public private(set) var loadFailures: [AppFlushFailure] = []
+    /// Set once Settings' privacy switches are being followed (AppEnvironment+Privacy).
+    var followsPrivacySettings = false
 
     public init(settings: SettingsStore, bookmarks: any AppBookmarkStoring, stars: any AppStarStoring,
                 recents: any AppRecentStoring, session: any AppSessionStoring, trashOrigins: any AppTrashOriginStoring,
@@ -49,10 +53,13 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
                 fileSystem: any FileSystem, journal: OperationJournal, clock: any HelmClock, directories: AppDirectories,
                 openWith: OpenWithStore? = nil) {
         self.openWith = openWith ?? OpenWithStore()
+        self.sidebarLayout = SidebarLayoutStore()
         self.settings = settings; self.bookmarks = bookmarks; self.stars = stars; self.recents = recents
         self.session = session; self.trashOrigins = trashOrigins; self.fileSystem = fileSystem
         self.tagCatalog = tagCatalog; self.viewOptions = viewOptions
         self.journal = journal; self.clock = clock; self.directories = directories
+        // A starred item's or bookmark's row in sidebar.json goes when it does (AppEnvironment+Privacy).
+        forgetSidebarRowsThatGo()
     }
 
     /// Migration must succeed before defaults registration or any store is exposed (F-068, B-029).
@@ -85,12 +92,17 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
         let tagCatalog: any AppTagCatalogStoring = await loaded("tag-catalog", { try await TagCatalogStore(url: locations.tagCatalog) }, fallback: { AppMemoryTagCatalog() })
         let viewOptions: any AppViewOptionsStoring = await loaded("view-options", { try await LocationViewOptionsStore(url: locations.viewOptions) }, fallback: { AppMemoryViewOptions() })
         let openWith: OpenWithStore = await loaded("open-with", { try await OpenWithStore(url: locations.openWith) }, fallback: { OpenWithStore() })
+        let sidebar: SidebarLayoutStore = await loaded("sidebar", { try await SidebarLayoutStore(url: locations.sidebar) }, fallback: { SidebarLayoutStore() })
         let environment = AppEnvironment(settings: SettingsStore(storage: settingsStorage), bookmarks: bookmarks,
             stars: stars, recents: recents, session: session, trashOrigins: origins,
             tagCatalog: tagCatalog, viewOptions: viewOptions,
-            fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots, trash: trash), journal: OperationJournal(),
+            fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots,
+                                       privacyRoots: PrivacyAreas.askingRoots(home: directories.home), trash: trash),
+            journal: OperationJournal(),
             clock: clock, directories: directories, openWith: openWith)
         environment.loadFailures = failures
+        environment.sidebarLayout = sidebar
+        if failures.isEmpty { environment.forgetSidebarRowsAlreadyGone() }
         return environment
     }
 
@@ -118,7 +130,7 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public func flushStores() async -> [AppFlushFailure] {
         let stores: [(String, any AppFlushable)] = [("bookmarks", bookmarks), ("stars", stars),
             ("recent", recents), ("session", session), ("trash-origins", trashOrigins),
-            ("tag-catalog", tagCatalog), ("view-options", viewOptions), ("open-with", openWith)]
+            ("tag-catalog", tagCatalog), ("view-options", viewOptions), ("open-with", openWith), ("sidebar", sidebarLayout)]
         var failures: [AppFlushFailure] = []
         for (name, store) in stores {
             do { try await store.flush() }

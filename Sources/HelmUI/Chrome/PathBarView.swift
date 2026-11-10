@@ -5,6 +5,8 @@ import HelmCore
 @MainActor protocol PathBarDelegate: AnyObject {
     func pathBarNavigate(to url: URL)
     func pathBarOpenInNewTab(_ url: URL)
+    /// Copy Path from a piece's menu: the window's pasteboard, which a fixture run keeps to itself.
+    func pathBarCopyPath(_ url: URL)
     func pathBarBeginEditing()
     func pathBarAction(_ action: AddressEditorAction)
     func pathBarDropOperation(_ info: NSDraggingInfo, into url: URL?) -> NSDragOperation
@@ -34,7 +36,8 @@ struct PathBarSegment: Equatable {
     private let field = LocationTextField()
     private let ghost = NSTextField(labelWithString: "")
     private let popup = CompletionPopup()
-    private let folderMenuButton = FlatMenuButton(symbol: "ellipsis", label: "Folder Menu")
+    /// As tall as the path's own pieces, so it sits inside the field like one of them.
+    private let folderMenuButton = FlatMenuButton(symbol: "ellipsis", label: "Folder Menu", height: 26)
     private var editing = false
     private var applyingText = false
     private var fieldTrailing: NSLayoutConstraint?
@@ -64,6 +67,8 @@ struct PathBarSegment: Equatable {
         ghost.lineBreakMode = .byClipping
         addSubview(ghost)
         folderMenuButton.menuProvider = { [weak self] in self?.delegate?.pathBarFolderMenu() }
+        // It sits at the field's end, so its menu opens inwards, under the path.
+        folderMenuButton.alignsMenuToTrailingEdge = true
         addSubview(folderMenuButton)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
@@ -89,6 +94,24 @@ struct PathBarSegment: Equatable {
 
     override var mouseDownCanMoveWindow: Bool { false }
     var isEditingLocation: Bool { editing }
+    /// The ⋯ at the field's end, for tests.
+    var folderMenuButtonForTesting: FlatMenuButton { folderMenuButton }
+    /// The path's pieces, as rendered.
+    var segmentTitles: [String] { segments.map(\.title) }
+    /// The narrowest the bar can be with the whole name of the folder you're in: the folder, after the … that stands
+    /// for the folders before it, and the ⋯, as the constraints in `init` place them. Narrower still, the folder's name
+    /// shortens in the middle rather than make the window wider.
+    var minimumWidth: CGFloat {
+        guard let last = buttons.last else { return 0 }
+        var pieces = last.intrinsicContentSize.width
+        if let separator = separators.last { pieces += overflowButton.intrinsicContentSize.width + separator.intrinsicContentSize.width }
+        return 6 + pieces + 2 + folderMenuButton.laidOutWidth + 1
+    }
+    /// Puts the caret in the location field while it's being typed in, for when the bar comes back into view.
+    func focusLocationField() {
+        guard editing, !isHidden, window?.firstResponder !== field.currentEditor() else { return }
+        window?.makeFirstResponder(field)
+    }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateBackground() }
     private func updateBackground() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -103,6 +126,9 @@ struct PathBarSegment: Equatable {
         if next != segments {
             segments = next
             rebuild()
+            let actions = "Actions for “\(next.last?.title ?? "This Folder")”"
+            folderMenuButton.toolTip = actions
+            folderMenuButton.setAccessibilityLabel(actions)
         }
         if editor.isEditing != editing {
             editing = editor.isEditing
@@ -110,7 +136,9 @@ struct PathBarSegment: Equatable {
             ghost.isHidden = !editing; folderMenuButton.isHidden = editing
             updateBackground()
             if editing {
-                window?.makeFirstResponder(field)
+                // Under an open search the bar is hidden, and a hidden field would lose the caret at once and cancel
+                // the typing. The header gives it the caret when the search makes way.
+                if !isHiddenOrHasHiddenAncestor { window?.makeFirstResponder(field) }
             } else {
                 popup.hide()
                 if window?.firstResponder === field.currentEditor() { window?.makeFirstResponder(nil) }
@@ -268,9 +296,7 @@ struct PathBarSegment: Equatable {
         if let url = sender.representedObject as? URL { delegate?.pathBarOpenInNewTab(url) }
     }
     @objc private func copySegmentPath(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.path, forType: .string)
+        if let url = sender.representedObject as? URL { delegate?.pathBarCopyPath(url) }
     }
 
     // MARK: Typing
@@ -347,6 +373,9 @@ struct PathBarSegment: Equatable {
             .foregroundColor: isLast ? NSColor.labelColor : NSColor.secondaryLabelColor])
         lineBreakMode = .byTruncatingMiddle
         setContentHuggingPriority(.required, for: .horizontal)
+        // Below the sidebar's hold on its width (260) and the window's on its size (500 and up): a name too long for the
+        // room shortens in the middle rather than push the window wider or squeeze the sidebar.
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         setAccessibilityLabel(isLast ? "\(segment.title), current folder" : segment.title)
         if let symbol = segment.symbol {
             image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?

@@ -86,5 +86,7 @@ final class VirtualSourceTests: XCTestCase {
             if case .batch(let batch) = event { entries += batch }
         }
         XCTAssertEqual(entries.map(\.name), ["b", "a"])
+        // Each entry carries when it was last opened, for Recent's Last Opened order.
+        XCTAssertEqual(entries.map(\.lastOpenedDate), [Date(timeIntervalSince1970: 2), Date(timeIntervalSince1970: 1)])
     }
 }

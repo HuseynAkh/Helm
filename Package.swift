@@ -51,5 +51,9 @@ targets += [
 products += [.executable(name: "HelmDev", targets: ["HelmDev"])]
 targets += [.executableTarget(name: "HelmDev", dependencies: ["HelmApp"], path: "Sources/Helm")]
 #endif
+// #file names the module and file, not the full path, so no folder from the build machine goes into the app.
+for target in targets {
+    target.swiftSettings = (target.swiftSettings ?? []) + [.enableUpcomingFeature("ConciseMagicFile")]
+}
 let package = Package(name: "Helm", platforms: [.macOS(.v14)], products: products,
                       targets: targets, swiftLanguageVersions: [.v5])

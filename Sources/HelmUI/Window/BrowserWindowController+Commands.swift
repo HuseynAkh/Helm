@@ -12,6 +12,10 @@ extension BrowserWindowController {
         guard let raw = sender.representedObject as? String, let command = CommandID(rawValue: raw) else { return }
         perform(command)
     }
+    /// New File › a template from ~/Templates.
+    @objc func newFromTemplate(_ sender: NSMenuItem) {
+        if let template = sender.representedObject as? URL { createFile(from: template) }
+    }
 
     // Standard selectors, so a focused text field gets text semantics first (F-051).
     @objc public func cut(_ sender: Any?) { perform(.cut) }
@@ -31,6 +35,7 @@ extension BrowserWindowController {
         case #selector(undo(_:)): command = .undo
         case #selector(redo(_:)): command = .redo
         case #selector(helmCommand(_:)): command = (item.representedObject as? String).flatMap(CommandID.init(rawValue:))
+        case #selector(newFromTemplate(_:)): command = .newFromTemplate
         default: command = nil
         }
         guard let command else { return true }
@@ -42,10 +47,11 @@ extension BrowserWindowController {
 
     private func updateTitle(of item: NSMenuItem, for command: CommandID) {
         switch command {
+        // While this window's work is under way, what Undo and Redo would act on is still changing: they read plainly and are off.
         case .undo:
-            if case .available(let name) = historyState.undoAvailability { item.title = "Undo \(name)" } else { item.title = "Undo" }
+            if case .available(let name) = historyState.undoAvailability, !isRunningOperations { item.title = "Undo \(name)" } else { item.title = "Undo" }
         case .redo:
-            if case .unsupported(let name) = historyState.redoAvailability { item.title = "Redo \(name)" } else { item.title = "Redo" }
+            if case .unsupported(let name) = historyState.redoAvailability, !isRunningOperations { item.title = "Redo \(name)" } else { item.title = "Redo" }
         case .hidden:
             item.state = (activeTab?.showHidden ?? false) ? .on : .off
         case .grid: item.state = activeTab?.viewMode == .grid ? .on : .off
@@ -64,20 +70,23 @@ extension BrowserWindowController {
         let textFocused = firstResponder is NSText || firstResponder is NSTextField
         let pasteboard = dependencies.pasteboard
         var clipboard: CommandClipboardState = .empty
-        if pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) {
+        // Only what kind of thing is on the clipboard, never what it says: that's read when you paste.
+        if pasteboard.availableType(from: [.fileURL]) != nil {
             clipboard = cutTransaction?.isValid(currentChangeCount: pasteboard.changeCount) == true ? .cutFiles : .files
-        } else if pasteboard.string(forType: .string) != nil { clipboard = .text }
+        } else if pasteboard.availableType(from: [.string]) != nil { clipboard = .text }
         var canUndo = false, canRedo = false
-        if case .available = historyState.undoAvailability { canUndo = true }
-        if case .unsupported = historyState.redoAvailability { canRedo = true }
+        if case .available = historyState.undoAvailability, !isRunningOperations { canUndo = true }
+        if case .unsupported = historyState.redoAvailability, !isRunningOperations { canRedo = true }
         var canGoUp = false
         if let url = tab?.location.mutationTarget, url.standardizedFileURL.path != "/" { canGoUp = true }
-        return CommandContext(selectionCount: tab?.selection.count ?? 0, hasMutationTarget: tab?.mutationTarget != nil,
+        var context = CommandContext(selectionCount: tab?.selection.count ?? 0, hasMutationTarget: tab?.mutationTarget != nil,
                               locationKind: tab?.location.kind ?? .directory, clipboard: clipboard,
                               textFieldFocused: textFocused, searchOverlayActive: tab?.search != nil,
                               canUndo: canUndo, canRedo: canRedo, paneFocused: !textFocused, typeSelectActive: false,
                               hasWindow: true, canGoBack: !(tab?.history.back.isEmpty ?? true),
                               canGoForward: !(tab?.history.forward.isEmpty ?? true), canGoUp: canGoUp)
+        applyContentState(to: &context)
+        return context
     }
 
     public func perform(_ command: CommandID) {
@@ -85,29 +94,33 @@ extension BrowserWindowController {
         let id = tab.id
         switch command {
         // Navigation
-        case .back: store.send(.tab(id, .goBack))
+        case .back: if !returnFromFailedPlace() { store.send(.tab(id, .goBack)) }
         case .forward: store.send(.tab(id, .goForward))
         case .up:
-            store.send(.tab(id, .goUp))
+            if !goUpFromFailedPlace() { store.send(.tab(id, .goUp)) }
         case .home: navigate(to: .directory(dependencies.home), intent: .home)
         case .recents: navigate(to: .recent)
         case .desktop: navigate(to: .directory(dependencies.home.appendingPathComponent("Desktop")))
         case .documents: navigate(to: .directory(dependencies.home.appendingPathComponent("Documents")))
         case .downloads: navigate(to: .directory(dependencies.home.appendingPathComponent("Downloads")))
         case .applications: navigate(to: .directory(URL(fileURLWithPath: "/Applications")))
-        case .utilities: navigate(to: .directory(URL(fileURLWithPath: "/Applications/Utilities")))
+        // Since macOS 10.15 Apple's utilities, such as Terminal and Disk Utility, live here; /Applications/Utilities
+        // holds only those other installers put there.
+        case .utilities: navigate(to: .directory(URL(fileURLWithPath: "/System/Applications/Utilities", isDirectory: true)))
+        case .goToTrash: navigate(to: .trash)
         case .location: store.send(.tab(id, .addressBar(.beginEditing)))
         case .connectToServer: connectToServerPrompt()
         // Views
         case .grid: store.send(.tab(id, .setViewMode(.grid))); rememberViewOptions(mode: .grid)
         case .list: store.send(.tab(id, .setViewMode(.list))); rememberViewOptions(mode: .list)
         case .hidden: store.send(.tab(id, .toggleHidden))
-        case .refresh: store.send(.tab(id, .refresh))
+        case .refresh: refreshPlaceOnShow()
         case .sidebar: toggleSidebar()
         case .find: beginSearch()
         // Windows and tabs
         case .newWindow: host?.openWindow(at: newWindowLocation, selecting: [])
-        case .newTab: newTab(at: tab.location)
+        // The place on show, which while a card is up is the place it's about, not the folder hidden under it.
+        case .newTab: newTab(at: Self.placeOnShow(tab))
         case .closeTab: closeCurrentTab()
         case .closeWindow: window?.performClose(nil)
         case .reopenClosedTab: if let location = closedTabs.popLast() { newTab(at: location) }
@@ -136,7 +149,8 @@ extension BrowserWindowController {
         case .putBack: putBackSelection()
         case .emptyTrash: emptyTrash()
         case .permanentDelete: deleteImmediately()
-        case .clearRecent: dependencies.recents.clear(); store.send(.tab(id, .refresh))
+        // Recent lists itself again as the record changes (recentsChanged). The apps you've used go too.
+        case .clearRecent: dependencies.forgetRecentItems()
         case .newFolder: createFolder()
         case .newFolderWithSelection: createFolderWithSelection()
         case .newFile, .newTextFile: createTextFile()
@@ -181,7 +195,8 @@ extension BrowserWindowController {
             tab.viewMode = current.viewMode; tab.sort = current.sort; tab.showHidden = current.showHidden
         }
         store.send(.addTab(tab, activate: true))
-        store.send(.tab(tab.id, .navigate(location, .restore)))
+        // A new tab starts its own history, and the folder it opens at goes into Recent like any folder you visit.
+        store.send(.tab(tab.id, .navigate(location, .open)))
         if !selecting.isEmpty { select(Set(selecting.map { ItemID(url: $0) }), in: tab.id) }
     }
     func closeTab(_ id: TabID) {
@@ -199,36 +214,52 @@ extension BrowserWindowController {
         store.send(.window(.activate(tabs[(index + delta + tabs.count) % tabs.count])))
     }
     /// Where File › New Window opens, from Settings › General (P-017). Virtual places such as Recent
-    /// stay as they are when the setting follows the front window.
+    /// stay as they are when the setting follows the front window. The front window's place is the one on show:
+    /// while a card is up, the place it's about.
     public var newWindowLocation: Location {
         let choice = NewWindowLocation(rawValue: dependencies.settings.snapshot.string(.newWindowLocation)) ?? .current
-        if choice == .current, let location = activeTab?.location { return location }
-        return .directory(choice.folder(current: activeTab?.location.mutationTarget, home: dependencies.home))
+        let current = activeTab.map(Self.placeOnShow)
+        if choice == .current, let current { return current }
+        return .directory(choice.folder(current: current?.mutationTarget, home: dependencies.home))
     }
 
     /// Shows a folder, with some of its items selected: how other apps' "Show in Finder" and Services arrive.
     public func show(folder: URL, selecting items: [URL]) {
+        leaveSearch()
         guard !items.isEmpty else { navigate(to: .directory(folder)); return }
+        listHiddenItems(items)
         let ids = Set(items.map { ItemID(url: $0) })
         select(ids, in: activeTabID)
         if let here = activeTab?.location.mutationTarget, Self.isSame(here, folder) {
-            store.send(.tab(activeTabID, .refreshSelecting(ids)))
+            showOwnFolder(of: activeTabID, reloading: .refreshSelecting(ids))
         } else {
             navigate(to: .directory(folder))
         }
     }
 
     public func revealInCurrentTab(_ url: URL) {
+        leaveSearch()
         let parent = url.deletingLastPathComponent()
+        listHiddenItems([url])
         select([ItemID(url: url)], in: activeTabID)
         if activeTab?.location.mutationTarget?.standardizedFileURL.path == parent.standardizedFileURL.path {
-            store.send(.tab(activeTabID, .refreshSelecting([ItemID(url: url)])))
+            showOwnFolder(of: activeTabID, reloading: .refreshSelecting([ItemID(url: url)]))
         } else {
             navigate(to: .directory(parent))
         }
     }
     /// Typing a file's path reveals and selects it; nothing launches (Q9).
     func revealTypedFile(_ url: URL, in tab: TabID) { revealInCurrentTab(url) }
+    /// An item asked for by name is shown and selected even when it's hidden, as Finder's reveal does: the tab lists
+    /// hidden items, as View › Show Hidden Files would, but only this tab and without changing the setting.
+    private func listHiddenItems(_ items: [URL]) {
+        guard let tab = activeTab, !tab.showHidden, items.contains(where: Self.isHiddenItem) else { return }
+        store.send(.tab(tab.id, .showHiddenItems))
+    }
+    /// A name starting with a dot, or an item macOS marks hidden, such as ~/Library: what hidden files leave out.
+    static func isHiddenItem(_ url: URL) -> Bool {
+        url.lastPathComponent.hasPrefix(".") || (try? url.resourceValues(forKeys: [.isHiddenKey]))?.isHidden == true
+    }
 
     /// A typed `smb://` address goes to macOS, the same way Finder's Connect to Server does.
     func connect(to url: URL) {
@@ -279,11 +310,11 @@ extension BrowserWindowController {
         var byApp: [URL: [FileEntry]] = [:]
         var unclaimed: [FileEntry] = []
         for entry in files {
-            if let app = NSWorkspace.shared.urlForApplication(toOpen: entry.url) { byApp[app, default: []].append(entry) } else { unclaimed.append(entry) }
+            if let app = dependencies.launcher.defaultApplication(toOpen: entry.url) { byApp[app, default: []].append(entry) } else { unclaimed.append(entry) }
         }
         for (app, group) in byApp { open(group.map(\.url), with: app, entries: group) }
-        // Nothing claims these, so the Open With chooser asks, as Finder does.
-        if let first = unclaimed.first { showOpenWithChooser(for: first, makeDefault: false) }
+        // Nothing claims these, so the Open With chooser asks, as Finder does: for all of them, so none is dropped.
+        if !unclaimed.isEmpty { showOpenWithChooser(for: unclaimed, makeDefault: false) }
     }
     private func showOriginal() {
         guard let entry = selectedEntries().first else { return }
@@ -308,20 +339,20 @@ extension BrowserWindowController {
     func handleContentKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         switch Int(event.keyCode) {
-        case 36, 76: // Return, Enter
-            if flags.isEmpty { perform(.rename); return true }
-            return false
-        case 120: // F2, the Nautilus rename key
-            if flags.isEmpty { perform(.rename); return true }
-            return false
+        case 36, 76, 120: // Return, Enter, and F2, the Nautilus rename key
+            guard flags.isEmpty else { return false }
+            // Only where Edit › Rename is on: Recent and search results aren't folders, so nothing renames there.
+            if CommandValidation.state(for: .rename, in: commandContext()) == .enabled { perform(.rename) }
+            else if activeTab?.selection.isEmpty == false { NSSound.beep() }
+            return true
         case 49: // Space
             if flags.isEmpty { perform(.quickLook); return true }
             return false
         case 125: // Down
             if flags == [.command] { perform(.open); return true }
             return false
-        case 53: // Escape
-            if activeTab?.search != nil { store.send(.tab(activeTabID, .searchEnded)); return true }
+        case 53: // Escape closes the search, field and all, and the keys stay here.
+            if header.isSearching || activeTab?.search != nil { header.endSearch(); headerSearchClosed(); return true }
             if let tab = activeTab, !tab.cutIDs.isEmpty { clearCut(); return true }
             return false
         default: return false
@@ -330,30 +361,38 @@ extension BrowserWindowController {
 
     // MARK: Clipboard
 
+    /// The items, and their names as text, as Finder's Copy writes them. Full paths are for Copy as Pathname.
     private func writeToPasteboard(_ urls: [URL]) -> Int {
         let pasteboard = dependencies.pasteboard
         pasteboard.clearContents()
         pasteboard.writeObjects(urls.map { $0 as NSURL })
-        pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
+        pasteboard.setString(urls.map(\.lastPathComponent).joined(separator: "\n"), forType: .string)
         return pasteboard.changeCount
     }
     private func copySelection() {
-        let urls = selectedEntries().map(\.url)
+        let urls = OperationPlanner.outermost(selectedEntries().map(\.url))
         guard !urls.isEmpty else { return }
-        cutTransaction = nil
         _ = writeToPasteboard(urls)
         clearCut()
     }
     private func cutSelection() {
         let entries = selectedEntries()
-        guard !entries.isEmpty else { return }
-        let count = writeToPasteboard(entries.map(\.url))
-        cutTransaction = ClipboardTransaction(mode: .cut, sources: entries.map(\.url), changeCount: count)
+        let urls = OperationPlanner.outermost(entries.map(\.url))
+        guard !urls.isEmpty else { return }
+        let count = writeToPasteboard(urls)
+        // Shared with every window, so a paste in any of them moves; other windows' cut items stop looking cut.
+        dependencies.cut.set(ClipboardTransaction(mode: .cut, sources: urls, changeCount: count), by: self)
         store.send(.tab(activeTabID, .cutSetChanged(Set(entries.map(\.id)))))
     }
+    /// Ends the cut everywhere: every window lets its cut items go.
     func clearCut() {
-        cutTransaction = nil
-        store.send(.tab(activeTabID, .cutSetChanged([])))
+        dependencies.cut.clear()
+    }
+    /// The cut changed, here or in another window: no tab of this window draws anything as cut any more.
+    func dropCutMarks() {
+        for id in store.state.window.tabs where store.state.tabs[id]?.cutIDs.isEmpty == false {
+            store.send(.tab(id, .cutSetChanged([])))
+        }
     }
     private func pasteHere() {
         guard let target = activeTab?.mutationTarget else { NSSound.beep(); return }
@@ -382,7 +421,8 @@ extension BrowserWindowController {
             if result.error == nil, let self { self.dependencies.pasteboard.clearContents() }
         }
     }
-    private func copyPaths(of urls: [URL]) {
+    /// Copy Path and Copy as Pathname: full paths, as text only.
+    func copyPaths(of urls: [URL]) {
         guard !urls.isEmpty else { return }
         dependencies.pasteboard.clearContents()
         dependencies.pasteboard.setString(urls.map(\.path).joined(separator: "\n"), forType: .string)
@@ -390,23 +430,50 @@ extension BrowserWindowController {
 
     // MARK: Running operations
 
-    /// Runs a command, reports what went wrong and refreshes what it touched.
+    /// Runs a command, reports what went wrong and refreshes what it touched. Commands run one after another, in the
+    /// order they were asked for: one asked for while another runs waits its turn, as the window's history requires.
     public func run(_ command: Command, afterSelecting explicit: Set<ItemID>? = nil, completion: ((OperationResult) -> Void)? = nil) {
+        // A folder chosen with something inside it takes that along, as in Finder: the inner item isn't a second source.
+        let command = OperationPlanner.outermostSources(of: command)
         let scope = OperationCoordinator.scope(of: command)
         let resolver = conflictResolver()
-        let operations = dependencies.operations, history = history
+        let dependencies = dependencies, operations = dependencies.operations, history = history
         let asked = FailurePromptRecord()
         let onFailure: OperationCoordinator.FailureResolver = { [weak self] failure in
             guard let self else { return .stop }
             asked.didAsk = true
             return await self.askAboutFailure(failure, verb: OperationText.verb(for: command))
         }
-        Task { @MainActor [weak self] in
+        enqueueOperation { [weak self] in
             let outcome = await operations.run(command, sources: scope.sources, destinations: scope.destinations, history: history,
                                                resolver: resolver, onFailure: onFailure)
+            // Even if this window closed meanwhile: the sidebar is every window's.
+            dependencies.followMovedItems(outcome)
             await self?.refreshHistory()
             let told = await self?.settleReconciliation(outcome, alreadyAsked: asked.didAsk) ?? false
             self?.handle(outcome, explicit: explicit, completion: completion, alreadyAsked: asked.didAsk || told)
+        }
+    }
+    /// Runs `work` after everything this window asked for before it, so operations keep the order they were asked in.
+    private func enqueueOperation(_ work: @escaping @MainActor () async -> Void) {
+        let previous = operationQueue
+        pendingOperations += 1
+        operationQueue = Task { @MainActor [weak self] in
+            await previous?.value
+            await work()
+            self?.pendingOperations -= 1
+        }
+    }
+    /// Whether this window has an operation running or waiting its turn. Undo and Redo don't start then, since what
+    /// they'd undo or redo is still changing; they say so instead.
+    var isRunningOperations: Bool { pendingOperations > 0 }
+    /// A change Helm made outside the operation engine, such as a new archive, can't be undone. Once the window's
+    /// earlier work is done, Undo and Redo let go of older changes rather than reach back past this one.
+    func forgetUndoAfterUntrackedChange() {
+        let history = history
+        enqueueOperation { [weak self] in
+            await history.discardEntries()
+            await self?.refreshHistory()
         }
     }
 
@@ -427,16 +494,16 @@ extension BrowserWindowController {
     }
     private func confirmPartlyDone(_ result: OperationResult) async {
         let verb = OperationText.verb(for: result.command)
-        let failed = result.outcomes.filter { if case .failure(let error) = $0.result { return error != .notAttempted }; return false }
-        let done = result.outcomes.filter(\.succeeded).count
-        let unsure = result.outcomes.filter(\.requiresReconciliation)
-        let name = failed.first.flatMap { $0.step.source?.lastPathComponent ?? $0.step.destination?.lastPathComponent } ?? "An item"
+        // Items, as chosen: a replaced file is one item, named as itself, never by Helm's private working copy.
+        let items = result.items
+        let failed = result.failedItemNames
+        let name = failed.first ?? "An item"
         let title = failed.count > 1 ? "\(failed.count) items couldn’t be \(verb)." : "“\(name)” couldn’t be \(verb)."
         var detail = result.error.map { OperationRowModel.message(for: $0) + " " } ?? ""
-        detail += "\(done) of \(result.outcomes.count) finished."
-        if let first = unsure.first {
-            let item = first.destination?.lastPathComponent ?? first.step.source?.lastPathComponent ?? "One item"
-            detail += " “\(item)” may be only partly there, so check it before you use it."
+        detail += "\(result.succeededItemCount) of \(items.count) finished."
+        let unsure = result.outcomes.filter(\.requiresReconciliation)
+        if let index = result.outcomes.firstIndex(where: \.requiresReconciliation) {
+            detail += " “\(items.name(ofStepAt: index))” may be only partly \(verb). Check before you use it."
         }
         detail += " This can’t be undone."
         if let messageObserver { messageObserver(title + " " + detail); return }
@@ -497,7 +564,7 @@ extension BrowserWindowController {
                         completion: ((OperationResult) -> Void)?, alreadyAsked: Bool = false) {
         switch outcome {
         case .failure(.cancelled): return
-        case .failure(.busy): NSSound.beep()
+        case .failure(.busy): show(message: Self.busyMessage)
         case .failure(.message(let message)): show(message: message)
         case .success(let result):
             completion?(result)
@@ -507,12 +574,19 @@ extension BrowserWindowController {
             }
             let outputs = Set(result.outcomes.filter { $0.succeeded && $0.step.kind != .trash && $0.step.kind != .verifyCopy }.compactMap(\.destination).map { ItemID(url: $0) })
             refreshTabs(touching: result.affectedDirectories, selecting: explicit ?? outputs)
+            forgetFreeSpace()
         }
     }
+    /// Reloads the tabs an operation may have changed: those showing a folder it touched, the Trash and Recent, which
+    /// any operation can change, and the tab in front.
     private func refreshTabs(touching directories: Set<URL>, selecting ids: Set<ItemID>) {
         let paths = Set(directories.map { $0.standardizedFileURL.path })
         for (id, tab) in store.state.tabs {
-            guard let url = tab.location.mutationTarget, paths.contains(url.standardizedFileURL.path) || id == activeTabID else { continue }
+            // A card standing in for a place that couldn't open stays up: a refresh would put the folder it covers
+            // back on show. That folder reloads when you go back to it.
+            if ContentStatePresentation.coveredPlace(tab) != nil { continue }
+            let touched = tab.location.mutationTarget.map { paths.contains($0.standardizedFileURL.path) } ?? true
+            guard touched || id == activeTabID else { continue }
             store.send(.tab(id, id == activeTabID && !ids.isEmpty ? .refreshSelecting(ids) : .refresh))
         }
     }
@@ -521,20 +595,25 @@ extension BrowserWindowController {
         guard !urls.isEmpty else { return }
         run(make(urls))
     }
+    static let busyMessage = "Helm is still working on a change in this window. Try again when it’s done."
     private func runUndo() {
-        let operations = dependencies.operations, history = history
-        Task { @MainActor [weak self] in
+        guard !isRunningOperations else { show(message: Self.busyMessage); return }
+        let dependencies = dependencies, operations = dependencies.operations, history = history
+        enqueueOperation { [weak self] in
             let outcome = await operations.undo(history: history)
+            dependencies.followMovedItems(outcome)
             await self?.refreshHistory()
             let told = await self?.settleReconciliation(outcome, alreadyAsked: false) ?? false
             self?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
         }
     }
     private func runRedo() {
+        guard !isRunningOperations else { show(message: Self.busyMessage); return }
         let resolver = conflictResolver()
-        let operations = dependencies.operations, history = history
-        Task { @MainActor [weak self] in
+        let dependencies = dependencies, operations = dependencies.operations, history = history
+        enqueueOperation { [weak self] in
             let outcome = await operations.redo(history: history, resolver: resolver)
+            dependencies.followMovedItems(outcome)
             await self?.refreshHistory()
             let told = await self?.settleReconciliation(outcome, alreadyAsked: false) ?? false
             self?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
@@ -542,16 +621,17 @@ extension BrowserWindowController {
     }
     private func trashSelection() {
         guard let tab = activeTab else { return }
-        let urls = selectedEntries().map(\.url)
+        let urls = OperationPlanner.outermost(selectedEntries().map(\.url))
         guard !urls.isEmpty else { return }
-        // The next item takes the selection, or the previous one at the end (architecture 14.5).
-        let order = tab.snapshot.sortedEntries.prefix(tab.snapshot.rootCount).map(\.id)
-        let chosen = Set(urls.map { ItemID(url: $0) })
-        var next: Set<ItemID> = []
-        if let last = order.lastIndex(where: { chosen.contains($0) }) {
-            if let after = order[(last + 1)...].first(where: { !chosen.contains($0) }) { next = [after] }
-            else if let before = order[..<last].last(where: { !chosen.contains($0) }) { next = [before] }
-        }
+        // The next item on show takes the selection, or the previous one at the end (architecture 14.5). On show
+        // includes what's inside open folders in the list; an item inside a folder going to the Trash goes with it.
+        let order = tab.shownIDs
+        let gone = urls.map(\.standardizedFileURL.path)
+        let chosen = Set(order.filter { id in
+            guard let path = tab.snapshot.entry(id)?.url.standardizedFileURL.path else { return false }
+            return gone.contains { path == $0 || path.hasPrefix($0 + "/") }
+        })
+        let next: Set<ItemID> = SelectionModel.successor(afterRemoving: chosen, in: order).map { [$0] } ?? []
         // Off by default, because undo is the safety net (Q10). A stored choice to confirm is honoured.
         guard dependencies.settings.snapshot.bool(.confirmBeforeTrash), !confirmsForTesting, let window else {
             run(.trash(items: urls), afterSelecting: next)
@@ -581,7 +661,10 @@ extension BrowserWindowController {
             if !unknown.isEmpty {
                 show(message: "Helm didn’t move “\(unknown[0])” to the Trash, so it doesn’t know where it came from.")
             }
-            for (directory, urls) in groups { run(.move(sources: urls, destinationDirectory: directory)) }
+            // One move per folder the items came from, one after another in a steady order: each waits its turn.
+            for (directory, urls) in groups.sorted(by: { $0.key.path < $1.key.path }) {
+                run(.move(sources: urls, destinationDirectory: directory))
+            }
         }
     }
     private func emptyTrashConfirmed(completion: @escaping () -> Void) {
@@ -596,22 +679,63 @@ extension BrowserWindowController {
             if response == .alertFirstButtonReturn { completion() }
         }
     }
+    /// Helm can't erase what it can't see, so it looks in your Trash before asking anything. Without Full Disk Access
+    /// macOS keeps it out, and the guide to giving that access comes straight away, with no question about erasing
+    /// items Helm was never going to reach.
     func emptyTrash() {
+        let fileSystem = dependencies.fileSystem
+        let home = dependencies.home.appendingPathComponent(".Trash")
+        Task { @MainActor [weak self] in
+            // The Trash folder's own entry says whether Helm may look inside, without listing it. One that isn't
+            // there yet, or some other problem, is left to emptying it, which names what went wrong.
+            var refused = false
+            do { refused = try await fileSystem.entry(at: home).isReadable == false }
+            catch { refused = FileSystemError.mapping(error) == .permissionDenied }
+            guard let self else { return }
+            guard !refused else {
+                if self.dependencies.permissions.fullDiskAccess != .granted { self.dependencies.permissions.showGuide(.fullDiskAccess) }
+                else { self.show(message: OperationText.describe(FileSystemError.permissionDenied)) }
+                return
+            }
+            self.emptyCheckedTrash()
+        }
+    }
+    private func emptyCheckedTrash() {
         emptyTrashConfirmed { [weak self] in
             guard let self else { return }
             let fileSystem = self.dependencies.fileSystem
             let uid = String(getuid())
             let others = self.dependencies.volumes.volumes.filter { !$0.isInternal }.map { $0.url.appendingPathComponent(".Trashes/\(uid)") }
+            let home = self.dependencies.home.appendingPathComponent(".Trash")
             Task { @MainActor in
-                for trash in [self.dependencies.home.appendingPathComponent(".Trash")] + others {
+                for trash in [home] + others {
+                    let names: Set<String>
                     do {
-                        let names = try await fileSystem.childNames(of: trash)
-                        for name in names { try await fileSystem.removeItem(at: trash.appendingPathComponent(name)) }
+                        names = try await fileSystem.childNames(of: trash)
                     } catch FileSystemError.notFound {
                         continue // That volume has no Trash yet.
-                    } catch { self.show(message: OperationText.describe(error)) }
+                    } catch FileSystemError.permissionDenied where trash == home && self.dependencies.permissions.fullDiskAccess != .granted {
+                        // Without Full Disk Access, macOS won't let Helm look inside your Trash: show how to give it
+                        // rather than a bare refusal.
+                        self.dependencies.permissions.showGuide(.fullDiskAccess)
+                        continue
+                    } catch { self.show(message: OperationText.describe(error)); continue }
+                    // An item that won't go, such as a locked one, doesn't keep the rest; it's named afterwards.
+                    var stuck: [(name: String, error: Error)] = []
+                    var erased: [URL] = []
+                    for name in names.sorted() {
+                        let item = trash.appendingPathComponent(name)
+                        do { try await fileSystem.removeItem(at: item); erased.append(item) }
+                        catch { stuck.append((name, error)) }
+                    }
+                    // Where the erased items came from goes with them.
+                    self.dependencies.trashOrigins.removeOrigins(for: erased)
+                    if let first = stuck.first {
+                        let which = stuck.count == 1 ? "“\(first.name)”" : "“\(first.name)” and \(stuck.count - 1) more"
+                        self.show(message: "\(which) couldn’t be deleted. \(OperationText.describe(first.error))")
+                    }
                 }
-                self.store.send(.tab(self.activeTabID, .refresh))
+                self.refreshPlaceOnShow()
             }
         }
     }
@@ -627,9 +751,13 @@ extension BrowserWindowController {
             guard let self, response == .alertFirstButtonReturn else { return }
             let fileSystem = self.dependencies.fileSystem
             Task { @MainActor in
-                do { for url in urls { try await fileSystem.removeItem(at: url) } }
+                var erased: [URL] = []
+                do { for url in urls { try await fileSystem.removeItem(at: url); erased.append(url) } }
                 catch { self.show(message: OperationText.describe(error)) }
+                // Erased from the Trash, an item's record of where it came from goes too.
+                self.dependencies.trashOrigins.removeOrigins(for: erased)
                 self.store.send(.tab(self.activeTabID, .refresh))
+                self.forgetFreeSpace()
             }
         }
         if confirmsForTesting { proceed(.alertFirstButtonReturn) } else { alert.beginSheetModal(for: window, completionHandler: proceed) }
@@ -667,26 +795,11 @@ extension BrowserWindowController {
             if let output = result.outcomes.first(where: \.succeeded)?.destination { self?.expectRename(of: ItemID(url: output)) }
         }
     }
+    /// Through the operation engine, like any other change, so Undo takes the new aliases or links away.
     private func makeLinks(alias: Bool) {
-        let entries = selectedEntries()
-        guard !entries.isEmpty else { return }
-        let fileSystem = dependencies.fileSystem
-        Task { @MainActor in
-            var made: Set<ItemID> = []
-            for entry in entries {
-                let parent = entry.url.deletingLastPathComponent()
-                let suffix = alias ? " alias" : " link"
-                do {
-                    let names = try await fileSystem.childNames(of: parent)
-                    let name = try UniqueNamer.name(for: entry.name + suffix, existingNames: names)
-                    let target = parent.appendingPathComponent(name.value)
-                    if alias { try await fileSystem.createAlias(for: entry.url, at: target) }
-                    else { try await fileSystem.createSymbolicLink(at: target, destination: entry.url) }
-                    made.insert(ItemID(url: target))
-                } catch { show(message: OperationText.describe(error)) }
-            }
-            store.send(.tab(activeTabID, .refreshSelecting(made)))
-        }
+        let urls = selectedEntries().map(\.url)
+        guard !urls.isEmpty else { return }
+        run(.link(sources: urls, destinationDirectory: nil, alias: alias))
     }
 
     // MARK: Renaming
@@ -738,6 +851,7 @@ extension BrowserWindowController {
         for url in urls {
             if allStarred { dependencies.stars.unstar(url) } else { dependencies.stars.star(url, at: dependencies.clock.now()) }
         }
+        if !allStarred { urls.forEach(dependencies.showStarred) }
     }
 
     // MARK: Conflicts
@@ -788,12 +902,12 @@ extension BrowserWindowController {
         for (index, section) in model.sections.enumerated() where !section.isEmpty {
             if index > 0, !menu.items.isEmpty { menu.addItem(.separator()) }
             for row in section {
-                let item = commandItem(row.title, row.command)
+                let item: NSMenuItem
                 switch row.command {
-                case .openWith: item.submenu = openWithMenu(for: entries); item.action = nil
-                case .share: item.submenu = shareMenu(for: entries); item.action = nil
-                case .newFile: item.submenu = newFileMenu(); item.action = nil
-                default: break
+                case .openWith: item = submenuItem(row.title, row.command, openWithMenu(for: entries))
+                case .share: item = submenuItem(row.title, row.command, shareMenu(for: entries))
+                case .newFile: item = submenuItem(row.title, row.command, newFileMenu())
+                default: item = commandItem(row.title, row.command)
                 }
                 menu.addItem(item)
             }
@@ -806,26 +920,37 @@ extension BrowserWindowController {
         }
         return menu
     }
+    /// A row that opens a submenu. It has no action until its submenu is in place, so AppKit gives it the submenu's own
+    /// action, which keeps it enabled. A row whose action is cleared afterwards is greyed out, and its submenu can't be
+    /// opened. The rows inside are checked as usual.
+    private func submenuItem(_ title: String, _ command: CommandID, _ submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.representedObject = command.rawValue
+        item.submenu = submenu
+        return item
+    }
     /// View › Sort By in the menu bar: the fields, where choosing the current one reverses it, then its two directions in words.
+    /// During a search it's about the results' order.
     public func fillSortItems(in menu: NSMenu) {
-        let current = activeTab?.sort ?? .defaultSort
+        let current = activeTab?.shownSort ?? .defaultSort
         if activeTab?.search != nil {
             let best = closureItem(SortChoice.bestMatch.title) { [weak self] in self?.pressSort(.relevance) }
             best.state = current.field == .relevance ? .on : .off
             menu.addItem(best)
         }
+        if let item = lastOpenedSortItem(current) { menu.addItem(item) }
         for field in SortField.all {
             let item = closureItem(field.title) { [weak self] in self?.pressSort(field.field) }
             item.state = current.field == field.field ? .on : .off
             if current.field == field.field { item.toolTip = "Choose again to reverse" }
             menu.addItem(item)
         }
-        if current.field != .relevance, let field = SortField.all.first(where: { $0.field == current.field }) {
+        if current.field != .relevance, let field = SortField.describing(current.field) {
             menu.addItem(.separator())
             for ascending in [field.startsAscending, !field.startsAscending] {
                 let item = closureItem(SortField.direction(field.field, ascending: ascending)) { [weak self] in
-                    guard let self, let tab = self.activeTab else { return }
-                    self.contentSetSort(ItemSort(field: tab.sort.field, ascending: ascending, directoriesFirst: tab.sort.directoriesFirst))
+                    guard let self, let sort = self.activeTab?.shownSort else { return }
+                    self.contentSetSort(ItemSort(field: sort.field, ascending: ascending, directoriesFirst: sort.directoriesFirst))
                 }
                 item.state = current.ascending == ascending ? .on : .off
                 item.indentationLevel = 1
@@ -837,14 +962,16 @@ extension BrowserWindowController {
         folders.state = current.directoriesFirst ? .on : .off
         menu.addItem(folders)
     }
-    /// Pressing the current sort again reverses it, as clicking a column heading does.
+    /// Pressing the current sort again reverses it, as clicking a column heading does. Both work on the order on
+    /// show, so during a search they change the results' order and leave the folder's alone. Best Match is only
+    /// offered during a search, and does nothing once it has ended.
     public func pressSort(_ field: ItemSort.Field) {
-        guard let tab = activeTab else { return }
-        contentSetSort(SortField.pressing(field, on: tab.sort))
+        guard let tab = activeTab, field != .relevance || tab.search != nil else { return }
+        contentSetSort(SortField.pressing(field, on: tab.shownSort))
     }
     func toggleFoldersFirst() {
-        guard let tab = activeTab else { return }
-        contentSetSort(ItemSort(field: tab.sort.field, ascending: tab.sort.ascending, directoriesFirst: !tab.sort.directoriesFirst))
+        guard let sort = activeTab?.shownSort else { return }
+        contentSetSort(ItemSort(field: sort.field, ascending: sort.ascending, directoriesFirst: !sort.directoriesFirst))
     }
     private func closureItem(_ title: String, _ action: @escaping () -> Void) -> NSMenuItem {
         let target = ClosureMenuTarget(action)
@@ -893,10 +1020,9 @@ extension BrowserWindowController {
             let visible = names.filter { !$0.hasPrefix(".") }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             if !visible.isEmpty { menu.addItem(.separator()) }
             for name in visible {
-                let url = templates.appendingPathComponent(name)
-                let target = ClosureMenuTarget { [weak self] in self?.createFile(from: url) }
-                let item = NSMenuItem(title: name, action: #selector(ClosureMenuTarget.run(_:)), keyEquivalent: "")
-                item.target = target; item.representedObject = target
+                // Checked like New Folder, so a template never lands in a folder hidden under a card.
+                let item = NSMenuItem(title: name, action: #selector(newFromTemplate(_:)), keyEquivalent: "")
+                item.target = self; item.representedObject = templates.appendingPathComponent(name)
                 menu.addItem(item)
             }
         }
@@ -914,7 +1040,7 @@ extension BrowserWindowController {
     }
     func showProperties(for entries: [FileEntry]) {
         guard !entries.isEmpty, let window else { return }
-        let icon = NSWorkspace.shared.icon(forFile: entries[0].url.path)
+        let icon = icons.icon(for: entries[0])
         let model = PropertiesViewModel(entries: entries)
         let view = PropertiesView(model: model, icon: { _ in Image(nsImage: icon) },
             reveal: { [weak self] urls in if let url = urls.first { self?.revealInCurrentTab(url) } },
@@ -926,16 +1052,22 @@ extension BrowserWindowController {
     // MARK: Test support
 
     public func refreshHistoryForTesting() async { await refreshHistory() }
+    /// Whether a change is running or waiting its turn in this window, which makes Undo and Redo say so instead.
+    public var isRunningOperationsForTesting: Bool { isRunningOperations }
     public func emptyTrashForTesting() { emptyTrash() }
     public var isSearchingForTesting: Bool { header.isSearching }
     public func chooseSortForTesting(_ title: String) {
         guard let tab = activeTab, let choice = SortChoice.all.first(where: { $0.title == title }) else { return }
-        contentSetSort(choice.applied(to: tab.sort))
+        contentSetSort(choice.applied(to: tab.shownSort))
     }
-    public func pathSegmentsForTesting() -> [String] {
-        guard let tab = activeTab else { return [] }
-        return PathBarView.segments(for: tab.location, home: dependencies.home).map(\.title)
+    /// The path's pieces as the path bar shows them.
+    public func pathSegmentsForTesting() -> [String] { pathBar.segmentTitles }
+    /// The tabs' names as the tab strip shows them, or the one tab's name while the strip is hidden.
+    public var tabTitlesForTesting: [String] {
+        tabStrip.isHidden ? [TabStripView.title(activeTab)] : tabStrip.titlesForTesting
     }
+    /// Whether the whole of the active tab is in the tab strip's view; true with one tab, when there's no strip.
+    public var activeTabInViewForTesting: Bool { tabStrip.isHidden || tabStrip.activeTabInViewForTesting }
     public var sidebarDriveNamesForTesting: [String] {
         dependencies.volumes.volumes.map(\.name)
     }

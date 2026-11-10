@@ -28,9 +28,21 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.helm.filemanager.dev
         PRODUCT_NAME: Helm
         SWIFT_VERSION: "5"
+        # #file names the module and file, not the full path, as in Package.swift.
+        SWIFT_UPCOMING_FEATURE_CONCISE_MAGIC_FILE: YES
         SWIFT_STRICT_CONCURRENCY: targeted
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+      # Release is what ships. It leaves out the debugger entitlement (get-task-allow), and its binary is
+      # stripped of symbols and build paths. The hardened runtime stays on.
+      # scripts/release/check_binary_privacy.sh checks the result.
+      configs:
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          DEPLOYMENT_POSTPROCESSING: YES
+          STRIP_INSTALLED_PRODUCT: YES
+          STRIP_STYLE: all
+          DEAD_CODE_STRIPPING: YES

@@ -11,16 +11,24 @@ import Darwin
 public struct LiveFileSystem: FileSystem {
     private let executor: IOExecutor
     private let volumeRoots: [URL]
+    /// Folders macOS asks about before letting Helm in, deepest first, each read on a lane of its own. `match` is the
+    /// path without regard to case, as the Mac's own disk compares names, so any spelling of a folder finds its lane.
+    private let privacyRoots: [(match: String, key: String)]
     private var readMetadata: @Sendable (URL, Bool, String) throws -> FileEntry = {
         try MetadataReader().read($0, resolveSymlinkTargets: $1, volumeIdentifier: $2)
     }
     private let diagnostic: @Sendable (URL, FileSystemError) -> Void
     private let trash: @Sendable (URL) throws -> URL?
-    /// `trash` is injectable so tests never touch the user's real Trash.
-    public init(executor: IOExecutor = IOExecutor(), volumeRoots: [URL] = [],
+    /// `trash` is injectable so tests never touch the user's real Trash. `privacyRoots` are the folders macOS
+    /// asks about first (`PrivacyAreas.askingRoots`): while its question is on screen, a read inside one waits.
+    public init(executor: IOExecutor = IOExecutor(), volumeRoots: [URL] = [], privacyRoots: [URL] = [],
                 diagnostic: @escaping @Sendable (URL, FileSystemError) -> Void = { _, _ in },
                 trash: @escaping @Sendable (URL) throws -> URL? = LiveFileSystem.systemTrash) {
         self.executor = executor; self.volumeRoots = volumeRoots
+        self.privacyRoots = privacyRoots.map { url -> (match: String, key: String) in
+            let path = PathSpelling.standardPath(url)
+            return (path.lowercased(), path)
+        }.sorted { $0.match.count > $1.match.count }
         self.diagnostic = diagnostic; self.trash = trash
     }
     public static let systemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -32,11 +40,18 @@ public struct LiveFileSystem: FileSystem {
         throw FileSystemError.unsupported
         #endif
     }
-    init(readMetadata: @escaping @Sendable (URL, Bool, String) throws -> FileEntry) {
-        self.init()
+    init(executor: IOExecutor = IOExecutor(), privacyRoots: [URL] = [],
+         readMetadata: @escaping @Sendable (URL, Bool, String) throws -> FileEntry) {
+        self.init(executor: executor, privacyRoots: privacyRoots)
         self.readMetadata = readMetadata
     }
-    private func queueKey(_ url: URL) -> String {
+    func queueKey(_ url: URL) -> String {
+        // A read waiting on a macOS privacy question holds its lane, and the watchdog then shuts that lane until
+        // the read returns. Such a folder gets a lane of its own, so the rest of the disk carries on meanwhile.
+        if !privacyRoots.isEmpty {
+            let spelled = PathSpelling.standardPath(url).lowercased()
+            if let root = privacyRoots.first(where: { spelled == $0.match || spelled.hasPrefix($0.match + "/") }) { return root.key }
+        }
         let path = url.standardizedFileURL.path
         if let root = volumeRoots.sorted(by: { $0.path.count > $1.path.count }).first(where: {
             path == $0.path || path.hasPrefix($0.path + "/")
@@ -60,16 +75,22 @@ public struct LiveFileSystem: FileSystem {
                         var failure: Error?
                         let flags: FileManager.DirectoryEnumerationOptions = options.includeHidden
                             ? [.skipsSubdirectoryDescendants] : [.skipsSubdirectoryDescendants, .skipsHiddenFiles]
-                        guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: MetadataReader.listingPrefetchKeys,
+                        // opendir follows a link at the root, such as Downloads moved to another disk and linked, but the
+                        // enumerator doesn't, so it's given the folder the link points at. The items keep the path they were
+                        // asked for under, so they're still this folder's children and no two folders on show share one.
+                        let linked = Self.linkedFolder(directory)
+                        guard let iterator = FileManager.default.enumerator(at: linked ?? directory, includingPropertiesForKeys: MetadataReader.listingPrefetchKeys,
                             options: flags, errorHandler: { _, error in failure = error; return false }) else {
                             throw FileSystemError.notFound
                         }
                         var batch: [FileEntry] = []
                         var lastDelivery = Date()
-                        let attributes = try FileManager.default.attributesOfItem(atPath: directory.path)
+                        let attributes = try FileManager.default.attributesOfItem(atPath: (linked ?? directory).path)
                         let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(directory)
-                        while let url = iterator.nextObject() as? URL {
+                        while let found = iterator.nextObject() as? URL {
                             try cancellation.check()
+                            let url = linked == nil ? found
+                                : directory.appendingPathComponent(found.lastPathComponent, isDirectory: found.hasDirectoryPath)
                             let value: FileEntry
                             do {
                                 value = try AutoreleaseScope.run {
@@ -96,6 +117,13 @@ public struct LiveFileSystem: FileSystem {
             }
             continuation.onTermination = { _ in cancellation.cancel(); task.cancel() }
         }
+    }
+    /// The folder a symbolic link at `url` points at, through any further links, or nil when `url` isn't a link.
+    static func linkedFolder(_ url: URL) -> URL? {
+        guard (try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType) == .typeSymbolicLink,
+              let real = realpath(url.path, nil) else { return nil }
+        defer { free(real) }
+        return URL(fileURLWithPath: String(cString: real), isDirectory: true)
     }
     public func makeMonitor(for directory: URL) -> any DirectoryMonitor {
         FallbackMonitor(directory: directory, fileSystem: self)

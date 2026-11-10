@@ -8,18 +8,32 @@ import HelmUI
 
     public static func run() {
         guard let options = LaunchOptions.parse(CommandLine.arguments) else {
-            FileHandle.standardError.write(Data(("usage: Helm [--home PATH] [--support PATH] [--smoke SCRIPT] [PATH ...]\n"
-                + "       Helm [--default-viewer helm|finder] [--dock-first on|off] [--viewer-status]\n").utf8))
+            FileHandle.standardError.write(Data(LaunchOptions.usage.utf8))
             exit(2)
         }
         if options.isRoleCommand { exit(RoleCommand.run(options)) }
-        let application = NSApplication.shared
+        let application = HelmApplication.shared
         application.setActivationPolicy(.regular)
         let controller = AppController(options: options)
         self.controller = controller
         application.delegate = controller
         application.run()
     }
+}
+
+/// Helm's application. AppKit's own handler for an open-documents event asks to bring Helm to the front, and Helm's
+/// code asks too. A scripted run never comes to the front, so while one goes on, those asks are turned down.
+@MainActor final class HelmApplication: NSApplication {
+    private var staysInBackground: Bool { (delegate as? AppController)?.staysInBackground == true }
+
+    override func activate() {
+        if !staysInBackground { super.activate() }
+    }
+    override func activate(ignoringOtherApps flag: Bool) {
+        if !staysInBackground { super.activate(ignoringOtherApps: flag) }
+    }
+    /// Comes to the front even in a scripted run, for a step that means to, such as the README's pictures.
+    func activateForScript() { super.activate(ignoringOtherApps: true) }
 }
 
 /// The Settings › General › Default File Viewer switches, run from the command line with no window, so either

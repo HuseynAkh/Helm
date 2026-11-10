@@ -44,5 +44,11 @@ public struct OpenWithRecord: Codable, Equatable, Sendable {
         if let file { file.replace(with: next) } else { memory = next }
     }
 
+    /// Forgets every app used, as Go › Clear Recent does.
+    public func clear() {
+        guard !records.isEmpty else { return }
+        if let file { file.replace(with: []) } else { memory = [] }
+    }
+
     public func flush() async throws { try await file?.flush() }
 }

@@ -3,12 +3,14 @@ import Foundation
 
 /// Value history preserves Back/Forward selection and deduplicates same-location pushes (F-005, B-019).
 public struct NavigationHistory: Sendable, Equatable, Codable {
-    /// Selection captured from the visible presentation before accepted navigation (B-011).
+    /// Selection captured from the visible presentation before accepted navigation (B-011), with the folders open in
+    /// the list then, so an item selected inside one comes back selected and in view.
     public struct Entry: Sendable, Equatable, Codable {
         public let location: Location
         public let selection: Set<ItemID>
-        public init(location: Location, selection: Set<ItemID> = []) {
-            self.location = location; self.selection = selection
+        public let expanded: Set<ItemID>
+        public init(location: Location, selection: Set<ItemID> = [], expanded: Set<ItemID> = []) {
+            self.location = location; self.selection = selection; self.expanded = expanded
         }
     }
     public private(set) var back: [Entry]
@@ -35,11 +37,15 @@ public struct PendingNavigation: Sendable, Equatable {
     public let target: Location
     public let intent: NavigationIntent
     public let restoredSelection: Set<ItemID>
+    /// Folders to open in the list again on commit, as the history entry left them.
+    public let restoredExpansion: Set<ItemID>
     public let generation: Generation
     /// History entries to consume on commit; repeated Back/Forward before the first batch accumulate (F-005).
     public let steps: Int
-    public init(target: Location, intent: NavigationIntent, restoredSelection: Set<ItemID> = [], generation: Generation, steps: Int = 1) {
+    public init(target: Location, intent: NavigationIntent, restoredSelection: Set<ItemID> = [], restoredExpansion: Set<ItemID> = [],
+                generation: Generation, steps: Int = 1) {
         self.target = target; self.intent = intent
-        self.restoredSelection = restoredSelection; self.generation = generation; self.steps = steps
+        self.restoredSelection = restoredSelection; self.restoredExpansion = restoredExpansion
+        self.generation = generation; self.steps = steps
     }
 }

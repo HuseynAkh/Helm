@@ -3,7 +3,7 @@ import HelmCore
 
 /// Settings leaf categories regroup the legacy forms without changing keys (F-065).
 public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case general = "General", view = "View", appearance = "Appearance", search = "Search", advanced = "Advanced"
+    case general = "General", view = "View", appearance = "Appearance", sidebar = "Sidebar", search = "Search", advanced = "Advanced"
     public var id: String { rawValue }
     /// The toolbar symbol, as in System Settings and Finder's own settings.
     public var symbol: String {
@@ -11,18 +11,21 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         case .general: return "gearshape"
         case .view: return "square.grid.2x2"
         case .appearance: return "circle.lefthalf.filled"
+        case .sidebar: return "sidebar.left"
         case .search: return "magnifyingglass"
         case .advanced: return "slider.horizontal.3"
         }
     }
-    /// Each pane's height, so the window resizes to fit it without scrolling.
+    /// Each pane's height, so the window resizes to fit it without scrolling: its form's own height, as a fixture run
+    /// draws it. Sidebar grows past its height to show every row.
     public var height: CGFloat {
         switch self {
-        case .general: return 540
-        case .view: return 440
-        case .appearance: return 364
-        case .search: return 354
-        case .advanced: return 536
+        case .general: return 716
+        case .view: return 277
+        case .appearance: return 277
+        case .sidebar: return 415
+        case .search: return 306
+        case .advanced: return 408
         }
     }
 }
@@ -34,13 +37,14 @@ public struct SettingsPaneView: View {
     let supportsSingleClick: Bool
     #if os(macOS)
     let fileViewer: FileViewerModel?
+    let access: AccessSettings?
     #endif
     let change: (SettingKey, SettingValue) -> Void
     #if os(macOS)
     public init(pane: SettingsPane, snapshot: SettingsSnapshot, supportsSingleClick: Bool = false, fileViewer: FileViewerModel? = nil,
-                change: @escaping (SettingKey, SettingValue) -> Void) {
+                access: AccessSettings? = nil, change: @escaping (SettingKey, SettingValue) -> Void) {
         self.pane = pane; self.snapshot = snapshot
-        self.supportsSingleClick = supportsSingleClick; self.fileViewer = fileViewer; self.change = change
+        self.supportsSingleClick = supportsSingleClick; self.fileViewer = fileViewer; self.access = access; self.change = change
     }
     #else
     public init(pane: SettingsPane, snapshot: SettingsSnapshot, supportsSingleClick: Bool = false,
@@ -55,6 +59,7 @@ public struct SettingsPaneView: View {
             case .general: general
             case .view: viewSettings
             case .appearance: appearance
+            case .sidebar: sidebarSettings
             case .search: search
             case .advanced: advanced
             }

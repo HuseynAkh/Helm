@@ -19,10 +19,17 @@ import HelmCore
     var recoveryBackupURL: URL? { get }
     var defaults: ViewOptions { get }
     func options(for location: Location) -> ViewOptions
+    /// Whether the place has options saved for it, even ones that match the defaults.
+    func hasOptions(for location: Location) -> Bool
     func set(_ options: ViewOptions, for location: Location) throws
     func useAsDefaults(_ options: ViewOptions) throws
     func useAsDefaults(for location: Location) throws
     func removeRecords(forVanishedLocations locations: [Location]) throws
+}
+
+extension AppViewOptionsStoring {
+    /// A store that can't tell counts only options that differ from the defaults, as before.
+    public func hasOptions(for location: Location) -> Bool { options(for: location) != defaults }
 }
 
 extension TagCatalogStore: AppTagCatalogStoring {}

@@ -81,6 +81,22 @@ final class StoresTests: XCTestCase {
         let restoredSession = try await SessionStore(url: sessionURL)
         XCTAssertEqual(restoredSession.windows, [window])
     }
+    /// A tab left in Recent saves its Last Opened order and gets it back; the file names it only beside a stand-in
+    /// that builds from before Last Opened can read.
+    @MainActor func testASessionLeftInRecentKeepsLastOpened() async throws {
+        let dir = try temporaryStoreDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("session.json")
+        let session = try await SessionStore(url: url)
+        let window = SessionWindow(frameAutosaveName: "HelmMainWindow", tabs: [
+            SessionTab(location: .recent, viewMode: .list, sort: ItemSort(field: .lastOpened, ascending: false))
+        ])
+        session.replace(windows: [window]); try await session.flush()
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(text.replacingOccurrences(of: " ", with: "").contains(#""field":"lastOpened""#))
+        let restored = try await SessionStore(url: url)
+        XCTAssertEqual(restored.windows, [window])
+    }
     @MainActor func testRecentCapsNewestWinsAndOfflineRecordsSurvive() async throws {
         let dir = try temporaryStoreDirectory()
         defer { try? FileManager.default.removeItem(at: dir) }

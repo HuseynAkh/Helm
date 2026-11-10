@@ -53,10 +53,9 @@ public actor DirectoryLoadPipeline {
         task = Task.detached { [weak self] in
             do {
                 guard case .directory(let url) = location else { throw FileSystemError.unsupported }
-                let root = try await fileSystem.entry(at: url)
+                let root = try await ListingRoot.entry(at: url, fileSystem: fileSystem)
                 try Task.checkCancellation()
-                guard root.isReadable else { throw FileSystemError.permissionDenied }
-                guard root.isDirectoryLike || root.kind == .package else { throw FileSystemError.other("Not a directory") }
+                try ListingRoot.check(root)
                 var entries: [ItemID: FileEntry] = [:]
                 var threshold = options.batchSize
                 let enumeration = EnumerationOptions(includeHidden: options.showHidden, batchSize: options.batchSize)
@@ -121,6 +120,8 @@ public actor DirectoryLoadPipeline {
                                     sort: built.sort, sortedEntries: built.sortedEntries)
     }
     private nonisolated static func loadError(_ error: Error) -> LoadError {
+        // Already said in a tab's own terms, such as a disk that was disconnected.
+        if let error = error as? LoadError { return error }
         switch FileSystemError.mapping(error) {
         case .notFound: return .notFound
         case .permissionDenied: return .permissionDenied

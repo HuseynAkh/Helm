@@ -36,12 +36,14 @@ import UniformTypeIdentifiers
         return bundle.bundleIdentifier
     }
     public var canRegister: Bool { identifier != nil }
+    /// What each switch says when Helm runs from Terminal rather than as an app bundle.
+    static let needsApp = "Works only when Helm runs as an app."
     public var isHelmDefault: Bool {
         guard let identifier else { return false }
         return CFPreferencesCopyAppValue(Self.viewerKey, kCFPreferencesAnyApplication) as? String == identifier
     }
     public func makeHelmDefault(_ done: @escaping @MainActor (String?) -> Void) {
-        guard let identifier else { done("Helm can only become the default file viewer when it runs as an app."); return }
+        guard let identifier else { done(Self.needsApp); return }
         setViewer(identifier)
         // Folders opened from Spotlight, Dock stacks and `open` go to the app for `public.folder`. macOS 26 refuses
         // to hand that to any app (both NSWorkspace and Launch Services answer with an error, even for Finder), so it's
@@ -79,28 +81,23 @@ import UniformTypeIdentifiers
         CFPreferencesAppSynchronize(Self.dock)
         return CFPreferencesCopyAppValue(Self.dockApps, Self.dock) as? [[String: Any]] ?? []
     }
-    private func isHelm(_ tile: [String: Any]) -> Bool {
-        guard let data = tile["tile-data"] as? [String: Any] else { return false }
-        if let identifier, data["bundle-identifier"] as? String == identifier { return true }
-        if let file = data["file-data"] as? [String: Any], let text = file["_CFURLString"] as? String,
-           let url = URL(string: text), url.isFileURL {
-            return url.standardizedFileURL.path == bundle.bundleURL.standardizedFileURL.path
-        }
-        return false
+    private func isHelm(_ tile: [String: Any]) -> Bool { Self.isHelm(tile, identifier: identifier, app: bundle.bundleURL) }
+    /// Helm's tile is first, and it opens this copy: one left pointing at a disk image or an older download doesn't count.
+    public var isFirstInDock: Bool {
+        guard canRegister, let first = readDock().first else { return false }
+        return isHelm(first) && Self.opens(first, app: bundle.bundleURL)
     }
-    public var isFirstInDock: Bool { canRegister && readDock().first.map(isHelm) == true }
     public func setFirstInDock(_ on: Bool) -> String? {
-        guard let identifier else { return "Helm can only go in the Dock when it runs as an app." }
+        guard let identifier else { return Self.needsApp }
         var apps = readDock()
-        let index = apps.firstIndex(where: isHelm)
         let defaults = UserDefaults.standard
         if on {
-            guard index != 0 else { return nil }
-            defaults.set(index ?? -1, forKey: Self.dockBackupKey)
-            let tile = index.map { apps.remove(at: $0) } ?? Self.tile(for: bundle.bundleURL, identifier: identifier)
-            apps.insert(tile, at: 0)
+            guard let placed = Self.placingFirst(apps, identifier: identifier, app: bundle.bundleURL) else { return nil }
+            // Where Helm was, so turning this off puts it back. A tile that was first already only had its file fixed.
+            if placed.from != 0 { defaults.set(placed.from ?? -1, forKey: Self.dockBackupKey) }
+            apps = placed.apps
         } else {
-            guard let index else { return nil }
+            guard let index = apps.firstIndex(where: isHelm) else { return nil }
             let tile = apps.remove(at: index)
             if let before = defaults.object(forKey: Self.dockBackupKey) as? Int, before >= 0 {
                 apps.insert(tile, at: min(before, apps.count))
@@ -124,19 +121,57 @@ import UniformTypeIdentifiers
     /// A Dock that restarted moments ago can save its old tiles over the new ones as it quits. Check once it's back,
     /// and write again if it did.
     private func settleDock(_ apps: [[String: Any]], attempts: Int) {
-        let wanted = apps.compactMap(Self.tileKey)
+        let helm = identifier
+        let wanted = apps.compactMap { Self.tileKey($0, helm: helm) }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
-            guard let self, attempts > 0, self.readDock().compactMap(Self.tileKey) != wanted else { return }
+            guard let self, attempts > 0, self.readDock().compactMap({ Self.tileKey($0, helm: helm) }) != wanted else { return }
             _ = self.writeDock(apps)
             self.settleDock(apps, attempts: attempts - 1)
         }
     }
-    /// What identifies a tile when comparing two lists: its app, or its file.
-    static func tileKey(_ tile: [String: Any]) -> String? {
+    /// What identifies a tile when comparing two lists: its app, or its file. Helm's own tile adds its file, so an old
+    /// tile saved back over one that was just pointed at this copy shows up too.
+    static func tileKey(_ tile: [String: Any], helm: String? = nil) -> String? {
         guard let data = tile["tile-data"] as? [String: Any] else { return nil }
-        if let identifier = data["bundle-identifier"] as? String { return identifier }
+        if let identifier = data["bundle-identifier"] as? String {
+            guard identifier == helm, let path = tilePath(tile) else { return identifier }
+            return identifier + " " + BundlePath.normalized(path)
+        }
         return (data["file-data"] as? [String: Any])?["_CFURLString"] as? String
+    }
+    /// The app a tile opens, as a path, when the tile says.
+    static func tilePath(_ tile: [String: Any]) -> String? {
+        guard let data = tile["tile-data"] as? [String: Any], let file = data["file-data"] as? [String: Any],
+              let text = file["_CFURLString"] as? String else { return nil }
+        if text.hasPrefix("/") { return text }
+        guard let url = URL(string: text), url.isFileURL else { return nil }
+        return url.path
+    }
+    /// Whether a tile is Helm's: by its app's identifier, or by the file it opens.
+    static func isHelm(_ tile: [String: Any], identifier: String?, app: URL) -> Bool {
+        guard let data = tile["tile-data"] as? [String: Any] else { return false }
+        if let identifier, data["bundle-identifier"] as? String == identifier { return true }
+        return tilePath(tile).map { BundlePath.normalized($0) == BundlePath.normalized(app.path) } ?? false
+    }
+    /// Whether a tile opens this copy of the app, however the path is spelled. A tile that doesn't say which file it
+    /// opens is taken at its word.
+    static func opens(_ tile: [String: Any], app: URL) -> Bool {
+        guard let path = tilePath(tile) else { return true }
+        let spelled = { (url: URL) in BundlePath.normalized(url.resolvingSymlinksInPath().path) }
+        return spelled(URL(fileURLWithPath: path)) == spelled(app)
+    }
+    /// The Dock's apps with this copy of Helm first, right after Finder. Helm's tile moves up, and one that opens another
+    /// copy (on a disk image since ejected, or macOS's temporary copy) is replaced by a tile for this one. `from` is where
+    /// Helm's tile was, or nil if it wasn't in the Dock. Nil when this copy is first already.
+    static func placingFirst(_ apps: [[String: Any]], identifier: String, app: URL) -> (apps: [[String: Any]], from: Int?)? {
+        var apps = apps
+        let index = apps.firstIndex { isHelm($0, identifier: identifier, app: app) }
+        if index == 0, opens(apps[0], app: app) { return nil }
+        let old = index.map { apps.remove(at: $0) }
+        let kept = old.flatMap { opens($0, app: app) ? $0 : nil }
+        apps.insert(kept ?? tile(for: app, identifier: identifier), at: 0)
+        return (apps, index)
     }
     /// A Dock tile for an app, as the Dock writes one when you drag an app in.
     static func tile(for app: URL, identifier: String) -> [String: Any] {
@@ -147,7 +182,7 @@ import UniformTypeIdentifiers
 
     public var opensAtLogin: Bool { canRegister && SMAppService.mainApp.status == .enabled }
     public func setOpensAtLogin(_ on: Bool) -> String? {
-        guard canRegister else { return "Helm can only open at login when it runs as an app." }
+        guard canRegister else { return Self.needsApp }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             return nil
@@ -185,11 +220,12 @@ import UniformTypeIdentifiers
         isFirstInDock = role.isFirstInDock
     }
     public func refresh() { isHelmDefault = role.isHelmDefault; opensAtLogin = role.opensAtLogin; isFirstInDock = role.isFirstInDock }
-    public func setHelmDefault(_ on: Bool) {
+    /// `then` hears how it went once macOS has answered: nil, or what went wrong.
+    public func setHelmDefault(_ on: Bool, then: (@MainActor (String?) -> Void)? = nil) {
         isWorking = true; problem = nil
         let finish: @MainActor (String?) -> Void = { [weak self] message in
-            guard let self else { return }
-            self.isWorking = false; self.problem = message; self.refresh()
+            if let self { self.isWorking = false; self.problem = message; self.refresh() }
+            then?(message)
         }
         if on { role.makeHelmDefault(finish) } else { role.restoreFinder(finish) }
     }
@@ -213,11 +249,11 @@ struct FileViewerSection: View {
                 Image(systemName: model.isHelmDefault ? "checkmark.seal.fill" : "folder")
                     .font(.system(size: 22)).foregroundStyle(model.isHelmDefault ? Color.accentColor : .secondary)
                     .frame(width: 28)
+                    // The headline says which it is.
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(model.isHelmDefault ? "Helm is your file viewer" : "Finder is your file viewer").font(.headline)
-                    Text(model.isHelmDefault
-                         ? "“Show in Finder” and “Reveal in Finder” in other apps come to Helm."
-                         : "Make Helm the default to send “Show in Finder” from other apps here.")
+                    Text(model.isHelmDefault ? "Helm is the default" : "Finder is the default").font(.headline)
+                    Text(model.isHelmDefault ? "“Show in Finder” opens Helm." : "“Show in Finder” opens Finder.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
@@ -225,9 +261,10 @@ struct FileViewerSection: View {
                 Button(model.isHelmDefault ? "Restore Finder" : "Make Default") { model.setHelmDefault(!model.isHelmDefault) }
                     .disabled(!model.canRegister || model.isWorking)
             }
-            Toggle("Open Helm when you log in", isOn: Binding(get: { model.opensAtLogin }, set: { model.setOpensAtLogin($0) }))
+            Toggle("Open at login", isOn: Binding(get: { model.opensAtLogin }, set: { model.setOpensAtLogin($0) }))
                 .disabled(!model.canRegister)
-            Toggle("Show Helm first in the Dock", isOn: Binding(get: { model.isFirstInDock }, set: { model.setFirstInDock($0) }))
+            // macOS keeps Finder's tile first, so Helm goes right after it. Off puts Helm back where it was.
+            Toggle("Show next to Finder in the Dock", isOn: Binding(get: { model.isFirstInDock }, set: { model.setFirstInDock($0) }))
                 .disabled(!model.canRegister)
             if let problem = model.problem {
                 Label(problem, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange)
@@ -235,7 +272,8 @@ struct FileViewerSection: View {
         } header: {
             Text("Default File Viewer")
         } footer: {
-            Text("Apps that are already open keep asking Finder until you quit and reopen them. macOS keeps a few things for Finder: the desktop, its own Dock tile, which stays first (Helm goes right after it), and folders opened from Spotlight or Dock stacks. Turning the Dock switch off puts Helm back where it was.")
+            // Apps read the file viewer as they start. Finder keeps the desktop, and folders opened from Spotlight or Dock stacks.
+            Text("Apps already open keep using Finder until you reopen them.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { model.refresh() }

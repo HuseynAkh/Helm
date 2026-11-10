@@ -118,3 +118,23 @@ public struct SelectionModel: Sendable {
         anchor = newAnchor; focus = newFocus; order = replacement.order; indices = replacement.indices
     }
 }
+
+extension SelectionModel {
+    /// The item that takes the selection once these leave, such as for the Trash: the next one in `order` (the items
+    /// on show, top to bottom), or the previous one at the end. What's inside a leaving folder leaves with it, so it's
+    /// passed over too.
+    public static func successor(afterRemoving removed: Set<ItemID>, in order: [ItemID]) -> ItemID? {
+        guard let last = order.lastIndex(where: removed.contains) else { return nil }
+        let paths = Set(removed.map(\.rawValue))
+        func leaves(_ id: ItemID) -> Bool {
+            var path = Substring(id.rawValue)
+            while true {
+                if paths.contains(String(path)) { return true }
+                guard let slash = path.lastIndex(of: "/"), slash != path.startIndex else { return false }
+                path = path[..<slash]
+            }
+        }
+        if let after = order[(last + 1)...].first(where: { !leaves($0) }) { return after }
+        return order[..<last].last(where: { !leaves($0) })
+    }
+}

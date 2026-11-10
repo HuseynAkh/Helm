@@ -29,6 +29,13 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     case windowTransparency = "helm.windowTransparency"
     case newWindowLocation = "helm.newWindowLocation"
     case searchFileContents = "helm.searchFileContents"
+    /// The welcome window has been seen (or closed), so it doesn't open by itself again.
+    case onboardingCompleted = "helm.onboardingCompleted"
+    /// The rows Set Up left for the copy it moved into Applications, as "viewer,access,move", or empty. That copy
+    /// carries on with them when it opens, even when it's opened by hand rather than by the copy that moved it.
+    case setupCarriedRows = "helm.setupCarriedRows"
+    /// Recent and the apps you've used for each kind of file. Off, Helm keeps neither.
+    case rememberRecentItems = "helm.rememberRecentItems"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

@@ -8,6 +8,7 @@ public enum SettingsSchema {
         case .defaultSortField: return .string("name")
         case .crossVolumeDragDefault: return .string("copy")
         case .newWindowLocation: return .string("current") // Where the front window is, as before.
+        case .setupCarriedRows: return .string("") // Nothing to carry on with.
         case .gridIconSize: return .double(96)
         case .fileTextSize: return .double(14)
         case .windowTransparency: return .double(50) // Percent. 50 is Helm's own look.
@@ -20,6 +21,7 @@ public enum SettingsSchema {
         case .defaultSortAscending, .directoriesFirst, .liveMonitoringEnabled,
              .enableDirectoryCache, .searchPreferUserFolders, .restoreSessionOnLaunch,
              .searchFileContents, // Finder matches names and contents.
+             .rememberRecentItems, // Recent works out of the box; Settings can turn it off.
              .sidebarLiquidGlass, // Transparency is part of Helm's look; this turns it off.
              .askOnConflict: return .bool(true) // Finder asks; a surprise "name 2" isn't what it does (Q9).
         default: return .bool(false)
@@ -43,6 +45,8 @@ public enum SettingsSchema {
         switch (fallback, value) {
         case (.bool, .bool): return value
         case (.string, .string(let text)):
+            // Row names in lower case, separated by commas.
+            if key == .setupCarriedRows { return text.allSatisfy { $0 == "," || ("a"..."z").contains($0) } ? value : fallback }
             let allowed: [String]
             switch key {
             case .defaultViewMode: allowed = ["grid", "list"]

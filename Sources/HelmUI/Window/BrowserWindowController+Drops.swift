@@ -77,9 +77,10 @@ extension BrowserWindowController {
             trash(urls); return true
         case .application(let app):
             guard dropOperation(info, into: destination) != [] else { return false }
-            NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            noteHandoff(of: urls, to: app)
+            dependencies.launcher.open(urls, withApplicationAt: app) { [weak self] error in
                 guard let error else { return }
-                Task { @MainActor in self?.show(message: error.localizedDescription) }
+                self?.show(message: error.localizedDescription)
             }
             return true
         case .folder(let folder):
@@ -100,24 +101,9 @@ extension BrowserWindowController {
         return true
     }
 
-    /// Option-Cmd drags leave aliases, named as Finder names them.
+    /// Option-Cmd drags leave aliases, named as Finder names them, through the operation engine so Undo removes them.
     private func makeAliases(of urls: [URL], in folder: URL) {
-        let fileSystem = dependencies.fileSystem
-        Task { @MainActor in
-            var made: Set<ItemID> = []
-            for url in urls {
-                do {
-                    let names = try await fileSystem.childNames(of: folder)
-                    let name = try UniqueNamer.name(for: url.lastPathComponent + " alias", existingNames: names)
-                    let target = folder.appendingPathComponent(name.value)
-                    try await fileSystem.createAlias(for: url, at: target)
-                    made.insert(ItemID(url: target))
-                } catch { show(message: OperationText.describe(error)) }
-            }
-            if activeTab?.mutationTarget.map({ Self.isSame($0, folder) }) == true {
-                store.send(.tab(activeTabID, .refreshSelecting(made)))
-            }
-        }
+        run(.link(sources: urls, destinationDirectory: folder, alias: true))
     }
 
     // MARK: File promises: pictures from Photos, attachments from Mail, images from Safari
@@ -168,7 +154,7 @@ extension BrowserWindowController {
         let key = "\(session)|\(app.path)"
         if let known = appDropAnswers[key] { return known }
         let opens = NSEvent.modifierFlags.contains([.command, .option])
-            || urls.allSatisfy { NSWorkspace.shared.urlsForApplications(toOpen: $0).contains { Self.isSame($0, app) } }
+            || urls.allSatisfy { dependencies.launcher.applications(toOpen: $0).contains { Self.isSame($0, app) } }
         if appDropAnswers.count > 32 { appDropAnswers.removeAll() }
         appDropAnswers[key] = opens
         return opens

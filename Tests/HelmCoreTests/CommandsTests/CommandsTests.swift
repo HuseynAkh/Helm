@@ -32,6 +32,10 @@ final class CommandsTests: XCTestCase {
         XCTAssertEqual(MenuModel.defaultBindings.filter { $0.command == .open }.map(\.key), ["o", "\u{f701}"])
         XCTAssertEqual(MenuModel.defaultBindings.filter { $0.command == .quickLook }.map(\.key), [" "])
         XCTAssertFalse(MenuModel.defaultBindings.contains { $0.command == .duplicate })
+        // Go › Trash keeps the Trash and Put Back in reach when its sidebar row is hidden.
+        let go = MenuModel.menuBar.first { $0.title == "Go" }.map { items([$0]) } ?? []
+        XCTAssertEqual(go.first { $0.command == .goToTrash }?.title, "Trash")
+        XCTAssertNil(go.first { $0.command == .goToTrash }?.binding)
         for item in items(MenuModel.menuBar) { XCTAssertEqual(item.validationRuleID, CommandValidation.rule(for: item.command)) }
     }
 
@@ -121,7 +125,7 @@ final class CommandsTests: XCTestCase {
             .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh,
             .home, .minimize, .zoom, .selectAll, .location, .eject, .closeWindow, .reopenClosedTab,
             .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer,
-            .viewOptions, .computer]
+            .viewOptions, .computer, .goToTrash]
         let hidden: Set<CommandID> = [.putBack, .emptyTrash, .clearRecent]
         for command in CommandID.allCases {
             let expected: CommandAvailability = enabled.contains(command) ? .enabled : hidden.contains(command) ? .hidden : .disabled
@@ -145,6 +149,23 @@ final class CommandsTests: XCTestCase {
         context.selectionCount = 0
         XCTAssertEqual(CommandValidation.state(for: .putBack, in: context), .disabled)
         XCTAssertEqual(CommandValidation.state(for: .permanentDelete, in: context), .disabled)
+    }
+
+    /// Several selected items get Open With too, just after Open, as in Finder (P-228); Properties stays one item's.
+    func testOpenWithIsOfferedForSeveralItems() {
+        for kind in [CommandMenuContext.multiple, .recent, .trash] {
+            let titles = ContextMenuModel.menu(for: kind, selectionCount: 3).sections.first?.map(\.title) ?? []
+            XCTAssertEqual(Array(titles.prefix(2)), ["Open 3 Items", "Open With"], "\(kind)")
+        }
+        let multi = items([ContextMenuModel.menu(for: .multiple, selectionCount: 2)])
+        XCTAssertEqual(multi.filter { $0.command == .openWith }.map(\.isNew), [true], "an addition to the legacy baseline")
+        XCTAssertFalse(items([ContextMenuModel.menu(for: .multiple, selectionCount: 2, includeAdditions: false)]).contains { $0.command == .openWith })
+        XCTAssertEqual(items([ContextMenuModel.menu(for: .file)]).filter { $0.command == .openWith }.count, 1, "one Open With for one item")
+        let several = CommandContext(selectionCount: 2, hasMutationTarget: true)
+        XCTAssertEqual(CommandValidation.state(for: .openWith, in: several), .enabled)
+        XCTAssertEqual(CommandValidation.state(for: .properties, in: several), .disabled)
+        XCTAssertEqual(CommandValidation.state(for: .openWith, in: CommandContext(selectionCount: 0, hasMutationTarget: true)), .disabled)
+        XCTAssertEqual(CommandValidation.state(for: .openWith, in: CommandContext(selectionCount: 1, textFieldFocused: true)), .disabled)
     }
 
     func testConflictDetectionFiltersInactiveAndNormalizesShift() {

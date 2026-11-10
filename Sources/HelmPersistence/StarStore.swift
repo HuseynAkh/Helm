@@ -27,6 +27,13 @@ import HelmCore
         starredPaths.remove(url.standardizedFileURL.path)
         file.replace(with: records.filter { $0.path != url.standardizedFileURL.path })
     }
+    /// A starred item that was renamed or moved stays starred, with the date it was starred.
+    public func relocate(_ moves: PathMoves) {
+        guard let next = moves.relocate(records, path: \.path, rebuild: { StarRecord(path: $1, addedAt: $0.addedAt) })
+        else { return }
+        starredPaths = Set(next.map(\.path))
+        file.replace(with: next.sorted { $0.path < $1.path })
+    }
     public func toggle(_ url: URL, at date: Date = Date()) {
         if isStarred(url) { unstar(url) } else { star(url, at: date) }
     }

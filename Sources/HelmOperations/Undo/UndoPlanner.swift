@@ -39,7 +39,7 @@ public enum UndoPlanner {
                 return OperationPlan(command: .recovery, steps: [], issues: [.stopped])
             }
             switch step.kind {
-            case .copy, .createDirectory, .createFile:
+            case .copy, .createDirectory, .createFile, .createAlias, .createSymbolicLink:
                 steps.append(PlannedStep(kind: .trash, source: destination))
             case .move:
                 guard let source = step.source else { return OperationPlan(command: .recovery, steps: [], issues: [.stopped]) }

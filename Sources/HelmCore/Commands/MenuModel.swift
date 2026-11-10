@@ -78,7 +78,8 @@ public struct MenuModel: Equatable, Sendable {
         case "Go":
             sections.append([item("Recents", .recents, "F", isNew: true), item("Desktop", .desktop, "D", isNew: true), item("Documents", .documents, "O", isNew: true),
                 item("Downloads", .downloads, "l", [.command, .option], isNew: true), item("Applications", .applications, "A", isNew: true),
-                item("Utilities", .utilities, "U", isNew: true), item("Computer", .computer, "C", isNew: true), item("Network", .network, isNew: true)])
+                item("Utilities", .utilities, "U", isNew: true), item("Computer", .computer, "C", isNew: true), item("Network", .network, isNew: true),
+                item("Trash", .goToTrash, isNew: true)])
             sections.append([item("Connect to Server...", .connectToServer, "k", isNew: true), item("Clear Recent", .clearRecent, isNew: true),
                 item("Show in Enclosing Folder", .reveal, isNew: true), item("Add to Sidebar", .addToSidebar, isNew: true)])
         case "Window":

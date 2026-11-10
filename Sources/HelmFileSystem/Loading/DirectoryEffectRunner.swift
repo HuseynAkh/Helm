@@ -144,8 +144,10 @@ import HelmCore
                 // Always terminate an admitted read with its error. The store's captured
                 // request identity rejects it if watch cleanup/replacement already retired it.
                 // Failure remains sticky until the host retires/replaces this watch. Do not
-                // emit unavailable here: that would recursively request validation forever.
-                send(.tab(tab, .monitorValidationFailed(watch.generation, .other(String(describing: error)))))
+                // emit unavailable here: that would recursively request validation forever. A failure already said in
+                // a tab's own terms, such as a disk that was disconnected, keeps them.
+                let failure = (error as? LoadError) ?? .other(String(describing: error))
+                send(.tab(tab, .monitorValidationFailed(watch.generation, failure)))
             }
         }
         return StoreEffectCancellation { task.cancel() }

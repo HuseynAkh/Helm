@@ -21,6 +21,8 @@ public enum StatusActivity: Sendable, Equatable {
     case idle, searching, gathering, denied
     /// Something the window started that has no row in the operations panel, such as compressing.
     case working(String)
+    /// The place on show couldn't open, so there are no items to count; this says why in a word or two.
+    case unavailable(String)
 }
 
 /// Legacy wording is the F-064 default; fractional selection wording is opt-in.
@@ -59,6 +61,7 @@ extension StatusText {
         case .gathering: parts.append("Gathering items…")
         case .working(let text): parts.append(text)
         case .denied: return "Permission denied"
+        case .unavailable(let reason): return reason
         }
         if selectionWording == .fraction && value.selectedCount > 0 {
             parts.append("\(value.selectedCount) of \(value.itemCount) selected")

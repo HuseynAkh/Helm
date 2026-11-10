@@ -18,6 +18,10 @@ import HelmPersistence
         records.append(record)
         return record.options
     }
+    func hasOptions(for location: Location) -> Bool {
+        let key = LocationViewOptionsStore.stableKey(for: location)
+        return records.contains { $0.key == key }
+    }
     func set(_ options: ViewOptions, for location: Location) throws {
         let key = LocationViewOptionsStore.stableKey(for: location)
         records.removeAll { $0.key == key }

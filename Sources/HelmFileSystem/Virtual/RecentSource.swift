@@ -21,9 +21,11 @@ public struct RecentSource: LocationSource {
                     for record in records {
                         try Task.checkCancellation()
                         let url = URL(fileURLWithPath: record.path)
-                        guard let entry = try? await fileSystem.entry(at: url),
+                        guard var entry = try? await fileSystem.entry(at: url),
                               options.showHidden || !entry.isHidden,
                               seen.insert(entry.id).inserted else { continue }
+                        // Kept on the entry so Recent can be sorted by it (Last Opened).
+                        entry.lastOpenedDate = record.lastAccessedAt
                         entries.append(entry)
                         if entries.count == 180 { break }
                     }

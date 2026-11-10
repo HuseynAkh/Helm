@@ -30,6 +30,8 @@ public enum ContextMenuModel {
         }
         if includeAdditions {
             if !background {
+                // Several items share Open With too, offering the apps that open all of them, as Finder does (P-228).
+                if count > 1 { sections[0].insert(item("Open With", .openWith, nil, .command, true), at: 1) }
                 sections[0] += [item("Open in New Tab", .openInNewTab, nil, .command, true), item("Open in New Window", .openInNewWindow, nil, .command, true)]
                 sections.append([item("Duplicate", .duplicate, nil, .command, true), item("Make Alias", .makeAlias, nil, .command, true),
                     item("Quick Look", .quickLook, nil, [], true), item("Show in Enclosing Folder", .reveal, nil, .command, true)])

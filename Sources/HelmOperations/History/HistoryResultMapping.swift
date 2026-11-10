@@ -32,6 +32,7 @@ public enum HistoryResultMapping {
         case .rename, .batchRename: return "Rename"
         case .createFolder: return "New Folder"
         case .createFile: return "New File"
+        case .link(_, _, let alias): return alias ? "Make Alias" : "Make Symbolic Link"
         case .recovery: return "Recovery"
         }
     }

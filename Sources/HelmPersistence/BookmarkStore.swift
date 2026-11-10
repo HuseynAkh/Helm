@@ -36,6 +36,14 @@ import HelmCore
         let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
         file.replace(with: records.filter { $0.path != normalized })
     }
+    /// A bookmarked folder that was renamed or moved keeps its bookmark, in the same place in the list.
+    public func relocate(_ moves: PathMoves) {
+        let home = home
+        guard let next = moves.relocate(records, path: \.path, rebuild: { record, path in
+            BookmarkRecord(path: path, name: Self.displayName(path: path, home: home), addedAt: record.addedAt, bookmarkData: record.bookmarkData)
+        }) else { return }
+        file.replace(with: next)
+    }
     public func flush() async throws { try await file.flush() }
     static func displayName(path: String, home: URL) -> String {
         if path == home.standardizedFileURL.path { return "Home" }

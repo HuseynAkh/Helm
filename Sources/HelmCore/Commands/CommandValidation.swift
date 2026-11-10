@@ -28,18 +28,21 @@ public struct CommandContext: Sendable {
     public var canGoBack: Bool
     public var canGoForward: Bool
     public var canGoUp: Bool
+    /// False while there's nothing on show to search, such as when a card stands in for the listing.
+    public var canSearch: Bool
     public init(selectionCount: Int = 0, hasMutationTarget: Bool = false,
                 locationKind: LocationKind = .directory, clipboard: CommandClipboardState = .empty,
                 textFieldFocused: Bool = false, searchOverlayActive: Bool = false,
                 canUndo: Bool = false, canRedo: Bool = false, paneFocused: Bool = true,
                 typeSelectActive: Bool = false, hasWindow: Bool = true,
-                canGoBack: Bool = false, canGoForward: Bool = false, canGoUp: Bool = false) {
+                canGoBack: Bool = false, canGoForward: Bool = false, canGoUp: Bool = false, canSearch: Bool = true) {
         self.selectionCount = max(0, selectionCount); self.hasMutationTarget = hasMutationTarget
         self.locationKind = locationKind; self.clipboard = clipboard
         self.textFieldFocused = textFieldFocused; self.searchOverlayActive = searchOverlayActive
         self.canUndo = canUndo; self.canRedo = canRedo; self.paneFocused = paneFocused
         self.typeSelectActive = typeSelectActive; self.hasWindow = hasWindow
         self.canGoBack = canGoBack; self.canGoForward = canGoForward; self.canGoUp = canGoUp
+        self.canSearch = canSearch
     }
 }
 
@@ -51,8 +54,8 @@ public enum CommandValidation {
              .newWindow, .bringAllToFront, .help: return .application
         case .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh, .home,
              .minimize, .zoom: return .window
-        case .open, .share, .star: return .selection
-        case .openWith, .properties: return .singleSelection
+        case .open, .openWith, .share, .star: return .selection
+        case .properties: return .singleSelection
         case .trash, .permanentDelete, .duplicate: return .mutationSelection
         case .newFolder, .newFile, .newTextFile, .newFromTemplate: return .destination
         case .cut, .copy: return .textOrSelection
@@ -80,6 +83,7 @@ public enum CommandValidation {
         case .compress: return .mutationSelection
         case .decompress: return .selection
         case .viewOptions, .computer: return .window
+        case .goToTrash: return .window
         }
     }
 
@@ -88,6 +92,7 @@ public enum CommandValidation {
         if rule == .planned { return .disabled }
         if rule == .application { return .enabled }
         guard context.hasWindow else { return .disabled }
+        if command == .find && !context.canSearch { return .disabled }
         let selection = context.selectionCount > 0 && !context.textFieldFocused
         let destination = context.hasMutationTarget && context.locationKind == .directory && !context.searchOverlayActive
         let mutation = selection && destination

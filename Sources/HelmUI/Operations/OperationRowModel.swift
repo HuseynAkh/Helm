@@ -3,7 +3,8 @@ import Foundation
 import HelmCore
 import HelmOperations
 
-/// F-061 progress is measured in executor steps, never fabricated bytes; failures remain visible (B-038).
+/// F-061 progress is measured in the items a person chose (executor steps grouped by item), never fabricated bytes;
+/// failures remain visible (B-038).
 public struct OperationRowModel: Sendable, Identifiable {
     public let id: OperationID
     public let title: String
@@ -25,10 +26,15 @@ public struct OperationRowModel: Sendable, Identifiable {
     }
     public var status: String {
         if let result = result {
-            let total = result.outcomes.count
-            let counts = result.failedCount == 0 ? "Done" : "\(result.succeededCount) of \(total) done"
-            if let error = result.error { return counts + ". " + Self.message(for: error) }
-            return counts
+            // Counted in items, as chosen: one replaced file is one item, not the steps that replaced it.
+            let total = result.items.count
+            let counts = result.failedCount == 0 ? "Done" : "\(result.succeededItemCount) of \(total) done"
+            guard let error = result.error else { return counts }
+            // The item that failed is named, so the row says what to look at without opening Details.
+            let failed = result.failedItemNames
+            guard let first = failed.first, error != .cancelled else { return counts + ". " + Self.message(for: error) }
+            let which = failed.count == 1 ? "“\(first)”" : "“\(first)” and \(failed.count - 1) more"
+            return counts + ". " + which + ": " + Self.message(for: error)
         }
         if cancellationRequested { return "Cancelling…" }
         guard let progress = progress, progress.itemsTotal > 0 else { return "Preparing…" }
@@ -39,6 +45,15 @@ public struct OperationRowModel: Sendable, Identifiable {
     /// F-061 uncertain outcomes remain visible even when Details is collapsed (B-100).
     public var requiresReconciliation: Bool { result?.outcomes.contains { $0.requiresReconciliation } ?? false }
     var hasDetails: Bool { result?.outcomes.isEmpty == false }
+    /// Points the row needs in the panel: its title and status, the progress bar while it runs, and once it's done the
+    /// partly-done warning and the Details control, which a fixed height used to cut off.
+    var panelHeight: CGFloat {
+        guard result != nil else { return 56 }
+        var height: CGFloat = 52
+        if requiresReconciliation { height += 18 }
+        if hasDetails { height += 24 }
+        return height
+    }
     var detailPageCount: Int { ((result?.outcomes.count ?? 0) + 49) / 50 }
     var formattedDetailCount: Int { detailCache.count }
     func detailPage(_ page: Int) -> [String] {

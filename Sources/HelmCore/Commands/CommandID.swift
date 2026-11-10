@@ -18,6 +18,8 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case newFolderWithSelection, addToSidebar, copyAsPathname, moveItemsHere, printSelection
     case columns, gallery, previewPane, viewOptions, desktop, documents, downloads, recents
     case applications, utilities, computer, network, compress, decompress, tags
+    /// Go › Trash, so the Trash and Put Back stay in reach when its sidebar row is hidden.
+    case goToTrash
 
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {

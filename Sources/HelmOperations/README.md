@@ -27,6 +27,10 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
   the caller task for cancellation, and optionally supply an async progress
   callback. Counts are filesystem primitives, including staging/verification,
   NOT user-selected item counts or byte progress. Reentrant execution is refused.
+  `PlannedStep.item` ties the steps of one item together (a replacement's stage,
+  check, retirement and install; a move between disks). `PlanItems` turns steps
+  into items: Skip leaves a whole item, and questions, the operations panel and
+  results count and name items, never a private stage.
 - Journal records each completed boundary, exact actual destinations, all later
   unattempted steps, and completion exactly once. Generic mutation failures mark
   reconciliation required. A timeout quarantines this executor; never recreate it
@@ -73,7 +77,8 @@ TempDirectory fixtures. The old Helm app and other lanes are untouched.
   a zero-space assertion; template creation capacity is not yet estimated.
 - Public primitive/result types intentionally reflect this smaller executor,
   rather than claiming every proposed section 7 command/summary field exists.
-  Permanent delete, Empty Trash, aliases and links are not in this lane's commands.
+  Permanent delete and Empty Trash are not in this lane's commands. Aliases and
+  symbolic links are (`Command.link`), so Undo moves what they made to the Trash.
 
 ## Needed changes elsewhere
 

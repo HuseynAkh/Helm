@@ -34,6 +34,14 @@ import HelmPersistence
     func remove(path: String) {
         records.removeAll { $0.path == URL(fileURLWithPath: path).standardizedFileURL.path }; changes.send(records)
     }
+    func relocate(_ moves: PathMoves) {
+        let home = home
+        guard let next = moves.relocate(records, path: \.path, rebuild: { record, path in
+            BookmarkRecord(path: path, name: path == home.path ? "Home" : URL(fileURLWithPath: path).lastPathComponent,
+                           addedAt: record.addedAt, bookmarkData: record.bookmarkData)
+        }) else { return }
+        records = next; changes.send(records)
+    }
     func flush() async throws {}
 }
 @MainActor final class AppMemoryStars: AppStarStoring {
@@ -48,6 +56,11 @@ import HelmPersistence
     func unstar(_ url: URL) {
         guard url.isFileURL else { return }
         records.removeAll { $0.path == url.standardizedFileURL.path }; changes.send(records)
+    }
+    func relocate(_ moves: PathMoves) {
+        guard let next = moves.relocate(records, path: \.path, rebuild: { StarRecord(path: $1, addedAt: $0.addedAt) })
+        else { return }
+        records = next.sorted { $0.path < $1.path }; changes.send(records)
     }
     func flush() async throws {}
 }
@@ -71,18 +84,16 @@ import HelmPersistence
     private(set) var windows: [SessionWindow] = []
     let changes = Broadcast<[SessionWindow]>()
     func replace(windows: [SessionWindow]) { self.windows = windows; changes.send(windows) }
+    func remove() { replace(windows: []) }
     func flush() async throws {}
 }
+/// The same rules as trash-origins.json, in memory.
 @MainActor final class AppMemoryTrashOrigins: AppTrashOriginStoring {
-    private var origins: [URL: URL] = [:]
+    private(set) var records: [TrashOriginRecord] = []
     func record(_ items: [TrashedItem]) async {
-        for item in items where item.trashedURL.isFileURL && item.originalURL.isFileURL {
-            origins[item.trashedURL.standardizedFileURL] = item.originalURL.standardizedFileURL
-        }
+        records = TrashOriginStore.adding(items, at: Date(), to: records)
     }
-    func originalURL(forTrashed url: URL) async -> URL? {
-        guard url.isFileURL else { return nil }
-        return origins[url.standardizedFileURL]
-    }
+    func originalURL(forTrashed url: URL) async -> URL? { TrashOriginStore.original(of: url, in: records) }
+    func removeOrigins(for urls: [URL]) { records = TrashOriginStore.removing(urls, from: records) }
     func flush() async throws {}
 }

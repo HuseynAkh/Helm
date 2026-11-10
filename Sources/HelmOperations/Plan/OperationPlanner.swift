@@ -25,6 +25,30 @@ public enum OperationPlanner {
     public static func plan(_ command: Command, context: PlanningContext) -> OperationPlan {
         plan(command, context: context, work: PlannerWork())
     }
+    /// A folder chosen together with something inside it stands for both, as in Finder and Nautilus: the folder takes
+    /// what's inside it along. Keeps the order given and drops repeats. Paths compare as spelled, so a case-sensitive
+    /// disk's "A" and "a" stay apart.
+    public static func outermost(_ sources: [URL]) -> [URL] {
+        let keys = sources.map { FileNameComparison.key(PathSpelling.standardPath($0), caseSensitive: true) }
+        let chosen = Set(keys)
+        var kept: [URL] = [], seen: Set<String> = []
+        for (source, key) in zip(sources, keys) where seen.insert(key).inserted {
+            let inside = SourcePathIndex.prefixes(key).dropLast().contains { chosen.contains($0) }
+            if !inside { kept.append(source) }
+        }
+        return kept
+    }
+    /// The same command with any source inside another source left out (see `outermost`). Only commands that take
+    /// whole items along are changed; a batch rename of a folder and its contents means both.
+    public static func outermostSources(of command: Command) -> Command {
+        switch command {
+        case .copy(let sources, let directory): return .copy(sources: outermost(sources), destinationDirectory: directory)
+        case .move(let sources, let directory): return .move(sources: outermost(sources), destinationDirectory: directory)
+        case .duplicate(let sources): return .duplicate(sources: outermost(sources))
+        case .trash(let items): return .trash(items: outermost(items))
+        case .rename, .batchRename, .createFolder, .createFile, .link, .recovery: return command
+        }
+    }
     static func plan(_ command: Command, context: PlanningContext, work: PlannerWork) -> OperationPlan {
         var builder = PlanAssembly(command: command, context: context, work: work)
         builder.build()
@@ -68,7 +92,24 @@ private struct PlanAssembly {
         case .batchRename(let pairs): renames(pairs)
         case .createFolder(let parent, let name): create(parent: parent, name: name, template: nil, folder: true)
         case .createFile(let parent, let name, let template): create(parent: parent, name: name, template: template, folder: false)
+        case .link(let sources, let directory, let alias): links(sources, in: directory, alias: alias)
         case .recovery: issues.append(.stopped)
+        }
+    }
+    /// Each link is a new name, numbered when taken, as Finder names aliases. A folder and something inside it can
+    /// each have one, so overlapping items are fine here.
+    mutating func links(_ sources: [URL], in directory: URL?, alias: Bool) {
+        for source in sources { _ = valid(source) }
+        guard issues.isEmpty else { return }
+        for source in sources {
+            let parent = directory ?? source.deletingLastPathComponent()
+            if path(parent) == path(source) || path(parent).hasPrefix(path(source) + "/") {
+                issues.append(.destinationInsideSource(parent)); return
+            }
+            let name = source.lastPathComponent + (alias ? " alias" : " link")
+            guard let destination = unique(name, parent: parent) else { return }
+            steps.append(PlannedStep(kind: alias ? .createAlias : .createSymbolicLink, source: source, destination: destination,
+                                     retryKeepBoth: true, collisionName: name))
         }
     }
     mutating func path(_ url: URL) -> String {
@@ -177,10 +218,11 @@ private struct PlanAssembly {
             if let sourceVolume, sourceVolume == targetVolume {
                 steps.append(PlannedStep(kind: .move, source: source, destination: destination, retryKeepBoth: true))
             } else {
-                // No retirement until the injected copier verifies the completed copy.
-                steps.append(PlannedStep(kind: .copy, source: source, destination: destination))
-                steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: destination))
-                steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: destination))
+                // No retirement until the injected copier verifies the completed copy. One item, so Skip leaves all of it.
+                let item = StepID()
+                steps.append(PlannedStep(kind: .copy, source: source, destination: destination, item: item))
+                steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: destination, item: item))
+                steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: destination, item: item))
             }
         } else { steps.append(PlannedStep(kind: .copy, source: source, destination: destination, retryKeepBoth: true)) }
     }
@@ -188,11 +230,13 @@ private struct PlanAssembly {
         let parent = target.deletingLastPathComponent()
         guard let stage = unique(".helm-stage", parent: parent) else { return }
         // Fable/Opus: each boundary is recoverable, not an atomic multi-item transaction.
-        steps.append(PlannedStep(kind: .copy, source: source, destination: stage))
-        steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: stage))
-        steps.append(PlannedStep(kind: .trash, source: original))
-        steps.append(PlannedStep(kind: .move, source: stage, destination: target))
-        if moving { steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: target)) }
+        // One item: if the copy fails and the person skips it, the original must never go to the Trash.
+        let item = StepID()
+        steps.append(PlannedStep(kind: .copy, source: source, destination: stage, item: item))
+        steps.append(PlannedStep(kind: .verifyCopy, source: source, destination: stage, item: item))
+        steps.append(PlannedStep(kind: .trash, source: original, item: item))
+        steps.append(PlannedStep(kind: .move, source: stage, destination: target, item: item))
+        if moving { steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: target, item: item)) }
     }
     mutating func create(parent: URL, name: ValidFileName, template: URL?, folder: Bool) {
         if let template {

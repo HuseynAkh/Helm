@@ -6,6 +6,8 @@ extension TabReducer {
         if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query.filters.isEmpty {
             endSearch(&state, effects: &effects); return
         }
+        // New words keep the order chosen for the results; a new search starts with Best Match.
+        let order: ItemSort = state.search == nil ? .relevance : state.snapshot.sort
         if state.search == nil {
             state.underlyingSnapshot = state.snapshot; state.underlyingSelection = state.selection
         }
@@ -16,8 +18,9 @@ extension TabReducer {
         effects.append(.cancel(.search, state.searchGeneration))
         state.searchGeneration = state.searchGeneration.next()
         state.search = SearchState(query: query, generation: state.searchGeneration)
-        state.selection = []; state.restorationIDs = nil; state.inlineRenameID = nil; state.deferredSnapshot = nil
-        present(PresentationSnapshot(location: state.location, phase: .loading(loadedCount: 0), sort: .relevance,
+        state.selection = []; state.restorationIDs = nil; state.awaitedChildren = []
+        state.inlineRenameID = nil; state.deferredSnapshot = nil
+        present(PresentationSnapshot(location: state.location, phase: .loading(loadedCount: 0), sort: order,
                                      rankByID: [:]), state: &state)
         effects.append(.startSearch(query, state.searchGeneration))
     }

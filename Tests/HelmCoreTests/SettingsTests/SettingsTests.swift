@@ -8,7 +8,7 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 27)
+        XCTAssertEqual(snapshot.values.count, 30)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -23,6 +23,17 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(snapshot.defaultViewMode, .grid)
         XCTAssertEqual(snapshot.defaultSort, .defaultSort)
         XCTAssertFalse(snapshot.showHiddenFiles)
+        // The welcome window opens by itself once, until it's been seen.
+        XCTAssertFalse(snapshot.bool(.onboardingCompleted))
+        XCTAssertEqual(SettingKey.onboardingCompleted.rawValue, "helm.onboardingCompleted")
+        // Set Up leaves the rows for the copy it moved into Applications here, as row names and commas only.
+        XCTAssertEqual(snapshot.string(.setupCarriedRows), "")
+        XCTAssertEqual(SettingsSchema.validated(.string("viewer,access,move"), for: .setupCarriedRows), .string("viewer,access,move"))
+        XCTAssertEqual(SettingsSchema.validated(.string("viewer; rm -rf"), for: .setupCarriedRows), .string(""))
+        // Recent works out of the box; Settings › General can turn it off.
+        XCTAssertTrue(snapshot.bool(.rememberRecentItems))
+        XCTAssertEqual(SettingKey.rememberRecentItems.rawValue, "helm.rememberRecentItems")
+        XCTAssertTrue(SettingsSchema.appliesLive(.rememberRecentItems))
         XCTAssertFalse(SettingsSchema.appliesLive(.defaultViewMode))
         XCTAssertTrue(SettingsSchema.appliesLive(.gridIconSize))
     }
