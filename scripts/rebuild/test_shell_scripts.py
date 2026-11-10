@@ -9,6 +9,8 @@ import tempfile
 import unittest
 
 SCRIPTS = Path(__file__).parent
+PLIST = ('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict>'
+         '<key>CFBundleExecutable</key><string>Helm</string></dict></plist>\n')
 
 
 class ShellTests(unittest.TestCase):
@@ -51,6 +53,27 @@ class ShellTests(unittest.TestCase):
                 result = subprocess.run(['bash', '-c', command, 'fixture', str(scripts / 'run_all.sh')], env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 self.assertIn(f'{count} executed; {skipped} skipped', result.stdout)
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'the binary check needs macOS tools')
+    def test_binary_check_paths_and_signatures(self):
+        # Xcode writes /var/... and /tmp/... where pwd says /private/var/... and /private/tmp/....
+        # /usr/bin/true has Apple's signature, whose certificates name web addresses. They don't count.
+        with tempfile.TemporaryDirectory() as directory:
+            build = str(Path(directory).resolve())
+            app = Path(build, 'Build/Products/Release/Helm.app')
+            (app / 'Contents/MacOS').mkdir(parents=True)
+            (app / 'Contents/Resources').mkdir()
+            shutil.copyfile('/usr/bin/true', app / 'Contents/MacOS/Helm')
+            (app / 'Contents/Info.plist').write_text(PLIST)
+            short = build.removeprefix('/private')
+            (app / 'Contents/Resources/leak.txt').write_text(f'object={short}/Build/Intermediates.noindex/a.o\n')
+            result = subprocess.run(['bash', str(SCRIPTS.parent / 'release/check_binary_privacy.sh'), str(app)],
+                                    capture_output=True, text=True)
+            if result.returncode == 2:
+                self.skipTest(result.stderr.strip())
+            self.assertIn('FAIL files with paths from the build machine', result.stdout)
+            self.assertIn('Contents/Resources/leak.txt', result.stdout)
+            self.assertIn('ok   web addresses: none', result.stdout)
 
     def smoke_fixture(self, directory, app_script):
         """A checkout with host_smoke.sh, one step for each run and a stand-in for HelmDev, in a folder with spaces."""
@@ -103,6 +126,17 @@ class ShellTests(unittest.TestCase):
             self.assertIn('Network: blocked', result.stdout)
             self.assertIn('killed in the first run, most likely for trying to use the network', result.stdout)
             self.assertIn('First run exit 137', result.stdout)
+
+    def test_release_workflow_checks_the_source_before_building(self):
+        # The README says the privacy check stops a release, and the binary check can't see everything it can,
+        # such as a read from a web address: the workflow runs both checks of the source before it builds.
+        workflow = (SCRIPTS.parent.parent / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        checks = workflow.find('run: bash scripts/static_checks.sh')
+        build = workflow.find('run: bash scripts/release/make_release.sh')
+        self.assertNotEqual(checks, -1, 'the release workflow never runs scripts/static_checks.sh')
+        self.assertNotEqual(build, -1, 'the release workflow never runs make_release.sh')
+        self.assertLess(checks, build)
+        self.assertIn('python3 -I scripts/privacy_check.py', (SCRIPTS.parent / 'static_checks.sh').read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

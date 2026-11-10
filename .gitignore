@@ -2,6 +2,8 @@
 .build/
 .swiftpm/
 DerivedData/
+# Release files from scripts/release/make_release.sh
+dist/
 
 # macOS
 .DS_Store
