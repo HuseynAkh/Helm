@@ -1,0 +1,199 @@
+// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
+import Foundation
+import XCTest
+import HelmCore
+import HelmPersistence
+@testable import HelmApp
+
+final class EnvironmentTests: XCTestCase {
+    @MainActor func testMemoryEnvironmentIsolationAndStoreBehaviour() async throws {
+        let first = try await AppEnvironment.test()
+        let second = try await AppEnvironment.test()
+        let home = first.directories.home
+        let now = Date(timeIntervalSince1970: 100)
+        let exists = await first.fileSystem.exists(home)
+        XCTAssertTrue(exists)
+        first.settings.set(.bool(true), for: .showHiddenFiles)
+        XCTAssertFalse(second.settings.snapshot.showHiddenFiles)
+        XCTAssertTrue(first.bookmarks.add(home, isDirectory: true, at: now))
+        XCTAssertFalse(first.bookmarks.add(home, isDirectory: true, at: now))
+        XCTAssertFalse(first.bookmarks.add(home.appendingPathComponent("file"), isDirectory: false, at: now))
+        XCTAssertEqual(first.bookmarks.records.first?.name, "Home")
+        first.bookmarks.remove(path: home.path)
+        XCTAssertTrue(first.bookmarks.records.isEmpty)
+        first.stars.star(home, at: now); first.stars.star(home, at: now)
+        XCTAssertEqual(first.stars.records.count, 1)
+        XCTAssertTrue(first.stars.isStarred(home)); XCTAssertTrue(second.stars.records.isEmpty)
+        first.stars.unstar(home); XCTAssertFalse(first.stars.isStarred(home))
+        for index in 0..<310 {
+            first.recents.recordAccess(to: home.appendingPathComponent(String(index)), kind: .directory,
+                at: Date(timeIntervalSince1970: Double(index)))
+        }
+        let recent = await first.recents.recentRecords()
+        XCTAssertEqual(recent.count, 180); XCTAssertEqual(first.recents.records.count, 300)
+        let newest = home.appendingPathComponent("309")
+        first.recents.recordAccess(to: newest, kind: .regular, at: .distantPast)
+        XCTAssertEqual(first.recents.records.first?.kind, .directory)
+        first.recents.clear(); XCTAssertTrue(first.recents.records.isEmpty)
+        let windows = [SessionWindow(frameAutosaveName: "test", tabs: [SessionTab(location: .recent)])]
+        first.session.replace(windows: windows)
+        XCTAssertEqual(first.session.windows, windows); XCTAssertTrue(second.session.windows.isEmpty)
+        let trash = URL(fileURLWithPath: "/trash/item")
+        await first.trashOrigins.record([TrashedItem(trashedURL: trash, originalURL: home)])
+        let origin = await first.trashOrigins.originalURL(forTrashed: trash)
+        XCTAssertEqual(origin, home)
+        let custom = FinderTag(name: "AK3b", colorIndex: 4)
+        try first.tagCatalog.merge(discovered: [custom])
+        XCTAssertTrue(first.tagCatalog.tags.contains(custom))
+        XCTAssertFalse(second.tagCatalog.tags.contains(custom))
+        let options = ViewOptions(viewMode: .list, iconSize: 64)
+        try first.viewOptions.set(options, for: .recent)
+        XCTAssertEqual(first.viewOptions.options(for: .recent), options)
+        XCTAssertEqual(second.viewOptions.options(for: .recent), ViewOptions())
+        // A record that matches the defaults still counts as the place's own.
+        XCTAssertTrue(first.viewOptions.hasOptions(for: .recent)); XCTAssertFalse(second.viewOptions.hasOptions(for: .recent))
+        try first.viewOptions.set(ViewOptions(), for: .trash)
+        XCTAssertTrue(first.viewOptions.hasOptions(for: .trash))
+        let failures = await first.flushStores()
+        XCTAssertTrue(failures.isEmpty)
+    }
+    @MainActor func testLiveMigrationPrecedesRegistrationAndRoundTrips() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("K22-" + UUID().uuidString)
+        let home = root.appendingPathComponent("home")
+        let storage = MigrationSettings()
+        let env = try await AppEnvironment.live(directories: AppDirectories(home: home, applicationSupport: root),
+            settingsStorage: storage, legacyReader: EmptyLegacyReader())
+        XCTAssertTrue(storage.migrationWasCompleteAtRegistration)
+        XCTAssertTrue(env.bookmarks is BookmarkStore)
+        XCTAssertTrue(env.stars is StarStore)
+        let saved = [SessionWindow(frameAutosaveName: "saved", tabs: [SessionTab(location: .recent)])]
+        env.session.replace(windows: saved)
+        env.stars.star(home, at: Date(timeIntervalSince1970: 10))
+        XCTAssertTrue(env.tagCatalog is TagCatalogStore)
+        XCTAssertTrue(env.viewOptions is LocationViewOptionsStore)
+        try env.tagCatalog.merge(discovered: [FinderTag(name: "AK3b", colorIndex: 4)])
+        try env.viewOptions.set(ViewOptions(viewMode: .list), for: .recent)
+        let failures = await env.flushStores()
+        XCTAssertTrue(failures.isEmpty)
+        let locations = StoreLocation(directory: root)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: locations.tagCatalog.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: locations.viewOptions.path))
+        let reloaded = try await AppEnvironment.live(directories: env.directories,
+            settingsStorage: storage, legacyReader: EmptyLegacyReader())
+        XCTAssertEqual(reloaded.tagCatalog.tags, env.tagCatalog.tags)
+        XCTAssertEqual(reloaded.viewOptions.options(for: .recent), ViewOptions(viewMode: .list))
+        XCTAssertEqual(reloaded.session.windows, saved)
+        XCTAssertEqual(reloaded.stars.records, env.stars.records)
+        // Keep this isolated /tmp fixture; the lane instruction forbids deletion.
+    }
+    @MainActor func testCorruptPreferencesDoNotPreventQuitOrOverwriteRecovery() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("OP2-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let locations = StoreLocation(directory: root)
+        let corrupt = Data("corrupt preferences".utf8)
+        try corrupt.write(to: locations.tagCatalog)
+        try corrupt.write(to: locations.viewOptions)
+        let env = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: MigrationSettings(), legacyReader: EmptyLegacyReader())
+        XCTAssertTrue(env.tagCatalog.isReadOnly)
+        XCTAssertTrue(env.viewOptions.isReadOnly)
+        XCTAssertNotNil(env.tagCatalog.recoveryBackupURL)
+        XCTAssertNotNil(env.viewOptions.recoveryBackupURL)
+        XCTAssertThrowsError(try env.tagCatalog.merge(discovered: [FinderTag(name: "refused", colorIndex: 4)]))
+        XCTAssertThrowsError(try env.viewOptions.set(ViewOptions(viewMode: .list), for: .recent))
+        for _ in 0..<2 {
+            let failures = await env.flushStores()
+            XCTAssertEqual(failures, [])
+        }
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            XCTAssertEqual(try Data(contentsOf: url), corrupt)
+            let backups = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                .filter { $0.lastPathComponent.hasPrefix(url.lastPathComponent + ".corrupt-") }
+            XCTAssertEqual(backups.count, 1)
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), corrupt)
+        }
+    }
+    @MainActor func testPreferenceIOFailuresKeepUnsavedEdits() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("OP2-io-" + UUID().uuidString)
+        let env = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: MigrationSettings(), legacyReader: EmptyLegacyReader())
+        let locations = StoreLocation(directory: root)
+        let tag = FinderTag(name: "Unsaved", colorIndex: 4)
+        let options = ViewOptions(viewMode: .list)
+        try env.tagCatalog.merge(discovered: [tag])
+        try env.viewOptions.set(options, for: .recent)
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let failures = await env.flushStores()
+        XCTAssertEqual(Set(failures.map(\.document)), ["tag-catalog", "view-options"])
+        XCTAssertTrue(env.tagCatalog.tags.contains(tag))
+        XCTAssertEqual(env.viewOptions.options(for: .recent), options)
+        for url in [locations.tagCatalog, locations.viewOptions] {
+            try FileManager.default.moveItem(at: url, to: url.appendingPathExtension("obstruction"))
+        }
+        let retry = await env.flushStores()
+        XCTAssertEqual(retry, [])
+        let savedTags = try await TagCatalogStore(url: locations.tagCatalog)
+        let savedOptions = try await LocationViewOptionsStore(url: locations.viewOptions)
+        XCTAssertTrue(savedTags.tags.contains(tag))
+        XCTAssertEqual(savedOptions.options(for: .recent), options)
+    }
+    @MainActor func testInvalidRootsAndMigrationFailureDoNotRegisterDefaults() async throws {
+        let remote = try XCTUnwrap(URL(string: "https://example.invalid/home"))
+        do {
+            _ = try await AppEnvironment.test(home: remote)
+            XCTFail("Non-file root accepted")
+        } catch { XCTAssertTrue(error is AppConfigurationError) }
+        let storage = MigrationSettings()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("K22-failure-" + UUID().uuidString)
+        // A damaged legacy key must not stop anyone reaching their files: it's reported and retried (OK2-9, FB2-9).
+        let environment = try await AppEnvironment.live(directories: AppDirectories(home: root, applicationSupport: root),
+            settingsStorage: storage, legacyReader: EmptyLegacyReader(corrupt: true))
+        XCTAssertEqual(environment.loadFailures.map(\.document), ["legacy preferences"])
+        XCTAssertNil(storage.object(forKey: LegacyDefaultsMigrator.doneKey))
+    }
+    @MainActor func testFlushAttemptsRemainingStoresAfterFailure() async throws {
+        let base = try await AppEnvironment.test()
+        let failing = FailingSession()
+        let origins = CountingOrigins()
+        let env = AppEnvironment(settings: base.settings, bookmarks: base.bookmarks, stars: base.stars,
+            recents: base.recents, session: failing, trashOrigins: origins, tagCatalog: base.tagCatalog, viewOptions: base.viewOptions, fileSystem: base.fileSystem,
+            journal: base.journal, clock: base.clock, directories: base.directories)
+        let errors = await env.flushStores()
+        XCTAssertEqual(errors.map(\.document), ["session"])
+        XCTAssertEqual(origins.flushCount, 1)
+    }
+}
+
+@MainActor private final class FailingSession: AppSessionStoring {
+    var windows: [SessionWindow] = []
+    let changes = Broadcast<[SessionWindow]>()
+    func replace(windows: [SessionWindow]) { self.windows = windows }
+    func flush() async throws { throw NSError(domain: "fixture", code: 1) }
+}
+@MainActor private final class CountingOrigins: AppTrashOriginStoring {
+    var flushCount: Int = 0
+    func record(_ items: [TrashedItem]) async {}
+    func originalURL(forTrashed url: URL) async -> URL? { nil }
+    func flush() async throws { flushCount += 1 }
+}
+
+@MainActor private final class MigrationSettings: KeyValueStoring {
+    var values: [String: Any] = [:]
+    var didRegister: Bool = false
+    var migrationWasCompleteAtRegistration: Bool = false
+    func object(forKey key: String) -> Any? { values[key] }
+    func set(_ value: Any, forKey key: String) { values[key] = value }
+    func register(defaults: [String: Any]) {
+        didRegister = true
+        migrationWasCompleteAtRegistration = values[LegacyDefaultsMigrator.doneKey] as? Bool == true
+        values.merge(defaults) { old, _ in old }
+    }
+}
+@MainActor private struct EmptyLegacyReader: LegacyDefaultsReading {
+    var corrupt: Bool = false
+    func data(forKey key: String, domain: String?) -> Data? { corrupt ? Data("bad json".utf8) : nil }
+    func storedSetting(for key: SettingKey, domain: String) -> SettingValue? { nil }
+    func hasStoredSetting(for key: SettingKey, domain: String) -> Bool { false }
+}

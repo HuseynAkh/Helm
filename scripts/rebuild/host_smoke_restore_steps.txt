@@ -1,0 +1,8 @@
+# Relaunch with the same support folder: everything saved at quit comes back
+windows 1
+tabs 2
+location @FIX@/home/Documents
+view-is list
+starred alpha.md
+bookmarked Reports
+main-thread-clean

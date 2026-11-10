@@ -1,0 +1,150 @@
+# Long names in the grid (grid-names.fixture.sh): two lines at most, cut in the middle of the second so the start
+# and the end stay in view, the extension too; the whole name while it's the one item selected, drawn over the items
+# below, which cut away the part under it; the full name in the tooltip and for VoiceOver. The list stays one line, cut only when its Name column is too
+# narrow. Works in its own tab, and puts the text size, icon size and appearance back, so later steps see them as before.
+cmd newTab
+wait 0.3
+go @FIX@/home/GridNames
+view grid
+wait 0.6
+text-percent 100
+appearance light
+# Names that fit are left alone
+names-whole notes.txt
+names-whole Two words.md
+names-whole Annual budget review.xlsx
+names-whole 한국어 문서.txt
+# Longer ones keep their start and their end
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-cut The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+names-cut Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+names-cut 日本語のとても長いファイル名のテストです。これは表示の確認用.txt
+names-cut Party planning 2026 — guests, food, music and more 🎉🎶.numbers
+names-cut مستند طويل جدا للاختبار في عرض الشبكة مع اسم طويل.pdf
+names-cut 한국어 파일 이름이 아주 길어서 두 줄에 다 들어가지 않습니다.hwp
+names-cut A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it and then its end.md
+names-all-drawn
+hunt-scroll-top
+screenshot @SHOTS@/grid-names-light.png
+appearance dark
+wait 0.3
+screenshot @SHOTS@/grid-names-dark.png
+# Clicked, the one item shows its whole name over the items below; clicking elsewhere puts it back
+appearance light
+select Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+wait 0.3
+names-open Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+hunt-scroll-top
+screenshot @SHOTS@/grid-names-selected-light.png
+appearance dark
+wait 0.3
+screenshot @SHOTS@/grid-names-selected-dark.png
+appearance light
+# In the last row the grid grows to hold the whole name
+select The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+wait 0.3
+names-open The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+select Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+wait 0.2
+names-open Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-cut The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+# Past five lines, even the selected name is cut, on the fifth
+select A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it and then its end.md
+wait 0.2
+names-open-cut A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it A very long name with many words in it and then its end.md
+# Several selected keep their two lines
+select Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf,Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+wait 0.2
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-cut Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+# The rename field always has the whole name
+select Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+wait 0.2
+names-rename-whole
+exists @FIX@/home/GridNames/Supercalifragilisticexpialidocious_without_any_spaces_at_all.docx
+# A name that's just an extension
+cmd hidden
+wait 0.5
+names-whole .pdf
+cmd hidden
+wait 0.5
+# At the largest text size the names still fit, and at the smallest
+select
+text-step 7
+wait 0.4
+text-percent 170
+names-all-drawn
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+hunt-scroll-top
+screenshot @SHOTS@/grid-names-large-light.png
+appearance dark
+wait 0.3
+screenshot @SHOTS@/grid-names-large-dark.png
+appearance light
+select The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+wait 0.2
+names-open-cut The quick brown fox jumps over the lazy dog and keeps on running far away.txt
+select
+text-step -9
+wait 0.4
+text-percent 80
+names-all-drawn
+text-step 2
+wait 0.4
+text-percent 100
+# And at the smallest and largest icons
+names-icons 48
+names-all-drawn
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-icons 128
+names-all-drawn
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-icons 96
+# Search results and Recent's groups shorten the same way
+search Quarterly
+wait 0.6
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+select Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+wait 0.2
+names-open Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+escape-files
+wait 0.4
+recent
+cmd clearRecent
+wait 0.3
+recent-record @FIX@/home/GridNames/Folder/A folder with a long name that needs more than two lines of the grid
+recent-record @FIX@/home/GridNames/Folder/Quarterly_Report_draft_v2_final_reviewed_by_finance_and_legal.pdf
+recent
+wait 0.5
+folders-first on
+view grid
+wait 0.4
+sections Folders 1,Files 1
+names-cut A folder with a long name that needs more than two lines of the grid
+names-cut Quarterly_Report_draft_v2_final_reviewed_by_finance_and_legal.pdf
+select A folder with a long name that needs more than two lines of the grid
+wait 0.2
+names-open A folder with a long name that needs more than two lines of the grid
+cmd clearRecent
+wait 0.3
+# The list keeps its one line: whole names in a wide Name column, cut in the middle only when it's too narrow
+go @FIX@/home/GridNames
+view list
+wait 0.5
+names-list-width 560
+names-list-whole Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-list-whole notes.txt
+names-list-width 170
+names-list-cut Quarterly_Report_draft_v2_final_reviewed_by_finance.pdf
+names-list-whole notes.txt
+select
+screenshot @SHOTS@/list-names-narrow-light.png
+appearance dark
+wait 0.3
+screenshot @SHOTS@/list-names-narrow-dark.png
+appearance system
+names-list-width 340
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

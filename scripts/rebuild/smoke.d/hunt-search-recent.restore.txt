@@ -1,0 +1,2 @@
+# After the relaunch, the Documents tab that searched with Best Match isn't sorted by it
+hunt-not-best-match

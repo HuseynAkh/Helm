@@ -1,0 +1,113 @@
+# Sidebar, Settings and the welcome window, as fixed after the sidebar-settings hunt. These start in the Documents
+# tab, in list view, with two tabs open. They work in a tab of their own and leave everything as they found it.
+cmd newTab
+wait 0.3
+location @FIX@/home/Documents
+# A bookmarked folder or a starred file renamed in Helm keeps its sidebar row, as in Finder. Undo takes it back too.
+bookmarks-are Downloads,Reports,Desktop
+starred alpha.md
+select Reports
+rename Reports 2026
+wait 0.3
+bookmarks-are Downloads,Reports 2026,Desktop
+sidebar-rows bookmarks Downloads,Reports 2026,Desktop
+cmd undo
+wait 0.6
+bookmarks-are Downloads,Reports,Desktop
+sidebar-rows bookmarks Downloads,Reports,Desktop
+select alpha.md
+rename beta.md
+wait 0.3
+starred beta.md
+sidebar-rows starred beta.md
+select beta.md
+rename alpha.md
+wait 0.3
+starred alpha.md
+sidebar-rows starred alpha.md
+# The sidebar takes the keys: Down and Up open the place the highlight lands on, and Return opens the highlighted row
+go @FIX@/home/Documents
+wait 0.5
+hunt-sidebar-focus
+hunt-focus-is sidebar
+sidebar-highlight Documents
+hunt-sidebar-key down
+location @FIX@/home/Downloads
+sidebar-highlight Downloads
+hunt-sidebar-key up
+location @FIX@/home/Documents
+sidebar-highlight Documents
+hunt-sidebar-key return
+location @FIX@/home/Documents
+# A starred file's Open in New Tab opens a tab showing it, and the tab you were in stays where it was
+go @FIX@/home/Downloads
+wait 0.5
+sidebar-menu-pick starred alpha.md > Open in New Tab
+wait 0.8
+tabs 4
+location @FIX@/home/Documents
+selected alpha.md
+cmd closeTab
+wait 0.3
+tabs 3
+location @FIX@/home/Downloads
+# Updates from disk turned off stop at once in an open window. Turned on again, the folder catches up by itself.
+go @FIX@/home/LiveUpdates
+wait 0.5
+lists already-here.txt
+setting liveMonitoringEnabled false
+watch-external @FIX@/home/LiveUpdates/made-elsewhere.txt
+wait 2
+lacks made-elsewhere.txt
+setting liveMonitoringEnabled true
+wait 1.5
+has made-elsewhere.txt
+# Settings › General scrolls in a window shorter than the pane, as on a small screen, rather than being cut off
+hunt-settings-open general
+hunt-settings-reachable
+hunt-settings-squeeze 600
+hunt-settings-reachable
+# Choosing a pane fits the window to it again
+hunt-settings-open view
+hunt-settings-open general
+hunt-settings-close
+# An open pane shows a setting changed in a window at once, and still does after Settings closes and opens again
+hunt-settings-open appearance
+hunt-settings-reads Text: 100%
+text-step 1
+hunt-settings-reads Text: 110%
+text-step -1
+hunt-settings-reads Text: 100%
+hunt-settings-close
+hunt-settings-open view
+hunt-settings-switches on,off
+cmd hidden
+setting-is showHiddenFiles true
+hunt-settings-switches on,on
+hunt-settings-close
+hunt-app-menu Settings...
+hunt-settings-pane-is view
+hunt-settings-switches on,on
+cmd hidden
+setting-is showHiddenFiles false
+hunt-settings-switches on,off
+hunt-settings-close
+# Helm › Advanced Options… opens Settings at Advanced, whichever pane was on show last
+hunt-settings-open general
+hunt-settings-close
+hunt-app-menu Advanced Options...
+hunt-settings-pane-is advanced
+# ⌘W closes Settings and the welcome window, which have no tabs, as in Finder
+hunt-key-closes settings
+setting onboardingCompleted false
+onboarding open
+onboarding-is setup
+hunt-key-closes welcome
+onboarding-is closed
+setting onboardingCompleted false
+# Back where these started
+cmd closeTab
+wait 0.3
+tabs 2
+location @FIX@/home/Documents
+view-is list

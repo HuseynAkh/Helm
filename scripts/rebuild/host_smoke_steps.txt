@@ -1,0 +1,574 @@
+# Launch
+windows 1
+location @FIX@/home
+has Documents
+lacks .Trash
+# Navigation and history
+go @FIX@/home/Documents
+location @FIX@/home/Documents
+lists link-to-reports,Reports,Résumés,alpha.md,@NFC@,notes.txt
+cmd up
+location @FIX@/home
+cmd back
+location @FIX@/home/Documents
+cmd forward
+location @FIX@/home
+cmd back
+# Hidden files
+lacks .secret
+cmd hidden
+has .secret
+cmd hidden
+lacks .secret
+# Typed paths: case-insensitive, Unicode either spelling, ~, file URLs, parent, files reveal
+type ~/documents/rep
+typed-rows Reports
+return
+location @FIX@/home/Documents/Reports
+type @FILEURL@
+return
+location @FIX@/home/Documents
+type ~/Documents/@NFC@
+return
+location @FIX@/home/Documents
+selected @NFC@
+type ~/Documents/@NFD@
+return
+selected @NFC@
+type ~/DOCUMENTS/NOTES.TXT
+return
+selected notes.txt
+type ..
+return
+location @FIX@/home
+type /no/such/place
+return
+location @FIX@/home
+cmd location
+go @FIX@/home/Documents
+# Symlinked folder lands on the real folder
+select link-to-reports
+cmd open
+location @FIX@/home/Documents/Reports
+cmd back
+location @FIX@/home/Documents
+# View modes
+view list
+screenshot @SHOTS@/full-list.png
+view grid
+wait 0.4
+screenshot @SHOTS@/full-grid.png
+# Copy: metadata, xattrs and collision-free destination
+select notes.txt
+cmd copy
+go @FIX@/home/Documents/Reports
+cmd paste
+wait 0.5
+has notes.txt
+exists @FIX@/home/Documents/Reports/notes.txt
+contents @FIX@/home/Documents/Reports/notes.txt=hello
+same-mtime @FIX@/home/Documents/notes.txt=@FIX@/home/Documents/Reports/notes.txt
+has-xattr @FIX@/home/Documents/Reports/notes.txt=com.example.keep
+selected notes.txt
+undo-title Copy
+cmd undo
+wait 0.5
+lacks notes.txt
+missing @FIX@/home/Documents/Reports/notes.txt
+exists @FIX@/home/.Trash/notes.txt
+cmd redo
+wait 0.5
+has notes.txt
+exists @FIX@/home/Documents/Reports/notes.txt
+cmd undo
+wait 0.5
+# Cut and paste moves, and undo puts it back
+go @FIX@/home/Documents
+select alpha.md
+cmd cut
+go @FIX@/home/Documents/Reports
+cmd paste
+wait 0.5
+has alpha.md
+missing @FIX@/home/Documents/alpha.md
+exists @FIX@/home/Documents/Reports/alpha.md
+cmd undo
+wait 0.5
+exists @FIX@/home/Documents/alpha.md
+missing @FIX@/home/Documents/Reports/alpha.md
+# A name that already exists: keep both, no overwrite
+setting askOnConflict false
+go @FIX@/home/Documents
+select notes.txt
+cmd copy
+cmd paste
+wait 0.5
+has notes 2.txt
+contents @FIX@/home/Documents/notes 2.txt=hello
+contents @FIX@/home/Documents/notes.txt=hello
+cmd undo
+wait 0.5
+lacks notes 2.txt
+# Duplicate
+select alpha.md
+cmd duplicate
+wait 0.5
+has alpha 2.md
+selected alpha 2.md
+cmd undo
+wait 0.5
+# Rename, including undo
+select alpha.md
+rename beta.md
+has beta.md
+lacks alpha.md
+selected beta.md
+exists @FIX@/home/Documents/beta.md
+undo-title Rename
+cmd undo
+wait 0.5
+has alpha.md
+lacks beta.md
+# Case-only rename
+select alpha.md
+rename ALPHA.md
+has ALPHA.md
+lacks alpha.md
+cmd undo
+wait 0.5
+has alpha.md
+# Unicode name rename and collision across spelling
+select alpha.md
+rename @NFD@
+exists @FIX@/home/Documents/alpha.md
+# New folder, undo
+cmd newFolder
+wait 0.6
+has untitled folder
+exists @FIX@/home/Documents/untitled folder
+commit-rename
+cmd undo
+wait 0.5
+lacks untitled folder
+# Folder copy keeps its tree and its link
+select Reports
+cmd copy
+go @FIX@/home/Downloads
+cmd paste
+wait 0.6
+has Reports
+exists @FIX@/home/Downloads/Reports/2026/q2.txt
+go @FIX@/home/Documents
+select link-to-reports
+cmd copy
+go @FIX@/home/Downloads
+cmd paste
+wait 0.6
+is-link @FIX@/home/Downloads/link-to-reports
+cmd undo
+wait 0.4
+cmd undo
+wait 0.4
+go @FIX@/home/Documents
+# Move a folder into itself is refused, with nothing changed
+# Trash (fixture Trash only), selection moves on, undo, put back
+select notes.txt
+cmd trash
+wait 0.6
+lacks notes.txt
+missing @FIX@/home/Documents/notes.txt
+selected @NFC@
+cmd undo
+wait 0.6
+has notes.txt
+exists @FIX@/home/Documents/notes.txt
+contents @FIX@/home/Documents/notes.txt=hello
+# Trashing a folder works and undoes
+select Reports
+cmd trash
+wait 0.6
+lacks Reports
+missing @FIX@/home/Documents/Reports
+cmd undo
+wait 0.6
+has Reports
+exists @FIX@/home/Documents/Reports/q1.txt
+# Trash view and put back
+watch-external @FIX@/home/Documents/trash-me.txt
+wait 0.8
+has trash-me.txt
+select trash-me.txt
+cmd trash
+wait 0.6
+window-trash
+# Expand in the list
+view list
+expand Reports
+child Reports/q1.txt/2026
+expand 2026
+child q2.txt
+view grid
+# External changes show up by themselves
+watch-external @FIX@/home/Documents/appeared.txt
+wait 1.5
+has appeared.txt
+# Tabs
+cmd newTab
+wait 0.4
+tabs 2
+go @FIX@/home/Downloads
+location @FIX@/home/Downloads
+cmd nextTab
+wait 0.3
+location @FIX@/home/Documents
+cmd nextTab
+wait 0.3
+location @FIX@/home/Downloads
+main-thread-clean
+cmd closeTab
+wait 0.3
+tabs 1
+location @FIX@/home/Documents
+main-thread-clean
+cmd reopenClosedTab
+wait 0.4
+tabs 2
+location @FIX@/home/Downloads
+cmd closeTab
+wait 0.3
+# Stars
+select alpha.md
+cmd star
+wait 0.2
+starred alpha.md
+cmd star
+wait 0.2
+unstarred alpha.md
+# Search
+search q2
+wait 0.6
+has q2.txt
+screenshot @SHOTS@/full-search.png
+# The scope pill widens a search to the whole Mac and back (P-170)
+search-scope-is here
+search-scope mac
+search-scope-is mac
+search-scope here
+search-scope-is here
+has q2.txt
+search
+wait 0.4
+has alpha.md
+# Recent
+recent
+wait 0.4
+location recent
+go @FIX@/home/Documents
+# Windows
+cmd newWindow
+wait 0.5
+windows 2
+close-window
+windows 1
+main-thread-clean
+# Inline rename through the real field, in both views
+go @FIX@/home/Documents
+view list
+select alpha.md
+inline-rename beta.md
+has beta.md
+exists @FIX@/home/Documents/beta.md
+selected beta.md
+select beta.md
+inline-cancel ignored.md
+has beta.md
+lacks ignored.md
+view grid
+wait 0.3
+select beta.md
+inline-rename alpha.md
+has alpha.md
+# Menus: enablement and named undo
+select alpha.md
+menu trash enabled
+menu rename enabled
+menu properties enabled
+menu undo enabled Undo Rename
+select
+menu trash disabled
+menu properties enabled
+menu back enabled
+menu columns disabled
+# Sheets open and close
+select alpha.md
+cmd properties
+sheet
+dismiss-sheet
+select alpha.md,notes.txt
+cmd rename
+wait 0.4
+sheet
+screenshot @SHOTS@/batch-rename.png
+dismiss-sheet
+# Quick Look on a fixture file
+select notes.txt
+quicklook open
+# Settings window
+settings-window
+# Conflicts through the real dialog: replace, skip, stop
+setting askOnConflict true
+go @FIX@/home/Downloads
+watch-external @FIX@/home/Downloads/clash.txt
+wait 0.8
+go @FIX@/home/Documents
+watch-external @FIX@/home/Documents/clash.txt
+wait 0.8
+select clash.txt
+cmd copy
+go @FIX@/home/Downloads
+conflict stop
+cmd paste
+wait 0.8
+lists clash.txt
+conflict skip
+cmd paste
+wait 0.8
+lists clash.txt
+conflict keepBoth
+cmd paste
+wait 0.8
+lists clash 2.txt,clash.txt
+cmd undo
+wait 0.5
+conflict replace
+cmd paste
+wait 0.8
+lists clash.txt
+cmd undo
+wait 0.8
+lists clash.txt
+setting askOnConflict false
+# Drag and drop moves within a volume
+go @FIX@/home/Documents
+watch-external @FIX@/home/Documents/dragged.txt
+wait 0.8
+drop dragged.txt @FIX@/home/Downloads
+missing @FIX@/home/Documents/dragged.txt
+exists @FIX@/home/Downloads/dragged.txt
+cmd undo
+wait 0.5
+exists @FIX@/home/Documents/dragged.txt
+# Move Items Here
+select dragged.txt
+cmd copy
+go @FIX@/home/Downloads
+cmd moveItemsHere
+wait 0.6
+exists @FIX@/home/Downloads/dragged.txt
+missing @FIX@/home/Documents/dragged.txt
+# A folder into itself is refused while dragging, and so is moving something to where it already is
+go @FIX@/home/Documents
+select Reports
+drop-refused Reports @FIX@/home/Documents/Reports/2026
+drop-refused Reports @FIX@/home/Documents/Reports
+drop-refused Reports @FIX@/home/Documents
+exists @FIX@/home/Documents/Reports/q1.txt
+# Open With ranks the apps for a file: a default, then the best fits, each app once
+go @FIX@/home/Documents/Reports
+openwith-ranked q1.txt
+go @FIX@/home/Documents
+# Sidebar bookmarks: added at the end, dropped between two, and reordered by dragging (P-188)
+bookmark @FIX@/home/Documents/Reports
+bookmarked Reports
+bookmark @FIX@/home/Downloads
+bookmarks-are Reports,Downloads
+bookmark-at 1 @FIX@/home/Desktop
+bookmarks-are Reports,Desktop,Downloads
+bookmark-move 0 @FIX@/home/Downloads
+bookmarks-are Downloads,Reports,Desktop
+# Show in Finder from another app, Open in Helm and Show in Helm: files are shown selected, not launched
+open-external @FIX@/home/Documents/Reports/q1.txt
+location @FIX@/home/Documents/Reports
+selected q1.txt
+open-external @FIX@/home/Desktop
+location @FIX@/home/Desktop
+service-show @FIX@/home/Documents/Reports
+location @FIX@/home/Documents
+selected Reports
+# Compress one item and several, as Finder names them
+go @FIX@/home/Documents/Reports
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/q1.txt.zip
+selected q1.txt.zip
+select 2026,q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/Archive.zip
+select q1.txt
+cmd compress
+wait 1.5
+exists @FIX@/home/Documents/Reports/q1.txt 2.zip
+# One unreadable item doesn't stop the batch: Skip goes on with the rest (P-139)
+go @FIX@/home/Locked
+select 1-locked.txt,2-open.txt,3-open.txt
+cmd copy
+go @FIX@/home/Desktop
+fail-answer skip
+cmd paste
+wait 1.2
+asked 1
+has 2-open.txt
+has 3-open.txt
+lacks 1-locked.txt
+# Stop leaves the rest undone
+go @FIX@/home/Locked
+select 1-locked.txt,2-open.txt
+cmd copy
+go @FIX@/home/Downloads
+fail-answer stop
+cmd paste
+wait 1.2
+asked 1
+lacks 2-open.txt
+fail-answer stop
+# New windows open where Settings says
+setting-string newWindowLocation downloads
+cmd newWindow
+wait 0.6
+location @FIX@/home/Downloads
+cmd closeWindow
+wait 0.4
+setting-string newWindowLocation current
+# Default file viewer switch (a stand-in: nothing outside Helm changes), and each Settings pane
+file-viewer helm
+file-viewer finder
+first-in-dock true
+first-in-dock false
+settings-shot general @SHOTS@/settings-general.png
+settings-shot view @SHOTS@/settings-view.png
+settings-shot appearance @SHOTS@/settings-appearance.png
+settings-shot search @SHOTS@/settings-search.png
+settings-shot advanced @SHOTS@/settings-advanced.png
+# Per-folder view memory
+go @FIX@/home/Downloads
+view list
+sort size
+go @FIX@/home/Desktop
+view grid
+go @FIX@/home/Downloads
+view-is list
+sorted-by size
+go @FIX@/home/Desktop
+view-is grid
+# Aliases and links
+go @FIX@/home/Documents
+select notes.txt
+cmd makeSymbolicLink
+wait 0.5
+is-link @FIX@/home/Documents/notes.txt link
+# Package contents, Clear Recent, Delete Immediately and Empty Trash act only on the fixture
+recent
+cmd clearRecent
+wait 0.4
+go @FIX@/home/Documents
+select notes.txt link
+cmd permanentDelete
+wait 0.5
+missing @FIX@/home/Documents/notes.txt link
+window-empty-trash
+main-thread-clean
+# Menu rows that had no check of their own
+go @FIX@/home/Documents
+select alpha.md
+cmd duplicate
+wait 0.5
+has alpha 2.md
+cmd undo
+wait 0.5
+select alpha.md
+cmd makeAlias
+wait 0.5
+exists @FIX@/home/Documents/alpha.md alias
+select alpha.md
+cmd copyAsPathname
+select Reports
+cmd openInNewTab
+wait 0.5
+tabs 2
+location @FIX@/home/Documents/Reports
+cmd closeTab
+wait 0.3
+select alpha.md alias
+cmd trash
+wait 0.5
+watch-external @FIX@/home/Documents/into-folder.txt
+wait 0.8
+select into-folder.txt
+cmd newFolderWithSelection
+wait 1.0
+commit-rename
+wait 0.3
+exists @FIX@/home/Documents/New Folder With Items/into-folder.txt
+cmd recents
+wait 0.3
+location recent
+go @FIX@/home/Documents
+# Sorting says what it's doing, in both directions
+go @FIX@/home/Documents
+view list
+sort-choose Name Z–A
+sort-is Name Z–A
+first-row Résumés
+sort-choose Name A–Z
+sort-is Name A–Z
+sort-choose Largest First
+sort-is Largest First
+sort-choose Newest First
+sort-is Newest First
+sort-choose Name A–Z
+view grid
+# The path reads from Home, and cloud drives are listed with the drives
+path-reads Home / Documents
+drive-listed Google Drive
+drive-listed iCloud Drive
+go @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared
+path-reads Google Drive / Shared
+go @FIX@/home/Documents
+# Text size steps by 10% and says where it is
+text-percent 100
+text-step 2
+text-percent 120
+text-step -2
+text-percent 100
+text-step 1
+popover-shot @SHOTS@/view-options.png
+text-step -1
+# Pressing the current sort again reverses it, and a new field starts in its own direction
+view list
+sort-press Name
+sort-is Name Z–A
+first-row Résumés
+sort-press Name
+sort-is Name A–Z
+sort-press Modified
+sort-is Newest First
+sort-press Modified
+sort-is Oldest First
+sort-press Size
+sort-is Largest First
+sort-press Name
+sort-is Name A–Z
+view grid
+search-open
+screenshot @SHOTS@/search-open.png
+# Quit saves the session, and the second run below restores it
+go @FIX@/home/Downloads
+cmd newTab
+wait 0.3
+go @FIX@/home/Documents
+view list
+wait 0.3
+star-now alpha.md
+quit

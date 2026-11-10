@@ -1,0 +1,175 @@
+# Navigation, tabs and windows. Works in its own tab, so the tabs saved at quit are left as they were, and puts back
+# the width, the settings and the fixture it changed.
+cmd newTab
+wait 0.4
+go @FIX@/home/Documents
+window-width 1040
+# Many tabs: their names shorten and the strip scrolls to the tab on show. The window keeps its width, and can still
+# be made narrower
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+cmd newTab
+wait 0.5
+hunt-width-is 1040
+hunt-active-tab-shown
+screenshot @SHOTS@/hunt-navigation-many-tabs.png
+hunt-set-width 760
+hunt-width-is 760
+hunt-active-tab-shown
+window-width 1040
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+cmd closeTab
+location @FIX@/home/Documents
+# A folder with a long name: the path and the search's scope shorten it rather than widen the window
+fixture-mkdir @FIX@/home/Documents/A folder with a really long name that goes on and on for quite a while longer than usual
+window-width 900
+go @FIX@/home/Documents/A folder with a really long name that goes on and on for quite a while longer than usual
+wait 0.5
+hunt-width-is 900
+screenshot @SHOTS@/hunt-navigation-long-name-path.png
+search-open
+hunt-width-is 900
+hunt-search-room 64
+screenshot @SHOTS@/hunt-navigation-long-name-search.png
+search-key escape
+go @FIX@/home/Documents
+hunt-fixture-remove @FIX@/home/Documents/A folder with a really long name that goes on and on for quite a while longer than usual
+window-width 1040
+# At the narrowest the window goes, the search's scope gives way to the words you type
+go @FIX@/home/Downloads
+hunt-set-width 600
+search-open
+search-type report
+hunt-search-room 64
+screenshot @SHOTS@/hunt-navigation-narrow-search.png
+search-key escape
+window-width 1040
+# While a card is up, the path, the tab and the title all name the place it's about
+go @FIX@/home/Documents
+go @FIX@/home/Gone
+card-reads “Gone” no longer exists
+path-reads Home / Gone
+hunt-tab-title-is Gone
+hunt-title-is Gone
+cmd back
+wait 0.5
+card-none
+path-reads Home / Documents
+hunt-tab-title-is Documents
+# Cmd-Up leaves the folder you came from selected
+go @FIX@/home/Documents/Reports
+cmd up
+location @FIX@/home/Documents
+selected Reports
+# Back brings back a folder opened in the list, with the file selected inside it
+view list
+disclose Reports
+list-open Reports
+select q1.txt
+selected q1.txt
+go @FIX@/home/Downloads
+cmd back
+wait 0.6
+location @FIX@/home/Documents
+list-open Reports
+selected q1.txt
+disclose Reports
+list-closed Reports
+# Other apps' requests land where the item really is, as the disk spells it: `open .` from a Terminal tab that went
+# `cd ~/documents`, a file in another case, and paths through a link
+go @FIX@/home/Desktop
+open-external @FIX@/home/DOCUMENTS
+location @FIX@/home/Documents
+path-reads Home / Documents
+sidebar-on Documents
+go @FIX@/home/Desktop
+open-external @FIX@/home/documents/notes.txt
+location @FIX@/home/Documents
+selected notes.txt
+go @FIX@/home/Desktop
+service-show @FIX@/home/Documents/NOTES.TXT
+location @FIX@/home/Documents
+selected notes.txt
+open-external @FIX@/home/Documents/link-to-reports
+card-none
+location @FIX@/home/Documents/Reports
+go @FIX@/home/Desktop
+open-external @FIX@/home/Documents/link-to-reports/q1.txt
+card-none
+location @FIX@/home/Documents/Reports
+selected q1.txt
+# Going to a folder that is a link, as Go › Downloads does once Downloads has been moved and linked, lists the folder
+# it points at
+go @FIX@/home/Documents/link-to-reports
+card-none
+has q1.txt
+path-reads Home / Documents / link-to-reports
+# A hidden file asked for by name is shown and selected: hidden items show in this tab only, and the setting stays off
+go @FIX@/home
+type ~/Documents/.secret
+return
+wait 0.5
+location @FIX@/home/Documents
+selected .secret
+hunt-hidden-shown true
+# Another setting changing, as text zoom does, leaves them listed and the item selected
+setting confirmBeforeTrash true
+wait 0.5
+selected .secret
+hunt-hidden-shown true
+setting confirmBeforeTrash false
+wait 0.3
+cmd hidden
+wait 0.4
+go @FIX@/home
+open-external @FIX@/home/Documents/.secret
+location @FIX@/home/Documents
+selected .secret
+cmd hidden
+wait 0.4
+hunt-hidden-shown false
+# Folders opened in a new tab or a new window go into Recent
+recent
+cmd clearRecent
+wait 0.3
+go @FIX@/home/Documents
+select Reports
+cmd openInNewTab
+wait 0.6
+location @FIX@/home/Documents/Reports
+cmd closeTab
+wait 0.3
+select Résumés
+cmd openInNewWindow
+wait 0.6
+windows 2
+sidebar-close-newest-window
+windows 1
+recent
+wait 0.4
+lists Résumés,Reports,Documents
+# The Dock icon opens a new window where Settings › General › New windows open says
+setting-string newWindowLocation documents
+hunt-dock-reopen @FIX@/home/Documents
+setting-string newWindowLocation current
+windows 1
+cmd closeTab
+wait 0.4
+hunt-width-is 1040

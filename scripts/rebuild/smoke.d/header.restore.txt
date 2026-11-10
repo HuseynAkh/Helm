@@ -1,0 +1,6 @@
+# Header after the relaunch: the switch shows the restored list view, no search is open, and the buttons sit by the sidebar
+header-view-is list
+sort-fits
+search-shown false
+header-leading-is 8
+header-shot @SHOTS@/header-restored.png

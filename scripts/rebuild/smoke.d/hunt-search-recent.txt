@@ -1,0 +1,105 @@
+# Search and Recent. The search steps run in the Documents tab, which is saved at quit, and leave its sort as the
+# steps before them left it; the Recent steps work in their own tab.
+go @FIX@/home/Documents
+view list
+hunt-sort-keep
+# During a search the results have their own order, Best Match at first, and the sort button names it
+search-type q
+wait 1.0
+hunt-snapshot-sort-is relevance
+hunt-header-sort-is Best Match
+# A field chosen for the results orders them alone; the folder keeps its own sort
+sort-press Size
+hunt-snapshot-sort-is size
+hunt-header-sort-is Largest first
+hunt-sort-kept
+hunt-best-match
+hunt-snapshot-sort-is relevance
+hunt-header-sort-is Best Match
+popover-shot @SHOTS@/hunt-sr-search-popover.png
+# When the search ends, the folder is back in its own order, never Best Match
+search-key escape
+search-shown false
+hunt-sort-kept
+hunt-not-best-match
+# Recent: a folder, a folder inside it and a file inside that, then another folder
+cmd newTab
+wait 0.3
+recent
+cmd clearRecent
+wait 0.4
+go @FIX@/home/HuntSR
+go @FIX@/home/HuntSR/Inner Folder
+recent-record @FIX@/home/HuntSR/Inner Folder/apple.txt
+go @FIX@/home/HuntSR/Other Folder
+# Folders on top is off in Other Folder; Recent keeps its own, with its Folders and Files headings
+folders-first off
+recent
+wait 0.4
+sort-is Most Recent First
+sections Folders 3,Files 1
+view list
+wait 0.4
+list-rows Other Folder,Inner Folder,HuntSR,apple.txt
+# Opened in Recent's list, HuntSR leaves out the two folders Recent lists above it, so each row is a different item
+disclose HuntSR
+list-rows Other Folder,Inner Folder,HuntSR,zeta.txt,apple.txt
+# Rows: 0 Folders, 1 Other Folder, 2 Inner Folder, 3 HuntSR, 4 zeta.txt, 5 Files, 6 apple.txt. A click on a row
+# selects that row, and its triangle opens it there
+hunt-list-select-row 2
+selected Inner Folder
+hunt-list-selected-rows 2
+hunt-list-disclose-row 2
+list-rows Other Folder,Inner Folder,Banana.txt,file2.txt,file10.txt,HuntSR,zeta.txt,apple.txt
+hunt-list-open-rows 2,6
+screenshot @SHOTS@/hunt-sr-recent-open.png
+# Least Recent First turns Recent's own order round; inside a folder the files still read A to Z
+sort-last-opened
+sort-is Least Recent First
+list-rows HuntSR,zeta.txt,Inner Folder,Banana.txt,file2.txt,file10.txt,Other Folder,apple.txt
+sort-last-opened
+sort-is Most Recent First
+# Something opened moves to the top of Recent at once, and leaves the folder it's in
+recent-record @FIX@/home/HuntSR/zeta.txt
+wait 0.8
+lists Other Folder,Inner Folder,HuntSR,zeta.txt,apple.txt
+list-rows Other Folder,Inner Folder,Banana.txt,file2.txt,file10.txt,HuntSR,zeta.txt,apple.txt
+# Rename is greyed out in Recent, and Return doesn't rename either
+select zeta.txt
+menu rename disabled
+hunt-key return
+hunt-renaming no
+hunt-key f2
+hunt-renaming no
+exists @FIX@/home/HuntSR/zeta.txt
+lists Other Folder,Inner Folder,HuntSR,zeta.txt,apple.txt
+# Recent's popover hint has room for all its words; look at the picture
+popover-shot @SHOTS@/hunt-sr-recent-popover.png
+# During a search in Recent the button says Best Match too, and No results waits for Spotlight's answer
+search-type zzhelmhuntsrnomatch
+wait 1.5
+hunt-header-sort-is Best Match
+hunt-state-is No results
+popover-shot @SHOTS@/hunt-sr-recent-search-popover.png
+search-key escape
+search-shown false
+hunt-header-sort-is Most recent first
+# An order chosen in Recent stays there: a folder with no order of its own gets back the tab's
+go @FIX@/home/HuntSR
+sort-choose Kind Z–A
+go @FIX@/home/HuntSR/Inner Folder
+sort-is Kind Z–A
+recent
+sort-is Most Recent First
+sort-choose Name Z–A
+go @FIX@/home/HuntSR/Inner Folder
+sort-is Kind Z–A
+recent
+sort-is Name Z–A
+sort-last-opened
+sort-is Most Recent First
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list
+hunt-sort-kept

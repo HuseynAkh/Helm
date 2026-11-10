@@ -1,0 +1,165 @@
+# Builds Helm and leaves a draft GitHub release for a person to check and publish.
+#
+# It runs only when a v* tag is pushed, or when someone starts it from the Actions tab. It never runs
+# on ordinary pushes or pull requests, so it spends no Actions minutes unasked.
+# Each action is pinned to a full commit SHA from its official repository, with the tag in a comment.
+# docs/RELEASING.md describes the whole process.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, such as 0.2. Leave it empty to use the one in App/Info.plist."
+        required: false
+        default: ""
+        type: string
+
+# Nothing by default. The job asks for what it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Test, build and draft a release
+    # GitHub's Xcode 27 image, on Apple silicon, generally available since 2026-10-15. It runs macOS 27.
+    # Helm compiles against any macOS SDK from 14 on, but the SDK decides how AppKit draws it: an app built
+    # with the macOS 26 SDK or later gets the new design. So releases use the Xcode that Helm is developed
+    # and tested with, 27.0 (27A266a), which this image carries.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    permissions:
+      contents: write      # create the draft release and upload its files
+      id-token: write      # sign the build provenance attestations
+      attestations: write  # store the attestations
+    env:
+      XCODE_APP: /Applications/Xcode_27.0.app
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # First, so a wrong tag stops the run in seconds, before the tests.
+      - name: Work out the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' App/Info.plist)"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "$REQUESTED" ]; then
+            version="${REQUESTED#v}"
+          else
+            version="$app_version"
+          fi
+          # No "+": GitHub renames release files that have one, and SHA256SUMS.txt would name the wrong files.
+          pattern='^[0-9]+(\.[0-9]+)*(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'
+          if [[ ! $version =~ $pattern ]]; then
+            echo "::error::The version must be numbers and dots, such as 0.2, with an optional suffix such as -beta.1."
+            exit 1
+          fi
+          case "$version" in
+            "$app_version" | "$app_version"-*) ;;
+            *)
+              echo "::error::Version $version doesn't match App/Info.plist, which says $app_version. Change CFBundleShortVersionString there first, or use a version that matches it."
+              exit 1
+              ;;
+          esac
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::A release for v$version already exists, perhaps as a draft. Delete it first, or use a new version."
+            exit 1
+          fi
+          # Started by hand: a tag v<version> left from before keeps its own commit, so the draft would sit on that
+          # commit while its files and attestation name this one.
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            checked="$RUNNER_TEMP/tag-check.txt"
+            if ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" --jq '.object.type + " " + .object.sha' 2> "$checked")"; then
+              read -r kind tagged <<< "$ref"
+              if [ "$kind" = tag ]; then
+                tagged="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tagged" --jq .object.sha)" || exit 1
+              fi
+              if [ "$tagged" != "$GITHUB_SHA" ]; then
+                echo "::error::The tag v$version already exists at ${tagged:0:7}, but this run builds ${GITHUB_SHA:0:7}. Delete the tag, run the workflow from it, or use a new version."
+                exit 1
+              fi
+            elif ! grep -q 'HTTP 404' "$checked"; then
+              echo "::error::Couldn't check for a tag v$version: $(cat "$checked")"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building Helm $version"
+
+      - name: Select Xcode
+        run: |
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "::error::$XCODE_APP isn't on this runner image any more. Set XCODE_APP in .github/workflows/release.yml to one of these:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          sudo xcode-select --switch "$XCODE_APP"
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+          swift --version
+
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+          HOMEBREW_NO_ANALYTICS: "1"
+        run: |
+          brew install xcodegen
+          xcodegen --version
+
+      # The lexical checks and the privacy check read the source, so a release is never built from code that fails them.
+      - name: Run the static and privacy checks
+        run: bash scripts/static_checks.sh
+
+      - name: Run the tests
+        run: swift test
+
+      - name: Build the disk image, zip, checksums and notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: bash scripts/release/make_release.sh "$VERSION"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/Helm-${{ steps.version.outputs.version }}.dmg
+            dist/Helm-${{ steps.version.outputs.version }}.zip
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # A version with a suffix, such as 0.2-beta.1, is marked as a pre-release.
+          set --
+          case "$VERSION" in *-*) set -- --prerelease ;; esac
+          url="$(gh release create "v$VERSION" "$@" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --target "$GITHUB_SHA" \
+            --title "Helm $VERSION" \
+            --notes-file dist/release-notes.md \
+            "dist/Helm-$VERSION.dmg" "dist/Helm-$VERSION.zip" dist/SHA256SUMS.txt)"
+          {
+            echo "### Draft release: Helm $VERSION"
+            echo
+            echo "Nothing is public yet. Check the draft, then publish it: $url"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

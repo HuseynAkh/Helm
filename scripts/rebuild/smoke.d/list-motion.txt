@@ -1,0 +1,93 @@
+# Opening and closing folders in the list moves rows into place and never rebuilds the list. Works in its own tab,
+# so the tab that's saved at quit is left as it was.
+cmd newTab
+wait 0.3
+go @FIX@/home/Unfold
+view list
+sort-choose Name A–Z
+wait 0.3
+list-rows Many,Nested,top.txt
+select top.txt
+list-mark
+# A first opening: the rows arrive under the folder, in order, and the selection stays where it was
+disclose Many
+list-open Many
+list-in-step
+child Many/file-01.txt/file-40.txt
+list-selected top.txt
+selected top.txt
+disclose Many
+list-closed Many
+list-in-step
+list-rows Many,Nested,top.txt
+selected top.txt
+# Opening it again shows its rows from the listing it already has
+disclose Many
+list-in-step
+child file-01.txt/file-40.txt
+disclose Many
+list-in-step
+# A folder inside a folder comes back open with its parent
+disclose Nested
+disclose Inner
+list-in-step
+list-rows Many,Nested,Inner,deep.txt,n.txt,top.txt
+disclose Nested
+list-in-step
+list-rows Many,Nested,top.txt
+disclose Nested
+list-in-step
+list-open Inner
+list-rows Many,Nested,Inner,deep.txt,n.txt,top.txt
+# The arrow keys open and close a selected folder the same way
+select Many
+content-key right
+list-open Many
+list-in-step
+content-key left
+list-closed Many
+list-in-step
+selected Many
+# The store can open folders too, and the list follows
+expand Many
+list-open Many
+list-in-step
+list-reloads 0
+screenshot @SHOTS@/list-expanded.png
+disclose Many
+disclose Nested
+list-rows Many,Nested,top.txt
+list-reloads 0
+# The rows really move, on the list's own curve: part way in, then settled; part way out, then gone
+motion-sample Many/file-01.txt
+list-rows Many,Nested,top.txt
+# A slow folder shows a Loading row after a moment, which gives way to its files
+go @FIX@/home/Listing
+list-rows Dotted,Slow,plain.txt
+child-delay 1.5
+disclose-now Slow
+list-rows Dotted,Slow,plain.txt
+wait 0.6
+list-loading Slow
+screenshot @SHOTS@/list-loading.png
+wait 1.4
+list-rows Dotted,Slow,a.txt,b.txt,plain.txt
+list-in-step
+child-delay 0
+disclose Slow
+list-rows Dotted,Slow,plain.txt
+# A folder opened while hidden files showed doesn't flash them when it opens again after they're hidden
+cmd hidden
+disclose Dotted
+list-rows Dotted,.secret,visible.txt,Slow,plain.txt
+disclose Dotted
+cmd hidden
+disclose-now Dotted
+list-lacks .secret
+wait 0.6
+list-rows Dotted,visible.txt,Slow,plain.txt
+disclose Dotted
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

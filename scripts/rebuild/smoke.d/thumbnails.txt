@@ -1,0 +1,23 @@
+# Thumbnails in the grid (thumbnails.fixture.sh): every picture in a folder of new JPEG and PNG files of a few sizes
+# shows its own thumbnail within a few seconds. The folder's listing comes twice, so the grid is rebuilt while Quick
+# Look is still making them, which used to leave some of them on their file icons for good. Works in its own tab and
+# sets the grid in a folder of its own, so the tab that's saved at quit and every other folder are left as they were.
+cmd newTab
+wait 0.3
+go @FIX@/home/Thumbnails
+view grid
+sort-choose Name A–Z
+wait 0.3
+go @FIX@/home/Thumbnails/New Pictures
+view-is grid
+lists Harbour 3000x2000.jpg,Meadow 2400x1600.jpg,Skyline 2560x1440.png,Small 120x160.png,Small 160x120.jpg,Square 800.png,Square 1200.jpg,Tall 1200x1800.png
+thumbnails-shown 5
+screenshot @SHOTS@/thumbnails-grid.png
+# Sorted the other way, every item shows another picture, and each still shows its own thumbnail
+sort-choose Name Z–A
+wait 0.3
+thumbnails-shown 2
+sort-choose Name A–Z
+wait 0.3
+cmd closeTab
+wait 0.3

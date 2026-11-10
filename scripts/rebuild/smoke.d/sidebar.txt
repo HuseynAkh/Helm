@@ -1,0 +1,199 @@
+# Sidebar: every row moves within its group and can be hidden, by dragging, from its menu, or in Settings › Sidebar
+go @FIX@/home/Documents
+wait 0.3
+sidebar-drawn Recent,Home,Desktop,Documents,Downloads,Pictures,Music,Movies,Applications,Trash,|,Downloads,Reports,Desktop,|,alpha.md,|,Google Drive,iCloud Drive
+sidebar-highlight Documents
+# Each row's menu: what the place offers, then hiding or removing the row, and the sidebar's settings
+sidebar-menu favorites Home > Open in New Tab,|,Hide from Sidebar,Sidebar Settings…
+sidebar-menu favorites Recent > Hide from Sidebar,Sidebar Settings…
+sidebar-menu favorites Trash > Empty Trash…,|,Hide from Sidebar,Sidebar Settings…
+sidebar-menu bookmarks Reports > Open in New Tab,|,Remove Bookmark,Sidebar Settings…
+sidebar-menu empty > Sidebar Settings…
+sidebar-menu-pick favorites Music > Hide from Sidebar
+sidebar-rows favorites Recent,Home,Desktop,Documents,Downloads,Pictures,Movies,Applications,Trash
+# A dropped row lands where the line was, and the line never leaves the row's own group
+sidebar-move favorites Downloads > Recent
+sidebar-rows favorites Downloads,Recent,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-move favorites Recent > end
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent
+sidebar-move favorites Home > locations:Google Drive
+sidebar-rows favorites Downloads,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent,Home
+sidebar-move favorites Home > Desktop
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent
+sidebar-move bookmarks Desktop > favorites:Home
+bookmarks-are Desktop,Downloads,Reports
+sidebar-move bookmarks Desktop > end
+bookmarks-are Downloads,Reports,Desktop
+sidebar-move locations iCloud Drive > Google Drive
+sidebar-rows locations iCloud Drive,Google Drive
+# The same, through the outline view's own drop handling: the half of the row under the pointer decides above
+# or below, and the line stays in the row's own group however far the pointer goes
+sidebar-drag favorites Recent > favorites:Downloads upper
+sidebar-rows favorites Recent,Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-drag favorites Recent > favorites:Home lower
+sidebar-rows favorites Downloads,Home,Recent,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-drag favorites Recent > locations:iCloud Drive upper
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent
+# Music is hidden between Pictures and Movies. A row let go of where it already was stays put, and one moved past
+# a hidden row's neighbour passes over as few hidden rows as it can, so Music keeps its place beside Movies
+sidebar-drag favorites Pictures > favorites:Pictures lower
+sidebar-drag favorites Pictures > favorites:Movies upper
+sidebar-settings favorites Downloads,Home,Desktop,Documents,Pictures,-Music,Movies,Applications,Trash,Recent
+sidebar-drag favorites Documents > favorites:Pictures lower
+sidebar-settings favorites Downloads,Home,Desktop,Pictures,Documents,-Music,Movies,Applications,Trash,Recent
+sidebar-drag favorites Documents > favorites:Pictures upper
+sidebar-settings favorites Downloads,Home,Desktop,Documents,Pictures,-Music,Movies,Applications,Trash,Recent
+sidebar-drop-folder @FIX@/home/Documents/Reports/2026 > favorites:Recent lower
+bookmarks-are 2026,Downloads,Reports,Desktop
+sidebar-drag bookmarks 2026 > bookmarks:Reports lower
+bookmarks-are Downloads,Reports,2026,Desktop
+sidebar-drag-out bookmarks 2026
+bookmarks-are Downloads,Reports,Desktop
+# The highlight lands only on rows on show: inside a hidden Documents it falls to Home
+sidebar-hide favorites Documents
+sidebar-highlight Home
+go @FIX@/home/Documents/Reports
+sidebar-highlight Reports
+go @FIX@/home/Documents
+sidebar-show favorites Documents
+sidebar-highlight Documents
+# A drag that ends over the files: let go of there, a bookmark is removed and any other row hidden; cancelled with
+# Escape there, nothing happens. Over the files the image wouldn't slide back first, and over the sidebar it would
+sidebar-drag-hook
+sidebar-drag-cancel bookmarks Desktop
+bookmarks-are Downloads,Reports,Desktop
+sidebar-drag-cancel favorites Movies
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent
+sidebar-drag-out bookmarks Desktop
+bookmarks-are Downloads,Reports
+sidebar-drag-out favorites Movies
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Applications,Trash,Recent
+sidebar-hide locations Google Drive
+sidebar-rows locations iCloud Drive
+# With the hidden Google Drive after it, iCloud Drive let go of at the end of Locations stays where it is
+sidebar-drag locations iCloud Drive > locations:iCloud Drive lower
+sidebar-settings locations iCloud Drive,-Google Drive
+# A hidden bookmark comes back when its folder is added again, and a hidden starred item when it's starred again
+sidebar-hide bookmarks Reports
+sidebar-rows bookmarks Downloads
+bookmark @FIX@/home/Documents/Reports
+sidebar-rows bookmarks Downloads,Reports
+bookmarks-are Downloads,Reports
+sidebar-hide starred alpha.md
+sidebar-rows starred
+select alpha.md
+cmd star
+unstarred alpha.md
+# Unstarred, it leaves nothing in sidebar.json
+wait 1
+file-lacks @FIX@/support/sidebar.json=alpha.md
+cmd star
+starred alpha.md
+sidebar-rows starred alpha.md
+# A hidden bookmark removed with Go › Remove Bookmark leaves nothing in sidebar.json either
+bookmark @FIX@/home/Templates
+sidebar-hide bookmarks Templates
+sidebar-rows bookmarks Downloads,Reports
+go @FIX@/home/Templates
+cmd removeBookmark
+bookmarks-are Downloads,Reports
+wait 1
+file-lacks @FIX@/support/sidebar.json=Templates
+go @FIX@/home/Documents
+# With Trash or Recent hidden, Go › Trash and Go › Recents still open them, with nothing highlighted
+sidebar-hide favorites Trash
+menu goToTrash enabled
+cmd goToTrash
+location trash
+sidebar-highlight none
+cmd back
+location @FIX@/home/Documents
+sidebar-show favorites Trash
+sidebar-hide favorites Recent
+cmd recents
+location recent
+sidebar-highlight none
+go @FIX@/home/Documents
+sidebar-show favorites Recent
+# Every window follows at once
+cmd newWindow
+wait 0.6
+windows 2
+sidebar-hide favorites Pictures
+sidebar-all-windows favorites Downloads,Home,Desktop,Documents,Applications,Trash,Recent
+sidebar-show favorites Pictures
+sidebar-close-newest-window
+windows 1
+tabs 2
+# Settings › Sidebar, opened from a row's menu, lists every row with hidden ones unchecked, and stays in step
+sidebar-menu-pick favorites Home > Sidebar Settings…
+sidebar-settings-pane sidebar
+sidebar-settings favorites Downloads,Home,Desktop,Documents,Pictures,-Music,-Movies,Applications,Trash,Recent
+sidebar-settings bookmarks Downloads,Reports
+sidebar-settings starred alpha.md
+sidebar-settings locations iCloud Drive,-Google Drive
+sidebar-settings-toggle favorites Movies > on
+sidebar-rows favorites Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash,Recent
+sidebar-settings-drag favorites Recent > Downloads
+sidebar-rows favorites Recent,Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-settings-drag favorites Recent > bookmarks:Reports
+sidebar-settings-step favorites Downloads > down
+sidebar-rows favorites Recent,Home,Downloads,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-settings-step favorites Downloads > up
+sidebar-rows favorites Recent,Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-settings-drag bookmarks Reports > Downloads
+bookmarks-are Reports,Downloads
+sidebar-settings-drag bookmarks Reports > Downloads
+bookmarks-are Downloads,Reports
+sidebar-settings-volumes on
+sidebar-settings-volumes off
+# A row dragged in the pane only shows where it would go: cancelled, nothing changes in the pane or any sidebar
+sidebar-settings-drag-cancel favorites Trash > Recent
+sidebar-settings favorites Recent,Downloads,Home,Desktop,Documents,Pictures,-Music,Movies,Applications,Trash
+sidebar-rows favorites Recent,Downloads,Home,Desktop,Documents,Pictures,Movies,Applications,Trash
+sidebar-settings-can-restore yes
+# With more bookmarks and starred items, the window grows to show every row rather than scroll
+bookmark @FIX@/home/Desktop
+bookmark @FIX@/home/Templates
+bookmark @FIX@/home/Documents/Reports/2026
+bookmark @FIX@/home/Locked
+select notes.txt,Reports
+cmd star
+sidebar-settings bookmarks Downloads,Reports,Desktop,Templates,2026,Locked
+sidebar-settings starred alpha.md,notes.txt,Reports
+sidebar-settings-fits
+settings-shot sidebar @SHOTS@/settings-sidebar-more-rows.png
+# A starred item moved and unchecked in Settings › Sidebar, then unstarred, leaves nothing in sidebar.json.
+# Starred again, it's a new row in its natural place, on show
+sidebar-settings-step starred notes.txt > down
+sidebar-settings-toggle starred notes.txt > off
+sidebar-settings starred alpha.md,Reports,-notes.txt
+select notes.txt
+cmd star
+unstarred notes.txt
+wait 1
+file-lacks @FIX@/support/sidebar.json=notes.txt
+cmd star
+starred notes.txt
+sidebar-settings starred alpha.md,notes.txt,Reports
+sidebar-rows starred alpha.md,notes.txt,Reports
+sidebar-drag-out bookmarks Desktop
+sidebar-drag-out bookmarks Templates
+sidebar-drag-out bookmarks 2026
+sidebar-drag-out bookmarks Locked
+select notes.txt,Reports
+cmd star
+select
+bookmarks-are Downloads,Reports
+sidebar-settings starred alpha.md
+sidebar-settings-fits
+settings-shot sidebar @SHOTS@/settings-sidebar.png
+screenshot @SHOTS@/sidebar-arranged.png
+sidebar-appearance light
+settings-shot sidebar @SHOTS@/settings-sidebar-light.png
+screenshot @SHOTS@/sidebar-arranged-light.png
+sidebar-appearance dark
+settings-shot sidebar @SHOTS@/settings-sidebar-dark.png
+screenshot @SHOTS@/sidebar-arranged-dark.png
+sidebar-appearance system
+go @FIX@/home/Documents

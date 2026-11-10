@@ -1,0 +1,36 @@
+import Foundation
+import HelmCore
+
+/// Shared catalogue edits and quit flushing preserve tag identity separately from stars (F-029, F-068).
+@MainActor public protocol AppTagCatalogStoring: AppFlushable {
+    var isReadOnly: Bool { get }
+    var recoveryBackupURL: URL? { get }
+    var tags: [FinderTag] { get }
+    func merge(discovered: [FinderTag]) throws
+    func rename(_ name: String, to newName: String) throws
+    func recolor(_ name: String, color: FinderTagColor) throws
+    func delete(_ name: String) throws
+    func reorder(names: [String]) throws
+}
+
+/// Shared per-location preferences and quit flushing preserve folder views (F-036, F-040, F-065).
+@MainActor public protocol AppViewOptionsStoring: AppFlushable {
+    var isReadOnly: Bool { get }
+    var recoveryBackupURL: URL? { get }
+    var defaults: ViewOptions { get }
+    func options(for location: Location) -> ViewOptions
+    /// Whether the place has options saved for it, even ones that match the defaults.
+    func hasOptions(for location: Location) -> Bool
+    func set(_ options: ViewOptions, for location: Location) throws
+    func useAsDefaults(_ options: ViewOptions) throws
+    func useAsDefaults(for location: Location) throws
+    func removeRecords(forVanishedLocations locations: [Location]) throws
+}
+
+extension AppViewOptionsStoring {
+    /// A store that can't tell counts only options that differ from the defaults, as before.
+    public func hasOptions(for location: Location) -> Bool { options(for: location) != defaults }
+}
+
+extension TagCatalogStore: AppTagCatalogStoring {}
+extension LocationViewOptionsStore: AppViewOptionsStoring {}

@@ -1,0 +1,144 @@
+#if os(macOS)
+import AppKit
+import HelmCore
+import HelmUI
+
+/// Builds the menu bar from Core's table, so titles, order and keys stay in one tested place (F-066).
+/// Commands reach the key window through the responder chain; a focused text field answers Cut, Copy, Paste and Undo first.
+@MainActor enum MainMenuBuilder {
+    static func install(target: AppController) {
+        let bar = NSMenu()
+        for model in MenuModel.menuBar {
+            let top = NSMenuItem(title: model.title, action: nil, keyEquivalent: "")
+            let menu = NSMenu(title: model.title)
+            menu.autoenablesItems = true
+            for (index, section) in model.sections.enumerated() {
+                if index > 0, !section.isEmpty || index == model.sections.count - 1, !menu.items.isEmpty, menu.items.last?.isSeparatorItem == false {
+                    menu.addItem(.separator())
+                }
+                for row in section {
+                    menu.addItem(item(for: row, target: target))
+                }
+            }
+            if model.title == "Help", menu.items.isEmpty {
+                menu.addItem(withTitle: "Helm Help", action: #selector(NSApplication.showHelp(_:)), keyEquivalent: "?")
+            }
+            if model.title == "Help" { addAccessItems(to: menu, target: target) }
+            if model.title == "Go" { addAliases(to: menu) }
+            if model.title == "View" { addViewItems(to: menu, target: target) }
+            if model.title == "Window" { addTabAliases(to: menu) }
+            if model.title == "File" { addQuickLookAlias(to: menu) }
+            top.submenu = menu
+            bar.addItem(top)
+            if model.title == "Window" { NSApp.windowsMenu = menu }
+            if model.title == "Help" { NSApp.helpMenu = menu }
+        }
+        NSApp.mainMenu = bar
+    }
+
+    static func item(for row: CommandMenuItem, target: AppController) -> NSMenuItem {
+        let item = NSMenuItem(title: row.title, action: action(for: row.command), keyEquivalent: row.binding?.key ?? "")
+        item.keyEquivalentModifierMask = modifiers(row.binding?.modifiers ?? [])
+        item.representedObject = row.command.rawValue
+        switch row.command {
+        case .about, .settings, .advancedOptions, .quit, .hide, .hideOthers, .showAll, .bringAllToFront, .newWindow:
+            item.target = target
+        case .openWith:
+            // Filled as it opens from the front window's selection, as Finder's File › Open With is. The action goes
+            // before the submenu comes, so AppKit gives the row the submenu's own action, which keeps it enabled: a
+            // row whose action is cleared afterwards is greyed out, and its submenu can't be opened.
+            item.action = nil
+            let submenu = NSMenu(title: "Open With")
+            submenu.delegate = target
+            item.submenu = submenu
+        case .services:
+            item.action = nil
+            let submenu = NSMenu(title: "Services")
+            item.submenu = submenu
+            NSApp.servicesMenu = submenu
+        default: break
+        }
+        return item
+    }
+
+    private static func action(for command: CommandID) -> Selector {
+        switch command {
+        case .about: return #selector(AppController.orderFrontAbout(_:))
+        case .settings: return #selector(AppController.showSettingsWindow(_:))
+        case .advancedOptions: return #selector(AppController.showAdvancedOptions(_:))
+        case .quit: return #selector(AppController.quit(_:))
+        case .hide: return #selector(NSApplication.hide(_:))
+        case .hideOthers: return #selector(NSApplication.hideOtherApplications(_:))
+        case .showAll: return #selector(NSApplication.unhideAllApplications(_:))
+        case .bringAllToFront: return #selector(NSApplication.arrangeInFront(_:))
+        case .newWindow: return #selector(AppController.newWindow(_:))
+        case .cut: return #selector(NSText.cut(_:))
+        case .copy: return #selector(NSText.copy(_:))
+        case .paste: return #selector(NSText.paste(_:))
+        case .selectAll: return #selector(NSText.selectAll(_:))
+        case .undo: return #selector(BrowserWindowController.undo(_:))
+        case .redo: return #selector(BrowserWindowController.redo(_:))
+        default: return #selector(BrowserWindowController.helmCommand(_:))
+        }
+    }
+
+    /// Extra keys for the location bar, hidden so each command still shows one shortcut: Nautilus's Ctrl+L and Finder's Shift+Cmd+G.
+    private static func addAliases(to menu: NSMenu) {
+        for (key, flags) in [("l", NSEvent.ModifierFlags.control), ("g", [.command, .shift])] {
+            let item = NSMenuItem(title: "Go to Folder…", action: #selector(BrowserWindowController.helmCommand(_:)), keyEquivalent: key)
+            item.keyEquivalentModifierMask = flags
+            item.representedObject = CommandID.location.rawValue
+            item.isHidden = true
+            item.allowsKeyEquivalentWhenHidden = true
+            menu.addItem(item)
+        }
+    }
+
+    private static func hidden(_ title: String, _ command: CommandID, _ key: String, _ flags: NSEvent.ModifierFlags) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(BrowserWindowController.helmCommand(_:)), keyEquivalent: key)
+        item.keyEquivalentModifierMask = flags
+        item.representedObject = command.rawValue
+        item.isHidden = true
+        item.allowsKeyEquivalentWhenHidden = true
+        return item
+    }
+    /// Sort By and sizes in the menu bar too, plus Finder's key for hidden files beside Helm's Cmd+.
+    private static func addViewItems(to menu: NSMenu, target: AppController) {
+        menu.addItem(hidden("Show Hidden Files", .hidden, ".", [.command, .shift]))
+        menu.addItem(.separator())
+        let sort = NSMenuItem(title: "Sort By", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Sort By")
+        submenu.delegate = target
+        sort.submenu = submenu
+        menu.addItem(sort)
+        menu.addItem(.separator())
+        for (title, key, selector) in [("Zoom In", "=", #selector(BrowserWindowController.zoomIn(_:))),
+                                       ("Zoom Out", "-", #selector(BrowserWindowController.zoomOut(_:))),
+                                       ("Actual Size", "0", #selector(BrowserWindowController.resetSizes(_:)))] {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
+            item.keyEquivalentModifierMask = .command
+            menu.addItem(item)
+        }
+        let plus = NSMenuItem(title: "Zoom In", action: #selector(BrowserWindowController.zoomIn(_:)), keyEquivalent: "+")
+        plus.keyEquivalentModifierMask = .command
+        plus.isHidden = true; plus.allowsKeyEquivalentWhenHidden = true
+        menu.addItem(plus)
+    }
+    private static func addTabAliases(to menu: NSMenu) {
+        menu.addItem(hidden("Show Next Tab", .nextTab, "\t", .control))
+        menu.addItem(hidden("Show Previous Tab", .previousTab, "\u{19}", [.control, .shift]))
+    }
+    private static func addQuickLookAlias(to menu: NSMenu) {
+        menu.addItem(hidden("Quick Look", .quickLook, "y", .command))
+    }
+
+    private static func modifiers(_ value: KeyModifiers) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if value.contains(.command) { flags.insert(.command) }
+        if value.contains(.shift) { flags.insert(.shift) }
+        if value.contains(.option) { flags.insert(.option) }
+        if value.contains(.control) { flags.insert(.control) }
+        return flags
+    }
+}
+#endif

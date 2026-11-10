@@ -1,0 +1,109 @@
+# Requests to the file viewer: every reveal shows its item, and what Finder's helpers start in Finder goes back to Finder.
+# Finder is a stand-in here, and Archive Utility is never started. Ends in Documents, one window, as it began.
+go @FIX@/home/Documents
+# Show in Finder from another app stays with Helm, with the file selected in its folder
+viewer-request open com.apple.Safari @FIX@/home/Documents/Reports/q1.txt
+location @FIX@/home/Documents/Reports
+selected q1.txt
+windows-unchanged
+finder-count 0
+# A sender that can't be identified stays with Helm too
+viewer-request open none @FIX@/home/Documents/notes.txt
+location @FIX@/home/Documents
+selected notes.txt
+# An explicit reveal of a folder selects the folder in its own folder
+viewer-request reveal com.apple.mail @FIX@/home/Documents/Reports
+location @FIX@/home/Documents
+selected Reports
+# Open With › Helm in Finder opens the folder in Helm
+viewer-request open com.apple.finder @FIX@/home/Desktop
+location @FIX@/home/Desktop
+finder-count 0
+# Archive Utility started by a double-click in Finder: what it shows goes to Finder, and Helm stays where it was
+viewer-request open com.apple.archiveutility @FIX@/home/Downloads/from-finder
+finder-count 1
+finder-last @FIX@/home/Downloads
+location @FIX@/home/Desktop
+windows-unchanged
+# Its reopen as it quits brings Finder forward, and opens no Home window in Helm
+viewer-request reopen com.apple.archiveutility
+finder-count 2
+finder-last front
+windows-unchanged
+location @FIX@/home/Desktop
+# DiskImageMounter is Finder's helper too
+viewer-request open com.apple.DiskImageMounter @FIX@/home/Downloads
+finder-count 3
+finder-last @FIX@/home
+# Expanded from Helm: what Archive Utility shows comes back to Helm, with what it made selected
+go @FIX@/home/RouteCase
+handoff com.apple.archiveutility @FIX@/home/RouteCase/bundle.zip
+make-folder @FIX@/home/RouteCase/bundle
+viewer-request open com.apple.archiveutility @FIX@/home/RouteCase/bundle
+location @FIX@/home/RouteCase
+selected bundle
+finder-count 3
+go @FIX@/home/Documents
+viewer-request reopen com.apple.archiveutility
+location @FIX@/home/RouteCase
+selected bundle
+windows-unchanged
+finder-count 3
+# Once Archive Utility has quit, the next one is Finder's again
+viewer-request reopen com.apple.archiveutility
+finder-count 4
+finder-last front
+# What Finder itself sends stays with Helm: a reveal, and a double-click on Helm in a Finder window (a reopen)
+viewer-request reveal com.apple.finder @FIX@/home/Documents/notes.txt
+location @FIX@/home/Documents
+selected notes.txt
+finder-count 4
+viewer-request reopen com.apple.finder
+windows-unchanged
+location @FIX@/home/Documents
+finder-count 4
+# Real Apple Events, sent by Helm to itself: open documents, make objects visible, and reopen
+viewer-event odoc @FIX@/home/Documents/Reports/q1.txt
+location @FIX@/home/Documents/Reports
+selected q1.txt
+viewer-event mvis @FIX@/home/Documents/notes.txt
+location @FIX@/home/Documents
+selected notes.txt
+viewer-event rapp
+windows-unchanged
+location @FIX@/home/Documents
+finder-count 4
+# The same events from Archive Utility after a double-click in Finder: AppKit's handlers pass the sender on, and
+# each goes to Finder, with no new window in Helm
+viewer-event odoc from com.apple.archiveutility @FIX@/home/RouteCase/kept.txt
+finder-count 5
+finder-last @FIX@/home/RouteCase
+windows-unchanged
+location @FIX@/home/Documents
+viewer-event mvis from com.apple.archiveutility @FIX@/home/RouteCase/kept.txt
+finder-count 6
+finder-last @FIX@/home/RouteCase
+viewer-event rapp from com.apple.archiveutility
+finder-count 7
+finder-last front
+windows-unchanged
+location @FIX@/home/Documents
+# A double-click on Helm in a Finder window, as a real reopen: Helm stays where it was, and nothing goes to Finder
+viewer-event rapp from com.apple.finder
+windows-unchanged
+location @FIX@/home/Documents
+finder-count 7
+# Expanded from Helm, through the real handlers: the reveal and the reopen come back to Helm
+go @FIX@/home/RouteCase
+handoff com.apple.archiveutility @FIX@/home/RouteCase/bundle.zip
+make-folder @FIX@/home/RouteCase/bundle 2
+viewer-event mvis from com.apple.archiveutility @FIX@/home/RouteCase/bundle 2
+location @FIX@/home/RouteCase
+selected bundle 2
+go @FIX@/home/Documents
+viewer-event rapp from com.apple.archiveutility
+location @FIX@/home/RouteCase
+selected bundle 2
+windows-unchanged
+finder-count 7
+go @FIX@/home/Documents
