@@ -7,7 +7,7 @@ import Foundation
 /// What is escaped is decided by class, not from a list: every scalar in the Unicode categories Cc (control),
 /// Cf (format), Zl and Zp (line and paragraph separators), Co (private use) and Cn (unassigned), and every code point
 /// Unicode says to ignore by default, which adds the variation selectors and the blank fillers. The one exception is
-/// the glue inside an emoji: U+200D and U+FE0F are kept only where they sit between two emoji.
+/// what emoji are written with: U+200D is kept only where it joins two emoji, and U+FE0F only right after one.
 public enum AgentTextEscaper {
     /// `text` with each such scalar written as `\u{…}`, its number in upper-case hexadecimal.
     public static func escape(_ text: String) -> String {
@@ -41,14 +41,16 @@ public enum AgentTextEscaper {
         }
     }
 
-    /// The only shapes kept are the ones emoji are written with: an emoji, then U+FE0F, U+200D or the two in that
-    /// order, then another emoji. Anything longer, or beside a letter or a digit, is escaped like any hidden character.
+    /// The only shapes kept are the ones emoji are written with. U+FE0F right after an emoji asks for its picture
+    /// form, as in a heart or a warning sign typed on its own. It is kept only there, so it can't sit inside a word,
+    /// and an emoji carries one at most. U+200D joins an emoji, or an emoji and its U+FE0F, to the emoji after it.
+    /// A second one in a row, or one beside a letter or a digit, is escaped like any hidden character.
     private static func isEmojiGlue(at index: Int, in scalars: [Unicode.Scalar]) -> Bool {
         func emoji(_ offset: Int) -> Bool { scalar(index + offset, in: scalars).map(isEmoji) ?? false }
         func value(_ offset: Int) -> UInt32? { scalar(index + offset, in: scalars)?.value }
         switch scalars[index].value {
         case joiner: return emoji(1) && (emoji(-1) || (value(-1) == presentation && emoji(-2)))
-        case presentation: return emoji(-1) && (emoji(1) || (value(1) == joiner && emoji(2)))
+        case presentation: return emoji(-1)
         default: return false
         }
     }
@@ -60,8 +62,8 @@ public enum AgentTextEscaper {
         scalars.indices.contains(index) ? scalars[index] : nil
     }
 
-    /// A pictograph. Digits, `#` and `*` are emoji to Unicode as well, as the base of a keycap; a joiner beside one of
-    /// those would be hidden inside ordinary text, so they don't count.
+    /// A pictograph. Digits, `#` and `*` are emoji to Unicode as well, as the base of a keycap; a joiner or a
+    /// selector beside one of those would be hidden inside ordinary text, so they don't count.
     private static func isEmoji(_ scalar: Unicode.Scalar) -> Bool {
         scalar.value > 0xFF && scalar.properties.isEmoji
     }

@@ -120,15 +120,75 @@ final class HistoryGroupTests: XCTestCase {
         XCTAssertTrue(state.redoEntries.isEmpty)
     }
 
-    func testAnUngroupedEntryUndoneBeforeAGroupStaysOnTheRedoStack() {
+    func testUndoingAGroupedEntryEmptiesTheRedoStack() {
+        var state = OperationHistoryState()
+        groupedForward(group, &state)
+        groupedForward(group, &state)
+        let trash = forward("Move to Trash", &state)
+        undo(&state)
+        XCTAssertEqual(state.redoEntries, [HistoryEntry(operationID: trash, name: "Move to Trash")])
+        XCTAssertEqual(state.redoAvailability, .unsupported("Move to Trash"), "while the group stands, the change made after it can be redone")
+
+        // That change was made on the disk the group left. Once the group is undone, a redo would run it by path on a
+        // disk it was never made on, so it goes with the group.
+        undo(&state)
+        XCTAssertTrue(state.redoEntries.isEmpty)
+        XCTAssertEqual(state.redoAvailability, .empty)
+        XCTAssertEqual(state.undoAvailability, .available("Organize “Downloads”"), "the rest of the group is next")
+        undo(&state)
+        XCTAssertTrue(state.undoEntries.isEmpty)
+        XCTAssertEqual(state.redoAvailability, .empty)
+        OperationHistoryReducer.reduce(&state, .beginRedoForward(HistoryRequestID()))
+        XCTAssertNil(state.pending, "a redo has nothing to act on")
+    }
+
+    func testAnUndoOfAGroupedEntryThatFailsLeavesTheRedoStackAlone() {
         var state = OperationHistoryState()
         groupedForward(group, &state)
         let copy = forward("Copy", &state)
         undo(&state)
+        // The group still stands, so the change made after it can still be redone on top of it.
+        undo(&state, outcome: .failed("Disk disconnected"))
+        XCTAssertEqual(state.undoEntries.map(\.group), [group])
         XCTAssertEqual(state.redoEntries, [HistoryEntry(operationID: copy, name: "Copy")])
+    }
+
+    func testRetiringAGroupedEntryEmptiesTheRedoStackToo() {
+        var state = OperationHistoryState()
+        groupedForward(group, &state)
+        let copy = forward("Copy", &state)
         undo(&state)
-        XCTAssertEqual(state.redoEntries, [HistoryEntry(operationID: copy, name: "Copy")], "only the grouped entry is let go")
+        // The group's undo only partly worked. Nothing is let go until the person has seen that.
+        undo(&state, outcome: .partial("One item was in use"))
+        XCTAssertEqual(state.redoEntries, [HistoryEntry(operationID: copy, name: "Copy")])
+        XCTAssertEqual(state.redoAvailability, .reconciliationRequired)
+        // Retired, the entry is gone as an undone one is, and the copy made after it goes with it.
+        OperationHistoryReducer.reduce(&state, .acknowledgeReconciliation)
         XCTAssertTrue(state.undoEntries.isEmpty)
+        XCTAssertTrue(state.redoEntries.isEmpty)
+        XCTAssertEqual(state.redoAvailability, .empty)
+
+        // An entry without a group is retired as before: the redo stack stays as it was.
+        var plain = OperationHistoryState()
+        forward("Rename", &plain)
+        let later = forward("Copy", &plain)
+        undo(&plain)
+        undo(&plain, outcome: .partial("One item was in use"))
+        OperationHistoryReducer.reduce(&plain, .acknowledgeReconciliation)
+        XCTAssertTrue(plain.undoEntries.isEmpty)
+        XCTAssertEqual(plain.redoEntries, [HistoryEntry(operationID: later, name: "Copy")])
+    }
+
+    func testAChangeMadeBeforeAGroupCanStillBeRedoneAfterBothAreUndone() {
+        var state = OperationHistoryState()
+        let rename = forward("Rename", &state)
+        groupedForward(group, &state)
+        undo(&state)
+        XCTAssertTrue(state.redoEntries.isEmpty)
+        // The rename was made before the group, so it is redone on the disk it was made on.
+        undo(&state)
+        XCTAssertEqual(state.redoEntries, [HistoryEntry(operationID: rename, name: "Rename")])
+        XCTAssertEqual(state.redoAvailability, .unsupported("Rename"))
     }
 
     func testAGroupedForwardClearsRedoLikeAnyNewChange() {

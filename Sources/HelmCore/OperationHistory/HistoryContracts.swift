@@ -62,7 +62,8 @@ public enum HistoryReservation: Equatable, Sendable {
 public enum HistoryAction: Sendable {
     case beginForward(HistoryRequestID, name: String)
     /// As `beginForward` under the group's name, and the entry this forward makes carries the group. Once such an
-    /// entry is undone it is gone: it never reaches the redo stack.
+    /// entry is undone it is gone: it never reaches the redo stack, and the entries already there, which were made
+    /// after it, are let go with it. One retired by `acknowledgeReconciliation` takes them with it as well.
     case beginGroupedForward(HistoryRequestID, HistoryGroup)
     case startForward(HistoryRequestID, operation: OperationID)
     case abortForward(HistoryRequestID, failure: HistoryPreparationFailure)

@@ -154,7 +154,19 @@ final class StorageClassifierBasicsTests: XCTestCase {
         let probe = StorageProbe(isInternal: false, isUbiquitous: true, hasSyncAttribute: true)
         XCTAssertEqual(classify(drive + "/a", probe).name, "Google Drive")
         XCTAssertEqual(classify(home + "/Library/Mobile Documents/x/a", probe).kind, .iCloud)
-        // The flag decides before an attribute, and both before the disk: a provider's folder on an external disk.
+        // So does a mirror target. It keeps its provider's name and its own root whatever the folder's flags say, and
+        // on a disk that can be unplugged it is still a cloud folder, so what leaves it is still seen to leave a cloud.
+        let mirrors = [home + "/My Drive": "GoogleDrive-me@example.com", "/Volumes/Fast/My Drive": "GoogleDrive-me@example.com"]
+        let flagged = classify(home + "/My Drive/Budget", StorageProbe(isUbiquitous: true, hasSyncAttribute: true), mirrors: mirrors)
+        XCTAssertEqual(flagged.name, "Google Drive")
+        XCTAssertEqual(flagged.cloudRoot, home + "/My Drive")
+        let unplugged = classify("/Volumes/Fast/My Drive/Budget", StorageProbe(isInternal: false), mirrors: mirrors)
+        XCTAssertEqual(unplugged.kind, .cloud)
+        XCTAssertEqual(unplugged.name, "Google Drive")
+        XCTAssertTrue(unplugged.syncs)
+        // The flag decides before an attribute: Documents with both is iCloud's, not some provider's folder.
+        XCTAssertEqual(classify(home + "/Documents", StorageProbe(isUbiquitous: true, hasSyncAttribute: true)).kind, .iCloud)
+        // Both decide before the disk: a provider's folder on an external disk.
         XCTAssertEqual(classify("/Volumes/Fast/Dropbox", StorageProbe(isInternal: false, hasSyncAttribute: true)).kind, .cloud)
         XCTAssertEqual(classify("/Volumes/Fast/Sync", StorageProbe(isInternal: false, isUbiquitous: true)).kind, .cloud)
         XCTAssertEqual(classify("/Volumes/Fast/Other", StorageProbe(isInternal: false)).kind, .external)

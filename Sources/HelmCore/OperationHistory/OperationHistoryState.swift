@@ -91,8 +91,9 @@ public enum OperationHistoryReducer {
             if outcome == .succeeded {
                 state.undoEntries.removeLast()
                 // A redo runs the original command again by path. For one command of a group that would skip the
-                // checks the group was approved under, so an undone grouped entry is let go.
-                if entry.group == nil { state.redoEntries.append(entry) }
+                // checks the group was approved under, so an undone grouped entry is let go. Whatever is on the redo
+                // stack was made after it, on the disk it left, and can't be redone in order without it: it goes too.
+                if entry.group == nil { state.redoEntries.append(entry) } else { state.redoEntries.removeAll() }
             }
             if outcome.needsReconciliation { state.reconciliation = outcome }
         case .beginRedoForward(let request):
@@ -105,7 +106,8 @@ public enum OperationHistoryReducer {
             guard state.pending == nil, state.reconciliation != nil else { return [] }
             // Admission is blocked while latched, so only the top entry can be affected.
             // Retire it without creating redo authority or discarding journal evidence.
-            if !state.undoEntries.isEmpty { state.undoEntries.removeLast() }
+            // A grouped entry retired here takes the redo stack with it, as one that was undone does.
+            if let retired = state.undoEntries.popLast(), retired.group != nil { state.redoEntries.removeAll() }
             state.reconciliation = nil
         case .discardEntries:
             // Never under a reservation: a running undo still owns the top entry.

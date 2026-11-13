@@ -21,6 +21,9 @@ A forward begun with `beginGroupedForward` is named after its `HistoryGroup` and
 entry carries the group, so a host can undo the entries of one group in a row as one
 change. An undone grouped entry is dropped, never moved to the redo stack: a redo would
 run one command of the group again by path, without the checks the group was approved under.
+Undoing it also empties the redo stack: every entry there was made after the group, on the
+disk the group left, and would otherwise be redone out of order on a disk without it.
+A grouped entry retired by `acknowledgeReconciliation` empties it in the same way.
 
 Redo is explicitly unsupported even when an undone entry exists. Safe reconstruction
 from intent and fresh evidence needs a later reviewed integration. Reconciliation UI,

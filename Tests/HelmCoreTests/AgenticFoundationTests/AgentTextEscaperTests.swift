@@ -69,22 +69,37 @@ final class AgentTextEscaperTests: XCTestCase {
         }
     }
 
-    func testAJoinerOrSelectorThatIsNotBetweenEmojiIsEscaped() {
-        // Beside letters and digits, a joiner hides inside ordinary text.
+    func testTheSelectorRightAfterAnEmojiIsKept() {
+        // Most emoji typed on their own end in the selector that asks for the picture form.
+        let names = ["❤\u{FE0F}", "I ❤\u{FE0F} NY", "🗂\u{FE0F} Projects", "Trip ✈\u{FE0F}.jpg", "⚠\u{FE0F}old", "⚙\u{FE0F}🖼\u{FE0F}",
+                     "👁\u{FE0F}\u{200D}🗨\u{FE0F}", "🏃\u{200D}♂\u{FE0F} run.gpx"]
+        for name in names {
+            XCTAssertEqual(AgentTextEscaper.escape(name), name, name)
+            XCTAssertTrue(AgentTextEscaper.isClean(name), name)
+        }
+    }
+
+    func testAJoinerOrSelectorOutOfPlaceIsEscaped() {
+        // Beside letters and digits, a joiner or a selector hides inside ordinary text.
         XCTAssertEqual(AgentTextEscaper.escape("pay\u{200D}pal"), "pay\\u{200D}pal")
         XCTAssertEqual(AgentTextEscaper.escape("1\u{200D}2"), "1\\u{200D}2")
         XCTAssertEqual(AgentTextEscaper.escape("a\u{FE0F}b"), "a\\u{FE0F}b")
         XCTAssertEqual(AgentTextEscaper.escape("1\u{FE0F}2"), "1\\u{FE0F}2")
-        // At an edge there is an emoji on one side only.
+        XCTAssertEqual(AgentTextEscaper.escape("1\u{FE0F}\u{20E3}"), "1\\u{FE0F}\u{20E3}", "a digit isn't a pictograph, even as a keycap")
+        // A joiner at an edge has an emoji on one side only.
         XCTAssertEqual(AgentTextEscaper.escape("👨\u{200D}"), "👨\\u{200D}")
         XCTAssertEqual(AgentTextEscaper.escape("\u{200D}👨"), "\\u{200D}👨")
         XCTAssertEqual(AgentTextEscaper.escape("👨\u{200D}a"), "👨\\u{200D}a")
         XCTAssertEqual(AgentTextEscaper.escape("a\u{200D}👨"), "a\\u{200D}👨")
-        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F}"), "❤\\u{FE0F}")
-        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F} NY"), "❤\\u{FE0F} NY")
+        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F}\u{200D}"), "❤\u{FE0F}\\u{200D}")
+        // A selector follows its emoji: before one, or after a space, it is escaped.
+        XCTAssertEqual(AgentTextEscaper.escape("\u{FE0F}❤"), "\\u{FE0F}❤")
+        XCTAssertEqual(AgentTextEscaper.escape("a\u{FE0F}❤"), "a\\u{FE0F}❤")
+        XCTAssertEqual(AgentTextEscaper.escape("❤ \u{FE0F}"), "❤ \\u{FE0F}")
         // Only the shapes emoji are written with are kept, so a run of them can't carry anything.
         XCTAssertEqual(AgentTextEscaper.escape("👨\u{200D}\u{200D}👩"), "👨\\u{200D}\\u{200D}👩")
-        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F}\u{FE0F}🔥"), "❤\\u{FE0F}\\u{FE0F}🔥")
+        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F}\u{FE0F}🔥"), "❤\u{FE0F}\\u{FE0F}🔥", "an emoji carries one selector")
+        XCTAssertEqual(AgentTextEscaper.escape("❤\u{FE0F}\u{FE0F}\u{FE0F}"), "❤\u{FE0F}\\u{FE0F}\\u{FE0F}")
         XCTAssertEqual(AgentTextEscaper.escape("👨\u{200D}\u{FE0F}👩"), "👨\\u{200D}\\u{FE0F}👩")
         // Any other selector is escaped even between emoji.
         XCTAssertEqual(AgentTextEscaper.escape("👨\u{FE0E}👩"), "👨\\u{FE0E}👩")
