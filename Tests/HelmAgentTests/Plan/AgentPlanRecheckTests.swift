@@ -141,4 +141,28 @@ final class AgentPlanRecheckTests: XCTestCase {
         guard case .changed(let fresh) = await recheck(plan) else { return XCTFail("a replaced parent ran") }
         XCTAssertEqual(Kit.names(fresh), ["trash old.tmp"])
     }
+
+    func testANewFolderWhoseOwnGroupIsntTickedStillHasItsParentLookedAt() async {
+        // The first move into Sorted leaves iCloud Drive, so Sorted's group starts unticked; the second is ticked.
+        let icloud = "/home/helm/Library/Mobile Documents/com~apple~CloudDocs/ic.txt"
+        disk.addFile(icloud)
+        disk.addFile(work + "/local.txt")
+        await scope.addRoot("/home/helm", label: "Home")
+        let plan = Kit.plan(await AgentPlanValidator().validate(
+            Kit.proposal(newFolders: [("n1", await h("Archive"), "Sorted")],
+                         moves: [([await scope.handle(icloud)], "", "n1"), ([await h("local.txt")], "", "n1")]),
+            scope: scope, disk: disk, limits: .cloudModel))
+        XCTAssertEqual(Kit.names(plan), ["new n1 Sorted", "move ic.txt", "move local.txt"])
+        XCTAssertEqual(Kit.group(plan, holding: 0)?.guardedBy, .leaves)
+        XCTAssertEqual(Kit.group(plan, holding: 0)?.id, Kit.group(plan, holding: 1)?.id)
+        XCTAssertNil(Kit.group(plan, holding: 2)?.guardedBy)
+        let answer = await recheck(plan, ticked: plan.defaultTicked)
+        XCTAssertEqual(answer, .ok)
+
+        disk.replaceIdentity(at: work + "/Archive")
+        guard case .changed(let fresh) = await recheck(plan, ticked: plan.defaultTicked) else {
+            return XCTFail("a move into a new folder whose parent was replaced ran")
+        }
+        XCTAssertTrue(fresh.steps.isEmpty)
+    }
 }

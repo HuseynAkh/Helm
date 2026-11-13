@@ -66,9 +66,16 @@ public struct AgentPlanValidator: AgentPlanValidating {
         let tickedSteps = Set(plan.groups.filter { ticked.contains($0.id) }.flatMap(\.steps))
         for index in tickedSteps.sorted() where plan.steps.indices.contains(index) && !failing.contains(index) {
             let step = plan.steps[index]
-            if case .existing(let destination)? = Self.existingFolder(of: step),
+            // The existing folder the step lands in, or the one its new folders are made in: a new folder's own
+            // step may sit in a group that isn't ticked, and Apply still makes it for this one.
+            if let destination = Self.destinationAnchor(of: step, chart: chart),
                await Self.stillThere(destination, folder: true, lostRoots: lostRoots, disk: disk) == nil {
                 failing.insert(index)
+                // The new folders on the way go too, and with them every other step made in them or sent into them.
+                let above = Set(chart.keysAbove(index))
+                for other in plan.steps.indices where chart.newKey(of: other).map(above.contains) == true {
+                    failing.insert(other)
+                }
                 continue
             }
             guard let item = step.changedItem else { continue }
@@ -136,6 +143,15 @@ public struct AgentPlanValidator: AgentPlanValidating {
             return nil
         case .rename, .trash:
             return nil
+        }
+    }
+
+    /// The existing folder a step puts something in or makes a folder in, through any new folders on the way.
+    private static func destinationAnchor(of step: AgentPlanStep, chart: AgentPlanChart) -> AgentPlanItem? {
+        switch step {
+        case .newFolder(_, let parent, _): return chart.anchor(of: parent)
+        case .move(_, let target), .copy(_, let target): return chart.anchor(of: target)
+        case .rename, .trash: return nil
         }
     }
 
@@ -237,7 +253,8 @@ final class AgentPlanIntake {
         }
         for change in proposal.renames {
             guard let record = try await source(change.item) else { continue }
-            let checked = record.kind == .directory || record.kind == .package
+            // A package is one item to the person, so it keeps its extension the way a file does.
+            let checked = record.kind == .directory
                 ? AgentNewName.validateFolderName(change.name, existing: record.name)
                 : AgentNewName.validateFileRename(change.name, from: record.name)
             switch checked {

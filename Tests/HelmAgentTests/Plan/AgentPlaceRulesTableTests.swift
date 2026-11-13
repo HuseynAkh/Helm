@@ -122,6 +122,10 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertNil(rule(.copy(file(), to: into), iCloud, mac).guardedBy)
         // Inside one place nothing leaves.
         XCTAssertNil(rule(.move(file(), to: into), iCloud, iCloud).guardedBy)
+        // A shared folder inside the same place still says it is shared.
+        let intoShared = rule(.move(file(), to: into), iCloud, iCloudShared)
+        XCTAssertNil(intoShared.guardedBy)
+        XCTAssertEqual(intoShared.notices, [.syncs, .shared(place: "iCloud Drive")])
     }
 
     func testAnythingArrivingInAPlaceOthersSeeIsGuarded() {
@@ -215,6 +219,52 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertEqual(plan.groups.map(\.guardedBy), [.reachesOthers])
         XCTAssertEqual(plan.groups.first?.steps, [0, 1])
         XCTAssertEqual(plan.defaultTicked, [])
+    }
+
+    /// iCloud Drive with a shared Team folder beside a Private one that isn't shared: one place, two kinds of folder.
+    private func iCloudRig(files: Int, folder: Bool = false) async -> (AgentPlanTestScope, MemoryAgentDisk, String) {
+        let memory = MemoryAgentDisk()
+        let drive = "/home/helm/Library/Mobile Documents/com~apple~CloudDocs"
+        memory.addFolder(drive + "/Team")
+        for index in 1...files { memory.addFile(drive + "/Private/note \(index).txt") }
+        if folder { memory.addFolder(drive + "/Private/Sub") }
+        memory.setProbe(StorageProbe(isShared: true), under: drive + "/Team")
+        let scope = AgentPlanTestScope(disk: memory)
+        await scope.addRoot(drive, label: "iCloud Drive", isTab: true)
+        return (scope, memory, drive)
+    }
+
+    func testTwentySixItemsMovedIntoASharedICloudFolderFromTheSamePlaceAreGuarded() async {
+        let (scope, memory, drive) = await iCloudRig(files: 26)
+        let team = await scope.handle(drive + "/Team"), privateFolder = await scope.handle(drive + "/Private")
+        let plan = Kit.plan(await AgentPlanValidator().validate(Kit.proposal(moves: [([], privateFolder, team)]),
+                                                                scope: scope, disk: memory, limits: .cloudModel))
+        XCTAssertEqual(plan.steps.count, 26)
+        XCTAssertEqual(plan.groups.map(\.guardedBy), [.reachesOthers])
+        XCTAssertEqual(plan.groups.first?.place, "iCloud Drive")
+        XCTAssertEqual(plan.defaultTicked, [])
+        XCTAssertEqual(plan.cardNotes, [.shared(place: "iCloud Drive")])
+    }
+
+    func testOneFolderMovedIntoASharedICloudFolderFromTheSamePlaceIsGuarded() async {
+        let (scope, memory, drive) = await iCloudRig(files: 1, folder: true)
+        let team = await scope.handle(drive + "/Team"), sub = await scope.handle(drive + "/Private/Sub")
+        let plan = Kit.plan(await AgentPlanValidator().validate(Kit.proposal(moves: [([sub], "", team)]),
+                                                                scope: scope, disk: memory, limits: .cloudModel))
+        XCTAssertEqual(Kit.names(plan), ["move Sub"])
+        XCTAssertEqual(plan.groups.map(\.guardedBy), [.reachesOthers])
+        XCTAssertEqual(plan.defaultTicked, [])
+    }
+
+    func testAFewFilesMovedIntoASharedICloudFolderStayTickedAndSaySo() async {
+        let (scope, memory, drive) = await iCloudRig(files: 25)
+        let team = await scope.handle(drive + "/Team"), privateFolder = await scope.handle(drive + "/Private")
+        let plan = Kit.plan(await AgentPlanValidator().validate(Kit.proposal(moves: [([], privateFolder, team)]),
+                                                                scope: scope, disk: memory, limits: .cloudModel))
+        XCTAssertEqual(plan.steps.count, 25)
+        XCTAssertNil(plan.groups.first?.guardedBy)
+        XCTAssertEqual(plan.defaultTicked, [1])
+        XCTAssertEqual(plan.cardNotes, [.shared(place: "iCloud Drive")])
     }
 
     func testThreeHundredMovesInACloudFolderOfUnknownSharingStayTicked() async {

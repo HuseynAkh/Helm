@@ -68,7 +68,10 @@ public enum AgentPlaceRules {
                 return Ruling(leftOut: .no_trash, notices: [.noTrash(place: source.name)])
             }
             var notices = reachNotices(source)
-            if target.placeKey != source.placeKey { notices += reachNotices(target) }
+            // The destination's own reach, even inside one place: a shared folder in iCloud Drive says so.
+            if target != source {
+                for notice in reachNotices(target) where !notices.contains(notice) { notices.append(notice) }
+            }
             var ruling = Ruling(notices: notices)
             if target.placeKey != source.placeKey && source.isSeenElsewhere {
                 ruling.guardedBy = .leaves; ruling.place = source.name

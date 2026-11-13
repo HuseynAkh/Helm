@@ -121,9 +121,11 @@ struct AgentPlanAssembly {
             case .move:
                 let source = await facts.of(folders.source)
                 changes.append(.init(step: index, place: source, isFolder: isFolder))
+                // A folder can be shared while the one the item comes from, in the same place, isn't; so the
+                // destination counts whenever its facts differ from the source's, not only across places.
                 if let target = folders.target {
                     let destination = await facts.of(target)
-                    if destination.placeKey != source.placeKey {
+                    if destination != source {
                         changes.append(.init(step: index, place: destination, isFolder: isFolder))
                     }
                 }

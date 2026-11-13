@@ -189,6 +189,17 @@ final class AgentPlanValidatorHostileTests: XCTestCase {
         XCTAssertTrue(plan.steps.isEmpty)
     }
 
+    func testAPackageKeepsItsExtensionWhenRenamed() async {
+        let tool = await h("Tool.app")
+        for name in ["Tool", "Tool.zip", "Tool.app.txt"] {
+            let plan = Kit.plan(await validate(Kit.proposal(renames: [(tool, name)])))
+            XCTAssertEqual(plan.leftOut, [.name_not_allowed: 1], name)
+            XCTAssertTrue(plan.steps.isEmpty, name)
+        }
+        let plan = Kit.plan(await validate(Kit.proposal(renames: [(tool, "Helper.APP")])))
+        XCTAssertEqual(Kit.names(plan), ["rename Tool.app Helper.APP"])
+    }
+
     func testOnlyTheHonestStepsOfAMixedProposalSurvive() async {
         let doc = await h("doc.txt"), photo = await h("photo.png"), a = await h("A"), tool = await h("Tool.app")
         let plan = Kit.plan(await validate(Kit.proposal(
