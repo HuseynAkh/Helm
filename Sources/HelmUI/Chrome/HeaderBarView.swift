@@ -1,12 +1,13 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 
 @MainActor protocol HeaderBarDelegate: AnyObject {
     func headerToggleSidebar()
     func headerBack()
     func headerForward()
-    /// The Grid | List switch picked a view.
+    /// The view button picked a view.
     func headerSetViewMode(_ mode: ViewMode)
     func headerShowViewOptions(from button: NSView)
     func headerMainMenu() -> NSMenu?
@@ -34,8 +35,8 @@ extension HeaderBarDelegate {
     func headerSearchAIToggled(_ on: Bool) {}
 }
 
-/// The Nautilus header bar: back and forward, the path in the middle, then search, the Grid | List switch, sort and
-/// view options, and the main menu.
+/// The Nautilus header bar: back and forward, the path in the middle, then search, the view button, sort and view
+/// options, the AI panel's spark and the main menu.
 /// It's our own view rather than an `NSToolbar`, so macOS doesn't wrap each control in its own glass capsule.
 @MainActor final class HeaderBarView: NSView {
     weak var delegate: HeaderBarDelegate?
@@ -51,10 +52,13 @@ extension HeaderBarDelegate {
         toolTip: HeaderShortcuts.tip("Forward", .forward), target: self, action: #selector(forward))
     private(set) lazy var searchButton = FlatButton(symbol: "magnifyingglass", label: "Search",
         toolTip: HeaderShortcuts.tip("Search", .find), target: self, action: #selector(toggleSearch))
-    let viewSwitch = ViewModeSwitch()
+    /// Shows the view you'd switch to: Grid or List.
+    let viewButton = ViewModeButton()
     let sortButton = FlatMenuButton(symbol: "arrow.up.arrow.down", label: "Sort and View Options", title: "A to Z")
     /// Dots in a circle: the app's own menu, told apart from the path bar's plain ⋯, which is this folder's menu.
     let menuButton = FlatMenuButton(symbol: "ellipsis.circle", label: "Main Menu")
+    /// The spark beside the main menu: shows or hides the AI panel.
+    private(set) lazy var sparkButton = SparkButton(target: self, action: #selector(toggleAIPanel))
     private var leading: NSLayoutConstraint?
     private(set) var isSearching = false
     private(set) var isSidebarVisible = true
@@ -81,6 +85,8 @@ extension HeaderBarDelegate {
         searchField.onCancel = { [weak self] in self?.endSearch(); self?.delegate?.headerSearchClosed() }
         searchField.onEndEditing = { [weak self] in self?.searchFieldLostFocus() }
         searchField.onMoveDown = { [weak self] in self?.delegate?.headerSearchMoveToResults() ?? false }
+        searchField.onSubmit = { [weak self] text in self?.delegate?.headerSearchSubmitted(text) }
+        searchField.onAIToggle = { [weak self] on in self?.delegate?.headerSearchAIToggled(on) }
         searchField.onScope = { [weak self] everywhere in
             self?.searchesEverywhere = everywhere
             self?.delegate?.headerSearchScopeChanged()
@@ -88,7 +94,7 @@ extension HeaderBarDelegate {
         searchField.isHidden = true
         searchField.translatesAutoresizingMaskIntoConstraints = false
         searchButton.isToggle = true
-        viewSwitch.onChoose = { [weak self] mode in self?.delegate?.headerSetViewMode(mode) }
+        viewButton.onChoose = { [weak self] mode in self?.delegate?.headerSetViewMode(mode) }
         sortButton.showsDisclosure = true
         // A narrowing window squeezes the sort's words for a moment, until the bar drops them, rather than grow.
         sortButton.wordsGiveWay = true
@@ -97,8 +103,8 @@ extension HeaderBarDelegate {
         menuButton.alignsMenuToTrailingEdge = true
         let left = NSStackView(views: [sidebarButton, backButton, forwardButton])
         left.spacing = Self.buttonGap
-        // Search · Grid | List and the sort · the main menu: the switch and the sort read as one group.
-        let right = NSStackView(views: [searchButton, viewSwitch, sortButton, menuButton])
+        // Search · the view and the sort · the spark and the main menu: three groups, each read as one.
+        let right = NSStackView(views: [searchButton, viewButton, sortButton, sparkButton, menuButton])
         right.spacing = Self.buttonGap
         right.setCustomSpacing(Self.groupGap, after: searchButton)
         right.setCustomSpacing(Self.groupGap, after: sortButton)
@@ -150,8 +156,8 @@ extension HeaderBarDelegate {
     /// decision doesn't wait for a layout that the words themselves would make wider.
     var widthWithSortWords: CGFloat {
         let left = [sidebarButton, backButton, forwardButton].map(\.laidOutWidth).reduce(0, +) + 2 * Self.buttonGap
-        let right = searchButton.laidOutWidth + Self.groupGap + viewSwitch.intrinsicContentSize.width + Self.buttonGap
-            + sortButton.widthWithWords + Self.groupGap + menuButton.laidOutWidth
+        let right = searchButton.laidOutWidth + Self.groupGap + viewButton.laidOutWidth + Self.buttonGap
+            + sortButton.widthWithWords + Self.groupGap + sparkButton.laidOutWidth + Self.buttonGap + menuButton.laidOutWidth
         // The search field sits in the path's place, hidden or not, so its own minimum counts too.
         let path = max(Self.pathRoom, pathBar.minimumWidth, searchField.minimumWidth)
         return leadingInset + left + Self.edgeGap + path + Self.edgeGap + right + Self.edgeGap
@@ -184,8 +190,8 @@ extension HeaderBarDelegate {
         followSearch(of: tab, switched: switched)
         backButton.isEnabled = !tab.history.back.isEmpty || ContentStatePresentation.coveredPlace(tab) != nil
         forwardButton.isEnabled = !tab.history.forward.isEmpty
-        // The thumb slides when this tab's view changes, and snaps into place on a tab you've just switched to.
-        viewSwitch.setMode(tab.viewMode, animated: !switched)
+        // The icon fades when this tab's view changes, and changes at once on a tab you've just switched to.
+        viewButton.setMode(tab.viewMode, animated: !switched)
         if tab.search == nil, !isSearching { searchField.stringValue = "" }
         // The search names the place on show, as the path bar does. While a card stands in for the listing there's
         // nothing there to search, and the folder under the card is hidden, so Search waits until the card goes.
@@ -250,11 +256,17 @@ extension HeaderBarDelegate {
 
     // MARK: AI mode
 
-    /// Whether the AI panel is open, a request is running in it, and a model is ready. The header has no spark, so
-    /// nothing shows any of this.
-    func setAIPanel(open: Bool, working: Bool, ready: Bool) {}
-    /// Whether searching with a model's help is available, and on. The window owns the state; the field shows nothing.
-    func setAISearch(available: Bool, on: Bool) {}
+    /// Whether the AI panel is open, a request is running in it, and a model is ready. The spark is lit while the
+    /// panel is open and turns while a request is open. Its tooltip names the panel and its shortcut once a model is
+    /// ready, and otherwise says that pressing it sets AI mode up.
+    func setAIPanel(open: Bool, working: Bool, ready: Bool) {
+        sparkButton.isLit = open
+        sparkButton.isWorking = working
+        sparkButton.toolTip = ready ? HeaderShortcuts.tip(AgentText.sparkTitle, .aiPanel) : AgentText.sparkSetUp
+    }
+    /// Whether searching with a model's help is available, and on. The window owns the state: the field's leading
+    /// mark is the spark while it's available, lit while it's on, and pressing it asks the window to turn it over.
+    func setAISearch(available: Bool, on: Bool) { searchField.setAI(available: available, on: on) }
 
     // MARK: Search
 
@@ -333,6 +345,7 @@ extension HeaderBarDelegate {
     }
 
     @objc private func toggleSidebar() { delegate?.headerToggleSidebar() }
+    @objc private func toggleAIPanel() { delegate?.headerToggleAIPanel() }
     @objc private func back() { delegate?.headerBack() }
     @objc private func forward() { delegate?.headerForward() }
     @objc private func toggleSearch() {
@@ -344,9 +357,17 @@ extension HeaderBarDelegate {
 /// insets, so pressing Search swaps one for the other without the header changing shape. Like the path bar, its fill
 /// is stronger while you type in it and goes back to the resting fill when the caret leaves.
 /// It's a plain text field rather than `NSSearchField`, whose own bezel is shorter and squarer.
+/// While searching with a model's help is available, the leading magnifier gives its place to the spark, which turns
+/// that search on and off. The spark takes the magnifier's room exactly, so the field is no wider for it.
 @MainActor final class HeaderSearchField: NSView, NSTextFieldDelegate {
     private let field = SearchTextField()
     private let icon = NSImageView()
+    /// The spark that stands in for the magnifier while AI search is available.
+    private let aiToggle = NSButton()
+    /// The leading mark's width: the magnifier's, which the spark keeps to.
+    private var markWidth: CGFloat = 0
+    private(set) var isAIAvailable = false
+    private(set) var isAIOn = false
     private let clear = NSButton()
     /// Where the search looks: the folder you're in, or the whole Mac, as Finder's scope bar offers (P-170).
     private let scope = NSButton()
@@ -359,6 +380,10 @@ extension HeaderBarDelegate {
     var onEndEditing: (() -> Void)?
     /// The Down arrow, which can take the keys to the results.
     var onMoveDown: (() -> Bool)?
+    /// Return, with the words in the field.
+    var onSubmit: ((String) -> Void)?
+    /// The spark was pressed: true asks for AI search to go on, false for it to go off.
+    var onAIToggle: ((Bool) -> Void)?
     /// Whether the field is drawn as being typed in.
     private(set) var showsEditing = false
     /// What the empty field says, such as "Search Home".
@@ -370,6 +395,9 @@ extension HeaderBarDelegate {
     /// The scope with just its chevron, the narrowest it gets.
     private var compactScopeWidth: CGFloat = 0
 
+    /// The spark's side in the field, about the magnifier's size.
+    static let aiMarkSize: CGFloat = 14
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -378,7 +406,21 @@ extension HeaderBarDelegate {
         setAccessibilityLabel("Search")
         icon.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        markWidth = icon.intrinsicContentSize.width
         icon.contentTintColor = .secondaryLabelColor
+        aiToggle.isBordered = false
+        aiToggle.title = ""
+        aiToggle.imagePosition = .imageOnly
+        aiToggle.imageScaling = .scaleNone
+        aiToggle.contentTintColor = .secondaryLabelColor
+        // A click on it leaves the caret where it was, so an empty search stays open.
+        aiToggle.refusesFirstResponder = true
+        aiToggle.target = self; aiToggle.action = #selector(toggleAI)
+        aiToggle.toolTip = AgentText.searchToggle
+        aiToggle.setAccessibilityLabel(AgentText.searchToggle)
+        aiToggle.setAccessibilityRole(.checkBox)
+        aiToggle.setAccessibilitySubrole(.toggle)
+        aiToggle.isHidden = true
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
         field.font = .systemFont(ofSize: 14)
         field.placeholderString = "Search this folder"
@@ -406,13 +448,19 @@ extension HeaderBarDelegate {
         // The folder's name gives way, down to the chevron, before the words you type do, and a long name never makes
         // the window wider. Below the priority a fitting size presses with (50), so `minimumWidth` is the fitting width.
         scope.setContentCompressionResistancePriority(.init(40), for: .horizontal)
-        for view in [icon, field, clear, scope] as [NSView] {
+        for view in [icon, field, clear, scope, aiToggle] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 34),
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            // The magnifier keeps its place while the spark covers it, so the words never move when it swaps.
+            icon.widthAnchor.constraint(equalToConstant: markWidth),
+            // The spark sits over the magnifier, with a little more to click than the mark itself. It isn't part of
+            // the row's chain, so it adds no width.
+            aiToggle.centerXAnchor.constraint(equalTo: icon.centerXAnchor), aiToggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            aiToggle.widthAnchor.constraint(equalToConstant: markWidth + 8), aiToggle.heightAnchor.constraint(equalToConstant: 24),
             field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), field.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.trailingAnchor.constraint(equalTo: clear.leadingAnchor, constant: -4),
             clear.trailingAnchor.constraint(equalTo: scope.leadingAnchor, constant: -6), clear.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -423,14 +471,15 @@ extension HeaderBarDelegate {
             scope.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maximumScopeWidth)
         ])
         updateBackground()
+        updateAIMark()
     }
     required init?(coder: NSCoder) { nil }
 
     override var mouseDownCanMoveWindow: Bool { false }
-    /// The narrowest the field can be: its icon, the room kept for the words you type, the clear button and the scope
-    /// down to its chevron, with the gaps between them, as the constraints in `init` set them.
+    /// The narrowest the field can be: its leading mark, the room kept for the words you type, the clear button and
+    /// the scope down to its chevron, with the gaps between them, as the constraints in `init` set them.
     var minimumWidth: CGFloat {
-        12 + icon.intrinsicContentSize.width + 8 + max(Self.minimumTextWidth, field.intrinsicContentSize.width) + 4 + 20 + 6
+        12 + markWidth + 8 + max(Self.minimumTextWidth, field.intrinsicContentSize.width) + 4 + 20 + 6
             + compactScopeWidth + 7
     }
     var stringValue: String {
@@ -486,6 +535,8 @@ extension HeaderBarDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.cancelOperation(_:)) { onCancel?(); return true }
         if selector == #selector(NSResponder.moveDown(_:)) { return onMoveDown?() ?? false }
+        // Return keeps doing what the field does with it; the window hears about it too.
+        if selector == #selector(NSResponder.insertNewline(_:)) { onSubmit?(field.stringValue) }
         return false
     }
     @objc private func clearText() {
@@ -501,10 +552,50 @@ extension HeaderBarDelegate {
         let place = self.everywhere ? "This Mac" : (folder ?? "This Mac")
         scope.title = place
         scope.isHidden = folder == nil
-        field.placeholderString = "Search \(place)"
-        field.setAccessibilityLabel("Search \(place)")
         scope.setAccessibilityLabel("Search in \(place). Click to change.")
+        updatePlaceholder()
     }
+    /// "Search Documents", or while AI search is on, "Describe a file in Documents".
+    private func updatePlaceholder() {
+        let words: String
+        if isAIAvailable, isAIOn {
+            words = everywhere ? AgentText.searchPlaceholderMac : AgentText.searchPlaceholderFolder(folderName ?? "")
+        } else {
+            words = "Search \(everywhere ? "This Mac" : (folderName ?? "This Mac"))"
+        }
+        field.placeholderString = words
+        field.setAccessibilityLabel(words)
+    }
+
+    /// Whether searching with a model's help is available, and on. Available, the spark takes the magnifier's place:
+    /// in the secondary label colour while off, in the gradient while on.
+    func setAI(available: Bool, on: Bool) {
+        let on = available && on
+        guard available != isAIAvailable || on != isAIOn else { return }
+        isAIAvailable = available
+        isAIOn = on
+        updateAIMark()
+        updatePlaceholder()
+    }
+    private func updateAIMark() {
+        icon.isHidden = isAIAvailable
+        aiToggle.isHidden = !isAIAvailable
+        aiToggle.image = SparkMark.image(size: Self.aiMarkSize, lit: isAIOn)
+        aiToggle.setAccessibilityValue(NSNumber(value: isAIOn))
+    }
+    /// The leading mark as drawn: magnifier, spark, or spark lit.
+    var leadingMark: String { isAIAvailable ? (isAIOn ? "spark lit" : "spark") : "magnifier" }
+    /// Where the leading mark sits, and the spark's frame, as laid out.
+    var leadingMarkFrame: NSRect { icon.frame }
+    var aiToggleFrame: NSRect { aiToggle.frame }
+    @objc private func toggleAI() {
+        guard isAIAvailable else { return }
+        onAIToggle?(!isAIOn)
+        // As after choosing a scope, the caret goes back to the words.
+        focus(selectingAll: false)
+    }
+    /// For tests: a press on the spark.
+    func pressAIToggleForTesting() { aiToggle.performClick(nil) }
     @objc private func chooseScope() {
         guard let folderName else { return }
         let menu = NSMenu()

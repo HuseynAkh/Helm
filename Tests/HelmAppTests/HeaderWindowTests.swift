@@ -16,6 +16,8 @@ import HelmPersistence
     private var downloads: URL { home.appendingPathComponent("Downloads", isDirectory: true) }
     private var controllers: [BrowserWindowController] = []
     private var keep: [AnyObject] = []
+    /// The host of the last window made, which records what the window asks of the app.
+    private var host: QuietHost?
 
     override func setUp() {
         super.setUp()
@@ -51,6 +53,7 @@ import HelmPersistence
             clock: env.clock, pasteboard: NSPasteboard(name: .init("helm.header-tests.\(UUID().uuidString)")),
             persistsWindowFrames: false, openWith: env.openWith)
         let host = QuietHost()
+        self.host = host
         let controller = BrowserWindowController(dependencies: dependencies, host: host, frameName: "header-tests",
                                                  seeds: [], activeIndex: 0)
         keep += [host, operations, volumes]
@@ -234,6 +237,59 @@ import HelmPersistence
         XCTAssertEqual(controller.focusOwnerForTesting, "files")
     }
 
+    // MARK: The view button and the spark
+
+    func testTheViewButtonOffersTheOtherViewAndAClickForTheShownOneDoesNothing() async throws {
+        let controller = try await documentsWindow()
+        controller.perform(.grid)
+        await settle()
+        XCTAssertEqual(controller.headerViewModeForTesting, .grid)
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .list)
+        XCTAssertTrue(controller.headerToolTipsForTesting.contains("List (⌘2)"))
+        XCTAssertFalse(controller.headerToolTipsForTesting.contains { $0.contains("⌘1") })
+        // Asking for the view on show is not what the button offers, so nothing changes.
+        controller.clickHeaderViewForTesting(.grid)
+        await settle()
+        XCTAssertEqual(controller.activeTab?.viewMode, .grid)
+        controller.clickHeaderViewForTesting(.list)
+        await settle()
+        XCTAssertEqual(controller.activeTab?.viewMode, .list)
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .grid)
+        XCTAssertTrue(controller.headerToolTipsForTesting.contains("Grid (⌘1)"))
+        // ⌘1 and the menu still pick the view, and the button follows.
+        controller.perform(.grid)
+        await settle()
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .list)
+    }
+
+    func testTheSparkSitsBesideTheMainMenuAndAsksForTheAIScreenUntilAModelIsReady() async throws {
+        let controller = try await documentsWindow()
+        let spark = controller.headerSparkForTesting
+        XCTAssertFalse(spark.lit)
+        XCTAssertFalse(spark.working)
+        XCTAssertEqual(spark.toolTip, "Set Up AI Mode")
+        let tips = controller.headerToolTipsForTesting
+        XCTAssertEqual(Array(tips.suffix(2)), ["Set Up AI Mode", "Main Menu"], "The spark comes just before the main menu.")
+        XCTAssertEqual(host?.aiScreens, 0)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(host?.aiScreens, 1, "AI mode is off, so the spark opens the AI mode screen.")
+        XCTAssertFalse(controller.isAgentPanelOpen)
+        XCTAssertFalse(controller.headerSparkForTesting.lit)
+    }
+
+    func testTheSearchFieldShowsTheMagnifierUntilTheWindowSaysAISearchIsAvailable() async throws {
+        let controller = try await documentsWindow()
+        controller.beginSearch()
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        let room = controller.searchTextRoomForTesting
+        controller.header.setAISearch(available: true, on: true)
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark lit")
+        XCTAssertEqual(controller.searchTextRoomForTesting, room, accuracy: 0.5, "The spark takes no room from the words.")
+        XCTAssertEqual(controller.focusOwnerForTesting, "search")
+    }
+
     func testAHiddenListingDoesntGetTheKeysBack() async throws {
         let controller = try await documentsWindow()
         // A page saying a place couldn't open hides the listing, and the keys leave it.
@@ -263,6 +319,8 @@ import HelmPersistence
 
 /// A host for a window on its own: nothing to open, close or show.
 @MainActor private final class QuietHost: BrowserWindowHost {
+    /// How many times a window asked for the AI mode screen.
+    private(set) var aiScreens = 0
     func openWindow(at location: Location, selecting: [URL]) {}
     func windowDidClose(_ controller: BrowserWindowController) {}
     func windowDidBecomeKey(_ controller: BrowserWindowController) {}
@@ -270,5 +328,6 @@ import HelmPersistence
     /// Not asked for yet; a host that opens Settings at one pane will need it.
     func showSettings(pane: SettingsPane) {}
     func requestQuitAnyway() {}
+    func showAIModeScreen(from window: BrowserWindowController?) { aiScreens += 1 }
 }
 #endif

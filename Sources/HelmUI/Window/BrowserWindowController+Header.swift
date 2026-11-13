@@ -127,9 +127,21 @@ extension BrowserWindowController {
                                            charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53) else { return }
         files.keyDown(with: event)
     }
-    public var headerViewModeForTesting: ViewMode { header.viewSwitch.mode }
-    /// A click on one half of the header's Grid | List switch.
-    public func clickHeaderViewForTesting(_ mode: ViewMode) { header.viewSwitch.clickForTesting(mode) }
+    /// The view the header's view button says the tab is in.
+    public var headerViewModeForTesting: ViewMode { header.viewButton.mode }
+    /// The view a press of the header's view button switches to.
+    public var headerViewOfferedForTesting: ViewMode { header.viewButton.offered }
+    /// A click on the header's view button when it offers `mode`. When it offers the other view, nothing happens.
+    public func clickHeaderViewForTesting(_ mode: ViewMode) {
+        guard header.viewButton.offered == mode else { return }
+        header.viewButton.clickForTesting()
+    }
+    /// The header's spark as it shows now: lit, turning, and its tooltip.
+    public var headerSparkForTesting: (lit: Bool, working: Bool, toolTip: String) {
+        (header.sparkButton.isLit, header.sparkButton.isWorking, header.sparkButton.toolTip ?? "")
+    }
+    /// The search field's leading mark: magnifier, spark, or spark lit.
+    public var searchFieldMarkForTesting: String { header.searchField.leadingMark }
     public var headerLeadingForTesting: CGFloat { header.leadingInset }
     /// How wide the sidebar is as laid out; 0 while it's collapsed.
     public var sidebarWidthForTesting: CGFloat {
@@ -145,9 +157,8 @@ extension BrowserWindowController {
     }
     /// Every header tooltip, left to right.
     public var headerToolTipsForTesting: [String] {
-        [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton]
-            .map { $0.toolTip ?? "" } + header.viewSwitch.segments.map { $0.toolTip ?? "" }
-            + [header.sortButton.toolTip ?? "", header.menuButton.toolTip ?? ""]
+        [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.viewButton,
+         header.sortButton, header.sparkButton, header.menuButton].map { $0.toolTip ?? "" }
     }
     /// Collapses or opens the sidebar the way dragging the divider does, without the header's button.
     public func setSidebarCollapsedForTesting(_ collapsed: Bool) { split.splitViewItems.first?.isCollapsed = collapsed }
