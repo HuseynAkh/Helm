@@ -38,8 +38,17 @@ import HelmCore
     init(target: AnyObject?, action: Selector?) {
         super.init(symbol: "", label: AgentText.sparkTitle, toolTip: AgentText.sparkSetUp, target: target, action: action)
         isToggle = true
+        // Reduce Motion or Increase Contrast can change while the panel is open or a request runs.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(accessibilityDisplayOptionsChanged(_:)),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
     }
     required init?(coder: NSCoder) { nil }
+
+    @objc private func accessibilityDisplayOptionsChanged(_ notification: Notification) {
+        updateShimmer()
+        needsDisplay = true
+    }
 
     /// Whether the spark is drawn in the gradient now.
     var drawsGradient: Bool {

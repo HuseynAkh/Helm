@@ -209,6 +209,28 @@ import HelmCore
         XCTAssertFalse(loose.isShimmering)
     }
 
+    func testTheSparkFollowsReduceMotionAndIncreaseContrastWhenTheyChange() throws {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        HeaderMotion.isDisabledForTesting = false
+        defer { HeaderMotion.isDisabledForTesting = true; SparkButton.increasesContrastForTesting = nil }
+        try XCTSkipIf(HeaderMotion.isReduced, "This Mac has Reduce Motion on.")
+        header.setAIPanel(open: true, working: true, ready: true)
+        XCTAssertTrue(spark.isShimmering)
+        // Reduce Motion turned on while the request runs: the gradient stops turning at once.
+        HeaderMotion.isDisabledForTesting = true
+        SparkButton.increasesContrastForTesting = true
+        spark.needsDisplay = false
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+                                                   object: NSWorkspace.shared)
+        XCTAssertFalse(spark.isShimmering)
+        XCTAssertEqual(spark.shimmerTurn, 0)
+        // Increase Contrast turned on: the spark is drawn again, in the label colour.
+        XCTAssertTrue(spark.needsDisplay)
+        XCTAssertFalse(spark.drawsGradient)
+        header.setAIPanel(open: true, working: false, ready: true)
+    }
+
     func testTheSparksTooltipSaysWhatPressingItDoes() {
         let header = HeaderBarView()
         let spark = header.sparkButton
