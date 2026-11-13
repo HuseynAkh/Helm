@@ -25,6 +25,8 @@ import HelmCore
     private var sections = ContentSections(rootCount: 0)
     private var lastSelection: (ids: Set<ItemID>, source: SelectionSource)?
     private var revealSelection = false
+    /// Why each result matched, while a search a model helped with has reasons. Each is its item's tooltip.
+    private var reasons: [ItemID: SearchReason] = [:]
 
     override func loadView() {
         layout.minimumInteritemSpacing = 10; layout.minimumLineSpacing = 14
@@ -72,6 +74,21 @@ import HelmCore
             if keepingScroll { scroll.contentView.scroll(to: origin); scroll.reflectScrolledClipView(scroll.contentView) }
         }
         applySelection(tab)
+        showReasons(tab.search?.assist?.reasons ?? [:])
+    }
+
+    /// Puts each result's reason on its item as the tooltip. The reasons can come after the items, so the items on
+    /// show are brought up to date here; items made later get theirs as they're made.
+    private func showReasons(_ next: [ItemID: SearchReason]) {
+        guard next != reasons else { return }
+        reasons = next
+        for case let item as GridItem in collection.visibleItems() { showReason(on: item) }
+    }
+
+    /// An item's tooltip: its reason while it has one, otherwise its whole name when the name on show is cut short.
+    private func showReason(on item: GridItem) {
+        guard let path = collection.indexPath(for: item), let entry = entry(at: path) else { return }
+        item.view.toolTip = reasons[entry.id]?.line ?? (item.nameLines.isShortened ? item.name : nil)
     }
 
     private func applySelection(_ tab: TabState) {
@@ -100,11 +117,17 @@ import HelmCore
         guard rename == nil else { return }
         let selected = collection.selectionIndexPaths
         let next = selected.count == 1 ? selected.first : nil
-        if let old = expandedPath, old != next { (collection.item(at: old) as? GridItem)?.setExpanded(false) }
+        if let old = expandedPath, old != next, let item = collection.item(at: old) as? GridItem {
+            item.setExpanded(false)
+            showReason(on: item)
+        }
         expandedPath = next
         var overflow: CGFloat = 0
         if let next, let entry = entry(at: next) {
-            (collection.item(at: next) as? GridItem)?.setExpanded(true)
+            if let item = collection.item(at: next) as? GridItem {
+                item.setExpanded(true)
+                showReason(on: item)
+            }
             let lines = GridNameCache.shared.lines(for: entry.displayName, width: metrics.textWidth, font: font,
                                                    maxLines: GridItemMetrics.linesSelected)
             overflow = metrics.overflow(lines: lines.lines.count)
@@ -195,6 +218,7 @@ import HelmCore
         entry.isStarred = host?.starred.contains(entry.id) ?? false
         item.apply(entry, isCut: cut.contains(entry.id), metrics: metrics, font: font, expanded: indexPath == expandedPath,
                    scale: backingScale, icons: host?.icons)
+        if let reason = reasons[entry.id] { item.view.toolTip = reason.line }
         item.onDoubleClick = { [weak self] in
             guard let self else { return }
             self.host?.contentOpen(self.selectedEntries(), newTab: NSEvent.modifierFlags.contains(.command))
@@ -285,6 +309,8 @@ import HelmCore
     var collectionForTesting: NSCollectionView { collection }
     var layoutForTesting: FileGridLayout { layout }
     /// The item for `id`, scrolled into view and laid out.
+    /// The tooltip of an item, scrolled into view.
+    func toolTipForTesting(_ id: ItemID) -> String? { itemForTesting(id)?.view.toolTip }
     func itemForTesting(_ id: ItemID) -> GridItem? {
         guard let path = indexPath(of: id) else { return nil }
         collection.scrollToItems(at: [path], scrollPosition: .nearestHorizontalEdge)
