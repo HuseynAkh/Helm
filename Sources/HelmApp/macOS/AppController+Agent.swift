@@ -7,21 +7,53 @@ import HelmUI
 
 /// AI mode's services for the whole app, and how its settings reach them.
 extension AppController {
-    /// Every run gets stand-ins for what lies outside the app: keys kept in memory, an empty disk, every folder on this
-    /// Mac and no live model client. A fixture run's connector opens nothing; a real launch hands a server address
-    /// to macOS as it always has. `--live-agent` leaves out the scripted model as well, so no model is ever ready.
+    /// Every conversation is the real one, `AgentLiveParts.makeSession`: its folders, tools, plan checks and Apply
+    /// are what a person gets. What lies outside the app is chosen by the run:
+    /// - A fixture run keeps keys in memory, answers from the scripted model (the fixture's `agent-script.json` when
+    ///   there is one), reads the fixture home through the real agent disk with stand-in place facts and marks on
+    ///   top, and its connector opens nothing. No live model client can be built.
+    /// - `--live-agent` is the same, but with no scripted model, so no model is ever ready.
+    /// - Any other launch keeps keys in memory and an empty disk, and hands a server address to macOS as it always
+    ///   has.
     func makeAgentServices(_ environment: AppEnvironment) -> AgentServices {
         let home = environment.directories.home
         let secrets = MemorySecretStore()
-        let disk = MemoryAgentDisk(home: home.path)
-        let parts = AgentRuntimeParts(secrets: secrets, disk: disk, home: home.path,
+        let disk: any AgentDisk
+        let storage: MemoryStorageFactsReader
+        if options.isIsolated {
+            // The smoke verbs name folders by their canonical paths, so the place rules are given the same spelling.
+            let canonicalHome = CanonicalPath.realPath(home.path) ?? home.path
+            storage = MemoryStorageFactsReader(home: URL(fileURLWithPath: canonicalHome, isDirectory: true))
+            let base = FileSystemAgentDisk(fileSystem: environment.fileSystem, storage: storage, home: canonicalHome)
+            disk = InjectedAgentDisk(base: base, allowedPrefix: canonicalHome)
+        } else {
+            storage = MemoryStorageFactsReader(home: home)
+            disk = MemoryAgentDisk(home: home.path)
+        }
+        // The home as the windows spell a folder's path (standardized, so /private/tmp reads /tmp). The folder rules
+        // also hold the home's canonical path, so a folder spelled either way is found inside it.
+        let parts = AgentRuntimeParts(secrets: secrets, disk: disk, home: home.standardizedFileURL.path,
                                       supportFolder: environment.directories.applicationSupport.path,
                                       clock: environment.clock, buildStamp: Self.buildStamp(),
-                                      scripted: options.usesLiveAgent ? nil : ScriptedModelClient())
+                                      scripted: options.usesLiveAgent ? nil : scriptedModel(home: home),
+                                      makeSession: AgentLiveParts.makeSession)
         let connector: any ServerConnecting = options.isIsolated ? MemoryServerConnector() : SystemServerConnector()
         return AgentServices(runtime: AgentRuntime(parts: parts), config: environment.aiConfig, secrets: secrets, disk: disk,
-                             storage: MemoryStorageFactsReader(home: home), connector: connector)
+                             storage: storage, connector: connector)
     }
+
+    /// The scripted model. A fixture run takes its answers from `agent-script.json` beside the fixture home when that
+    /// file is there and reads as a script; otherwise, and in any other run, it keeps the built-in answers.
+    private func scriptedModel(home: URL) -> ScriptedModelClient {
+        let scripted = ScriptedModelClient()
+        guard options.isIsolated else { return scripted }
+        let file = home.deletingLastPathComponent().appendingPathComponent(Self.fixtureScriptName).path
+        if let text = try? String(contentsOfFile: file, encoding: .utf8) { try? scripted.load(Data(text.utf8)) }
+        return scripted
+    }
+
+    /// The scripted model's answers for a fixture run, beside the fixture home (`smoke.d/agent.fixture.sh` writes it).
+    static let fixtureScriptName = "agent-script.json"
 
     /// Settings › AI's switch and the choices saved in ai.json reach the runtime as they change, starting now.
     func followAIMode() {

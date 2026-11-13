@@ -81,7 +81,11 @@ extension BrowserWindowController {
 
     public func focusFilesForTesting() { focusContent() }
     /// Presses the header's spark, as a person would.
-    public func clickSparkForTesting() { headerToggleAIPanel() }
+    public func clickSparkForTesting() {
+        let spark = header.sparkButton
+        guard !spark.isHiddenOrHasHiddenAncestor, spark.isEnabled else { return }
+        spark.performClick(nil)
+    }
     /// Who has the keys: files, search, path, sidebar, window or other.
     public var focusOwnerForTesting: String {
         guard let window else { return "none" }
