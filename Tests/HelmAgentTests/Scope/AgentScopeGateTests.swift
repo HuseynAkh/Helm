@@ -235,12 +235,22 @@ final class AgentScopeGateTests: XCTestCase {
 
     // MARK: Protected folders
 
-    func testFoldersMacOSAsksAboutAreLeavesOnlyUnderAHomeRoot() async {
+    func testFoldersMacOSAsksAboutAreLeavesUnderEveryRootThatHoldsThem() async {
         let disk = makeDisk()
-        disk.addFolder(home + "/Projects")
+        for name in ["Projects", "Music/Music/Media", "Movies/TV/Media", "Documents/Taxes"] { disk.addFolder(home + "/" + name) }
         let gate = self.gate(disk)
         let homeRoot = root(await gate.admitRoot(tab(home), alias: "r1", existing: []))!
         let projects = root(await gate.admitRoot(typed(home + "/Projects"), alias: "r2", existing: []))!
+        let music = root(await gate.admitRoot(typed(home + "/Music"), alias: "r3", existing: []))!
+        let movies = root(await gate.admitRoot(typed(home + "/Movies"), alias: "r4", existing: []))!
+        XCTAssertTrue(gate.isProtectedLeaf(path: home + "/Music/Music", under: music))
+        XCTAssertTrue(gate.isProtectedLeaf(path: home + "/Movies/TV", under: movies))
+        XCTAssertFalse(gate.isProtectedLeaf(path: home + "/Music/Mixes", under: music))
+        // A root the person chose at or inside one of them is open below it.
+        let library = root(await gate.admitRoot(typed(home + "/Music/Music"), alias: "r5", existing: []))!
+        let documents = root(await gate.admitRoot(typed(home + "/Documents"), alias: "r6", existing: []))!
+        XCTAssertFalse(gate.isProtectedLeaf(path: home + "/Music/Music/Media", under: library))
+        XCTAssertFalse(gate.isProtectedLeaf(path: home + "/Documents/Taxes", under: documents))
         for name in ["Desktop", "Documents", "Downloads", "documents"] {
             XCTAssertTrue(gate.isProtectedLeaf(path: home + "/" + name, under: homeRoot), name)
         }

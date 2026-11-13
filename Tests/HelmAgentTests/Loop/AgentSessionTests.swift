@@ -216,6 +216,41 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(rig.client.sentTurns.count, 3, "ten minutes a request")
     }
 
+    func testATurnThatEndsPastTheRequestsTimeRunsNoneOfItsCalls() async {
+        let clock = FakeClock()
+        let rig = await self.rig(#"{"rules": [{"when": "*", "turns": [{"calls": [\#(Self.list)]}, {"text": "never"}]}]}"#, clock: clock,
+                                 client: { inner in AgentLoopSlowClient(inner: inner, clock: clock, seconds: 660) })
+        let words = await send(rig, "slow")
+        XCTAssertEqual(words, ["status thinking", "notice limitReached", "finished"])
+        XCTAssertEqual(rig.client.sentTurns.count, 1)
+        _ = await send(rig, "hello")
+        let results = AgentLoopKit.results(in: rig.client.sentTurns[1].history[2])
+        XCTAssertEqual(results.map { AgentLoopKit.string($0.json, "code") }, ["limit_reached"], "the call was told the limit and never ran")
+    }
+
+    func testAStreamThatOutlastsTheRequestIsCut() async {
+        let clock = FakeClock()
+        var stalling: AgentLoopStallingClient?
+        let rig = await self.rig(#"{"rules": [{"when": "*", "turns": [{"calls": [\#(Self.list)]}, {"text": "never"}]}]}"#, clock: clock,
+                                 client: { inner in
+                                     let made = AgentLoopStallingClient(inner: inner, clock: clock, seconds: 599.5)
+                                     stalling = made
+                                     return made
+                                 })
+        // Should the cut never come, Stop ends the request and the words below say so.
+        let session = rig.session
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            await session.stop()
+        }
+        let words = await send(rig, "slow")
+        watchdog.cancel()
+        XCTAssertTrue(words.contains("notice limitReached"), "\(words)")
+        XCTAssertFalse(words.contains("notice stopped"), "\(words)")
+        XCTAssertEqual(words.last, "finished")
+        XCTAssertEqual(stalling?.turnsStarted, 2)
+    }
+
     func testTwoBadCallsInARowEndTheRequest() async {
         let bad = #"{"name":"list_folder","args":{"folder":"/home/helm"}}"#
         let unknown = #"{"name":"delete_everything","args":{}}"#

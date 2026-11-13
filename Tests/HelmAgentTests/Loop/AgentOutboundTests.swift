@@ -146,6 +146,26 @@ final class AgentOutboundTests: XCTestCase {
         }
     }
 
+    func testATabThatMovesOnWhileItsRootIsListedSendsNoHomeName() async {
+        let memory = MemoryAgentDisk(home: home)
+        memory.addFile(home + "/report.pdf")
+        memory.addFolder("/Volumes/Disk/Work")
+        let disk = AgentLoopHookedDisk(inner: memory)
+        let client = AgentLoopKit.client(#"{"rules": [{"when": "list", "turns": [{"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]}, {"text": "Done."}]}, {"when": "*", "turns": [{"text": "Hello."}]}]}"#)
+        let parts = AgentSessionParts(client: { .success(client) }, disk: disk, home: home, supportFolder: AgentLoopKit.support,
+                                      clock: FakeClock(), listSecondsOverride: { nil })
+        let session = AgentSession(parts: parts, validator: AgentLoopFakeValidator())
+        _ = await session.setTabFolder(AgentRootInput(fromPerson: home, origin: .tab))
+        disk.whileListing(home) { _ = await session.setTabFolder(AgentRootInput(fromPerson: "/Volumes/Disk/Work", origin: .tab)) }
+        _ = await AgentLoopKit.events(session, "list my folder")
+        _ = await AgentLoopKit.events(session, "hello")
+        let sent = client.allSentText()
+        XCTAssertFalse(sent.contains(marker))
+        XCTAssertFalse(sent.contains(home))
+        let results = AgentLoopKit.results(in: client.sentTurns[1].history.last!)
+        XCTAssertEqual(results.map { AgentLoopKit.string($0.json, "code") }, ["stale_id"])
+    }
+
     func testTheCheckItself() {
         XCTAssertTrue(AgentOutboundCheck.helmTextIsClean(#"{"name":"Home"}"#, home: home))
         XCTAssertFalse(AgentOutboundCheck.helmTextIsClean("x" + home + "/a", home: home))

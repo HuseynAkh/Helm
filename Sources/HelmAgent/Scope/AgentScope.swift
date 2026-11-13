@@ -170,7 +170,9 @@ public actor AgentScope: AgentHandleResolving {
         guard AgentPathParts.same(live.path, record.path), live.identity == record.identity else { return .stale_id }
         guard let root = root(alias: record.rootAlias) else { return .stale_id }
         guard AgentPathParts.isAt(record.path, orInside: root.path) else { return .outside_scope }
-        guard let rootItem = await disk.item(at: root.path), rootItem.identity == root.identity else { return .stale_id }
+        guard let rootItem = await disk.item(at: root.path), rootItem.identity == root.identity, rootItem.kind == .directory else {
+            return .stale_id
+        }
         if AgentPathParts.same(record.path, root.path) { return rootItem.identity == record.identity ? nil : .stale_id }
         guard let item = await disk.item(at: record.path) else { return .not_found }
         guard item.identity == record.identity, item.kind == record.kind else { return .stale_id }
@@ -247,6 +249,11 @@ public actor AgentScope: AgentHandleResolving {
             return listed
         }
         let found = await disk.list(folder.path, limit: limit, idleSeconds: idleSeconds)
+        // The roots may have changed while the disk answered; a dropped root's folder is gone to the model.
+        guard self.root(alias: root.alias) != nil else {
+            listed.state = .gone
+            return listed
+        }
         listed.state = found.state
         listed.more = found.more
         listed.unreadable = found.unreadable
@@ -263,6 +270,7 @@ public actor AgentScope: AgentHandleResolving {
             if record.isDataless, record.kind != .directory { holdingCloudOnly.insert(root.alias) }
             listed.entries.append((record, item))
         }
+        guard self.root(alias: root.alias) != nil else { return ListedChildren(state: .gone) }
         return listed
     }
 
@@ -276,7 +284,7 @@ public actor AgentScope: AgentHandleResolving {
 
     /// Whether a child may be shown, and whether it is a leaf: listed by name and never entered.
     /// Hidden and lock files, the home's Library and Helm's support folder are left out, as are sockets, pipes and
-    /// devices. Links, packages, folders macOS asks about under a home root and folders on another disk are leaves.
+    /// devices. Links, packages, folders macOS asks about and folders on another disk are leaves.
     private func verdict(on item: AgentDiskItem, in folder: AgentHandleRecord, root: AgentScopeRoot) async -> Result<Bool, AgentToolCode> {
         guard AgentItemFilter.isListable(name: item.name, isHidden: item.isHidden) else { return .failure(.hidden) }
         guard await gate.allowsPlace(item.path) else { return .failure(.not_allowed) }
@@ -326,8 +334,9 @@ public actor AgentScope: AgentHandleResolving {
         return root
     }
 
+    /// A root's own record carries the model's name for it, never the person's label, which can be an account's name.
     private func mintRoot(_ root: AgentScopeRoot) async {
-        let item = AgentDiskItem(path: root.path, name: root.label, kind: .directory, identity: root.identity)
+        let item = AgentDiskItem(path: root.path, name: root.modelName, kind: .directory, identity: root.identity)
         _ = await table.mint(rootAlias: root.alias, item: item, isRoot: true, isProtectedLeaf: false)
     }
 

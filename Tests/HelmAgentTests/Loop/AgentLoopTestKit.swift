@@ -92,6 +92,85 @@ final class AgentLoopSlowClient: AgentModelClient, @unchecked Sendable {
     func models() async throws -> [AgentModelInfo] { try await inner.models() }
 }
 
+/// A scripted model whose first turn moves a clock on and whose later turns never end until they are cancelled, so a
+/// request runs out of time in the middle of a turn.
+final class AgentLoopStallingClient: AgentModelClient, @unchecked Sendable {
+    let inner: ScriptedModelClient
+    let clock: FakeClock
+    let seconds: TimeInterval
+    private let lock = NSLock()
+    private var started = 0
+    init(inner: ScriptedModelClient, clock: FakeClock, seconds: TimeInterval) {
+        self.inner = inner; self.clock = clock; self.seconds = seconds
+    }
+    var providerName: String { inner.providerName }
+    var destination: String { inner.destination }
+    var isLocal: Bool { inner.isLocal }
+    var turnsStarted: Int { lock.lock(); defer { lock.unlock() }; return started }
+    func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> {
+        lock.lock(); started += 1; let first = started == 1; lock.unlock()
+        if first {
+            clock.advance(by: seconds)
+            return inner.turn(input)
+        }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
+                continuation.finish(throwing: AgentFailure.cancelled)
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+    func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] { inner.userItems(text: text, toolResults: toolResults) }
+    func structured(_ ask: AgentStructuredAsk) async throws -> Data { try await inner.structured(ask) }
+    func models() async throws -> [AgentModelInfo] { try await inner.models() }
+}
+
+/// A disk that runs a step of the test's own while a listing waits on it, and can keep reporting a path's first
+/// identity after the item there was replaced, as a server that reuses file ids does.
+final class AgentLoopHookedDisk: AgentDisk, @unchecked Sendable {
+    let inner: MemoryAgentDisk
+    private let lock = NSLock()
+    private var hooks: [String: @Sendable () async -> Void] = [:]
+    private var pinned: [String: FileObjectIdentity] = [:]
+    init(inner: MemoryAgentDisk) { self.inner = inner }
+
+    /// Runs `step` once, the next time `folder` is listed, before the listing answers.
+    func whileListing(_ folder: String, _ step: @escaping @Sendable () async -> Void) {
+        locked { hooks[folder] = step }
+    }
+
+    /// From now on the item at `path` reports the identity it has now, whatever comes to be there.
+    func pinIdentity(of path: String) async {
+        guard let identity = await inner.item(at: path)?.identity else { return }
+        locked { pinned[path] = identity }
+    }
+
+    func canonicalPath(_ path: String) async -> String? { await inner.canonicalPath(path) }
+
+    func item(at path: String) async -> AgentDiskItem? {
+        guard let item = await inner.item(at: path) else { return nil }
+        guard let identity = locked({ pinned[path] }) else { return item }
+        return AgentDiskItem(path: item.path, name: item.name, kind: item.kind, identity: identity, size: item.size,
+                             modified: item.modified, created: item.created, typeIdentifier: item.typeIdentifier,
+                             isHidden: item.isHidden, isDataless: item.isDataless, place: item.place)
+    }
+
+    func list(_ folder: String, limit: Int, idleSeconds: Double) async -> AgentDiskListing {
+        let step = locked { hooks.removeValue(forKey: folder) }
+        await step?()
+        return await inner.list(folder, limit: limit, idleSeconds: idleSeconds)
+    }
+
+    func storage(of folder: String) async -> StorageFacts { await inner.storage(of: folder) }
+
+    private func locked<Value>(_ body: () -> Value) -> Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
 enum AgentLoopKit {
     static let support = "/home/helm-support"
 

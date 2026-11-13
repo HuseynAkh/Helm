@@ -61,7 +61,10 @@ public struct AgentToolRunner: Sendable {
         guard budget > 0 else { return .error(.limit_reached) }
         let levels = depth == 0 ? limits.maxDepth : min(depth, limits.maxDepth)
         var walk = Walk(bound: limits.entriesPerRequest + 1)
-        switch await self.walk(folder, levels: levels, limits: limits, into: &walk) {
+        let state = await self.walk(folder, levels: levels, limits: limits, into: &walk)
+        // A root dropped while the disk answered takes its listing with it.
+        guard let root = await scope.root(alias: folder.rootAlias) else { return .error(.stale_id) }
+        switch state {
         case .denied: return .error(.not_allowed)
         case .gone: return .error(.not_found)
         case .notLoaded: return .error(.not_loaded)
@@ -84,10 +87,9 @@ public struct AgentToolRunner: Sendable {
             item(entry.record, entry.item, in: entry.parent, holds: walk.holds[entry.record.handle], selected: selected)
         }
         tally.change { $0.names += page.count; $0.notLoaded += walk.notLoaded }
-        let root = await scope.root(alias: folder.rootAlias)
         let json = AgentJSON.object([
             "source": .string("folder_listing"), "folder": .string(folder.handle), "root": .string(folder.rootAlias),
-            "name": .string(AgentTextEscaper.escape(folder.isRoot ? root?.modelName ?? folder.name : folder.name)),
+            "name": .string(AgentTextEscaper.escape(folder.isRoot ? root.modelName : folder.name)),
             "place": .string(facts.modelWord), "items": .array(items), "more": .number(Double(max(0, more))),
             "not_loaded": .number(Double(walk.notLoaded)),
             "partial": .string(walk.isSlow ? Self.partialSlow : (walk.isCut || cutByBudget ? Self.partialLimit : Self.partialNone))
@@ -120,7 +122,9 @@ public struct AgentToolRunner: Sendable {
         let budget = min(limits.findResults, limits.entriesPerRequest - namesSent)
         guard budget > 0 else { return .error(.limit_reached) }
         var walk = Walk(bound: limits.entriesPerRequest)
-        switch await self.walk(folder, levels: limits.maxDepth, limits: limits, into: &walk) {
+        let state = await self.walk(folder, levels: limits.maxDepth, limits: limits, into: &walk)
+        guard await scope.root(alias: folder.rootAlias) != nil else { return .error(.stale_id) }
+        switch state {
         case .denied: return .error(.not_allowed)
         case .gone: return .error(.not_found)
         case .notLoaded: return .error(.not_loaded)

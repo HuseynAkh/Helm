@@ -198,29 +198,24 @@ public actor AgentSession: AgentConversing {
             emit(event)
             return counts.names
         }
+        func secondsLeft() -> Double { limits.requestSeconds - parts.clock.now().timeIntervalSince(started) }
         for _ in 0..<max(0, limits.turns) {
-            if parts.clock.now().timeIntervalSince(started) > limits.requestSeconds { return ended(.notice(.limitReached)) }
+            if secondsLeft() < 0 { return ended(.notice(.limitReached)) }
             emit(.status(.thinking))
-            var text = ""
-            var finished: AgentTurnResult?
+            let streamed: StreamedTurn
             do {
                 let input = AgentTurnInput(system: AgentPrompt.system, tools: AgentToolCatalog.all, history: history)
-                for try await event in client.turn(input) {
-                    switch event {
-                    case .text(let piece):
-                        // More than can be shown is never kept.
-                        if text.count <= limits.replyCharacters { text += piece }
-                    case .toolStarted:
-                        break
-                    case .finished(let result):
-                        finished = result
-                    }
-                }
+                streamed = try await Self.stream(client, input, replyCharacters: limits.replyCharacters, seconds: secondsLeft())
             } catch {
                 if isStopping { return ended(.notice(.stopped)) }
                 return ended(.failed(error as? AgentFailure ?? .unreadable))
             }
             if isStopping { return ended(.notice(.stopped)) }
+            let text: String, finished: AgentTurnResult?
+            switch streamed {
+            case .outOfTime: return ended(.notice(.limitReached))
+            case .done(let streamedText, let result): (text, finished) = (streamedText, result)
+            }
             guard let result = finished else { return ended(.failed(.unreadable)) }
             switch result.stop {
             case .refusal, .contentFilter: return ended(.reply(AgentText.failDeclined))
@@ -252,6 +247,12 @@ public actor AgentSession: AgentConversing {
                 }
                 if index >= limits.callsPerTurn {
                     results.append(Self.errorResult(call, .limit_reached))
+                    continue
+                }
+                // A turn that ran past the request's time runs none of its calls.
+                if secondsLeft() < 0 {
+                    results.append(Self.errorResult(call, .limit_reached))
+                    ending = .notice(.limitReached)
                     continue
                 }
                 counts.calls += 1
@@ -307,6 +308,41 @@ public actor AgentSession: AgentConversing {
             if let ending { return ended(ending) }
         }
         return ended(.notice(.limitReached))
+    }
+
+    /// How a model turn's stream ended: with the text kept and the turn's result, or cut at the request's time.
+    private enum StreamedTurn: Sendable {
+        case done(String, AgentTurnResult?)
+        case outOfTime
+    }
+
+    /// Streams one model turn, racing it against the seconds the request has left; the stream is cancelled when they
+    /// run out. More text than can be shown is never kept.
+    private static func stream(_ client: any AgentModelClient, _ input: AgentTurnInput, replyCharacters: Int,
+                               seconds: Double) async throws -> StreamedTurn {
+        try await withThrowingTaskGroup(of: StreamedTurn.self) { group in
+            group.addTask {
+                var text = ""
+                var finished: AgentTurnResult?
+                for try await event in client.turn(input) {
+                    switch event {
+                    case .text(let piece):
+                        if text.count <= replyCharacters { text += piece }
+                    case .toolStarted:
+                        break
+                    case .finished(let result):
+                        finished = result
+                    }
+                }
+                return .done(text, finished)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(max(0, min(seconds, 86_400)) * 1_000_000_000))
+                return .outOfTime
+            }
+            defer { group.cancelAll() }
+            return try await group.next() ?? .outOfTime
+        }
     }
 
     // MARK: The thread

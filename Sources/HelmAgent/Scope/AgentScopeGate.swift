@@ -36,15 +36,18 @@ public struct AgentScopeGate: Sendable {
     }
 
     /// Whether the folder at `path` is one macOS asks about before letting an app in (Desktop, Documents,
-    /// Downloads and the rest), seen from a root that is the home folder. Such a folder is listed by name and never
-    /// entered, so a model can't raise a macOS privacy question.
+    /// Downloads, the music and TV libraries and the rest), under any root that holds it. Such a folder is listed by
+    /// name and never entered, so a model can't raise a macOS privacy question. A root at or inside one of them was
+    /// chosen by the person, so that one is open below it.
     public func isProtectedLeaf(path: String, under root: AgentScopeRoot) -> Bool {
         let homes = [home] + (memo.home.map { [$0] } ?? [])
-        guard homes.contains(where: { AgentPathParts.same(root.path, $0) }) else { return false }
-        let parts = AgentPathParts.of(path).map { $0.lowercased() }
-        return PrivacyAreas.askingRoots(home: URL(fileURLWithPath: root.path, isDirectory: true)).contains { area in
-            let areaParts = AgentPathParts.of(area.path).map { $0.lowercased() }
-            return parts.count == areaParts.count && AgentPathParts.starts(parts, with: areaParts)
+        let parts = AgentPathParts.of(path).map { $0.lowercased() }, rootParts = AgentPathParts.of(root.path).map { $0.lowercased() }
+        return homes.contains { home in
+            PrivacyAreas.askingRoots(home: URL(fileURLWithPath: home, isDirectory: true)).contains { area in
+                let areaParts = AgentPathParts.of(area.path).map { $0.lowercased() }
+                guard !AgentPathParts.starts(rootParts, with: areaParts) else { return false }
+                return parts.count == areaParts.count && AgentPathParts.starts(parts, with: areaParts)
+            }
         }
     }
 

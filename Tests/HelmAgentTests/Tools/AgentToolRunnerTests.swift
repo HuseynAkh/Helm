@@ -258,6 +258,23 @@ final class AgentToolRunnerTests: XCTestCase {
                        "\(rig.disk.asked)")
     }
 
+    func testTheMusicAndTVLibrariesAreLeavesUnderTheFoldersThatHoldThem() async {
+        for (tab, library) in [(home + "/Music", "Music"), (home + "/Movies", "TV")] {
+            let rig = await self.rig(tab: tab) { disk in
+                disk.addFile(tab + "/" + library + "/Media/song.m4a")
+                disk.addFile(tab + "/mix.mp3")
+            }
+            let listing = json(await list(rig, rig.root, depth: 3))
+            XCTAssertEqual(Set(names(listing)), [library, "mix.mp3"], tab)
+            agentEqual(code(await list(rig, id(listing, of: library))), .not_allowed, tab)
+            XCTAssertFalse(rig.disk.asked.contains { AgentPathParts.isAt($0, orInside: tab + "/" + library) }, "\(rig.disk.asked)")
+        }
+        // The person's own choice of the library itself opens it.
+        let rig = await self.rig(tab: home + "/Music/Music") { disk in disk.addFile(home + "/Music/Music/Media/song.m4a") }
+        let opened = json(await list(rig, rig.root, depth: 2))
+        XCTAssertEqual(names(opened), ["Media", "song.m4a"])
+    }
+
     func testADeniedListingAnswersNotAllowedOnceWithNoSecondDiskCall() async {
         let rig = await self.rig { disk in
             disk.addFile(home + "/Locked/inside.txt")
@@ -390,5 +407,58 @@ final class AgentToolRunnerTests: XCTestCase {
         let nothing = json(await run(rig, "propose_changes", empty))
         XCTAssertEqual(AgentLoopKit.string(nothing, "status"), "nothing_to_do")
         XCTAssertEqual(AgentLoopKit.array(nothing, "left_out"), [.object(["code": .string("not_downloaded"), "count": .number(12)])])
+    }
+
+    // MARK: Roots that change while they are read
+
+    /// A scope on a disk that can run a step while a listing waits on it, with the tab on `tab`.
+    private func hookedRig(tab: String, _ build: (MemoryAgentDisk) -> Void) async -> (rig: Rig, disk: AgentLoopHookedDisk) {
+        let memory = MemoryAgentDisk(home: home)
+        build(memory)
+        let disk = AgentLoopHookedDisk(inner: memory)
+        let scope = AgentScope(disk: disk, home: home, supportFolder: support)
+        guard case .root(let root) = await scope.setTabFolder(AgentRootInput(fromPerson: tab, origin: .tab)) else {
+            XCTFail("no tab root")
+            fatalError()
+        }
+        await scope.beginRequest(listSeconds: nil)
+        let validator = AgentLoopFakeValidator()
+        let runner = AgentToolRunner(scope: scope, disk: disk, validator: validator, limits: .cloudModel)
+        return (Rig(disk: memory, scope: scope, runner: runner, validator: validator, root: root.alias), disk)
+    }
+
+    func testATabThatMovesOnWhileItsRootIsListedAnswersStale() async {
+        let (rig, disk) = await hookedRig(tab: home) { disk in
+            disk.addFile(home + "/Work/report.pdf")
+            disk.addFolder("/Volumes/Disk/Work")
+        }
+        let scope = rig.scope
+        agentEqual(await scope.record(for: rig.root)?.name, "Home", "a root's record carries the model's name for it")
+        disk.whileListing(home) { _ = await scope.setTabFolder(AgentRootInput(fromPerson: "/Volumes/Disk/Work", origin: .tab)) }
+        agentEqual(code(await list(rig, rig.root, depth: 2)), .stale_id)
+        agentNil(await scope.record(for: rig.root))
+
+        let (other, otherDisk) = await hookedRig(tab: home) { disk in
+            disk.addFile(home + "/report.pdf")
+            disk.addFolder("/Volumes/Disk/Work")
+        }
+        let otherScope = other.scope
+        otherDisk.whileListing(home) { _ = await otherScope.setTabFolder(AgentRootInput(fromPerson: "/Volumes/Disk/Work", origin: .tab)) }
+        agentEqual(code(await find(other, other.root, names: ["report"])), .stale_id)
+    }
+
+    func testARootReplacedByALinkThatKeepsItsIdIsStale() async {
+        let share = "/Volumes/Share/Team"
+        let (rig, disk) = await hookedRig(tab: share) { disk in
+            disk.addFile(share + "/notes.txt")
+            disk.addFile(home + "/Private/secret-plans.txt")
+        }
+        await disk.pinIdentity(of: share)
+        let before = json(await list(rig, rig.root))
+        XCTAssertEqual(names(before), ["notes.txt"])
+        rig.disk.remove(share)
+        rig.disk.addLink(share, to: home + "/Private")
+        agentEqual(code(await list(rig, rig.root)), .stale_id)
+        agentNil(await rig.scope.recheckRoot(alias: rig.root))
     }
 }
