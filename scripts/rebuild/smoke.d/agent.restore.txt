@@ -1,0 +1,4 @@
+# AI mode after the relaunch: off, as the first run left it, with the panel shut and no model client built.
+setting-is aiModeEnabled false
+agent-is closed
+agent-client-built no

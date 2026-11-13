@@ -1,0 +1,172 @@
+# AI mode, with the scripted model answering from @FIX@/agent-script.json (smoke.d/agent.fixture.sh). Every request
+# goes through the real conversation, folder rules, tools and plan checks, and Apply and Undo through the window's
+# own file commands. These run first among the step files and work in a tab of their own on AgentMess; the last
+# section puts back AI mode, the panel, the tab, the width and the stand-ins, so the files after these start as
+# the main steps left things: two tabs, Documents in front, list view.
+cmd newTab
+wait 0.4
+go @FIX@/home/AgentMess
+wait 0.5
+hunt-width-is 1040
+sidebar-visible-is true
+# 1. AI mode off: the spark asks for the AI mode screen, the panel stays shut and no model client is built
+setting-is aiModeEnabled false
+agent-open
+agent-is closed
+ai-screen-is open
+ai-screen close
+ai-screen-is closed
+setting-is aiModeEnabled false
+agent-client-built no
+# 2. AI mode on: a scripted model is ready at once. The spark and View › Show AI Panel open and shut the panel, the
+# keys go to the composer, and Escape gives them back to the files
+setting aiModeEnabled true
+wait 0.5
+agent-open
+agent-is open
+focus-is assistant
+agent-key escape
+focus-is files
+cmd aiPanel
+agent-is closed
+cmd aiPanel
+agent-is open
+# The window had room for the panel, so the sidebar and the width stay as they were
+sidebar-visible-is true
+hunt-width-is 1040
+# 3. The path bar is as it was, open or shut
+path-reads Home / AgentMess
+agent-close
+agent-is closed
+path-reads Home / AgentMess
+agent-open
+agent-is open
+# 4. The folder on show, the consent line and three suggestions with real counts. They follow the selection, and
+# are still there after a request
+agent-phase idle
+agent-chips AgentMess:thisMac
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+select photo-1.png,photo-2.jpg
+agent-suggests Organize 2 selected|Move 2 selected to…|Copy 2 selected to…
+select none
+agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+agent-say hello
+agent-phase idle
+agent-reads I can organize, move and copy files in these folders.
+agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+agent-sent-lacks @FIX@
+# 5. Organize: the card counts what it would do and nothing has moved yet. With one group unticked, Apply makes
+# one folder and moves two files, under one Undo that Command-Z takes back whole, with nothing to redo
+agent-press Organize 6 items
+agent-phase plan
+agent-reads Organize “AgentMess”
+agent-plan-reads 4 moves · 2 new folders
+agent-group Move 2 items to “Images” on
+agent-group Move 2 items to “Notes” on
+agent-suggests none
+exists @FIX@/home/AgentMess/photo-1.png
+missing @FIX@/home/AgentMess/Images
+agent-tick Move 2 items to “Notes”
+agent-group Move 2 items to “Notes” off
+agent-plan-reads 2 moves · 1 new folder
+agent-apply
+agent-phase result
+exists @FIX@/home/AgentMess/Images/photo-1.png
+exists @FIX@/home/AgentMess/Images/photo-2.jpg
+missing @FIX@/home/AgentMess/photo-1.png
+missing @FIX@/home/AgentMess/photo-2.jpg
+exists @FIX@/home/AgentMess/memo.txt
+missing @FIX@/home/AgentMess/Notes
+agent-reads Moved 2 items into 1 folder.
+undo-title Organize “AgentMess”
+cmd undo
+wait 0.5
+exists @FIX@/home/AgentMess/photo-1.png
+exists @FIX@/home/AgentMess/photo-2.jpg
+missing @FIX@/home/AgentMess/Images
+# With the keys back in the files (the composer's own text has an Undo and Redo of its own), Redo is off
+agent-key escape
+focus-is files
+menu redo disabled
+agent-client-built no
+# 6. A plan that moves something to the Trash arrives with that group unticked. Ticked, it goes to the fixture
+# Trash, and the card's Undo brings it back
+agent-say tidy up
+agent-phase plan
+agent-group Move 1 item to the Trash off
+agent-tick Move 1 item to the Trash
+agent-group Move 1 item to the Trash on
+agent-apply
+exists @FIX@/home/.Trash/draft-old.txt
+missing @FIX@/home/AgentMess/draft-old.txt
+agent-undo
+exists @FIX@/home/AgentMess/draft-old.txt
+missing @FIX@/home/.Trash/draft-old.txt
+agent-reads Everything is back where it was.
+# 7. Folders: /add one, a path that isn't there and a system folder. A message that ends in a path adds the folder
+# first and sends its id in place of the path. A dropped folder is added too, and /clear starts over
+agent-say /add @FIX@/home/Downloads
+agent-chips AgentMess:thisMac,Downloads:thisMac
+agent-reads Added “Downloads”.
+agent-say /add @FIX@/home/No Such Folder
+agent-reads Helm can't find that folder.
+agent-say /add /System
+agent-reads Helm can't add that folder.
+agent-chips AgentMess:thisMac,Downloads:thisMac
+agent-say Move everything in this folder to @FIX@/home/Desktop
+agent-chips AgentMess:thisMac,Downloads:thisMac,Desktop:thisMac
+agent-reads Added “Desktop”.
+agent-sent-lacks @FIX@
+agent-sent-lacks /Desktop
+agent-drop @FIX@/home/Templates
+agent-chips AgentMess:thisMac,Downloads:thisMac,Desktop:thisMac,Templates:thisMac
+agent-say /clear
+agent-chips AgentMess:thisMac
+agent-reads Started over.
+# 8. A model that tries to get round the rules: each try ends in Helm's own line, nothing outside the folders is
+# touched, and a plan that would make an app gets nothing on its card it could apply
+agent-script @FIX@/agent-hostile.json
+agent-say declined
+agent-reads The model declined this request.
+agent-say too long
+agent-reads That's a lot for one request, so try a smaller folder.
+agent-say bad tools
+agent-reads This model can't work with files, so try another.
+agent-say broken
+agent-reads Helm can't reach Claude right now.
+agent-phase failed
+agent-say escape
+agent-phase plan
+agent-reads 3 changes weren't allowed, so Helm left them out.
+exists @FIX@/outside.txt
+exists @FIX@/home/AgentMess/memo.txt
+agent-say /clear
+agent-say make an app
+agent-phase plan
+agent-reads 3 changes weren't allowed, so Helm left them out.
+missing @FIX@/home/AgentMess/Tools.app
+exists @FIX@/home/AgentMess/scan.pdf
+exists @FIX@/home/AgentMess/memo.txt
+missing @FIX@/home/AgentMess/memo.command
+agent-client-built no
+agent-script @FIX@/agent-script.json
+agent-say /clear
+agent-chips AgentMess:thisMac
+# Steps 9 to 15 of the design's test plan (cloud and server places, Connect, AI search, Settings and the AI mode
+# screen, the header with the panel open) go here, before the closing steps below.
+# 16. Closing: the panel shut, AI mode off, the stand-ins put back, the tab closed and the width as it was
+agent-close
+agent-is closed
+setting aiModeEnabled false
+wait 0.5
+setting-is aiModeEnabled false
+agent-is closed
+agent-client-built no
+agent-places-clear
+cmd closeTab
+wait 0.4
+tabs 2
+location @FIX@/home/Documents
+sidebar-visible-is true
+hunt-width-is 1040
