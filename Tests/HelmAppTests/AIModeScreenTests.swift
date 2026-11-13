@@ -402,6 +402,29 @@ import HelmPersistence
         XCTAssertEqual(opened.count, 1)
     }
 
+    func testDoneOpensTheRealPanelAndClosingTheScreenLeavesAIModeOff() async throws {
+        let app = await composedApp()
+        let settings = try settings(app)
+        let window = try XCTUnwrap(app.allWindows.first)
+        // Closed with the switch on, the screen leaves AI mode off and no panel opens.
+        window.toggleAgentPanel()
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        let model = try XCTUnwrap(app.aiSetupModelForTesting)
+        model.setOn(true)
+        screen.window?.performClose(nil)
+        XCTAssertFalse(settings.snapshot.bool(.aiModeEnabled))
+        XCTAssertFalse(window.isAgentPanelOpen)
+        // Done while connected opens the window's own panel, with nothing standing in for it.
+        window.toggleAgentPanel()
+        XCTAssertEqual(screen.modeForTesting, "ai")
+        await connect(model)
+        await pressDone(screen)
+        XCTAssertEqual(screen.modeForTesting, "closed")
+        XCTAssertTrue(settings.snapshot.bool(.aiModeEnabled))
+        let open = await until { window.isAgentPanelOpen }
+        XCTAssertTrue(open, "Done opened the panel in the window whose spark asked")
+    }
+
     // MARK: Opening by itself
 
     func testItNeverOpensByItselfInAFixtureRun() async throws {

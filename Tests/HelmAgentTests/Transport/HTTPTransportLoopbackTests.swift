@@ -26,19 +26,39 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         }
     }
 
-    /// Skips when the system, not the transport, stopped the connection.
-    private func skipIfBlocked(_ failure: AgentTransportError?) throws {
+    /// Skips when the system, not the transport, stopped the connection. The transport refuses plain http by itself
+    /// too, when a key may not go to an address, so `.insecure` counts as error -1022 only when a request with no
+    /// key is refused the same way. A connection error counts only when `server` never saw the request: one that
+    /// arrived shows the connection worked, and the failure is the transport's.
+    private func skipIfBlocked(_ failure: AgentTransportError?, server: AgentLoopbackServer? = nil) async throws {
         switch failure {
         case .insecure?:
+            guard await plainHTTPIsBlocked() else { return }
             let note = "Loopback test skipped: error -1022, App Transport Security blocked plain http to 127.0.0.1 in this test runner."
             print(note)
             throw XCTSkip(note)
         case .unreachable?, .notRunning?:
+            if let server, !server.requests.isEmpty { return }
             let note = "Loopback test skipped: couldn't connect to the listener on 127.0.0.1 (\(String(describing: failure)))."
             print(note)
             throw XCTSkip(note)
         default:
             return
+        }
+    }
+
+    /// Whether a key-free request to a listener here is refused as plain http, which only the system does.
+    private func plainHTTPIsBlocked() async -> Bool {
+        let reply = AgentLoopbackServer.Reply(status: "200 OK", headers: ["Content-Type": "application/json"], pieces: [T.data("{}")])
+        guard let probe = try? AgentLoopbackServer(replies: [reply]), let profile = try? T.ollama(port: probe.port) else {
+            return false
+        }
+        defer { probe.stop() }
+        do {
+            _ = try await transport(profile).fetch(.models)
+            return false
+        } catch {
+            return (error as? AgentTransportError) == .insecure
         }
     }
 
@@ -107,7 +127,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
             let profile = try T.ollama(port: server.port)
             let body = T.data("{\"model\":\"stand-in\",\"stream\":true,\"wire\":\"\(name)\"}")
             let outcome = await T.drain(transport(profile, limits: .local).stream(.chat, body: body))
-            try skipIfBlocked(outcome.failure)
+            try await skipIfBlocked(outcome.failure, server: server)
 
             XCTAssertNil(outcome.failure, name)
             XCTAssertNil(outcome.otherError, name)
@@ -133,7 +153,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         let secrets = MemorySecretStore()
         try secrets.save(T.secret(), for: profile.secretID)
         let outcome = await T.drain(transport(profile, secrets: secrets).stream(.chat, body: T.data("{}")))
-        try skipIfBlocked(outcome.failure)
+        try await skipIfBlocked(outcome.failure, server: server)
         XCTAssertNil(outcome.failure)
         XCTAssertEqual(server.requests.first?.header("Authorization"), "Bearer " + T.key)
     }
@@ -147,7 +167,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         do {
             reply = try await transport(profile).fetch(.models)
         } catch let failure as AgentTransportError {
-            try skipIfBlocked(failure)
+            try await skipIfBlocked(failure, server: server)
             throw failure
         }
         XCTAssertEqual(reply.status, 200)
@@ -163,7 +183,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         let first = try server([.init(status: "302 Found", headers: ["Location": "http" + "://127.0.0.1:\(target.port)/v1/chat/completions"],
                                       pieces: [T.data("moved")])])
         let outcome = await T.drain(transport(try T.ollama(port: first.port)).stream(.chat, body: T.data("{}")))
-        try skipIfBlocked(outcome.failure)
+        try await skipIfBlocked(outcome.failure, server: first)
         XCTAssertEqual(outcome.failure, .redirected)
         XCTAssertEqual(outcome.lines, [])
         XCTAssertEqual(first.requests.count, 1)
@@ -182,7 +202,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
             _ = try await transport.fetch(.models)
             _ = try await transport.fetch(.models)
         } catch let failure as AgentTransportError {
-            try skipIfBlocked(failure)
+            try await skipIfBlocked(failure, server: server)
             throw failure
         }
         _ = await T.drain(transport.stream(.chat, body: T.data("{}")))
@@ -196,7 +216,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         let server = try server([.init(status: "404 Not Found", headers: ["Content-Type": "application/json"],
                                        pieces: [T.data("{\"error\":\"model 'x' not found\"}")])])
         let outcome = await T.drain(transport(try T.ollama(port: server.port)).stream(.chat, body: T.data("{}")))
-        try skipIfBlocked(outcome.failure)
+        try await skipIfBlocked(outcome.failure, server: server)
         XCTAssertEqual(outcome.failure, .http(status: 404, body: T.data("{\"error\":\"model 'x' not found\"}")))
     }
 
@@ -206,7 +226,7 @@ final class HTTPTransportLoopbackTests: XCTestCase {
         let port = closed.port
         closed.stop()
         let outcome = await T.drain(transport(try T.ollama(port: port)).stream(.chat, body: T.data("{}")))
-        if outcome.failure == .insecure { try skipIfBlocked(.insecure) }
+        if outcome.failure == .insecure { try await skipIfBlocked(.insecure) }
         XCTAssertEqual(outcome.failure, .notRunning)
     }
 }
