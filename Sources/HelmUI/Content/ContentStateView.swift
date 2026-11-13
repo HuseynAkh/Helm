@@ -13,7 +13,7 @@ struct ContentStateView: View {
     var body: some View {
         if let state {
             switch state.style {
-            case .empty: ContentStateEmptyPage(state: state)
+            case .empty: ContentStateEmptyPage(state: state, perform: perform)
             case .problem, .waiting: ContentStateCard(state: state, perform: perform)
             }
         }
@@ -22,19 +22,31 @@ struct ContentStateView: View {
 
 private struct ContentStateEmptyPage: View {
     let state: ContentState
+    let perform: (ContentStateAction) -> Void
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: state.symbol)
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-            Text(state.title)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                Image(systemName: state.symbol)
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                Text(state.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .accessibilityElement(children: .combine)
+            // An empty page's way forward, such as "Find with AI" when a search found nothing: quiet, as the page is.
+            if !state.buttons.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(state.buttons, id: \.self) { button in
+                        Button(button.title) { perform(button.action) }.buttonStyle(.bordered)
+                    }
+                }
+                .padding(.top, 6)
+            }
         }
         .padding(16)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -113,8 +125,8 @@ private struct ContentStateCard: View {
     }
 }
 
-/// Holds the status page over the content area. An empty state lets clicks and drops through to the listing
-/// underneath, so you can still drop into an empty folder or right-click it for New Folder.
+/// Holds the status page over the content area. An empty state with no button lets clicks and drops through to the
+/// listing underneath, so you can still drop into an empty folder or right-click it for New Folder.
 @MainActor final class ContentStateHostingView: NSHostingView<ContentStateView> {
     var passesThrough = true
     required init(rootView: ContentStateView) { super.init(rootView: rootView) }
@@ -146,7 +158,8 @@ private struct ContentStateCard: View {
             state = next
             view.rootView = ContentStateView(state: next, perform: perform)
             view.isHidden = next == nil
-            view.passesThrough = next?.style == .empty
+            // An empty page with a button takes clicks, so the button can be pressed.
+            view.passesThrough = next?.style == .empty && next?.buttons.isEmpty != false
         }
         if changed {
             retries = 0

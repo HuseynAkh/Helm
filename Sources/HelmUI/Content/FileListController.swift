@@ -45,6 +45,8 @@ import HelmCore
     private(set) var fullReloads = 0
     /// How many folders closed on the list's own curve, rather than AppKit's.
     private(set) var conceals = 0
+    /// Why each result matched, while a search a model helped with has reasons. Each is its row's tooltip.
+    private var reasons: [ItemID: SearchReason] = [:]
 
     private enum Column: String { case name, size, dateModified, kind, location }
 
@@ -127,6 +129,18 @@ import HelmCore
         }
         showSortDirection(tab.snapshot.sort)
         applySelection(tab)
+        showReasons(tab.search?.assist?.reasons ?? [:])
+    }
+
+    /// Puts each result's reason on its row as the tooltip, and takes it off once there's none. The reasons can come
+    /// after the rows, so the rows on show are brought up to date here; rows made later get theirs as they're made.
+    private func showReasons(_ next: [ItemID: SearchReason]) {
+        guard next != reasons else { return }
+        reasons = next
+        outline.enumerateAvailableRowViews { rowView, row in
+            let tip = self.entry(atRow: row).flatMap { self.reasons[$0.id]?.line }
+            for column in 0..<rowView.numberOfColumns { (rowView.view(atColumn: column) as? NSView)?.toolTip = tip }
+        }
     }
 
     /// Whether a new snapshot changes only what's inside folders, so the list can move just those rows.
@@ -506,6 +520,7 @@ import HelmCore
             shown.isStarred = host?.starred.contains(entry.id) ?? false
             cell.apply(shown, isCut: cut.contains(entry.id), icons: host?.icons, textSize: host?.fileTextSize ?? 14,
                        scale: view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
+            cell.toolTip = reasons[entry.id]?.line
             return cell
         case .size: return textCell(outlineView, "size", entry.sizeText, alignment: .right, entry: entry)
         case .dateModified: return textCell(outlineView, "date", entry.dateText, alignment: .left, entry: entry)
@@ -530,6 +545,7 @@ import HelmCore
         let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? ListTextCell) ?? ListTextCell(identifier: id)
         cell.apply(text, alignment: alignment, textSize: (host?.fileTextSize ?? 14) - 1)
         cell.alphaValue = ContentLeafPresentation.opacity(isHidden: entry.isHidden, isCut: cut.contains(entry.id))
+        cell.toolTip = reasons[entry.id]?.line
         return cell
     }
 
@@ -640,6 +656,13 @@ import HelmCore
                            columnWidth: outline.tableColumns.first?.width ?? 0)
     }
     func isOpenForTesting(_ id: ItemID) -> Bool { outline.isItemExpanded(box(id)) }
+    /// The tooltip of an item's row, read from its name cell as AppKit would show it.
+    func toolTipForTesting(_ id: ItemID) -> String? {
+        let row = outline.row(forItem: box(id))
+        guard row >= 0 else { return nil }
+        outline.scrollRowToVisible(row)
+        return outline.view(atColumn: 0, row: row, makeIfNecessary: true)?.toolTip
+    }
     /// The row view on show for an item, if it has one now, so a scripted run can watch it move.
     func rowViewForTesting(_ id: ItemID) -> NSView? {
         let row = outline.row(forItem: box(id))

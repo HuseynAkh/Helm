@@ -7,7 +7,8 @@ import HelmCore
 extension BrowserWindowController {
     func renderContentState(_ tab: TabState) {
         let access = dependencies.permissions.fullDiskAccess
-        let state = statePage.preview ?? ContentStatePresentation.state(for: tab, home: dependencies.home, fullDiskAccess: access)
+        let state = statePage.preview ?? ContentStatePresentation.state(for: tab, home: dependencies.home, fullDiskAccess: access,
+                                                                        aiSearchReady: isAISearchReady)
         let isNew = state != statePage.state
         statePage.show(state, perform: { [weak self] in self?.performContentAction($0) },
                        retryWaiting: { [weak self] in self?.retryWaitingLoad() })
@@ -34,8 +35,8 @@ extension BrowserWindowController {
         case .grantAccess(let pane): dependencies.permissions.showGuide(pane)
         case .openTrashInFinder: dependencies.permissions.openTrashInFinder()
         case .goHome: perform(.home)
-        // The no-results page's button for searching with a model's help.
-        case .findWithAI: break
+        // The no-results page's button: the search field's spark goes on and the same words are sent at once.
+        case .findWithAI: findWithAI()
         }
     }
 
