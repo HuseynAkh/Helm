@@ -82,7 +82,7 @@ public enum AgentComposerIntent: Equatable, Sendable {
     private static let keyTrailers = CharacterSet(charactersIn: ".,;:!?…")
 
     /// Whether a word holds a key: the word itself, or a piece of it between quotes, brackets, `=` or `:`, with a
-    /// full stop, comma or the like taken off its end. A file name such as "sk-notes-from-2026-final.txt" holds a
+    /// full stop, comma or the like taken off its end. A file name such as "sk-test-notes-from-2026-final.txt" holds a
     /// dot inside, so it is never taken for a key.
     private static func holdsKey(_ word: Substring) -> Bool {
         if AgentKeyShape.looksLikeKey(String(word)) { return true }

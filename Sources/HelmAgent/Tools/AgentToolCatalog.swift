@@ -86,7 +86,7 @@ public enum AgentToolCatalog {
 /// The only words a model is ever given for something that went wrong with a tool. Never a message from the
 /// system, since those carry whole paths. A code is an error too, so it can be the failure of a `Result`.
 public enum AgentToolCode: String, Error, Sendable, Codable, CaseIterable {
-    case unknown_tool, bad_arguments, unknown_id, stale_id, outside_scope, not_found, not_allowed, hidden, inside_package,
-         link, not_downloaded, not_loaded, not_responding, disconnected, read_only, no_trash, name_not_allowed,
+    case unknown_tool, bad_arguments, unknown_id, stale_id, outside_scope, not_found, not_allowed, hidden, inside_package
+    case link, not_downloaded, not_loaded, not_responding, disconnected, read_only, no_trash, name_not_allowed,
          name_taken, listed_twice, too_many, limit_reached, in_use
 }

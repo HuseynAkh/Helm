@@ -151,8 +151,8 @@ final class AgentComposerIntentTests: XCTestCase {
         XCTAssertEqual(parse("sk-short"), .message("sk-short", folderCandidates: []))
         XCTAssertEqual(parse("rename skiing-photos-from-the-alps-2026"),
                        .message("rename skiing-photos-from-the-alps-2026", folderCandidates: []))
-        XCTAssertEqual(parse("open sk-my-notes-from-2026-final.txt"),
-                       .message("open sk-my-notes-from-2026-final.txt", folderCandidates: []))
+        XCTAssertEqual(parse("open sk-my-test-notes-from-2026-final.txt"),
+                       .message("open sk-my-test-notes-from-2026-final.txt", folderCandidates: []))
         XCTAssertEqual(parse("is sk-short. fine?"), .message("is sk-short. fine?", folderCandidates: []))
     }
 }

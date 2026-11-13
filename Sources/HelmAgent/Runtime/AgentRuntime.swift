@@ -103,10 +103,10 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             dropClient()
             let out = Array(probes.values)
             probes.removeAll()
-            let open = openSessions()
+            let held = openSessions()
             later {
                 for probe in out { await probe.shutdown() }
-                for session in open { await session.stop(); await session.clear() }
+                for session in held { await session.stop(); await session.clear() }
             }
         }
         announce()
@@ -124,8 +124,8 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             dropClient()
         }
         if movedAway {
-            let open = openSessions()
-            later { for session in open { await session.startOver() } }
+            let held = openSessions()
+            later { for session in held { await session.startOver() } }
         }
         announce()
     }
