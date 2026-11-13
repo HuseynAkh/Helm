@@ -48,3 +48,7 @@ reservation. Rejected binding itself does not consume the reservation.
 Construct executors with an explicit shared `TrashOriginRecording` store and
 supply `beginUndo(recordedOrigins:)` explicitly. Empty origins are appropriate
 only when the inverse contains no Trash restoration.
+
+`beginForward(command, group:)` reserves under a `HistoryGroup`: the reservation and the
+entry it leads to take the group's name, and the entry carries the group. Without a group
+nothing changes.

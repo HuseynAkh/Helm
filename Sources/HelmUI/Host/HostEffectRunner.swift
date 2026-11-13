@@ -233,23 +233,6 @@ import HelmSearch
     }
 }
 
-/// The path as the file system spells it. Finder also lands on the real folder, so paths never run through a link.
-public enum CanonicalPath {
-    public static func resolve(_ url: URL) -> URL {
-        let directory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-        guard let real = realpath(url.path, nil) else { return url }
-        defer { free(real) }
-        return URL(fileURLWithPath: String(cString: real), isDirectory: directory)
-    }
-    /// An item as the file system spells it: every folder on the way to it as the disk has it, through any link, and
-    /// its own name in the disk's case. Unlike `resolve`, a link stays a link, so showing one selects the link itself,
-    /// as Finder's reveal does.
-    public static func spelling(of url: URL) -> URL {
-        guard let path = try? url.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath else { return url }
-        return URL(fileURLWithPath: path, isDirectory: url.hasDirectoryPath)
-    }
-}
-
 func loadError(_ error: Error) -> LoadError {
     switch FileSystemError.mapping(error) {
     case .notFound: return .notFound

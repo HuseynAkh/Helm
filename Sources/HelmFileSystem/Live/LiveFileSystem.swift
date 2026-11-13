@@ -128,6 +128,8 @@ public struct LiveFileSystem: FileSystem {
     public func makeMonitor(for directory: URL) -> any DirectoryMonitor {
         FallbackMonitor(directory: directory, fileSystem: self)
     }
+    /// Reopens every lane a stalled change shut. False while a timed-out call is still out.
+    public func reopenAfterStall() async -> Bool { executor.reopenAll() }
     /// Native metadata supplies no-follow inode evidence for the bounded-race contract (O1-1).
     public func mutationPrecondition(at source: URL) async throws -> FileMutationPrecondition {
         let value = try await entry(at: source)

@@ -50,3 +50,24 @@ primitive APIs remain available for explicit callers, but OperationExecutor now
 refuses copy/move/Trash through this provider with verificationUnavailable. A
 reviewed native provider is needed to enable these operations safely. Do not
 implement the conditional API as a metadata read followed by a pathname mutation.
+
+## Downloads off, and reopening after a stall
+
+`DatalessGuard.off { }` marks a task. Every body that task hands to IOExecutor then runs
+with the macOS thread setting that refuses to fetch a file, or load a folder's names, kept
+in a cloud. The mark is read on the caller's task before the body is queued, because the
+queue's thread can't see it, and the thread's own setting is put back when the body
+returns. A read that would have needed a download fails with
+`FileSystemError.notDownloaded` (EDEADLK) and nothing is fetched. A task started inside the
+mark carries it, so a listing does too; a detached task doesn't. Tests show the setting on
+a queue thread and that it is put back. None can hold a file that is in a cloud only, so
+the refusal itself is still to be seen on a Mac with a cloud folder.
+
+`IOExecutor.reopenAll()` reopens every lane a timed-out mutation shut, and
+`LiveFileSystem.reopenAfterStall()` calls it. A lane stays shut while a timed-out call on
+it is still out, and the answer is then false. Call it only once the person has
+acknowledged the stalled change: that is the reconciliation `clearQuarantine` asks for.
+A lane shut by a timed-out read still reopens by itself when the read returns.
+
+`CanonicalPath` is the one place that asks for an item's real path. `realPath` answers nil
+when any part of the path is missing.

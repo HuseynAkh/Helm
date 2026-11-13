@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import HelmCore
+import HelmFileSystem
 import HelmPersistence
 import UniformTypeIdentifiers
 
