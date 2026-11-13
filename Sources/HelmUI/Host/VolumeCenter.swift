@@ -33,7 +33,8 @@ import HelmFileSystem
         Task { [weak self] in
             // A fixture run has its own home folder, and never looks at real mounts.
             let mounted = isLive ? ((try? await reader.volumes(showAll: showAll)) ?? []) : []
-            let cloud = await Task.detached { Self.cloudDrives(home: home) }.value
+            // With downloads off, so a provider's folder is never loaded just to show it in the sidebar.
+            let cloud = await Task.detached { DatalessGuard.withDownloadsOff { Self.cloudDrives(home: home) } }.value
             guard let self else { return }
             self.volumes = mounted + cloud
             self.changes.send(self.volumes)

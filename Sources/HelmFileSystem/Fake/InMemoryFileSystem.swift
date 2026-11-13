@@ -3,6 +3,8 @@ import Foundation
 import HelmCore
 
 /// Deterministic fake supports case-insensitive collisions, access failures and link cycles (B-039, B-109).
+/// It can also stand in for a cloud: an item can be on this Mac in name only, and with downloads off
+/// (`DatalessGuard`) reading such an item's bytes, or listing such a folder, fails as macOS fails it, with nothing read.
 public actor InMemoryFileSystem: FileSystem {
     private struct Node: Sendable {
         var identity = UUID()
@@ -11,6 +13,8 @@ public actor InMemoryFileSystem: FileSystem {
         var data: Data
         var target: URL?
         var modified: Date
+        /// Whether the item is on this Mac. Evicted: a file that isn't downloaded, or a folder whose names aren't loaded.
+        var cloud: CloudAvailability = .unknown
     }
     private var nodes: [String: Node] = [:]
     private var failures: [String: FileSystemError] = [:]
@@ -20,6 +24,11 @@ public actor InMemoryFileSystem: FileSystem {
     private var tick: TimeInterval = 0
     private var latencyNanoseconds: UInt64 = 0
     private var capacity = Int64.max
+    private var trashRefused: [String] = []
+    private var slowPlaces: [(prefix: String, seconds: Double)] = []
+    /// Every path whose bytes were read (a copy, or a move to another volume, of it or of a folder holding it) or
+    /// whose names were listed, in order. Details such as a name, a size or a date are not a read.
+    public private(set) var reads: [String] = []
     public init(caseSensitive: Bool = true) {
         self.init(caseSensitive: caseSensitive, volumeIDs: [:])
     }
@@ -39,6 +48,41 @@ public actor InMemoryFileSystem: FileSystem {
     private func delay() async throws {
         try Task.checkCancellation()
         if latencyNanoseconds > 0 { try await Task.sleep(nanoseconds: latencyNanoseconds) }
+    }
+    /// The latency every call has, then the time the place `url` is in takes to answer.
+    private func delay(for url: URL) async throws {
+        try await delay()
+        let path = key(url)
+        let seconds = slowPlaces.filter { Self.isAt(path, orInside: $0.prefix) }.max { $0.prefix.count < $1.prefix.count }?.seconds ?? 0
+        if seconds > 0 { try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+    }
+    /// Marks the item at `url` as on this Mac or not, as a cloud provider's items are. An evicted file isn't
+    /// downloaded and an evicted folder's names aren't loaded. Its name and details stay readable either way.
+    public func setCloudAvailability(_ availability: CloudAvailability, at url: URL) {
+        nodes[key(url)]?.cloud = availability
+    }
+    /// Items at or inside `url` can't be moved to the Trash from now on, as on a server or a disk with no Trash.
+    public func setTrashUnsupported(under url: URL) {
+        let path = key(url)
+        if !trashRefused.contains(path) { trashRefused.append(path) }
+    }
+    /// Reading the details or the names of anything at or inside `url` takes this long from now on, as in a place that
+    /// answers slowly. Where several are set, the deepest wins; zero takes it away.
+    public func setDelay(_ seconds: Double, under url: URL) {
+        let path = key(url)
+        slowPlaces.removeAll { $0.prefix == path }
+        if seconds > 0 { slowPlaces.append((path, seconds)) }
+    }
+    private static func isAt(_ path: String, orInside prefix: String) -> Bool {
+        prefix == "/" || path == prefix || path.hasPrefix(prefix + "/")
+    }
+    /// Refuses, with downloads off, to read the bytes of `source` when it or anything inside it isn't on this Mac,
+    /// and otherwise notes them as read. macOS would fetch them first, which downloads off forbids.
+    private func readBytes(of source: URL) throws {
+        let root = key(source)
+        let inside = nodes.filter { Self.isAt($0.key, orInside: root) }
+        if DatalessGuard.isOff, inside.values.contains(where: { $0.cloud == .evicted }) { throw FileSystemError.notDownloaded }
+        reads.append(contentsOf: inside.values.map(\.url.path).sorted())
     }
     public func setFailure(_ error: FileSystemError?, at url: URL) { failures[key(url)] = error }
     private func check(_ url: URL) throws {
@@ -70,19 +114,30 @@ public actor InMemoryFileSystem: FileSystem {
         }
         return FileEntry(url: value.url, kind: kind, isHidden: value.url.lastPathComponent.hasPrefix("."),
                          size: Int64(value.data.count), modificationDate: value.modified, volumeIdentifier: volumeID(for: value.url),
+                         cloudAvailability: value.cloud,
                          objectIdentity: FileObjectIdentity(scope: identityScope, object: value.identity.uuidString))
     }
-    public func entry(at url: URL) async throws -> FileEntry { try await delay(); return entry(try node(url)) }
+    public func entry(at url: URL) async throws -> FileEntry { try await delay(for: url); return entry(try node(url)) }
     // Internal fixture reader enables payload fidelity assertions without expanding FileSystem.
     func storedContents(at url: URL) throws -> Data { try node(url).data }
     public func exists(_ url: URL) async -> Bool { (try? node(url)) != nil }
     private func listing(_ directory: URL, options: EnumerationOptions) throws -> [FileEntry] {
         let parent = try resolved(directory)
         guard parent.kind == .directory || parent.kind == .package else { throw FileSystemError.other("Not a directory") }
+        let downloadsOff = DatalessGuard.isOff
+        // Its names are in the cloud only, and listing it would load them.
+        if downloadsOff && parent.cloud == .evicted { throw FileSystemError.notDownloaded }
         let parentKey = key(parent.url)
-        return nodes.values.filter {
+        let children = nodes.values.filter {
             key($0.url) != parentKey && key($0.url.deletingLastPathComponent()) == parentKey
-        }.map { value in
+        }.filter { value in
+            // With downloads off a child whose details can't be read is left out and counted, as the live disk does.
+            guard downloadsOff, (try? check(value.url)) == nil else { return true }
+            DatalessGuard.skippedChildren?.add()
+            return false
+        }
+        reads.append(directory.path)
+        return children.map { value in
             var display = value
             display.url = directory.appendingPathComponent(value.url.lastPathComponent)
             return entry(display, resolve: options.resolveSymlinkTargets)
@@ -93,7 +148,7 @@ public actor InMemoryFileSystem: FileSystem {
             let task = Task {
                 do {
                     try Task.checkCancellation()
-                    try await delay()
+                    try await delay(for: directory)
                     let values = try await listing(directory, options: options)
                     for start in stride(from: 0, to: values.count, by: max(1, options.batchSize)) {
                         try Task.checkCancellation()
@@ -140,6 +195,7 @@ public actor InMemoryFileSystem: FileSystem {
         guard key(destination) != sourceKey && !key(destination).hasPrefix(sourceKey + "/") else {
             throw FileSystemError.other("Recursive destination")
         }
+        try readBytes(of: source)
         let descendants = nodes.values.filter { key($0.url).hasPrefix(sourceKey + "/") }
         try insert(destination, kind: root.kind, data: root.data, target: root.target)
         for child in descendants.sorted(by: { $0.url.path.count < $1.url.path.count }) {
@@ -149,7 +205,13 @@ public actor InMemoryFileSystem: FileSystem {
         }
     }
     public func moveItem(at source: URL, to destination: URL) async throws {
+        try readBytesIfLeavingVolume(source, to: destination)
         try move(source, to: destination)
+    }
+    /// A move to another volume copies the bytes across; within one volume it only changes the name.
+    private func readBytesIfLeavingVolume(_ source: URL, to destination: URL) throws {
+        _ = try node(source)
+        if volumeID(for: source) != volumeID(for: destination.deletingLastPathComponent()) { try readBytes(of: source) }
     }
     private func move(_ source: URL, to destination: URL) throws {
         let root = try node(source); try check(destination)
@@ -187,7 +249,7 @@ public actor InMemoryFileSystem: FileSystem {
         if Task.isCancelled { throw ConditionalMutationError.cancelledBeforeMutation }
         guard try evidence(source) == precondition else { throw ConditionalMutationError.sourceChanged }
         switch mutation {
-        case .move(let destination): try move(source, to: destination); return destination
+        case .move(let destination): try readBytesIfLeavingVolume(source, to: destination); try move(source, to: destination); return destination
         case .copy(let destination): try copy(source, to: destination); return destination
         case .trash: return try trash(source)
         }
@@ -209,6 +271,8 @@ public actor InMemoryFileSystem: FileSystem {
     }
     public func trashItem(at url: URL) async throws -> URL? { try trash(url) }
     private func trash(_ url: URL) throws -> URL {
+        _ = try node(url)
+        if trashRefused.contains(where: { Self.isAt(key(url), orInside: $0) }) { throw FileSystemError.unsupported }
         let trash = URL(fileURLWithPath: "/.Trash")
         if nodes[key(trash)] == nil { try insert(trash, kind: .directory) }
         var destination = trash.appendingPathComponent(url.lastPathComponent)

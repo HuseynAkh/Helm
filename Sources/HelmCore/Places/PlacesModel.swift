@@ -25,7 +25,7 @@ public struct PlacesModel: Sendable {
         self.starred = Self.places(starred, kind: .starred, home: home)
         self.devices = VolumeFilter.filtered(volumes, showAll: showAllVolumes).map {
             Place(id: Place.id(.device, path: $0.url.path), name: $0.name, destination: .directory($0.url),
-                  iconName: $0.isCloud ? "cloud" : ($0.isRemovable ? "externaldrive" : "internaldrive"), kind: .device)
+                  iconName: Self.symbol(for: $0), kind: .device)
         }
     }
     public var allPlaces: [Place] {
@@ -96,6 +96,13 @@ public struct PlacesModel: Sendable {
             return candidates.filter { path.hasPrefix($0.1.hasSuffix("/") ? $0.1 : $0.1 + "/") }
                 .max { $0.1.count < $1.1.count }?.0.id
         }
+    }
+    /// A drive's symbol: a provider's cloud folder, a share on a server, a disk that can be unplugged, or one inside
+    /// the Mac. A server is drawn as one whether or not macOS calls it removable.
+    public static func symbol(for volume: VolumeInfo) -> String {
+        if volume.isCloud { return "cloud" }
+        if volume.isNetwork { return "network" }
+        return volume.isRemovable ? "externaldrive" : "internaldrive"
     }
     private static func places(_ urls: [URL], kind: Place.PlaceKind, home: URL) -> [Place] {
         var seen = Set<URL>()

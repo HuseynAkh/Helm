@@ -64,6 +64,9 @@ public struct LiveFileSystem: FileSystem {
         AsyncThrowingStream { continuation in
             let cancellation = EnumerationCancellation()
             let task = Task {
+                // Both belong to the task that made the listing, which this one inherits; the queue's thread can't
+                // see them, so they are read here.
+                let downloadsOff = DatalessGuard.isOff, skipped = DatalessGuard.skippedChildren
                 do {
                     try await executor.runReadWithProgress(volume: queueKey(directory)) { progress in
                         try cancellation.check()
@@ -101,6 +104,9 @@ public struct LiveFileSystem: FileSystem {
                                 // A vanished child is a removal, not an incomplete listing (F-035).
                                 if mapped == .notFound { continue }
                                 diagnostic(url, mapped)
+                                // With downloads off, a child macOS won't describe without fetching something is
+                                // left out and counted, and the rest of the folder is still listed.
+                                if downloadsOff { skipped?.add(); continue }
                                 throw mapped
                             }
                             if !options.includeHidden && value.isHidden { continue }
@@ -323,4 +329,16 @@ public struct LiveFileSystem: FileSystem {
             return value.int64Value
         }
     }
+}
+
+extension DatalessGuard {
+    /// Counts the children listings leave out because their details couldn't be read with downloads off.
+    final class SkippedChildren: @unchecked Sendable {
+        private let lock = NSLock()
+        private var total = 0
+        func add() { lock.lock(); total += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return total }
+    }
+    /// Where a listing made by this task counts the children it leaves out. Nil: nobody is counting.
+    @TaskLocal static var skippedChildren: SkippedChildren? = nil
 }
