@@ -14,6 +14,13 @@
 # the relaunch run is skipped unless HELM_SMOKE_ONLY_RESTORE=restore-steps.txt names steps for it.
 # HELM_SMOKE_BIN=<path to an app's binary, such as Helm.app/Contents/MacOS/Helm> runs that build instead of HelmDev,
 # such as a Release build made by Xcode, which links against a newer SDK than swift build does.
+# HELM_SMOKE_AGENT=live runs both launches with --live-agent: AI mode's shipped wiring, with keys, disk and servers
+# still stand-ins and no scripted model. The steps that need the scripted model (smoke.d/agent.txt and
+# agent.restore.txt) are left out and smoke.live/off.txt is added, so with AI mode off every other step still passes
+# and no model client is built.
+# HELM_SMOKE_AGENT=denied runs one launch with --live-agent and only smoke.live/denied.txt, which turns AI mode on
+# and picks Ollama. Its first request must get HelmDev killed by the sandbox (exit 137): the run then prints
+# PASS network denied, and fails any other way.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 sandbox=()
@@ -29,6 +36,17 @@ else
     sandbox=(sandbox-exec -f "$profile")
     echo "Network: blocked. Any try at it stops HelmDev."
 fi
+agent="${HELM_SMOKE_AGENT:-}"
+case "$agent" in
+    ""|live|denied) ;;
+    *) echo "error: HELM_SMOKE_AGENT is live or denied." >&2; exit 1 ;;
+esac
+if [ "$agent" = denied ] && [ ${#sandbox[@]} -eq 0 ]; then
+    echo "error: HELM_SMOKE_AGENT=denied needs the network-denied sandbox, so it can't run without it." >&2
+    exit 1
+fi
+launch=()
+[ -n "$agent" ] && launch=(--live-agent)
 scratch="${1:-/tmp/build-MAC-HANDOFF}"
 # Kept under .build, not /tmp: the path then has spaces and no OS-managed symlink, like a real home folder.
 root="$PWD/.build/host-smoke"
@@ -52,19 +70,24 @@ touch -t 202001020304 "$fix/home/Documents/notes.txt"
 for extra in scripts/rebuild/smoke.d/*.fixture.sh; do
     [ -f "$extra" ] && fix="$fix" root="$root" bash "$extra"
 done
-python3 - "$fix" "$root" <<'PY' || exit 1
+HELM_SMOKE_AGENT="$agent" python3 - "$fix" "$root" <<'PY' || exit 1
 import os, sys, urllib.parse
 fix, root = sys.argv[1], sys.argv[2]
 nfc, nfd = 'café.txt', 'café.txt'
 open(os.path.join(fix, 'home/Documents', nfc), 'w').write('nfc')
 os.makedirs(os.path.join(fix, 'home/Documents', 'Résumés'), exist_ok=True)
 import glob
-only = os.environ.get('HELM_SMOKE_ONLY')
+agent = os.environ.get('HELM_SMOKE_AGENT', '')
+# The steps that need the scripted model, which the live wiring doesn't have.
+scripted_only = {'scripts/rebuild/smoke.d/agent.txt', 'scripts/rebuild/smoke.d/agent.restore.txt'}
+only = 'scripts/rebuild/smoke.live/denied.txt' if agent == 'denied' else os.environ.get('HELM_SMOKE_ONLY')
 steps = open(only or 'scripts/rebuild/host_smoke_steps.txt', encoding='utf-8').read()
 if only and steps.rstrip('\n').split('\n')[-1].strip() != 'quit':
     steps = steps.rstrip('\n') + '\nquit\n'
 # Steps from scripts/rebuild/smoke.d/*.txt run before the final quit; *.restore.txt run after the relaunch.
 extras = [] if only else [f for f in sorted(glob.glob('scripts/rebuild/smoke.d/*.txt')) if not f.endswith('.restore.txt')]
+if agent == 'live' and not only:
+    extras = [f for f in extras if f not in scripted_only] + ['scripts/rebuild/smoke.live/off.txt']
 if extras:
     body = steps.rstrip('\n').split('\n')
     tail = body.pop() if body and body[-1].strip() == 'quit' else None
@@ -78,7 +101,8 @@ steps = (steps.replace('@FILEURL@', 'file://' + urllib.parse.quote(os.path.join(
 open(os.path.join(root, 'steps.txt'), 'w', encoding='utf-8').write(steps)
 only_restore = os.environ.get('HELM_SMOKE_ONLY_RESTORE')
 restore = open(only_restore or 'scripts/rebuild/host_smoke_restore_steps.txt', encoding='utf-8').read()
-for f in ([] if only else sorted(glob.glob('scripts/rebuild/smoke.d/*.restore.txt'))):
+for f in ([] if only else [f for f in sorted(glob.glob('scripts/rebuild/smoke.d/*.restore.txt'))
+                          if not (agent == 'live' and f in scripted_only)]):
     restore = restore.rstrip('\n') + '\n# From ' + f + '\n' + open(f, encoding='utf-8').read()
 restore = restore.replace('@FIX@', fix).replace('@SHOTS@', os.path.join(root, 'shots'))
 open(os.path.join(root, 'restore.txt'), 'w', encoding='utf-8').write(restore)
@@ -97,7 +121,7 @@ else
 fi
 # Exit 137 is SIGKILL. Inside the sandbox, that is what a try at the network gets.
 killed() {
-    if [ "$1" -eq 137 ] && [ ${#sandbox[@]} -gt 0 ]; then
+    if [ "$1" -eq 137 ] && [ ${#sandbox[@]} -gt 0 ] && [ "$agent" != denied ]; then
         echo "FAIL: HelmDev was killed in the $2, most likely for trying to use the network."
     fi
 }
@@ -108,8 +132,25 @@ finished() {
     echo "FAIL: the $2 stopped before its last step."
     return 1
 }
-${sandbox[@]+"${sandbox[@]}"} "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/steps.txt" 2>&1 | tee "$root/result.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
+${sandbox[@]+"${sandbox[@]}"} "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/steps.txt" ${launch[@]+"${launch[@]}"} 2>&1 | tee "$root/result.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
 code=${PIPESTATUS[0]}
+if [ "$agent" = denied ]; then
+    # The one way this run passes: the sandbox killed HelmDev at its first request, after every step before it passed.
+    chmod 644 "$fix/home/Locked/1-locked.txt" 2>/dev/null
+    for extra in scripts/rebuild/smoke.d/*.cleanup.sh; do
+        [ -f "$extra" ] && fix="$fix" root="$root" bash "$extra"
+    done
+    if [ "$code" -eq 137 ] && ! grep -q '^FAIL' "$root/result.log"; then
+        echo "PASS network denied: HelmDev was killed at its first request to the model provider. Log: $root/result.log"
+        exit 0
+    fi
+    if [ "$code" -eq 137 ]; then
+        echo "FAIL: a step failed before HelmDev's first request to the model provider."
+    else
+        echo "FAIL: HelmDev exited $code, not 137, so its request to the model provider wasn't stopped by the sandbox."
+    fi
+    exit 1
+fi
 killed "$code" "first run"
 # The first run ends with a real Quit, which exits 0 whatever happened before it, so failures are read from the log.
 grep -q '^FAIL' "$root/result.log" && code=1
@@ -117,7 +158,7 @@ if ! finished "$root/result.log" "first run" && (( code == 0 )); then code=1; fi
 if [ -n "${HELM_SMOKE_ONLY:-}" ] && [ -z "${HELM_SMOKE_ONLY_RESTORE:-}" ]; then
     : > "$root/restore.log"; restore_code=0
 else
-    ${sandbox[@]+"${sandbox[@]}"} "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/restore.txt" 2>&1 | tee "$root/restore.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
+    ${sandbox[@]+"${sandbox[@]}"} "$bin" --home "$fix/home" --support "$fix/support" --smoke "$root/restore.txt" ${launch[@]+"${launch[@]}"} 2>&1 | tee "$root/restore.log" | grep -E '^(FAIL|MSG|SMOKE_END)'
     restore_code=${PIPESTATUS[0]}
     killed "$restore_code" "restore run"
     grep -q '^FAIL' "$root/restore.log" && restore_code=1

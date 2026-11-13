@@ -501,6 +501,74 @@ class ShellTests(unittest.TestCase):
             self.assertIn('killed in the first run, most likely for trying to use the network', result.stdout)
             self.assertIn('First run exit 137', result.stdout)
 
+    def test_live_agent_run_leaves_out_the_scripted_steps(self):
+        # HELM_SMOKE_AGENT=live: both launches get --live-agent, the steps that need the scripted model are left out,
+        # and the AI-mode-off checks run after every other step file.
+        with tempfile.TemporaryDirectory() as directory:
+            record = Path(directory, 'record')
+            smoke, app = self.smoke_fixture(directory, f'echo "ARGS $*" >> "{record}"\ncat "$6" >> "{record}"\n'
+                                            'case "$6" in\n*restore.txt) echo "SMOKE_END PASS" ;;\n*) echo SMOKE_QUIT ;;\nesac\n')
+            extra = smoke.parent / 'smoke.d'
+            (extra / 'agent.txt').write_text('agent-scripted-step\n')
+            (extra / 'agent.restore.txt').write_text('agent-scripted-restore\n')
+            (extra / 'zz-other.txt').write_text('other-step\n')
+            (smoke.parent / 'smoke.live').mkdir()
+            (smoke.parent / 'smoke.live/off.txt').write_text('off-step\n')
+            env = dict(os.environ, HELM_SMOKE_BIN=str(app), HELM_SMOKE_NETWORK='allow', HELM_SMOKE_AGENT='live')
+            result = subprocess.run(['bash', str(smoke)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            text = record.read_text()
+            self.assertEqual(text.count('--live-agent'), 2, text)
+            self.assertNotIn('agent-scripted', text)
+            self.assertLess(text.index('other-step'), text.index('off-step'))
+            self.assertLess(text.index('off-step'), text.index('quit'))
+            # The usual run has the scripted steps, no --live-agent and no off steps.
+            record.unlink()
+            env.pop('HELM_SMOKE_AGENT')
+            result = subprocess.run(['bash', str(smoke)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            text = record.read_text()
+            self.assertNotIn('--live-agent', text)
+            self.assertIn('agent-scripted-step', text)
+            self.assertIn('agent-scripted-restore', text)
+            self.assertNotIn('off-step', text)
+            # Anything else is refused before a run starts.
+            result = subprocess.run(['bash', str(smoke)], env=dict(env, HELM_SMOKE_AGENT='other'), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('HELM_SMOKE_AGENT is live or denied', result.stderr)
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('sandbox-exec'), 'the network block needs sandbox-exec')
+    def test_denied_run_passes_only_when_the_sandbox_kills_the_app(self):
+        # HELM_SMOKE_AGENT=denied: one launch with --live-agent and the denied steps only. It passes when the first
+        # try at the network gets the app killed, and fails when the app gets to its end, or a step failed first.
+        connect = 'import socket\nsocket.socket().connect(("127.0.0.1", 9))\n'
+        stand_ins = (
+            (f'echo "PASS $*"\nexec /usr/bin/python3 -I -c \'{connect}\'\n', 0, 'PASS network denied'),
+            ('echo "PASS $*"\necho SMOKE_QUIT\n', 1, 'exited 0, not 137'),
+            (f'echo "FAIL early"\nexec /usr/bin/python3 -I -c \'{connect}\'\n', 1, 'a step failed before'),
+        )
+        for script, expected, line in stand_ins:
+            with tempfile.TemporaryDirectory() as directory:
+                smoke, app = self.smoke_fixture(directory, script)
+                (smoke.parent / 'smoke.live').mkdir()
+                (smoke.parent / 'smoke.live/denied.txt').write_text('denied-step\n')
+                env = {key: value for key, value in os.environ.items() if key != 'HELM_SMOKE_NETWORK'}
+                env.update(HELM_SMOKE_BIN=str(app), HELM_SMOKE_AGENT='denied')
+                result = subprocess.run(['bash', str(smoke)], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                self.assertIn(line, result.stdout)
+                self.assertNotIn('restore run', result.stdout)
+                if expected == 0:
+                    log = (smoke.parent.parent.parent / '.build/host-smoke/result.log').read_text()
+                    self.assertIn('--live-agent', log)
+                    self.assertIn('denied-step', (smoke.parent.parent.parent / '.build/host-smoke/steps.txt').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            smoke, app = self.smoke_fixture(directory, 'echo SMOKE_QUIT\n')
+            env = dict(os.environ, HELM_SMOKE_BIN=str(app), HELM_SMOKE_NETWORK='allow', HELM_SMOKE_AGENT='denied')
+            result = subprocess.run(['bash', str(smoke)], env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn('needs the network-denied sandbox', result.stderr)
+
     def test_release_workflow_checks_the_source_before_building(self):
         # The README says the privacy check stops a release, and the binary check can't see everything it can,
         # such as a read from a web address: the workflow runs both checks of the source before it builds.

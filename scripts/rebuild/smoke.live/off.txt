@@ -1,0 +1,13 @@
+# The shipped wiring with AI mode off, as every person starts (HELM_SMOKE_AGENT=live). These run after every other
+# step file: AI mode stayed off throughout, no model is ready, so the spark asks for the AI mode screen, and no model
+# client was ever built.
+setting-is aiModeEnabled false
+agent-client-built no
+agent-open
+agent-is closed
+ai-screen-is open
+ai-screen close
+ai-screen-is closed
+setting-is aiModeEnabled false
+agent-is closed
+agent-client-built no
