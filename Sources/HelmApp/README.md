@@ -114,3 +114,15 @@ The first occurrence of a valid name is preserved; repairs remain unique. New
 FrameIdentityTests exercise both reported displacement sequences and tab ownership.
 The UI PortableRunner also runs these app tests without duplicate dependency type
 metadata. macOS frame restoration behaviour still requires hosted verification.
+
+## AI mode's services
+
+`AppController+Agent.swift` makes one `AgentServices` for the app, shared by every window, Settings › AI and the
+AI mode screen. A real launch keeps keys in the login keychain (`KeychainSecretStore`), reads the home folder through
+`FileSystemAgentDisk` with `SystemStorageFactsReader`, hands a server address to macOS through `SystemServerConnector`,
+and makes its model client with `AgentLiveParts.makeClient`. A fixture run (`--home`, `--support`) keeps keys in
+memory, uses stand-in place facts, a connector that opens nothing and the scripted model, so no live client can be
+built. `--live-agent` on a fixture run keeps those stand-ins but swaps the scripted model for the shipped client
+factory; the network-denied smoke runs use it. In every run the runtime builds a client only while AI mode is on,
+the first time a request needs one, and lets it go when AI mode turns off, the provider changes or Helm quits.
+`followAIMode()` passes the AI mode setting and ai.json's choices to the runtime as they change.

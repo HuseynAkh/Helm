@@ -87,9 +87,22 @@ import HelmPersistence
         let agent = try XCTUnwrap(app.agentServicesForTesting)
         XCTAssertNil(agent.runtime.scriptedClientForTesting)
         app.environment?.settings.set(.bool(true), for: .aiModeEnabled)
-        XCTAssertEqual(agent.runtime.state, .notReady, "with no model client nothing is ever ready")
+        XCTAssertEqual(agent.runtime.state, .notReady, "with no provider chosen nothing is ready")
         XCTAssertEqual(agent.runtime.clientBuildCount, 0)
+        XCTAssertTrue(agent.secrets is MemorySecretStore, "keys stay in memory in a fixture run")
+        XCTAssertTrue(agent.disk is InjectedAgentDisk)
+        XCTAssertTrue(agent.storage is MemoryStorageFactsReader)
         XCTAssertTrue(agent.connector is MemoryServerConnector, "a fixture run never hands an address to macOS")
+        // The shipped client factory is in place: a local provider with a model is ready, and still nothing is built
+        // until a request needs it.
+        agent.config.update { $0.provider = "ollama"; $0.models["ollama"] = "stand-in:latest" }
+        if case .ready(_, _, "stand-in:latest", true) = agent.runtime.state {} else {
+            XCTFail("the live wiring makes a local provider ready: \(agent.runtime.state)")
+        }
+        XCTAssertEqual(agent.runtime.clientBuildCount, 0)
+        app.environment?.settings.set(.bool(false), for: .aiModeEnabled)
+        XCTAssertEqual(agent.runtime.state, .off)
+        XCTAssertEqual(agent.runtime.clientBuildCount, 0)
     }
 
     func testLiveAgentNeedsBothFixtureFolders() {

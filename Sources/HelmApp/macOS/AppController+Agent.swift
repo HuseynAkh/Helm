@@ -12,41 +12,50 @@ extension AppController {
     /// - A fixture run keeps keys in memory, answers from the scripted model (the fixture's `agent-script.json` when
     ///   there is one), reads the fixture home through the real agent disk with stand-in place facts and marks on
     ///   top, and its connector opens nothing. No live model client can be built.
-    /// - `--live-agent` is the same, but with no scripted model, so no model is ever ready.
-    /// - Any other launch keeps keys in memory and an empty disk, and hands a server address to macOS as it always
-    ///   has.
+    /// - `--live-agent` is the same, but with no scripted model: the client is the one a real launch builds, so a
+    ///   request goes to the transport that ships, which the smoke run's sandbox then stops.
+    /// - Any other launch keeps keys in the login keychain, reads the home folder through the real agent disk with
+    ///   macOS's own place facts, and hands a server address to macOS.
+    /// In every run the client is built only while AI mode is on, the first time a request needs it.
     func makeAgentServices(_ environment: AppEnvironment) -> AgentServices {
         let home = environment.directories.home
-        let secrets = MemorySecretStore()
+        // The folder rules and the place facts work on the canonical home, as the disk spells every folder in it.
+        let canonicalHome = CanonicalPath.realPath(home.path) ?? home.path
+        let canonicalURL = URL(fileURLWithPath: canonicalHome, isDirectory: true)
+        let secrets: any AgentSecretStoring
         let disk: any AgentDisk
-        let storage: MemoryStorageFactsReader
+        let storage: any StorageFactsReading
+        let connector: any ServerConnecting
         if options.isIsolated {
-            // The smoke verbs name folders by their canonical paths, so the place rules are given the same spelling.
-            let canonicalHome = CanonicalPath.realPath(home.path) ?? home.path
-            storage = MemoryStorageFactsReader(home: URL(fileURLWithPath: canonicalHome, isDirectory: true))
-            let base = FileSystemAgentDisk(fileSystem: environment.fileSystem, storage: storage, home: canonicalHome)
+            let facts = MemoryStorageFactsReader(home: canonicalURL)
+            let base = FileSystemAgentDisk(fileSystem: environment.fileSystem, storage: facts, home: canonicalHome)
+            secrets = MemorySecretStore()
+            storage = facts
             disk = InjectedAgentDisk(base: base, allowedPrefix: canonicalHome)
+            connector = MemoryServerConnector()
         } else {
-            storage = MemoryStorageFactsReader(home: home)
-            disk = MemoryAgentDisk(home: home.path)
+            let facts = SystemStorageFactsReader(home: canonicalURL)
+            secrets = KeychainSecretStore()
+            storage = facts
+            disk = FileSystemAgentDisk(fileSystem: environment.fileSystem, storage: facts, home: canonicalHome)
+            connector = SystemServerConnector()
         }
+        let scripted = options.isIsolated && !options.usesLiveAgent ? scriptedModel(home: home) : nil
         // The home as the windows spell a folder's path (standardized, so /private/tmp reads /tmp). The folder rules
         // also hold the home's canonical path, so a folder spelled either way is found inside it.
         let parts = AgentRuntimeParts(secrets: secrets, disk: disk, home: home.standardizedFileURL.path,
                                       supportFolder: environment.directories.applicationSupport.path,
-                                      clock: environment.clock, buildStamp: Self.buildStamp(),
-                                      scripted: options.usesLiveAgent ? nil : scriptedModel(home: home),
+                                      clock: environment.clock, buildStamp: Self.buildStamp(), scripted: scripted,
+                                      makeClient: scripted == nil ? AgentLiveParts.makeClient : nil,
                                       makeSession: AgentLiveParts.makeSession)
-        let connector: any ServerConnecting = options.isIsolated ? MemoryServerConnector() : SystemServerConnector()
         return AgentServices(runtime: AgentRuntime(parts: parts), config: environment.aiConfig, secrets: secrets, disk: disk,
                              storage: storage, connector: connector)
     }
 
-    /// The scripted model. A fixture run takes its answers from `agent-script.json` beside the fixture home when that
-    /// file is there and reads as a script; otherwise, and in any other run, it keeps the built-in answers.
+    /// The scripted model of a fixture run. It takes its answers from `agent-script.json` beside the fixture home when
+    /// that file is there and reads as a script, and keeps the built-in answers otherwise.
     private func scriptedModel(home: URL) -> ScriptedModelClient {
         let scripted = ScriptedModelClient()
-        guard options.isIsolated else { return scripted }
         let file = home.deletingLastPathComponent().appendingPathComponent(Self.fixtureScriptName).path
         if let text = try? String(contentsOfFile: file, encoding: .utf8) { try? scripted.load(Data(text.utf8)) }
         return scripted
@@ -63,6 +72,12 @@ extension AppController {
         runtime.setOn(environment.settings.snapshot.bool(.aiModeEnabled))
         _ = environment.settings.changes.subscribe { settings in runtime.setOn(settings.bool(.aiModeEnabled)) }
         _ = agent.config.changes.subscribe { config in runtime.configure(config) }
+    }
+
+    /// Quitting lets go of the model client and its cached key, as turning AI mode off does, without changing the
+    /// setting. A request still out ends with the process.
+    public func applicationWillTerminate(_ notification: Notification) {
+        dependencies?.agent.runtime.setOn(false)
     }
 
     /// Which build is running, as the executable's size and modification date. A key saved by another build may need
