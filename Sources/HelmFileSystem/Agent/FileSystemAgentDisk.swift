@@ -22,19 +22,36 @@ public struct FileSystemAgentDisk: AgentDisk {
         self.fileSystem = fileSystem; self.storage = storage; self.home = home; self.canonical = canonical
     }
 
+    /// A link in an allowed place that leads out of the allowed places is not resolved: its target is the answer,
+    /// as text, so the scope gate refuses it by its place and nothing under /net is ever asked about.
     public func canonicalPath(_ path: String) async -> String? {
         await DatalessGuard.off {
-            let canonical = self.canonical, fileSystem = self.fileSystem, lanes = self.lanes
+            let canonical = self.canonical, fileSystem = self.fileSystem, lanes = self.lanes, home = self.home
             let lane = SystemStorageFactsReader.lane(of: path, home: home)
             // One limit for the whole question: resolving the path and then seeing what it names.
             let found = await Self.answer(idleSeconds: Self.answerSeconds) { _ -> String? in
-                guard let resolved = try? await lanes.runRead(volume: lane, { canonical(path) }) else { return nil }
-                // The answer names something the file system can see, and nothing else.
-                return await fileSystem.exists(URL(fileURLWithPath: resolved)) ? resolved : nil
+                let answer = try? await lanes.runRead(volume: lane, { () -> Resolution in
+                    let homes = [home] + [CanonicalPath.realPath(home)].compactMap { $0 }
+                    let leaving = CanonicalPath.linkLeaving(path) { place in
+                        homes.contains { AgentItemFilter.area(ofPath: place, home: $0) != .refused }
+                    }
+                    if let leaving { return .leaves(leaving) }
+                    return canonical(path).map(Resolution.resolved) ?? .missing
+                })
+                switch answer {
+                case .leaves(let target)?: return target
+                case .resolved(let resolved)?:
+                    // The answer names something the file system can see, and nothing else.
+                    return await fileSystem.exists(URL(fileURLWithPath: resolved)) ? resolved : nil
+                case .missing?, nil: return nil
+                }
             }
             return found ?? nil
         }
     }
+
+    /// What resolving a path came to.
+    private enum Resolution: Sendable { case resolved(String), leaves(String), missing }
 
     public func item(at path: String) async -> AgentDiskItem? {
         await DatalessGuard.off {

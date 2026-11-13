@@ -174,6 +174,46 @@ final class FileSystemAgentDiskTests: XCTestCase {
         XCTAssertNil(gone, "the file system can't see it")
     }
 
+    func testALinkFromHomeThatLeadsUnderNetIsNeverResolved() async throws {
+        let temp = try TempDirectory()
+        defer { try? temp.remove() }
+        let home = temp.url.appendingPathComponent("home")
+        let inside = home.appendingPathComponent("Projects")
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: home.appendingPathComponent("srv").path, withDestinationPath: "/net/host.example/share")
+        try FileManager.default.createSymbolicLink(atPath: home.appendingPathComponent("up").path, withDestinationPath: String(repeating: "../", count: 40) + "net/host.example")
+        try FileManager.default.createSymbolicLink(atPath: home.appendingPathComponent("Work").path, withDestinationPath: "Projects")
+        let resolved = StorageResolvedPaths()
+        let disk = FileSystemAgentDisk(fileSystem: LiveFileSystem(), storage: MemoryStorageFactsReader(home: home), home: home.path,
+                                       canonical: { path in resolved.add(path); return CanonicalPath.realPath(path) })
+        let realHome = try XCTUnwrap(CanonicalPath.realPath(home.path))
+
+        let srv = await disk.canonicalPath(home.appendingPathComponent("srv/x").path)
+        XCTAssertEqual(srv, "/net/host.example/share", "the link's target, as text, for the gate to refuse by its place")
+        let up = await disk.canonicalPath(home.appendingPathComponent("up").path)
+        XCTAssertEqual(up, "/net/host.example")
+        XCTAssertFalse(resolved.paths.contains { $0.contains("srv") || $0.hasSuffix("/up") }, "neither link was resolved")
+        XCTAssertEqual(AgentItemFilter.area(ofPath: try XCTUnwrap(srv), home: realHome), .refused)
+
+        // A link that stays in the home folder, and the links on the way to it, are resolved as before.
+        let work = await disk.canonicalPath(home.appendingPathComponent("Work").path)
+        XCTAssertEqual(work, realHome + "/Projects")
+    }
+
+    func testTheLinkWalkFollowsLinksOutsideAllowedPlacesAndStopsAtOneThatLeavesThem() throws {
+        let temp = try TempDirectory()
+        defer { try? temp.remove() }
+        let allowed = try XCTUnwrap(CanonicalPath.realPath(temp.url.path)) + "/home"
+        try FileManager.default.createDirectory(atPath: allowed + "/A", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: allowed + "/A/out", withDestinationPath: "/System")
+        try FileManager.default.createSymbolicLink(atPath: allowed + "/A/back", withDestinationPath: "../A")
+        let isAllowed = { (path: String) in path == allowed || path.hasPrefix(allowed + "/") }
+        // The temporary folder is reached through a link on a Mac; that link is outside the allowed place, so it is followed.
+        XCTAssertNil(CanonicalPath.linkLeaving(temp.url.path + "/home/A/back/back", isAllowed: isAllowed))
+        XCTAssertEqual(CanonicalPath.linkLeaving(temp.url.path + "/home/A/back/out/Library", isAllowed: isAllowed), "/System")
+        XCTAssertNil(CanonicalPath.linkLeaving(temp.url.path + "/home/Gone/out", isAllowed: isAllowed), "a missing part is left to realpath")
+    }
+
     func testAStuckCloudFolderHoldsUpNoOtherFolder() async throws {
         let gate = DispatchSemaphore(value: 0)
         defer { gate.signal() }
@@ -279,6 +319,13 @@ private final class StorageMetadataReads: @unchecked Sendable {
 }
 
 /// What threads saw, gathered from wherever they ran.
+private final class StorageResolvedPaths: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+    func add(_ path: String) { lock.lock(); seen.append(path); lock.unlock() }
+    var paths: [String] { lock.lock(); defer { lock.unlock() }; return seen }
+}
+
 private final class StorageThreadPolicies: @unchecked Sendable {
     private let lock = NSLock()
     private var seen: [Bool] = []
