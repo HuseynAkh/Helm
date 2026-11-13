@@ -4,8 +4,8 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, GUARDED, MAY_BE_ABSENT, NETWORK_FILES, ONE_FILE, check,
-                           file_problems, layers, main)
+from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, DECLARED, GUARDED, MAY_BE_ABSENT, NETWORK_FILES, ONE_FILE,
+                           check, file_problems, layers, main)
 
 DTD = '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
 
@@ -238,7 +238,7 @@ public final class MemoryAgentDisk: AgentDisk, @unchecked Sendable {
     public func addLink(_ path: String, to target: String) {}
     public func remove(_ path: String) {}
 }
-disk.addLink("/home/helm/a", to: "/home/helm/b"); disk.remove("/home/helm/a"); remove(path)
+disk.addLink("/home/helm/a", to: "/home/helm/b"); disk.remove("/home/helm/a"); self.remove(path)
 await scope.remove(alias: "r2"); try secrets.remove(id); try secrets.save(secret, for: id)
 let listing = await disk.list(folder, limit: 500, idleSeconds: 3); let item = await disk.item(at: path)
 let canonical = await disk.canonicalPath(path); let facts = await disk.storage(of: folder)
@@ -248,6 +248,13 @@ let reopened = reopen(thread); let spread = spread(4); let thread = thread(3); l
 let moveItems = proposal.moves.flatMap(\\.items); let copyItems = proposal.copies.flatMap(\\.items)
 let seconds = AgentLimits.diskSeconds; let section = Section.one; let secrets: any AgentSecretStoring = MemorySecretStore()
 let environment = ProcessInfo.processInfo.environment["HOME"]
+public enum AgentScopeRefusal: String, Error, Sendable { case notFound, notAFolder, system, hidden, insidePackage }
+let input = AgentTurnInput(system: system, tools: tools, history: history); let prompt = AgentPrompt.system
+private var streamTask: Task<Void, Never>?; let downloadTask = Task { await next() }
+streamTask = Task { await run() }; self.streamTask?.cancel(); if let task = streamTask { task.cancel() }
+try secrets.remove(id); scope.remove(alias: alias); items.remove(at: 0); let none = remove()
+for try await line in stream.bytes.lines { reader.read(line) }; let count = report.lines.count
+func evaluate(trust: Level) {}; evaluate(trust: .high)
 // The model may read (and name back) what a folder holds. A link (never followed) is listed as a link, and the
 // system (macOS) decides what a folder may show. Nothing is open (or kept open) between requests.
 /// Process the lines one at a time. Rename (one item, one name) keeps a file's extension.
@@ -354,7 +361,8 @@ class PrivacyCheckTests(unittest.TestCase):
                      'LPMetadataProvider().startFetchingMetadata(for: u) { _, _ in }', 'AsyncImage(url: u)',
                      'for try await byte in u.resourceBytes {}', 'let d = try Data.init(contentsOf: u)',
                      'let s: String = try .init(contentsOf: u)', 'NSImage(byReferencing: u)',
-                     'NSAttributedString(html: d, documentAttributes: nil)']:
+                     'NSAttributedString(html: d, documentAttributes: nil)', 'Data(contentsOf/* */: u)',
+                     'let d = try Data(contentsOf /** u */ : u)']:
             self.assertTrue(self.swift(code), code)
 
     def test_telemetry_identifiers_logging_and_hand_offs_fail(self):
@@ -377,10 +385,13 @@ class PrivacyCheckTests(unittest.TestCase):
                      'IOBluetooth', 'ExternalAccessory', 'IOKit', 'OSAKit', 'ScriptingBridge', 'FileProvider', 'NetFS',
                      'DiskArbitration']:
             self.expect('import', f'import {name}', fails=(CORE, HEADER))
+            self.expect('import', f'import\n{name}', fails=(CORE, HEADER))
+            self.expect('import', f'import /* x */ {name}', fails=(CORE, HEADER))
             self.expect('import', f'import {name}Extras\n// import {name}', passes=(CORE, HEADER))
         # However the import is written. Sources/HelmAgent may import three modules and no others.
         written = (['import %s', '@preconcurrency import %s', '@_exported @testable import %s', 'import Foundation; import %s',
-                    '    import %s', 'import\t%s']
+                    '    import %s', 'import\t%s', 'import\n%s', 'import /* x */ %s', 'import // x\n    %s',
+                    '@preconcurrency\nimport %s', 'public /* x */ import %s']
                    + [access + ' import %s' for access in ('public', 'package', 'internal', 'fileprivate', 'private')]
                    + ['import ' + kind + ' %s.Thing'
                       for kind in ('struct', 'class', 'enum', 'func', 'var', 'let', 'typealias', 'protocol')])
@@ -600,6 +611,18 @@ class PrivacyCheckTests(unittest.TestCase):
                 ('session-shape', 'configuration.httpCookieStorage = .shared'),
                 ('session-shape', 'let session = type(of: session).shared'),
                 ('session-shape', 'let session: URLSession = .`shared`'),
+                ('session-shape', 'let (data, _) = try await session.`data`(from: url)'),
+                ('session-shape', 'let (file, _) = try await session.`download`(from: url)'),
+                ('session-shape', 'let (bytes, _) = try await session . `bytes` (from: url)'),
+                ('session-shape', '_ = (URLSession.self as AnyObject).value(forKey: "shared" + "Session")'),
+                ('session-shape', 'configuration.setValue(nil, forKey: "urlCache")'),
+                ('session-shape', '_ = session.perform(NSSelectorFromString("x"))'),
+                ('session-shape', 'let pick = Selector(("sharedSession"))'), ('session-shape', 'let pick = #selector(f)'),
+                ('session-shape', 'URLCredential(trust/* */: trust)'), ('session-shape', 'final class HelmSession: URLSession {}'),
+                ('session-shape', 'extension URLSession { static var helm: URLSession { .shared } }'),
+                ('session-shape', 'extension URLSessionConfiguration {}'),
+                ('session-shape', 'typealias Credential = URLCredential'),
+                ('url-other', 'for try await line in url.lines { print(line) }'),
                 ('web-address', 'static let other = "https://example.invalid/v1"'),
                 ('web-address', 'static let claudeBase = "https://api.anthropic.com"'),
                 ('web-address', 'let local = "http://127.0.0.1:11434"'),
@@ -654,8 +677,24 @@ class PrivacyCheckTests(unittest.TestCase):
                      'let make = URLSessionConfiguration.background', 'try await session.download(resumeFrom: data)',
                      'let key = "sharedSession"',
                      'let key = "defaultSessionConfiguration"', 'let key = "backgroundSessionConfigurationWithIdentifier:"',
-                     'let key = "credentialForTrust:"']:
+                     'let key = "credentialForTrust:"', 'let (data, _) = try await HelmSession.shared.data(from: url)',
+                     'let (bytes, _) = try await session.bytes(from: url)', 'try await session.`data`(from: url)',
+                     'URLCredential(trust /* it */ : trust)', 'let make = session.`dataTask`',
+                     'let start = session.streamTask', 'let name = "streamTask"', 'items.dataTask (with: url)']:
             self.expect('session-shape', code, fails=(CORE, HEADER, LOOP, TRANSPORT))
+        # A property may have a task-making call's name, and a parameter may be called trust.
+        for code in ['private var streamTask: Task<Void, Never>?', 'let downloadTask = Task { await fetchThumbnails() }',
+                     'self.streamTask = Task { await run() }', 'self.streamTask?.cancel()', 'if let task = streamTask { task.cancel() }',
+                     'func evaluate(trust: Level) {}; evaluate(trust: .high)', '// The streamTask is cancelled on stop.',
+                     'let data = try PropertyListSerialization.data(fromPropertyList: tags, format: .xml, options: 0)']:
+            self.expect('session-shape', code, passes=(CORE, HEADER, LOOP, TRANSPORT))
+        for code in ['func lines(_ bytes: FileHandle.AsyncBytes) {}', 'for try await line in handle.bytes.lines {}',
+                     'let count = report.lines.count', 'if fit.lines == 1 { return }']:
+            self.expect('url-session', code, passes=(CORE, HEADER, LOOP))
+            self.expect('url-other', code, passes=(CORE, HEADER, LOOP, TRANSPORT))
+        for code in ['for try await line in url.lines { print(line) }', 'let lines = fileURL.lines',
+                     'for try await line in URL(string: text)!.lines {}', 'let first = try await address.lines.first { _ in true }']:
+            self.expect('url-other', code, fails=(CORE, HEADER, LOOP, TRANSPORT))
         for code in ['NSURLRequest(url: url)', 'NSMutableURLRequest(url: url)', 'let name = "NSURLSession"',
                      'NSURLConnection(request: request, delegate: nil)', 'NSURLDownload(request: request, delegate: nil)',
                      'URLCache(memoryCapacity: 0, diskCapacity: 0)', 'final class Loader: URLProtocol {}',
@@ -771,10 +810,15 @@ class PrivacyCheckTests(unittest.TestCase):
         writes = ['unlink', 'unlinkat', 'creat', 'mkdir', 'mkdirat', 'rmdir', 'symlink', 'symlinkat', 'link', 'linkat', 'truncate',
                   'ftruncate', 'chmod', 'fchmod', 'lchmod', 'fchmodat', 'chflags', 'fchflags', 'lchflags', 'copyfile', 'fcopyfile',
                   'clonefile', 'fclonefileat', 'clonefileat', 'removefile', 'system', 'popen', 'fork', 'vfork', 'execl', 'execle',
-                  'execlp', 'execv', 'execve', 'execvp', 'execvP', 'exect', 'fexecve', 'syscall']
+                  'execlp', 'execv', 'execve', 'execvp', 'execvP', 'exect', 'fexecve', 'syscall', 'chown', 'lchown', 'fchown',
+                  'fchownat', 'utimes', 'futimes', 'lutimes', 'futimens', 'utimensat', 'setattrlist', 'fsetattrlist',
+                  'exchangedata', 'mkstemp', 'mkstemps', 'mkdtemp', 'mkdtemps', 'mkostemp', 'mkostemps', 'mkfifo', 'mknod',
+                  'remove']
         reads = ['fopen', 'freopen', 'fdopen', 'open', 'openat', 'open_dprotected_np', 'read', 'pread', 'readv', 'preadv', 'mmap',
                  'opendir', 'fdopendir', 'readdir', 'readdir_r', 'scandir', 'fts_open', 'ftw', 'nftw', 'stat', 'lstat', 'fstat',
-                 'fstatat', 'realpath', 'readlink', 'readlinkat']
+                 'fstatat', 'realpath', 'readlink', 'readlinkat', 'statfs', 'fstatfs', 'statvfs', 'fstatvfs', 'getattrlist',
+                 'fgetattrlist', 'getattrlistat', 'getattrlistbulk', 'getdirentries', 'access', 'faccessat', 'glob', 'pathconf',
+                 'fpathconf']
         for rule, names in (('agent-no-write', writes), ('agent-no-read', reads)):
             for name in names:
                 for code in [f'{name}(path)', f'_ = {name}(path)', f'if {name}(path) == 0 {{ return }}', f'`{name}`(path)',
@@ -797,6 +841,43 @@ class PrivacyCheckTests(unittest.TestCase):
                 self.fails('agent-no-read', LOOP, code)
             for code in [f'{module}.rename(old, new)', f'{module}.rename (old, new)', f'let call = "{module}.rename(old, new)"']:
                 self.fails('agent-no-write', LOOP, code)
+
+    def test_c_calls_handed_on_by_name_fail(self):
+        for rule, code in [
+                ('agent-no-write', '_ = path.withCString(unlink)'), ('agent-no-write', '_ = (unlink)(path)'),
+                ('agent-no-write', 'let move = rename; _ = move(old, new)'), ('agent-no-write', 'let gone = paths.map(remove)'),
+                ('agent-no-write', 'let call = `unlink`'), ('agent-no-write', 'run(first, unlink)'),
+                ('agent-no-write', 'run(handler: chmod)'), ('agent-no-write', 'let call = Darwin.unlink'),
+                ('agent-no-read', 'let look = lstat; _ = look(path, &info)'), ('agent-no-read', '_ = path.withCString(access)'),
+                ('agent-no-read', 'let call = open')]:
+            self.fails(rule, LOOP, code)
+            self.passes(rule, HEADER, code)
+        # A name declared, given a value, written as a label, read as a member or listed after `case`, a value passed
+        # under its own name, and the calls Swift doesn't offer.
+        for code in ['public var system: String', 'init(system: String) { self.system = system }',
+                     'let input = AgentTurnInput(system: system, tools: tools)', 'let open = AgentToolCode.link',
+                     'case notFound, system, hidden', 'enum E { case link, other }', 'if let link { use(link.name) }',
+                     'let link: AgentToolCode = .link; let same = code == link', 'guard let read else { return }',
+                     'let call = self.unlink', 'if link != nil { return }', 'func remove(_ id: String) {}',
+                     'let text = "the call unlink"', '// unlink is the call']:
+            self.passes('agent-no-write', LOOP, code)
+            self.passes('agent-no-read', LOOP, code)
+        for code in ['try data.`write`(to: url)', 'try data . write(to: url)', 'try `write`(to: url)',
+                     'try NSFileVersion.removeOtherVersionsOfItem(at: url)',
+                     'NSAppleEventDescriptor(bundleIdentifier: app).sendEvent(options: [], timeout: 1)',
+                     'remove(path)', '_ = remove(path)', 'remove (path)', 'Darwin.remove(path)', '// remove(path) is the call']:
+            self.expect('agent-no-write', code, fails=(LOOP, TRANSPORT), passes=[HEADER])
+        for code in ['self.remove(path)', 'try secrets.remove(id)', 'items.remove(at: 0)', 'remove()',
+                     'func remove(_ path: String) {}', '// To remove (a file, a folder) is one step.']:
+            self.passes('agent-no-write', LOOP, code)
+        for code in ['let info = Bundle(path: path)?.infoDictionary', 'let app = Bundle(url: url)',
+                     'let app = Bundle.init(path: path)', 'let item = NSMetadataItem(url: url)',
+                     '_ = (path as NSString).completePath(into: nil, caseSensitive: true, matchesInto: nil, filterTypes: nil)',
+                     'let real = try URL(resolvingAliasFileAt: url)', 'let mark = try url.bookmarkData()',
+                     'let back = try URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)',
+                     'let app = Bundle(path /* it */: path)']:
+            self.expect('agent-no-read', code, fails=(LOOP, TRANSPORT), passes=[HEADER])
+        self.passes('agent-no-read', LOOP, 'let own = Bundle.main; let other = Bundle(for: AgentSession.self)')
 
     def test_c_rename_is_told_from_the_plan_step(self):
         for code in ['enum E { case rename(X, to: Y) }', 'case rename(AgentPlanItem, to: ValidFileName)',
@@ -837,6 +918,10 @@ class PrivacyCheckTests(unittest.TestCase):
     def test_panel_draws_text_plain_and_opens_nothing(self):
         for relative in (THREAD, 'Sources/HelmUI/Agent/AgentPlanCard.swift'):
             self.assertEqual(self.planted(relative, PANEL_CODE), [], relative)
+        for code in ['textView.isAutomaticLinkDetectionEnabled = false; other()', 'view.isAutomaticLinkDetectionEnabled = false }',
+                     'view.isAutomaticLinkDetectionEnabled = false // off', 'if code == .link { count += 1 }',
+                     'let skipped = plan.leftOut[.link] ?? 0', 'switch code { case .link: return 1 default: return 0 }']:
+            self.passes('agent-ui-plain', THREAD, code)
         for code in [
                 'Text(LocalizedStringKey(reply))', 'let text = try AttributedString(markdown: reply)',
                 'Link("Open", destination: url)', 'let detector = try NSDataDetector(types: types)',
@@ -857,7 +942,16 @@ class PrivacyCheckTests(unittest.TestCase):
                 'LSOpenCFURLRef(url as CFURL, nil)', 'let tool = Process()', 'let tool: Process = .init()',
                 'Text(.init(reply), tableName: nil)', 'let words: LocalizedStringResource = "Open"',
                 'Text(.init(stringInterpolation: parts))', 'textView.toggleAutomaticDataDetection(nil)', 'let tool = NSTask()',
-                'let share = NSSharingService.sharingServices(forItems: [url])', 'textView.isAutomaticDataDetectionEnabled = on']:
+                'let share = NSSharingService.sharingServices(forItems: [url])', 'textView.isAutomaticDataDetectionEnabled = on',
+                'Text(.init((reply)))', 'Text(.init( ( reply ) ))', '`Link`("x", destination: url)',
+                'let jump: `Link`<Text> = .init("x", destination: url)',
+                'var text = AttributedString(reply); text.link = URL(string: reply)', 'text[range].link = url',
+                'let container = AttributeContainer().link(url)', 'NSAttributedString(string: reply, attributes: [.link: url])',
+                'let key = NSAttributedString.Key.link', 'let kind = AttributeScopes.FoundationAttributes.LinkAttribute.self',
+                'view.isAutomaticLinkDetectionEnabled = false || true', 'view.isAutomaticLinkDetectionEnabled = false ? a : b',
+                'view.enabledTextCheckingTypes = NSTextCheckingResult.CheckingType.link.rawValue', 'view.checkTextInDocument(nil)',
+                'NSAttributedString(data: d, options: [.documentType: NSAttributedString.DocumentType.html], documentAttributes: nil)',
+                'NSPerformService("Mail/Send Selection", board)']:
             # The rest of HelmUI opens files and help pages as before.
             self.expect('agent-ui-plain', code,
                         fails=(THREAD, 'Sources/HelmUI/Agent/AgentPanelView.swift', 'Sources/HelmUI/Agent/AgentPlanCard.swift',
@@ -942,14 +1036,38 @@ class PrivacyCheckTests(unittest.TestCase):
                     f'let kind = {kind}.self',
                     f'typealias Made = {kind}',
                     f'typealias Made = HelmAgent.{kind}',
-                    f'// {kind}{arguments}',                                            # a comment and a string count too
-                    f'/// The label {label}: belongs to one file.',
-                    f'let text = "{label}:"']:
+                    'let value = ' + kind + arguments.replace(label + ':', label + '/* */:'),  # a comment before the colon
+                    'let value = ' + kind + arguments.replace(label + ':', label + ' /** a */ :'),
+                    f'let text = "{label}:"']:                                         # a string counts too
                 self.expect('one-file', code, fails=[place for place in places if place not in homes], passes=homes)
+            # A comment counts too, except in the file that declares the initializer, which may say what the label is for.
+            declared = DECLARED.get(label)
+            for code in [f'// {kind}{arguments}', f'/// The label {label}: belongs to one file.',
+                         f'/// Made only by `{kind}{full_name[4:]}`.', f'public struct {kind} {{  // the label {label}: is kept']:
+                self.expect('one-file', code, fails=[place for place in places if place not in homes and place != declared],
+                            passes=sorted(homes | {declared} - {None}))
+            if declared:
+                for code in [f'let text = "{label}:"', f'let value = {kind}{arguments}', f'let make = {kind}.init']:
+                    self.fails('one-file', declared, code)
             # The declaration has no colon after the label, and the type's name alone is anyone's to use.
             for code in [declaration, f'var sent: [{kind}] = []; func take(_ value: {kind}?) {{}}',
                          f'let name = {label}; let other = {label}Text; let third = my{kind}.init']:
                 self.expect('one-file', code, passes=places)
+
+    def test_the_declaring_files_are_pinned(self):
+        agent = 'Sources/HelmAgent/'
+        self.assertEqual(DECLARED, {'fromPerson': agent + 'Contracts/AgentScopeContracts.swift',
+                                    'typedByPerson': agent + 'Contracts/AgentSessionContracts.swift',
+                                    'liveProfile': agent + 'Transport/HTTPTransport.swift'})
+        # The comments the declarations carry pass there.
+        self.assertEqual(self.planted(DECLARED['fromPerson'], 'public struct AgentRootInput: Sendable {  '
+                                      '// the label fromPerson: is allowed only in AgentPanelModel.swift\n'
+                                      '    public init(fromPerson text: String, origin: Origin) {}\n}'), [])
+        self.assertEqual(self.planted(DECLARED['typedByPerson'], 'public struct AgentPersonInput: Sendable {  '
+                                      '// the label typedByPerson: is allowed only in AgentPanelModel.swift\n'
+                                      '    public init(typedByPerson text: String, selectedPaths: [String]) {}\n}'), [])
+        self.assertEqual(self.planted(TRANSPORT, TRANSPORT_CODE + '// the label liveProfile: is allowed only in '
+                                      'Runtime/AgentLiveParts.swift'), [])
 
     def test_only_the_transport_hands_a_session_its_own_loader(self):
         for code in ['configuration.protocolClasses = loaders', 'configuration.protocolClasses?.insert(loader, at: 0)',
@@ -970,7 +1088,9 @@ class PrivacyCheckTests(unittest.TestCase):
                      'let home = "a \\"quoted\\" /Users/me"', 'let both = "a//b /Users/me"',
                      'let both = "/* not a comment */ /Users/me"',
                      'let odd = "x" // it\'s "odd\nlet home = "/Users/me"', 'let mark = #/"/#; let home = "/Users/me"',
-                     'f("/var/folders/x", "y")', 'let home = URL(fileURLWithPath: "/Users/me")']:
+                     'f("/var/folders/x", "y")', 'let home = URL(fileURLWithPath: "/Users/me")',
+                     'let home = "/\\u{55}sers/me"', 'let home = "\\u{2F}Users\\u{002f}me"', 'let built = #filePath',
+                     'let built = #file', 'f(path: #filePath)']:
             self.expect('build-path', code, fails=(CORE, LOOP, HEADER, 'Sources/HelmApp/AppEnvironment.swift',
                                                    'Sources/Helm/main.swift'))
         for code in ['// Not from `/Users/you`.', '/// `file:///Users/me/My%20Files` becomes `/Users/me/My Files`.',
@@ -978,7 +1098,8 @@ class PrivacyCheckTests(unittest.TestCase):
                      'let home = "/home/helm"', 'let parts = ["Users", "Shared"]', 'let users = "Users/"; let root = "/"',
                      'let name = "x" // then "/Users/me" in a comment', 'let folders = "var/folders"; let data = "DerivedData"',
                      'let ratio = a /Users/ b', 'let text = "\\(count /* "/Users/me" */)"',
-                     'let mark = #/"/Users/me/#; let home = "Home"']:
+                     'let mark = #/"/Users/me/#; let home = "Home"', 'let id = #fileID', 'let line = #line',
+                     'let escaped = "\\u{55}sers"', '// #filePath is where it was built']:
             self.expect('build-path', code, passes=(CORE, LOOP, HEADER))
         # The rule reads Sources/ alone.
         self.expect('build-path', 'let home = "/Users/me/Documents"', passes=('App/main.swift', 'Package.swift'))
@@ -1057,8 +1178,23 @@ class PrivacyCheckTests(unittest.TestCase):
                 '\t<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>\n',
                 '\t<key>NSAppTransportSecurity</key> <!-- local models -->\n\t<dict>\n' + local + '\t</dict>\n',
                 '\t<key>NSAllowsArbitraryLoads</key>\n\t<true/>\n',
-                allowed + '</dict>\n<dict>\n']:
+                allowed + '</dict>\n<dict>\n',
+                # Character references and CDATA a property list reader reads as the key's name.
+                '\t<key>NSAppTransport&#83;ecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitrary&#76;oads</key>\n\t\t<true/>\n'
+                '\t</dict>\n',
+                '\t<key>NSAppTransport&#x53;ecurity</key>\n\t<dict>\n' + local + '\t</dict>\n',
+                '\t<key><![CDATA[NSAppTransportSecurity]]></key>\n\t<dict>\n' + local + '\t</dict>\n',
+                key + '\t<dict>\n' + local + '\t\t<key>NSAllowsArbitrary&#76;oads</key>\n\t\t<true/>\n\t</dict>\n',
+                '\t<key>NSAppTransport&#83;ecurity</key>\n\t<dict>\n\t\t<key>NSExceptionDomains</key>\n\t\t<dict/>\n'
+                '\t</dict>\n' + allowed,
+                allowed + '\t<key>NSAppTransport&#83;ecurity</key>\n\t<dict>\n' + local + '\t</dict>\n',
+                '\t<key>CFBundle&#85;RLTypes</key>\n\t<array/>\n']:
             self.assertEqual(rules(self.problems(plist(body))), {'network-key'}, body)
+        for relative, text in [('App/Helm.entitlements', DTD + '<plist version="1.0">\n<dict>\n'
+                                '\t<key>com.apple.security.network.&#99;lient</key>\n\t<true/>\n</dict>\n</plist>\n'),
+                               ('App/Other.plist', DTD + '<plist version="1.0">\n<dict>\n\t<key>Inner</key>\n\t<dict>\n'
+                                '\t\t<key>NSBonjour&#83;ervices</key>\n\t\t<array/>\n\t</dict>\n</dict>\n</plist>\n')]:
+            self.assertEqual(rules(self.problems({relative: text})), {'network-key'}, relative)
         # The key belongs to Info.plist alone.
         for relative in ('App/Helm.entitlements', 'App/Other.plist', 'App/Resources/Info.plist'):
             self.assertEqual(rules(self.problems({relative: plist(allowed)['App/Info.plist']})), {'network-key'}, relative)
