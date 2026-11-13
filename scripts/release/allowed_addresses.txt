@@ -1,0 +1,4 @@
+https://api.anthropic.com
+https://api.openai.com/v1
+https://generativelanguage.googleapis.com/v1beta
+https://api.x.ai/v1
