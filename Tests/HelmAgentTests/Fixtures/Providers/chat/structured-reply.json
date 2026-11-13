@@ -1,0 +1,10 @@
+{
+  "id": "chatcmpl-5",
+  "object": "chat.completion",
+  "choices": [{
+    "index": 0,
+    "message": {"role": "assistant", "content": "```json\n{\"sort\": \"newest\", \"queries\": []}\n```"},
+    "finish_reason": "stop"
+  }],
+  "usage": {"prompt_tokens": 50, "completion_tokens": 12}
+}

@@ -1,0 +1,17 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_03","status":"in_progress","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"type":"message","id":"msg_03","role":"assistant","status":"in_progress","content":[]}}
+
+event: response.refusal.delta
+data: {"type":"response.refusal.delta","sequence_number":2,"item_id":"msg_03","output_index":0,"content_index":0,"delta":"I can't help with that."}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":3,"output_index":0,"item":{"type":"message","id":"msg_03","role":"assistant","status":"completed","content":[{"type":"refusal","refusal":"I can't help with that."}]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":4,"output_index":1,"item":{"type":"function_call","id":"fc_04","call_id":"call_r","name":"propose_changes","arguments":"{}","status":"completed"}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":5,"response":{"id":"resp_03","status":"completed","output":[]}}

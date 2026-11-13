@@ -1,0 +1,1 @@
+{"max_tokens":16000,"messages":[{"content":"invoices from march","role":"user"}],"model":"test-model-1","output_config":{"format":{"schema":{"additionalProperties":false,"properties":{"sort":{"type":"string"}},"required":["sort"],"type":"object"},"type":"json_schema"}},"system":"Plan a search."}

@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Moving."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_l","type":"function","function":{"name":"propose_changes","arguments":"{\"new_folders\":[],\"moves\":[{\"items\":[\"f1\""}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-4","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: [DONE]

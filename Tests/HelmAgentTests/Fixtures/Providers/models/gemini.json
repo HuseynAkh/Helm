@@ -1,0 +1,6 @@
+{"models": [
+  {"name": "models/gemini-4-hydrogen", "baseModelId": "gemini-4-hydrogen", "version": "4", "displayName": "Gemini 4 Hydrogen", "inputTokenLimit": 1048576, "outputTokenLimit": 65536, "supportedGenerationMethods": ["generateContent", "countTokens"], "thinking": true},
+  {"name": "models/gemini-4-carbon", "baseModelId": "gemini-4-carbon", "version": "4", "displayName": "Gemini 4 Carbon", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+  {"name": "models/text-embedding-005", "displayName": "Embedding", "supportedGenerationMethods": ["embedContent"]},
+  {"name": "models/gemini-3.5-flash-lite", "displayName": "Gemini 3.5 Flash-Lite", "supportedGenerationMethods": ["generateContent"]}
+], "nextPageToken": ""}

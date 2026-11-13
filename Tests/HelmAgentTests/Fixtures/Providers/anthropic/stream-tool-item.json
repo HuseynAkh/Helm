@@ -1,0 +1,8 @@
+{"role": "assistant", "content": [
+  {"type": "thinking", "thinking": "", "signature": "EqQBCkYIBRgCKkBexampleSignature"},
+  {"type": "redacted_thinking", "data": "EmwKAhgBEgyExampleRedacted"},
+  {"type": "text", "text": "I'll look at the folder."},
+  {"type": "tool_use", "id": "toolu_01A09q90qw90lq917835lq9", "name": "list_folder",
+   "input": {"folder": "r1", "depth": 1, "after": ""}},
+  {"type": "tool_use", "id": "toolu_02B", "name": "list_folder", "input": {"folder": "d7", "depth": 2, "after": ""}}
+]}
