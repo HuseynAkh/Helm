@@ -43,7 +43,7 @@ struct AISettingsView: View {
         .frame(width: Self.width)
         .onAppear { draftAddress = model.address }
         // Settings has no Done, so a key typed and not yet entered is entered as the pane goes away.
-        .onDisappear { enterDraftKey() }
+        .onDisappear { enterDraftKey(onlyFor: keyOwner) }
         // A key typed but not yet entered never follows a change of provider or address.
         .onChange(of: model.provider) { _, _ in
             draftKey = ""
@@ -69,18 +69,19 @@ struct AISettingsView: View {
                     .focused($keyFocused)
                     .onSubmit { enterDraftKey() }
                     // Leaving the field enters what was typed, as Return does.
-                    .onChange(of: keyFocused) { _, focused in if !focused { enterDraftKey() } }
+                    .onChange(of: keyFocused) { _, focused in if !focused { enterDraftKey(onlyFor: keyOwner) } }
                 if model.hasSavedKey { Button(AgentText.removeKey) { model.removeKey() } }
             }
             AIModeStateRow(model: model)
         }
     }
 
-    /// Enters the typed key, once, and only for the provider and address it was typed for.
-    private func enterDraftKey() {
+    /// Enters the typed key, once. Return enters it for the provider on show; leaving the field or the pane enters it
+    /// only when `onlyFor` is the provider and address it was typed for.
+    private func enterDraftKey(onlyFor owner: String? = nil) {
         let typed = draftKey
-        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, draftKeyFor == keyOwner,
-              model.showsKeyField else { return }
+        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, model.showsKeyField else { return }
+        if let owner, draftKeyFor != owner { return }
         draftKey = ""
         draftKeyFor = nil
         model.enterKey(typed)

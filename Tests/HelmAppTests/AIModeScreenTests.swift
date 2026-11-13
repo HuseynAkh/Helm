@@ -284,6 +284,33 @@ import HelmPersistence
         XCTAssertEqual(model.connectionForTesting, "noKey")
     }
 
+    func testAKeyTypedIntoSettingsIsEnteredWhenTheFieldLosesFocus() async throws {
+        let app = await composedApp()
+        let store = try secrets(app)
+        app.makeSettingsWindowIfNeeded()
+        let settings = try XCTUnwrap(app.settingsControllerForTesting)
+        defer { settings.close() }
+        app.installAISettingsPane(in: settings)
+        settings.select(.ai)
+        let model = try XCTUnwrap(settings.aiSetupModel)
+        model.setOn(true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let content = try XCTUnwrap(settings.window?.contentView)
+        content.layoutSubtreeIfNeeded()
+        func secureFields(in view: NSView) -> [NSSecureTextField] {
+            (view.isHiddenOrHasHiddenAncestor ? [] : [view].compactMap { $0 as? NSSecureTextField })
+                + view.subviews.flatMap(secureFields)
+        }
+        let field = try XCTUnwrap(secureFields(in: content).first, "Settings › AI's key field")
+        XCTAssertTrue(type(testKey, into: field))
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(settings.window?.makeFirstResponder(nil) == true)
+        let entered = await until { store.accounts == ["claude|api.anthropic.com:443"] }
+        XCTAssertTrue(entered, "leaving the field entered the key, as Return does")
+        await model.settle()
+        XCTAssertEqual(model.connectionForTesting, "connected")
+    }
+
     func testDoneWithTheSwitchOffClosesAndLeavesAIModeOff() async throws {
         let app = await composedApp()
         let settings = try settings(app)
