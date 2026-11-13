@@ -44,7 +44,7 @@ public enum AgentComposerIntent: Equatable, Sendable {
         let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return .empty }
         let words = message.split(whereSeparator: isSpace)
-        if words.contains(where: { AgentKeyShape.looksLikeKey(String($0)) }) { return .looksLikeKey }
+        if words.contains(where: holdsKey) { return .looksLikeKey }
 
         if message.hasPrefix("/"), let command = words.first {
             let rest = String(message[command.endIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,6 +75,21 @@ public enum AgentComposerIntent: Equatable, Sendable {
     private static let fileAddressStart = "file://"
 
     private static func isSpace(_ character: Character) -> Bool { character.isWhitespace || character.isNewline }
+
+    /// Marks that may stand beside a key in a sentence: around it, after it, or between it and a name for it.
+    private static let keyNeighbours: Set<Character> = ["=", ":", "\"", "'", "`", "(", ")", "[", "]", "{", "}", "<", ">",
+                                                         "“", "”", "‘", "’", "«", "»"]
+    private static let keyTrailers = CharacterSet(charactersIn: ".,;:!?…")
+
+    /// Whether a word holds a key: the word itself, or a piece of it between quotes, brackets, `=` or `:`, with a
+    /// full stop, comma or the like taken off its end. A file name such as "sk-notes-from-2026-final.txt" holds a
+    /// dot inside, so it is never taken for a key.
+    private static func holdsKey(_ word: Substring) -> Bool {
+        if AgentKeyShape.looksLikeKey(String(word)) { return true }
+        return word.split(whereSeparator: keyNeighbours.contains).contains { piece in
+            AgentKeyShape.looksLikeKey(String(piece).trimmingCharacters(in: keyTrailers))
+        }
+    }
 
     /// Whether a word could be where a path begins: an absolute path, one in the home folder, or a file address.
     private static func startsPath(_ word: Substring) -> Bool {

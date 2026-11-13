@@ -61,6 +61,8 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
 @MainActor public final class AgentRuntime {
     private let parts: AgentRuntimeParts
     private var liveClient: (any AgentLiveClient)?
+    /// Clients made for checking a draft config, while their check is out. Turning AI mode off shuts them down too.
+    private var probes: [UUID: any AgentLiveClient] = [:]
     private var sessions: [WeakSession] = []
     private var announced: AgentRuntimeState = .off
     private let overrides = Overrides()
@@ -91,17 +93,21 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
     /// Sent whenever the state changes, and never for a change that leaves it the same.
     public let changes = Broadcast<AgentRuntimeState>()
 
-    /// Turns AI mode on or off. Off shuts the client down, which forgets the key it had cached, and stops and
-    /// clears every conversation the runtime made. Those conversations are let go of: a new one is made after the
-    /// mode is turned on again.
+    /// Turns AI mode on or off. Off shuts the client down, and any client out for a check, which forgets the key
+    /// they had cached, and stops and clears every conversation the runtime made. Those conversations stay on the
+    /// runtime's list while something holds them, so a later change of provider or a later off still reaches them.
     public func setOn(_ on: Bool) {
         guard on != isOn else { return }
         isOn = on
         if !on {
             dropClient()
+            let out = Array(probes.values)
+            probes.removeAll()
             let open = openSessions()
-            sessions.removeAll()
-            later { for session in open { await session.stop(); await session.clear() } }
+            later {
+                for probe in out { await probe.shutdown() }
+                for session in open { await session.stop(); await session.clear() }
+            }
         }
         announce()
     }
@@ -143,8 +149,10 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
     }
 
     /// Asks the provider a draft config names for its models, which is also how a connection is checked. The
-    /// request goes the way every request does. A draft that differs from the config in use gets a client of its
-    /// own, which is shut down when the answer is in. While AI mode is off the answer is `.off` and nothing is asked.
+    /// request goes the way every request does. The config in use is checked through its client made again, so a
+    /// key saved since, even under the same account, is the one used from then on. A draft that differs from the
+    /// config in use gets a client of its own, which is shut down when the answer is in, or when AI mode turns off
+    /// first. While AI mode is off the answer is `.off` and nothing is asked.
     public func check(_ draft: AIConfig) async -> AgentConnection {
         guard isOn else { return .off }
         let answer: AgentConnection
@@ -157,15 +165,19 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
                 return .noKey
             }
             let model = AgentProviderCatalog.model(for: draft)
-            if profile == Self.profile(for: config), model == AgentProviderCatalog.model(for: config),
-               case .success(let current) = client() {
+            let inUse = profile == Self.profile(for: config) && model == AgentProviderCatalog.model(for: config)
+            if inUse { dropClient() }
+            if inUse, case .success(let current) = client() {
                 answer = await Self.connection(through: current)
             } else {
                 guard let makeClient = parts.makeClient else { return .cantReach }
                 let probe = makeClient(profile, model ?? "", parts.secrets)
                 clientBuildCount += 1
+                let id = UUID()
+                probes[id] = probe
                 answer = await Self.connection(through: probe)
-                await probe.shutdown()
+                // Turning AI mode off meanwhile has already shut it down.
+                if probes.removeValue(forKey: id) != nil { await probe.shutdown() }
             }
         }
         // A key may have been saved since the state was last worked out.

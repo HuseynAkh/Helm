@@ -37,6 +37,36 @@ final class AgentJSONTests: XCTestCase {
         XCTAssertNoThrow(try AgentJSON.checkDepth(of: Data(String(repeating: "[", count: 32).utf8)))
     }
 
+    func testOnlyUTF8IsTaken() {
+        // In UTF-16 or UTF-32 a character such as U+2200 holds a quote byte, which would hide the brackets after it
+        // from the count, so text in those encodings is refused before the count.
+        let text = "[\"\u{2200}\"," + nested("[", "]", levels: 200) + "]"
+        XCTAssertThrowsError(try json(text)) { XCTAssertEqual($0 as? AgentJSONError, .tooDeep) }
+        for encoding in [String.Encoding.utf16LittleEndian, .utf16BigEndian, .utf16, .utf32LittleEndian, .utf32] {
+            let data = text.data(using: encoding)!
+            XCTAssertThrowsError(try AgentJSON(data: data), "\(encoding)") { XCTAssertEqual($0 as? AgentJSONError, .malformed) }
+            XCTAssertThrowsError(try AgentJSON.checkDepth(of: data), "\(encoding)")
+            XCTAssertThrowsError(try ScriptedModelClient().load(data), "\(encoding)")
+        }
+        XCTAssertThrowsError(try AgentJSON(data: Data("[1]".utf16.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }))) {
+            XCTAssertEqual($0 as? AgentJSONError, .malformed)
+        }
+        XCTAssertEqual(try json("[\"\u{2200}\"]"), .array([.string("\u{2200}")]))
+    }
+
+    func testTheDecoderKeepsToTheSameDepth() throws {
+        let decoder = JSONDecoder()
+        XCTAssertEqual(try decoder.decode(AgentJSON.self, from: Data(nested("[", "]", levels: 32, inside: "1").utf8)),
+                       try json(nested("[", "]", levels: 32, inside: "1")))
+        for levels in [33, 100, 400] {
+            XCTAssertThrowsError(try decoder.decode(AgentJSON.self, from: Data(nested("[", "]", levels: levels).utf8)), "\(levels)")
+        }
+        XCTAssertThrowsError(try decoder.decode(AgentJSON.self, from: Data(nested(#"{"a":"#, "}", levels: 33, inside: "1").utf8)))
+        // Inside another type the levels above count too.
+        XCTAssertNoThrow(try decoder.decode(Envelope.self, from: Data((#"{"args": "# + nested("[", "]", levels: 31) + "}").utf8)))
+        XCTAssertThrowsError(try decoder.decode(Envelope.self, from: Data((#"{"args": "# + nested("[", "]", levels: 32) + "}").utf8)))
+    }
+
     func testBracketsInsideAStringDoNotCount() throws {
         let brackets = String(repeating: "[{", count: 100)
         XCTAssertEqual(try json("[\"\(brackets)\"]"), .array([.string(brackets)]))

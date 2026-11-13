@@ -8,6 +8,26 @@ import HelmTestKit
 @MainActor final class AgentRuntimeTests: XCTestCase {
     // MARK: Stand-ins
 
+    /// Holds a model list back until it is opened.
+    private final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var isOpen = false
+        private var waiting: [CheckedContinuation<Void, Never>] = []
+
+        func wait() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                if isOpen { lock.unlock(); continuation.resume(); return }
+                waiting.append(continuation)
+                lock.unlock()
+            }
+        }
+        func open() {
+            lock.lock(); isOpen = true; let held = waiting; waiting = []; lock.unlock()
+            for continuation in held { continuation.resume() }
+        }
+    }
+
     /// A live client that reaches nothing. It counts how often it was shut down.
     private final class FakeLiveClient: AgentLiveClient, @unchecked Sendable {
         let profile: AgentProviderProfile
@@ -15,9 +35,10 @@ import HelmTestKit
         private let lock = NSLock()
         private var shutdownCount = 0
         private let listed: Result<[AgentModelInfo], AgentFailure>
+        private let gate: Gate?
 
-        init(profile: AgentProviderProfile, model: String, listed: Result<[AgentModelInfo], AgentFailure>) {
-            self.profile = profile; self.model = model; self.listed = listed
+        init(profile: AgentProviderProfile, model: String, listed: Result<[AgentModelInfo], AgentFailure>, gate: Gate? = nil) {
+            self.profile = profile; self.model = model; self.listed = listed; self.gate = gate
         }
         var shutdowns: Int { lock.lock(); defer { lock.unlock() }; return shutdownCount }
         var providerName: String { profile.name }
@@ -26,7 +47,10 @@ import HelmTestKit
         func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> { AsyncThrowingStream { $0.finish() } }
         func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] { [] }
         func structured(_ ask: AgentStructuredAsk) async throws -> Data { Data() }
-        func models() async throws -> [AgentModelInfo] { try listed.get() }
+        func models() async throws -> [AgentModelInfo] {
+            await gate?.wait()
+            return try listed.get()
+        }
         func shutdown() async { count() }
         private func count() { lock.lock(); shutdownCount += 1; lock.unlock() }
     }
@@ -36,15 +60,21 @@ import HelmTestKit
         private let lock = NSLock()
         private var made: [FakeLiveClient] = []
         private var answer: Result<[AgentModelInfo], AgentFailure> = .success([AgentModelInfo(id: "model-a"), AgentModelInfo(id: "model-b")].compactMap { $0 })
+        private var heldBy: Gate?
 
         var built: [FakeLiveClient] { lock.lock(); defer { lock.unlock() }; return made }
         var listed: Result<[AgentModelInfo], AgentFailure> {
             get { lock.lock(); defer { lock.unlock() }; return answer }
             set { lock.lock(); answer = newValue; lock.unlock() }
         }
+        /// When set, every client made from then on holds its model list back until the gate opens.
+        var gate: Gate? {
+            get { lock.lock(); defer { lock.unlock() }; return heldBy }
+            set { lock.lock(); heldBy = newValue; lock.unlock() }
+        }
         func make(_ profile: AgentProviderProfile, _ model: String) -> FakeLiveClient {
             lock.lock(); defer { lock.unlock() }
-            let client = FakeLiveClient(profile: profile, model: model, listed: answer)
+            let client = FakeLiveClient(profile: profile, model: model, listed: answer, gate: heldBy)
             made.append(client)
             return client
         }
@@ -226,7 +256,7 @@ import HelmTestKit
 
     // MARK: Turning off
 
-    func testTurningOffShutsTheClientDownAndDropsEverySession() async throws {
+    func testTurningOffShutsTheClientDownAndStopsEverySession() async throws {
         let runtime = makeRuntime()
         try saveKey(for: .claude)
         runtime.configure(AIConfig(provider: "claude"))
@@ -250,15 +280,42 @@ import HelmTestKit
         let late = await first.parts.client()
         expectFailure(late, .off)
 
-        // On again: a new client on first use, and the old conversations are no longer the runtime's.
+        // On again: a new client on first use. A conversation still held works again and is still the runtime's,
+        // so a changed provider starts it over and the next off stops and clears it again.
         runtime.setOn(true)
         guard case .success = runtime.client() else { return XCTFail("no client") }
         XCTAssertEqual(factory.built.count, 2)
         XCTAssertEqual(runtime.clientBuildCount, 2)
+        guard case .success = await first.parts.client() else { return XCTFail("no client") }
         runtime.configure(AIConfig(provider: "ollama", models: ["ollama": "llama"]))
         await runtime.settle()
-        XCTAssertEqual(first.asked, ["stop", "clear"])
-        XCTAssertEqual(second.asked, ["stop", "clear"])
+        XCTAssertEqual(first.asked, ["stop", "clear", "startOver"])
+        XCTAssertEqual(second.asked, ["stop", "clear", "startOver"])
+        runtime.setOn(false)
+        await runtime.settle()
+        XCTAssertEqual(first.asked, ["stop", "clear", "startOver", "stop", "clear"])
+        XCTAssertEqual(second.asked, ["stop", "clear", "startOver", "stop", "clear"])
+    }
+
+    func testTurningOffShutsDownAClientOutForACheck() async throws {
+        let runtime = makeRuntime()
+        for provider in [AgentProviderID.claude, .openAI] { try saveKey(for: provider) }
+        runtime.setOn(true)
+        runtime.configure(AIConfig(provider: "claude"))
+        let gate = Gate()
+        factory.gate = gate
+        let checking = Task { await runtime.check(AIConfig(provider: "openAI")) }
+        while factory.built.isEmpty { await Task.yield() }
+        let probe = factory.built[0]
+        XCTAssertEqual(probe.profile.id, .openAI)
+
+        runtime.setOn(false)
+        await runtime.settle()
+        XCTAssertEqual(probe.shutdowns, 1, "shut down before its model list came back")
+        gate.open()
+        let answer = await checking.value
+        XCTAssertEqual(answer, .off)
+        XCTAssertEqual(probe.shutdowns, 1, "and only once")
     }
 
     func testTurningOffTwiceDoesNothingMore() async throws {
@@ -375,6 +432,29 @@ import HelmTestKit
         XCTAssertEqual(session.asked, [])
     }
 
+    func testAKeyReplacedByTheSameBuildReachesTheClientAtTheNextCheck() async throws {
+        let runtime = makeRuntime()
+        try saveKey(for: .claude)
+        let config = AIConfig(provider: "claude", keyOwners: ["claude|api.anthropic.com:443": "1024-1700000000"])
+        runtime.setOn(true)
+        runtime.configure(config)
+        let session = try XCTUnwrap(runtime.makeSession() as? CountingConversation)
+        guard case .connected = await runtime.check(config) else { return XCTFail("not connected") }
+        XCTAssertEqual(factory.built.count, 1)
+
+        // The same build saves another key under the same account, so the config is the same as before.
+        try saveKey(for: .claude)
+        runtime.configure(config)
+        guard case .connected = await runtime.check(config) else { return XCTFail("not connected") }
+        await runtime.settle()
+        XCTAssertEqual(factory.built.count, 2, "the check makes the client again, which reads the store again")
+        XCTAssertEqual(factory.built[0].shutdowns, 1)
+        XCTAssertEqual(factory.built[1].shutdowns, 0, "the new client is the one in use")
+        guard case .success(let current) = runtime.client() else { return XCTFail("no client") }
+        XCTAssertTrue((current as AnyObject) === factory.built[1])
+        XCTAssertEqual(session.asked, [], "the thread is kept")
+    }
+
     func testChangesAreSentOnceForEachChange() throws {
         let runtime = makeRuntime()
         var seen: [AgentRuntimeState] = []
@@ -410,20 +490,24 @@ import HelmTestKit
         runtime.configure(AIConfig(provider: "claude"))
         guard case .success = runtime.client() else { return XCTFail("no client") }
 
-        // The config in use is checked through the client in use.
+        // The config in use is checked through its client, made again so that the key is read again.
         var answer = await runtime.check(AIConfig(provider: "claude"))
         XCTAssertEqual(answer, .connected([AgentModelInfo(id: "model-a"), AgentModelInfo(id: "model-b")].compactMap { $0 }))
-        XCTAssertEqual(factory.built.count, 1)
+        await runtime.settle()
+        XCTAssertEqual(factory.built.count, 2)
+        XCTAssertEqual(factory.built[0].shutdowns, 1)
+        guard case .success(let current) = runtime.client() else { return XCTFail("no client") }
+        XCTAssertTrue((current as AnyObject) === factory.built[1])
 
         // A draft for another provider gets a client of its own, which is shut down afterwards.
         answer = await runtime.check(AIConfig(provider: "openAI"))
         XCTAssertEqual(answer, .connected([AgentModelInfo(id: "model-a"), AgentModelInfo(id: "model-b")].compactMap { $0 }))
-        XCTAssertEqual(factory.built.count, 2)
-        XCTAssertEqual(factory.built[1].profile.id, .openAI)
-        XCTAssertEqual(factory.built[1].shutdowns, 1)
-        XCTAssertEqual(factory.built[0].shutdowns, 0, "the client in use is left alone")
+        XCTAssertEqual(factory.built.count, 3)
+        XCTAssertEqual(factory.built[2].profile.id, .openAI)
+        XCTAssertEqual(factory.built[2].shutdowns, 1)
+        XCTAssertEqual(factory.built[1].shutdowns, 0, "the client in use is left alone")
         XCTAssertEqual(runtime.config, AIConfig(provider: "claude"))
-        XCTAssertEqual(runtime.clientBuildCount, 2)
+        XCTAssertEqual(runtime.clientBuildCount, 3)
 
         // A local provider can be checked before a model is chosen: that is how its models are found.
         answer = await runtime.check(AIConfig(provider: "lmStudio"))

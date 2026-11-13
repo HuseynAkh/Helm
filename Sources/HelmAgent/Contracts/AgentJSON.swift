@@ -18,7 +18,7 @@ public indirect enum AgentJSON: Hashable, Sendable, Codable {
     public static let maxDepth = 32
 
     /// The value in `data`. Throws `AgentJSONError.tooDeep` for nesting deeper than `maxDepth`, which is found by
-    /// counting brackets before anything is decoded, and `.malformed` for bytes that aren't JSON.
+    /// counting brackets before anything is decoded, and `.malformed` for bytes that aren't JSON in UTF-8.
     public init(data: Data) throws {
         try Self.checkDepth(of: data)
         guard let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
@@ -37,6 +37,7 @@ public indirect enum AgentJSON: Hashable, Sendable, Codable {
 
     // MARK: Codable
 
+    /// Decodes a value nested no deeper than `maxDepth`, counted from the top of what the decoder reads.
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
@@ -47,6 +48,8 @@ public indirect enum AgentJSON: Hashable, Sendable, Codable {
             self = .number(value)
         } else if let value = try? container.decode(String.self) {
             self = .string(value)
+        } else if decoder.codingPath.count >= Self.maxDepth {
+            throw AgentJSONError.tooDeep
         } else if let value = try? container.decode([AgentJSON].self) {
             self = .array(value)
         } else {
@@ -108,8 +111,11 @@ extension AgentJSON {
 
 extension AgentJSON {
     /// Throws `tooDeep` when arrays and objects in `data` nest deeper than `maxDepth`. Brackets inside a string don't
-    /// count. Nothing is decoded, so the cost is one pass over the bytes however the data is shaped.
+    /// count. Nothing is decoded, so the cost is one pass over the bytes however the data is shaped. Throws
+    /// `malformed` for bytes that aren't UTF-8: Foundation's reader would also take UTF-16 and UTF-32, where a quote
+    /// byte can sit inside another character and hide the brackets after it from the count.
     static func checkDepth(of data: Data) throws {
+        guard !data.contains(0), String(data: data, encoding: .utf8) != nil else { throw AgentJSONError.malformed }
         var depth = 0, inString = false, escaped = false
         for byte in data {
             if inString {
