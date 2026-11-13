@@ -73,6 +73,8 @@ struct AIModeScreen: View {
             draftKey = ""
             focusKey()
         }
+        // Done couldn't close: the caret goes back to the key, the thing still missing.
+        .onChange(of: model.refusedDone) { _, _ in focusKey() }
     }
 
     @ViewBuilder private func view(for part: Part) -> some View {
@@ -110,7 +112,8 @@ struct AIModeScreen: View {
             }
             .padding(.horizontal, 40).padding(.top, 12)
         case .key:
-            SecureField(AgentText.keyPlaceholder, text: $draftKey)
+            // A saved key is never drawn; the prompt says it is there, and a paste replaces it.
+            SecureField(model.hasSavedKey ? AgentText.keySaved : AgentText.keyPlaceholder, text: $draftKey)
                 .textFieldStyle(.roundedBorder)
                 .focused($keyFocused)
                 .onSubmit { model.enterKey(takeDraftKey() ?? "") }
@@ -139,12 +142,20 @@ struct AIModeScreen: View {
         case .done:
             HStack {
                 Spacer()
-                Button(AgentText.done) { model.donePressed?(handOverDraftKey()) }
+                Button(AgentText.done) { pressDone() }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 18)
         }
+    }
+
+    /// Done hands over everything typed and not yet entered: the address, the port and the model's name first, then
+    /// the key, which the screen checks before it closes.
+    private func pressDone() {
+        model.commitTyped(address: draftAddress, port: draftPort, model: draftModel)
+        draftPort = ""
+        model.donePressed?(handOverDraftKey())
     }
 
     /// The typed key, once: the field is emptied as it is handed over.
@@ -174,22 +185,26 @@ struct AIModeScreen: View {
     }
 }
 
-/// How the chosen provider stands, with Try Again beside a state it can help, and the saved-key caption.
+/// How the chosen provider stands, with Try Again beside a state it can help. Connected carries the green check
+/// macOS shows beside an account that works.
 struct AIModeStateRow: View {
     @ObservedObject var model: AISetupModel
 
     var body: some View {
-        if model.stateLine != nil || model.hasSavedKey {
+        if let line = model.stateLine {
             HStack(spacing: 8) {
                 if model.connection == .checking { ProgressView().controlSize(.small) }
-                if let line = model.stateLine { AIModeLine(text: line, isProblem: model.offersTryAgain || model.connection == .wrongKey) }
+                HStack(spacing: 4) {
+                    if model.isConnected {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.system(size: 12))
+                            .accessibilityHidden(true)
+                    }
+                    AIModeLine(text: line, isProblem: model.stateIsProblem)
+                }
                 if model.offersTryAgain {
                     Button(AgentText.tryAgain) { model.tryAgain() }.controlSize(.small)
                 }
                 Spacer(minLength: 0)
-            }
-            if model.hasSavedKey && model.takesKey {
-                Text(AgentText.keySaved).font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
     }

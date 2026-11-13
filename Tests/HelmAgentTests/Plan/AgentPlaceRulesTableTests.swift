@@ -194,7 +194,7 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertEqual(plan.groups[0].guardedBy, .reachesOthers)
         XCTAssertEqual(plan.groups[0].place, "Server")
         XCTAssertEqual(plan.defaultTicked, [])
-        XCTAssertEqual(plan.cardNotes, [.notAllowed(1), .shared(place: "Server")])
+        XCTAssertEqual(plan.cardNotes, [.notAllowed(1), .shared(place: "Team")], "notes name the place as its chip does")
     }
 
     func testTwentyFiveItemsInAShareStayTicked() async {
@@ -205,7 +205,7 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertEqual(plan.steps.count, 25)
         XCTAssertNil(plan.groups.first?.guardedBy)
         XCTAssertEqual(plan.defaultTicked, [1])
-        XCTAssertEqual(plan.cardNotes, [.notAllowed(1), .shared(place: "Server")])
+        XCTAssertEqual(plan.cardNotes, [.notAllowed(1), .shared(place: "Team")], "notes name the place as its chip does")
     }
 
     func testOneFolderChangedInAShareIsGuarded() async {

@@ -35,7 +35,9 @@ extension BrowserWindowController {
                 model?.applyAnswered(planID: approved.planID, ticket)
                 return nil
             }
-            let report = await AgentPlanApplier(window: self).apply(plan, ticked: approved.ticked) { done, total, name in
+            let report = await AgentPlanApplier(window: self).apply(plan, ticked: approved.ticked,
+                                                                    shouldStop: { model?.applyStopAsked ?? true },
+                                                                    pauseBetween: self.agentApplyPauseForTesting) { done, total, name in
                 model?.applyProgress(planID: plan.id, done: done, total: total, name: name)
             }
             await session.settle(planID: plan.id, .applied(done: report.done, skipped: report.skipped))
@@ -58,7 +60,6 @@ extension BrowserWindowController {
         actions.show = { [weak self] urls in self?.showAgentChanges(urls) }
         actions.connect = { [weak self] location in self?.connectAgentServer(location) ?? false }
         actions.openSettings = { [weak self] in self?.host?.showSettings(pane: .ai) }
-        actions.chooseModel = { [weak self] id in self?.chooseAgentModel(id) }
         actions.giveKeysBack = { [weak self] in self?.focusContent() }
         actions.focusComposer = { [weak self] in self?.agentPanelHost.focusComposer() }
         actions.phaseChanged = { [weak self] _ in self?.agentPanelHost.updateSpark() }
@@ -87,12 +88,6 @@ extension BrowserWindowController {
         let folder = first.deletingLastPathComponent()
         let inFolder = urls.filter { $0.deletingLastPathComponent().standardizedFileURL.path == folder.standardizedFileURL.path }
         show(folder: folder, selecting: inFolder)
-    }
-
-    /// A model picked in the composer's menu becomes the provider's model.
-    private func chooseAgentModel(_ id: String) {
-        guard let provider = dependencies.agent.config.config.provider else { return }
-        dependencies.agent.config.update { $0.models[provider] = id }
     }
 }
 #endif

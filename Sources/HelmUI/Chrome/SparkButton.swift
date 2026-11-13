@@ -30,8 +30,9 @@ import HelmCore
     private var shimmerStart = Date()
     /// One full turn of the gradient, in seconds: slow enough to read as a glow rather than a spinner.
     static let shimmerPeriod: TimeInterval = 3
-    /// The spark's side, about the size of the header's 15-point symbols.
-    static let markSize: CGFloat = 16
+    /// The spark's side. Its points stop short of the square, so at 18 its ink is about 15 points, the same as the
+    /// header's 15-point symbols beside it.
+    static let markSize: CGFloat = 18
     /// Tests set this to stand in for the system's Increase Contrast setting.
     static var increasesContrastForTesting: Bool?
 
@@ -94,8 +95,8 @@ import HelmCore
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         let side = Self.markSize
-        let rect = CGRect(x: ((bounds.width - side) / 2).rounded(), y: ((bounds.height - side) / 2).rounded(),
-                          width: side, height: side)
+        let rect = backingAlignedRect(NSRect(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2, width: side, height: side),
+                                      options: .alignAllEdgesNearest)
         context.saveGState()
         // The spark's gradient runs from the top, so a flipped button draws it the right way up.
         if isFlipped {

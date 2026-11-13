@@ -70,6 +70,8 @@ struct WindowTints: Equatable {
     let header = HeaderBarView()
     var pathBar: PathBarView { header.pathBar }
     private var sidebarItem: NSSplitViewItem?
+    /// The sidebar is sliding shut after a press of the header's button.
+    private var isHidingSidebar = false
     private let contentEffect = NSVisualEffectView()
     private let contentTint = TintView()
     private let viewOptions = ViewOptionsPopover()
@@ -88,6 +90,8 @@ struct WindowTints: Equatable {
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
     /// The AI panel's column, beside the files and under the header. Zero wide while shut.
     let agentPanelHost = AgentPanelHost()
+    /// Scripted runs hold each command of an Apply after the first back this long, so Stop can be pressed midway.
+    public var agentApplyPauseForTesting: TimeInterval = 0
     private var operationsHeight: NSLayoutConstraint?
     private var tabStripHeight: NSLayoutConstraint?
     private(set) var shownContent: FileContentPresenting?
@@ -213,7 +217,11 @@ struct WindowTints: Equatable {
         self.sidebarItem = sidebarItem
         // Dragging the divider shut or open collapses the item without the toggle, so the header follows the item.
         subscriptions.append(sidebarItem.observe(\.isCollapsed) { [weak self] item, _ in
-            MainActor.assumeIsolated { self?.sidebarVisibilityChanged(!item.isCollapsed) }
+            MainActor.assumeIsolated {
+                // A hide the header button started tells the header once the sidebar has gone.
+                guard let self, !self.isHidingSidebar else { return }
+                self.sidebarVisibilityChanged(!item.isCollapsed)
+            }
         })
         sidebar.delegate = self
         springs.open = { [weak self] url in self?.navigate(to: .directory(url)) }
@@ -550,11 +558,60 @@ struct WindowTints: Equatable {
     func headerToggleAIPanel() { toggleAgentPanel() }
     func toggleSidebar() {
         guard let sidebarItem else { return }
-        let hide = !sidebarItem.isCollapsed
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            sidebarItem.animator().isCollapsed = hide
-            sidebarVisibilityChanged(!hide)
+        setSidebarShown(sidebarItem.isCollapsed)
+        agentPanelHost.sidebarToggledByPerson()
+    }
+    /// Shows or hides the sidebar, sliding. Hiding moves the header's buttons over only once the sidebar has gone, so
+    /// they never need more room than the window has while it goes, and the window never grows for it. Showing in a
+    /// narrow window makes the window as wide as the sidebar and the header need, and no wider.
+    func setSidebarShown(_ show: Bool, animated: Bool = true) {
+        guard let sidebarItem, sidebarItem.isCollapsed == show else { return }
+        if show {
+            sidebarVisibilityChanged(true, animated: animated)
+            guard let window else { sidebarItem.isCollapsed = false; return }
+            let oldWidth = window.frame.width
+            let files = max(split.splitViewItems.last?.minimumThickness ?? 0, header.compactWidth(sidebarVisible: true))
+            let divider = split.splitView.dividerThickness
+            // The narrowest the window can be with the sidebar back, squeezed to its own minimum.
+            let needed = ceil(sidebarItem.minimumThickness + divider + files)
+            // There's room for any width the sidebar comes back at: it slides in, and nothing else changes size.
+            let roomy = oldWidth >= sidebarItem.maximumThickness + divider + files
+            if animated, roomy, window.isVisible, !HeaderMotion.isReduced {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.15
+                    sidebarItem.animator().isCollapsed = false
+                }
+                return
+            }
+            // Short of room, AppKit would widen the window by the whole sidebar; it is held to what is needed instead,
+            // and the sidebar gives way to its minimum if it must.
+            sidebarItem.isCollapsed = false
+            split.view.layoutSubtreeIfNeeded()
+            let allowed = max(oldWidth, needed)
+            if abs(window.frame.width - allowed) > 0.5 {
+                var frame = window.frame
+                frame.size.width = allowed
+                window.setFrame(frame, display: window.isVisible)
+                split.view.layoutSubtreeIfNeeded()
+            }
+        } else {
+            // With nothing to watch it slide, it goes at once, and the header follows straight after.
+            guard animated, window?.isVisible == true, !HeaderMotion.isReduced else {
+                sidebarItem.isCollapsed = true
+                sidebarVisibilityChanged(false, animated: false)
+                return
+            }
+            isHidingSidebar = true
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = animated ? 0.15 : 0
+                sidebarItem.animator().isCollapsed = true
+            }, completionHandler: { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.isHidingSidebar = false
+                    self.sidebarVisibilityChanged(!(self.sidebarItem?.isCollapsed ?? true), animated: animated)
+                }
+            })
         }
     }
     func headerBack() { perform(.back) }

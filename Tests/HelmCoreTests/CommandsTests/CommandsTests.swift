@@ -125,7 +125,7 @@ final class CommandsTests: XCTestCase {
             .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh,
             .home, .minimize, .zoom, .selectAll, .location, .eject, .closeWindow, .reopenClosedTab,
             .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer,
-            .viewOptions, .computer, .goToTrash, .aiPanel]
+            .viewOptions, .computer, .goToTrash, .aiPanel, .findWithAI]
         let hidden: Set<CommandID> = [.putBack, .emptyTrash, .clearRecent]
         for command in CommandID.allCases {
             let expected: CommandAvailability = enabled.contains(command) ? .enabled : hidden.contains(command) ? .hidden : .disabled

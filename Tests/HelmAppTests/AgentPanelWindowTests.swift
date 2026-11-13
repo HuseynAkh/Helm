@@ -195,6 +195,80 @@ import HelmTestKit
         XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 420, "the files' own minimum is back once shut")
     }
 
+    func testShuttingThePanelGivesBackTheRoomItTook() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        // At 900 opening hid the sidebar; shutting brings it back, with the header's buttons where they were.
+        window.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        _ = try await open(controller)
+        XCTAssertFalse(controller.isSidebarVisibleForTesting)
+        XCTAssertEqual(controller.headerLeadingForTesting, 84)
+        controller.clickSparkForTesting()
+        XCTAssertTrue(controller.isSidebarVisibleForTesting, "the sidebar the panel hid is back")
+        XCTAssertEqual(controller.headerLeadingForTesting, 8)
+        XCTAssertEqual(window.frame.width, 900, accuracy: 0.5)
+
+        // At 700 it also widened the window; shutting gives the width back.
+        window.setFrame(NSRect(x: 0, y: 0, width: 700, height: 600), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        controller.clickSparkForTesting()
+        XCTAssertEqual(window.frame.width, AgentPanelHost.width + AgentPanelHost.minimumFilesWidth, accuracy: 0.5)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(window.frame.width, 700, accuracy: 0.5, "the width it added is gone")
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+
+        // What the person changes while it is open is theirs: a resize keeps its width and the sidebar stays hidden.
+        controller.clickSparkForTesting()
+        var frame = window.frame
+        frame.size.width = 1000
+        window.setFrame(frame, display: false)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(window.frame.width, 1000, accuracy: 0.5)
+        XCTAssertFalse(controller.isSidebarVisibleForTesting, "the person resized, so nothing comes back on its own")
+        // And a sidebar the person shows and hides again stays as they left it.
+        controller.toggleSidebar()
+        window.setFrame(NSRect(x: 0, y: 0, width: 900, height: 600), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        controller.clickSparkForTesting()
+        XCTAssertFalse(controller.isSidebarVisibleForTesting)
+        controller.toggleSidebar()
+        controller.toggleSidebar()
+        controller.clickSparkForTesting()
+        XCTAssertFalse(controller.isSidebarVisibleForTesting, "the person hid it themselves")
+    }
+
+    func testTheMainMenuIsWholeWithThePanelOpenAtEveryWidth() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        _ = try await open(controller)
+        for width: CGFloat in [760, 900, 1040, 1240, 1600, 760] {
+            var frame = window.frame
+            frame.size.width = width
+            window.setFrame(frame, display: false)
+            controller.split.view.layoutSubtreeIfNeeded()
+            let measure = controller.headerMenuMeasureForTesting
+            XCTAssertEqual(measure.size, NSSize(width: 34, height: 32), "\(width)")
+            XCTAssertEqual(measure.trailingGap, 8, accuracy: 0.5, "\(width)")
+            let ink = try XCTUnwrap(measure.ink)
+            XCTAssertTrue(measure.bounds.insetBy(dx: 1, dy: 1).contains(ink), "\(ink) at \(width)")
+        }
+    }
+
+    func testFindWithAITurnsTheFieldsSparkOverFromTheMenu() async throws {
+        let (off, _, _) = try await window(on: false)
+        XCTAssertFalse(off.title(of: .findWithAI).1, "off while no model is ready")
+        let (controller, _, _) = try await window()
+        XCTAssertTrue(controller.title(of: .findWithAI).1)
+        controller.perform(.findWithAI)
+        XCTAssertTrue(controller.isSearchingForTesting, "the search opens")
+        XCTAssertTrue(controller.header.searchField.isAIOn)
+        XCTAssertEqual(controller.menuItemStateForTesting(.findWithAI), .on)
+        controller.perform(.findWithAI)
+        XCTAssertFalse(controller.header.searchField.isAIOn)
+        XCTAssertEqual(controller.menuItemStateForTesting(.findWithAI), .off)
+    }
+
     func testWithNoModelReadyThePressAsksForTheAIModeScreen() async throws {
         let (controller, _, host) = try await window(on: false)
         controller.clickSparkForTesting()
@@ -339,6 +413,16 @@ import HelmTestKit
         XCTAssertEqual(names(in: sorted), ["b.txt", "c.txt"], "the copy after it still ran")
         XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultPartial(done: 3, total: 4, skipped: 1)),
                       model.threadTextForTesting)
+    }
+
+    func testStopBeforeTheFirstCommandRunsNothingAndSaysSo() async throws {
+        let (controller, model, _) = try await windowWithPlan()
+        model.press(AgentText.apply)
+        model.press(AgentText.stop)
+        await settle(controller, model)
+        XCTAssertEqual(model.phaseForTesting, "result")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultStopped(done: 0, total: 4)), model.threadTextForTesting)
+        XCTAssertEqual(names(in: documents), ["Other", "Sorted", "a.txt", "b.txt", "c.txt"], "nothing ran")
     }
 
     func testApplyPressedTwiceRunsOnce() async throws {

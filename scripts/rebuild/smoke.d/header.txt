@@ -170,7 +170,19 @@ window-width 760
 sort-title-is none
 sidebar-width-kept
 header-shot @SHOTS@/header-narrow.png
+header-menu-whole
+# Hiding the sidebar in a narrow window keeps the window's width, and showing it again needs nothing more
+cmd sidebar
+wait 0.4
+header-leading-is 84
+hunt-width-is 760
+header-menu-whole
+cmd sidebar
+wait 0.4
+header-leading-is 8
+hunt-width-is 760
 window-width 1040
+header-menu-whole
 sort-title-is Newest first
 sidebar-width-kept
 # With the sidebar hidden, the window still goes down to its 620-point minimum: the words go rather than it growing
@@ -181,6 +193,7 @@ sort-title-is none
 header-shot @SHOTS@/header-narrow-no-sidebar.png
 search-open
 header-shot @SHOTS@/header-narrow-search.png
+header-menu-whole
 search-key escape
 search-shown false
 window-width 1040

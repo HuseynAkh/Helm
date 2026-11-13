@@ -5,8 +5,8 @@ import HelmCore
 /// names and descriptions are never used. At most `AgentModelInfo.listCap` models are kept.
 public enum AgentModelLister {
     /// The models in a list reply, in the order the menu shows them. OpenAI's list mixes its chat models with
-    /// image, speech and embedding ones, so the ids that start `gpt-` come first; every other provider's order is
-    /// kept. Ollama's models that run on Ollama's own servers are left out, since what is sent to them leaves this
+    /// image, speech, moderation and embedding ones, so only the ones that can chat are kept, those that start `gpt-`
+    /// first; every other provider's order is kept. Ollama's models that run on Ollama's own servers are left out, since what is sent to them leaves this
     /// Mac. Throws `AgentFailure.unreadable` for a reply that isn't a list.
     public static func models(from body: Data, provider: AgentProviderID) throws -> [AgentModelInfo] {
         guard let reply = try? AgentJSON(data: body),
@@ -18,9 +18,10 @@ public enum AgentModelLister {
             models.append(model)
         }
         if provider == .openAI {
-            let chat = models.filter { $0.id.hasPrefix(chatPrefix) }.sorted { $0.id < $1.id }
-            let rest = models.filter { !$0.id.hasPrefix(chatPrefix) }.sorted { $0.id < $1.id }
-            models = chat + rest
+            let chat = models.filter { Self.canChat($0.id) }
+            let gpt = chat.filter { $0.id.hasPrefix(chatPrefix) }.sorted { $0.id < $1.id }
+            let rest = chat.filter { !$0.id.hasPrefix(chatPrefix) }.sorted { $0.id < $1.id }
+            models = gpt + rest
         }
         return Array(models.prefix(AgentModelInfo.listCap))
     }
@@ -35,6 +36,17 @@ public enum AgentModelLister {
     }
 
     private static let chatPrefix = "gpt-"
+    /// OpenAI's models that answer no chat request, by how their ids start.
+    private static let notChat = ["tts-", "whisper-", "dall-e-", "text-embedding-", "omni-moderation-", "davinci-", "babbage-",
+                                  "gpt-image-"]
+
+    /// An OpenAI model that answers a chat request: a `gpt-` one, an `o` and a digit, or a `chatgpt-` one.
+    private static func canChat(_ id: String) -> Bool {
+        guard !notChat.contains(where: { id.hasPrefix($0) }) else { return false }
+        if id.hasPrefix(chatPrefix) || id.hasPrefix("chatgpt-") { return true }
+        let letters = Array(id)
+        return letters.count >= 2 && letters[0] == "o" && letters[1].isNumber
+    }
     /// Gemini names a model `models/<id>`; the id alone is what a request takes.
     private static let geminiPrefix = "models/"
 

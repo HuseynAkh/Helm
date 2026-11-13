@@ -386,7 +386,8 @@ import HelmPersistence
         let done = await until { controller.activeTab?.search?.assist?.phase == .done }
         XCTAssertTrue(done)
         let status = try XCTUnwrap(controller.aiSearchStatusForTesting)
-        XCTAssertTrue(status.text.hasSuffix(AgentText.searchNamesOnly), status.text)
+        // One part of the dot list, so without the sentence's full stop.
+        XCTAssertTrue(status.text.hasSuffix(" · " + AgentText.searchNamesOnly.dropLast()), status.text)
         XCTAssertFalse(status.queries.contains { $0.contains("Mentions") }, "words inside files are dropped on a server")
         XCTAssertEqual(status.queries, ["“plumber”, “report”"], "never broadened: the request's own words, by name")
         XCTAssertEqual(controller.activeTab?.search?.assist?.coverage, .namesOnly)

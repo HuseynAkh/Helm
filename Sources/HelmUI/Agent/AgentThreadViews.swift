@@ -44,18 +44,27 @@ struct AgentThreadLineView: View {
 }
 
 /// One of Helm's own lines: the spark, the words in the secondary colour, and a button when there is something
-/// to press.
+/// to press. The line saying what a running request does now has the system's small spinner in the spark's place,
+/// so a long wait never looks stuck; it keeps still with Reduce Motion on.
 struct AgentHelmLineView: View {
     let words: String
     let button: String?
+    var isLive = false
     let press: () -> Void
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(nsImage: SparkMark.image(size: 10, lit: false))
-                .renderingMode(.template)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
+            if isLive {
+                ProgressView().controlSize(.mini)
+                    .frame(width: 10, height: 10)
+                    .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                    .accessibilityHidden(true)
+            } else {
+                Image(nsImage: SparkMark.image(size: 10, lit: false))
+                    .renderingMode(.template)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
             Text(verbatim: words)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -76,8 +85,10 @@ struct AgentOutcomeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // Once undone, what it did is no longer so, and the line says so by going quiet.
             Text(verbatim: outcome.lines.joined(separator: "\n"))
                 .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                .foregroundStyle(outcome.undoLine == AgentText.undoDone ? Color.secondary : Color.primary)
             if let undoLine = outcome.undoLine {
                 Text(verbatim: undoLine).font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -97,9 +108,13 @@ struct AgentOutcomeView: View {
 }
 
 /// The folders AI mode can use: one chip each, with the kind's symbol, the folder's name, and a close button on a
-/// folder the person added. The tooltip says where it is in words.
+/// folder the person added. The tooltip says where it is in words. When the chips are wider than the row, its
+/// trailing edge fades, so the ones past it are seen to be there.
 struct AgentFoldersRow: View {
     @ObservedObject var model: AgentPanelModel
+    @State private var chipsWidth: CGFloat = 0
+    @State private var rowWidth: CGFloat = 0
+    static let fade: CGFloat = 16
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -109,11 +124,41 @@ struct AgentFoldersRow: View {
                 }
             }
             .padding(.horizontal, 10)
+            .background(GeometryReader { proxy in Color.clear.preference(key: AgentChipsWidthKey.self, value: proxy.size.width) })
         }
+        .background(GeometryReader { proxy in Color.clear.preference(key: AgentChipsRowWidthKey.self, value: proxy.size.width) })
+        .onPreferenceChange(AgentChipsWidthKey.self) { chipsWidth = $0 }
+        .onPreferenceChange(AgentChipsRowWidthKey.self) { rowWidth = $0 }
+        .mask(mask)
         .frame(height: 28)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: AgentText.foldersRowLabel))
     }
+
+    /// Solid while every chip fits; otherwise solid up to the last 16 points, which fade out.
+    @ViewBuilder private var mask: some View {
+        if AgentFoldersRow.fades(chips: chipsWidth, row: rowWidth) {
+            LinearGradient(stops: [.init(color: .black, location: 0),
+                                   .init(color: .black, location: max(0, 1 - Self.fade / rowWidth)),
+                                   .init(color: .clear, location: 1)],
+                           startPoint: .leading, endPoint: .trailing)
+        } else {
+            Rectangle()
+        }
+    }
+
+    /// Whether chips this wide in a row this wide need the fade.
+    static func fades(chips: CGFloat, row: CGFloat) -> Bool { row > 0 && chips > row + 0.5 }
+}
+
+/// How wide the chips are together, and how wide their row is.
+struct AgentChipsWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+struct AgentChipsRowWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 /// One folder's chip: the kind's symbol, the folder's name, and a close button on a folder the person added.
@@ -180,16 +225,21 @@ struct AgentSuggestionsRow: View {
     /// button, as Move and Copy are.
     @ViewBuilder private func chip(for suggestion: AgentSuggestion) -> some View {
         if suggestion.kind == .organize, !suggestion.isSelection {
+            // Drawn as the other chips are, the same type and height, with its chevron beside the words.
             Menu {
                 ForEach(AgentPanelModel.depths, id: \.title) { depth in
                     Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
                 }
             } label: {
-                Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(verbatim: suggestion.title).font(.system(size: 11)).foregroundStyle(.primary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             } primaryAction: {
                 model.choose(suggestion, depth: .thisFolder)
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.visible)
+            .fixedSize()
             .modifier(AgentSuggestionLook())
         } else {
             Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
@@ -201,12 +251,16 @@ struct AgentSuggestionsRow: View {
     }
 }
 
-/// A suggestion's chip: its row's full width or an equal share of it, a soft fill and rounded corners.
+/// A suggestion's chip: its row's full width or an equal share of it, one height for all three, a soft fill and
+/// rounded corners.
 private struct AgentSuggestionLook: ViewModifier {
+    static let height: CGFloat = 24
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, 6).padding(.vertical, 5)
+            .padding(.horizontal, 6)
             .frame(maxWidth: .infinity)
+            .frame(height: Self.height)
+            .contentShape(Rectangle())
             .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
     }
 }

@@ -128,6 +128,8 @@ import SwiftUI
             let leaves = await ai.done(pendingKey: pendingKey)
             guard let self else { return }
             self.aiDoneWork = nil
+            // The standard refusal, so Done never seems to do nothing. Scripted runs stay quiet.
+            if !leaves, self.interactive { NSSound.beep() }
             guard leaves, self.isOpen, self.model.mode == .ai, self.model.aiSetup === ai else { return }
             let connected = ai.isOn && ai.isConnected
             let done = self.aiDone
@@ -225,12 +227,13 @@ import SwiftUI
         guard let window, let content = window.contentView else { return }
         let height = ceil(host.sizeThatFits(in: NSSize(width: OnboardingView.width, height: 4000)).height)
         guard height > 0, abs(content.frame.height - height) > 0.5 || abs(content.frame.width - OnboardingView.width) > 0.5 else { return }
-        let top = window.frame.maxY
-        window.setContentSize(NSSize(width: OnboardingView.width, height: height))
-        var origin = NSPoint(x: window.frame.minX, y: top - window.frame.height)
+        // The top edge stays where it is and the bottom slides, rather than the window snapping to its new size.
+        var frame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: OnboardingView.width, height: height))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
         // Growing downwards mustn't take the buttons off the bottom of the screen.
-        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame { origin.y = max(origin.y, screen.minY) }
-        window.setFrameOrigin(origin)
+        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame { frame.origin.y = max(frame.origin.y, screen.minY) }
+        let animates = interactive && window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        window.setFrame(frame, display: true, animate: animates)
     }
 
     static let systemSettings = "com.apple.systempreferences"

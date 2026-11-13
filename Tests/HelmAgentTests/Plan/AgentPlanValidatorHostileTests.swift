@@ -73,7 +73,8 @@ final class AgentPlanValidatorHostileTests: XCTestCase {
             newFolders: [("n2", "n1", "Inner"), ("n1", "r1", "Outer")],
             moves: [([doc], "", "n3")])))
         XCTAssertEqual(plan.leftOut, [.unknown_id: 2])
-        XCTAssertEqual(Kit.names(plan), ["new n1 Outer"])
+        // Outer is left with nothing going into it once the rest was left out, so it isn't made either.
+        XCTAssertEqual(Kit.names(plan), [])
         // A step into a key whose folder was left out is left out with it.
         let chained = Kit.plan(await validate(Kit.proposal(
             newFolders: [("n1", "r1", "Bad/Name"), ("n2", "n1", "Inner")], moves: [([doc], "", "n2")])))
@@ -105,9 +106,10 @@ final class AgentPlanValidatorHostileTests: XCTestCase {
         let plan = Kit.plan(await validate(Kit.proposal(
             newFolders: [("n1", b, "Deeper")],
             moves: [([a], "", a), ([a], "", b)], copies: [([a], "", "n1")])))
-        // n1 is made; the three ways of putting A inside itself are not.
+        // None of the three ways of putting A inside itself is made, and n1, which only the copy went into, isn't
+        // made empty in its place.
         XCTAssertEqual(plan.leftOut, [.not_allowed: 3])
-        XCTAssertEqual(Kit.names(plan), ["new n1 Deeper"])
+        XCTAssertEqual(Kit.names(plan), [])
     }
 
     func testTheSameItemTwiceUnderTwoHandlesIsLeftOutEveryTime() async {

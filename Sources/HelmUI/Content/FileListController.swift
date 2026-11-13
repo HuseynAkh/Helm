@@ -93,6 +93,73 @@ import HelmCore
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         view = scroll
+        chosenWidths = Dictionary(uniqueKeysWithValues: outline.tableColumns.map { ($0.identifier, $0.width) })
+        // A narrower or wider list fits its columns again, Name first.
+        scroll.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(roomChanged(_:)), name: NSView.frameDidChangeNotification,
+                                               object: scroll.contentView)
+    }
+
+    // MARK: Fitting the columns
+
+    /// The widths the columns start at, or the ones the person dragged them to: what a narrower list takes from and
+    /// what a wider one gives back.
+    private var chosenWidths: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
+    /// The room the columns were last fitted to.
+    private var fittedRoom: CGFloat = 0
+    private var fitting = false
+
+    @objc private func roomChanged(_ notification: Notification) { refitColumns() }
+
+    /// When the list's room changes, as the panel opens or the window narrows, the columns are fitted to it again.
+    /// Name gives way first, down to its narrowest, so Size, Modified and Kind keep their words; only then do they
+    /// share what is still missing. As the room comes back, Name gets its width back first, up to the width it was
+    /// given, and the last column takes what is left over, as before.
+    func refitColumns() {
+        let room = scroll.contentView.bounds.width
+        guard !fitting, room > 0, abs(room - fittedRoom) > 0.5 else { return }
+        let columns = outline.tableColumns.filter { !$0.isHidden }
+        guard let nameIndex = columns.firstIndex(where: { $0.identifier.rawValue == Column.name.rawValue }) else { return }
+        fittedRoom = room
+        fitting = true
+        let style = outline.columnAutoresizingStyle
+        outline.columnAutoresizingStyle = .noColumnAutoresizing
+        defer { outline.columnAutoresizingStyle = style; fitting = false }
+        let narrowest = columns.map { Self.narrowest[$0.identifier.rawValue] ?? $0.minWidth }
+        var widths = columns.map { chosenWidths[$0.identifier] ?? $0.width }
+        // What the list adds round its columns: their spacing and the inset style's margins, as laid out now.
+        outline.tile()
+        let spacing = max(0, outline.frame.width - columns.reduce(0) { $0 + $1.width })
+        var excess = widths.reduce(0, +) + spacing - room
+        if excess > 0 {
+            let given = min(excess, max(0, widths[nameIndex] - narrowest[nameIndex]))
+            widths[nameIndex] -= given
+            excess -= given
+        }
+        if excess > 0 {
+            let spare = widths.indices.map { $0 == nameIndex ? 0 : max(0, widths[$0] - narrowest[$0]) }
+            let total = spare.reduce(0, +)
+            if total > 0 {
+                let share = min(1, excess / total)
+                for index in widths.indices { widths[index] -= (spare[index] * share).rounded(.up) }
+            }
+        }
+        for (column, width) in zip(columns, widths) where abs(column.width - width) > 0.25 { column.width = width }
+        outline.tile()
+        if widths.reduce(0, +) + spacing < room { outline.sizeLastColumnToFit() }
+    }
+
+    /// A column the person drags keeps the width they gave it.
+    func outlineViewColumnDidResize(_ notification: Notification) {
+        guard !fitting, let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn,
+              let dragged = outline.headerView?.resizedColumn, dragged >= 0, outline.tableColumns.indices.contains(dragged),
+              outline.tableColumns[dragged] === column else { return }
+        chosenWidths[column.identifier] = column.width
+    }
+
+    /// Each column on show with its width, such as "name 340".
+    var columnWidthsForTesting: [String: CGFloat] {
+        Dictionary(uniqueKeysWithValues: outline.tableColumns.filter { !$0.isHidden }.map { ($0.identifier.rawValue, $0.width) })
     }
 
     func render(_ tab: TabState, force: Bool) {

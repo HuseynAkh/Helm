@@ -27,50 +27,54 @@ public enum AgentPlaceRules {
     /// The ruling for one step. `source` holds the facts of the item's own folder (a file's parent; a folder
     /// itself), or for a new folder the folder it is made in. `destination` holds the facts of the folder a move or
     /// a copy goes into. `holdsDataless` says the item is a file that isn't downloaded, or a folder that holds one.
+    /// `names` are what the notes call the two places, such as the label of the folder the person added; without
+    /// them a note names the kind of place.
     ///
     /// The bulk guard, for many changes in a place others share, needs the whole plan and is decided afterwards by
     /// `bulkGuarded`.
     public static func rule(for step: AgentPlanStep, source: StorageFacts, destination: StorageFacts?,
-                            holdsDataless: Bool) -> Ruling {
+                            holdsDataless: Bool, names: (source: String, target: String?)? = nil) -> Ruling {
         let target = destination ?? source
+        let sourceName = names?.source ?? source.name
+        let targetName = destination == nil ? sourceName : (names?.target ?? target.name)
         // A place that doesn't answer can't be checked, so nothing there is planned.
         if !source.isResponding || !target.isResponding { return Ruling(leftOut: .not_responding) }
         switch step {
         case .newFolder:
-            if target.isReadOnly { return readOnly(target) }
-            return Ruling(notices: undoNotice(madeIn: target) + reachNotices(target))
+            if target.isReadOnly { return viewOnly(targetName) }
+            return Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
 
         case .rename:
-            if source.isReadOnly { return readOnly(source) }
-            return Ruling(notices: reachNotices(source))
+            if source.isReadOnly { return viewOnly(sourceName) }
+            return Ruling(notices: reachNotices(source, named: sourceName))
 
         case .trash:
-            if source.isReadOnly { return readOnly(source) }
+            if source.isReadOnly { return viewOnly(sourceName) }
             // Nothing is ever deleted: where there is no Trash, nothing is taken away.
-            guard source.trash == .yes else { return Ruling(leftOut: .no_trash, notices: [.noTrash(place: source.name)]) }
-            return Ruling(guardedBy: .trash, notices: reachNotices(source))
+            guard source.trash == .yes else { return Ruling(leftOut: .no_trash, notices: [.noTrash(place: sourceName)]) }
+            return Ruling(guardedBy: .trash, notices: reachNotices(source, named: sourceName))
 
         case .copy(let item, _):
-            if target.isReadOnly { return readOnly(target) }
+            if target.isReadOnly { return viewOnly(targetName) }
             if holdsDataless || item.isDataless { return Ruling(leftOut: .not_downloaded) }
-            var ruling = Ruling(notices: undoNotice(madeIn: target) + reachNotices(target))
+            var ruling = Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
             if arrives(from: source, in: target) { ruling.guardedBy = .arrives; ruling.place = target.name }
             return ruling
 
         case .move(let item, _):
-            if source.isReadOnly { return readOnly(source) }
-            if target.isReadOnly { return readOnly(target) }
+            if source.isReadOnly { return viewOnly(sourceName) }
+            if target.isReadOnly { return viewOnly(targetName) }
             if (holdsDataless || item.isDataless) && needsBytes(step, source: source, destination: target) {
                 return Ruling(leftOut: .not_downloaded)
             }
             // Taking an item off another disk removes it there, which can't be undone where there is no Trash.
             if source.trash != .yes && source.volumeRoot != target.volumeRoot {
-                return Ruling(leftOut: .no_trash, notices: [.noTrash(place: source.name)])
+                return Ruling(leftOut: .no_trash, notices: [.noTrash(place: sourceName)])
             }
-            var notices = reachNotices(source)
+            var notices = reachNotices(source, named: sourceName)
             // The destination's own reach, even inside one place: a shared folder in iCloud Drive says so.
             if target != source {
-                for notice in reachNotices(target) where !notices.contains(notice) { notices.append(notice) }
+                for notice in reachNotices(target, named: targetName) where !notices.contains(notice) { notices.append(notice) }
             }
             var ruling = Ruling(notices: notices)
             if target.placeKey != source.placeKey && source.isSeenElsewhere {
@@ -126,8 +130,8 @@ public enum AgentPlaceRules {
 
     // MARK: Pieces
 
-    private static func readOnly(_ facts: StorageFacts) -> Ruling {
-        Ruling(leftOut: .read_only, notices: [.readOnly(place: facts.name)])
+    private static func viewOnly(_ name: String) -> Ruling {
+        Ruling(leftOut: .read_only, notices: [.readOnly(place: name)])
     }
 
     /// Something put into `target` from another place that other devices or other people see.
@@ -137,14 +141,14 @@ public enum AgentPlaceRules {
 
     /// What a change in this place reaches: everyone who uses it when sharing is known, the person's devices and
     /// anyone it is shared with when the provider doesn't say, or the person's devices alone.
-    static func reachNotices(_ facts: StorageFacts) -> [AgentPlanNotice] {
-        if facts.sharingIsKnown { return [.shared(place: facts.name)] }
+    static func reachNotices(_ facts: StorageFacts, named name: String? = nil) -> [AgentPlanNotice] {
+        if facts.sharingIsKnown { return [.shared(place: name ?? facts.name)] }
         if facts.syncs { return [facts.shared == .unknown ? .syncsMaybeShared : .syncs] }
         return []
     }
 
     /// Undo of something made in a place takes it away again, which needs a Trash there.
-    private static func undoNotice(madeIn facts: StorageFacts) -> [AgentPlanNotice] {
-        facts.trash == .yes ? [] : [.cantUndo(place: facts.name)]
+    private static func undoNotice(madeIn facts: StorageFacts, named name: String) -> [AgentPlanNotice] {
+        facts.trash == .yes ? [] : [.cantUndo(place: name)]
     }
 }

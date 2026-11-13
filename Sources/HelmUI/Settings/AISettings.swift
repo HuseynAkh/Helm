@@ -4,8 +4,10 @@ import Combine
 import HelmAgent
 import SwiftUI
 
-/// Settings › AI: the switch with the consent line under it, and once it is on the provider, its key (or a local
-/// provider's state) and its model. Drawn from the same model as the AI mode screen.
+/// Settings › AI: the switch with the consent line as its footer, as General's switches have theirs, and once it is
+/// on the provider, its key (or a local provider's state) and its model. Drawn from the same model as the AI mode
+/// screen. Settings has no Done, so what is typed is entered on Return, as the caret leaves a field, or as the pane
+/// goes away.
 struct AISettingsView: View {
     @ObservedObject var model: AISetupModel
     @State private var draftKey = ""
@@ -15,6 +17,9 @@ struct AISettingsView: View {
     @State private var draftAddress = ""
     @State private var draftPort = ""
     @State private var draftModel = ""
+    /// The field with the caret, among the address, the port and the model's name.
+    enum Field: Hashable { case address, port, model }
+    @FocusState private var focused: Field?
 
     static let width: CGFloat = 560
 
@@ -22,6 +27,7 @@ struct AISettingsView: View {
         Form {
             Section {
                 Toggle(AgentText.settingsAIMode, isOn: Binding(get: { model.isOn }, set: { model.setOn($0) }))
+            } footer: {
                 Text(verbatim: model.consentLine)
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,15 +41,25 @@ struct AISettingsView: View {
                     }
                     if model.provider == .other { address }
                     if model.showsKeyField { key } else if !model.takesKey { localState }
-                    modelRow
+                    // Other has no models to offer until an address has been taken.
+                    if model.provider != .other || model.hasProfile { modelRow }
                 }
             }
         }
         .formStyle(.grouped)
         .frame(width: Self.width)
         .onAppear { draftAddress = model.address }
-        // Settings has no Done, so a key typed and not yet entered is entered as the pane goes away.
-        .onDisappear { enterDraftKey(onlyFor: keyOwner) }
+        // Settings has no Done, so a key, an address, a port or a model typed and not yet entered is entered as the
+        // pane goes away.
+        .onDisappear {
+            enterDraftKey(onlyFor: keyOwner)
+            commitTyped(address: true, port: true, model: true)
+        }
+        // Leaving a field enters what was typed in it, as Return does.
+        .onChange(of: focused) { old, now in
+            guard let old, old != now else { return }
+            commitTyped(address: old == .address, port: old == .port, model: old == .model)
+        }
         // A key typed but not yet entered never follows a change of provider or address.
         .onChange(of: model.provider) { _, _ in
             draftKey = ""
@@ -55,7 +71,8 @@ struct AISettingsView: View {
 
     private var address: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TextField(AgentText.addressLabel, text: $draftAddress)
+            TextField(AgentText.addressLabel, text: $draftAddress, prompt: Text(AgentText.addressPrompt))
+                .focused($focused, equals: .address)
                 .onSubmit { model.setAddress(draftAddress) }
             if let problem = model.addressProblem { AIModeLine(text: problem, isProblem: true) }
         }
@@ -65,7 +82,9 @@ struct AISettingsView: View {
     private var key: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                SecureField(AgentText.keyLabel, text: $draftKey, prompt: Text(AgentText.keyPlaceholder))
+                // A saved key is never drawn; the prompt says it is there, and a paste replaces it.
+                SecureField(AgentText.keyLabel, text: $draftKey,
+                            prompt: Text(model.hasSavedKey ? AgentText.keySaved : AgentText.keyPlaceholder))
                     .focused($keyFocused)
                     .onSubmit { enterDraftKey() }
                     // Leaving the field enters what was typed, as Return does.
@@ -89,12 +108,20 @@ struct AISettingsView: View {
 
     private var keyOwner: String { model.provider.rawValue + "|" + model.address }
 
-    /// A local provider's state in place of a key, and its port beside "isn't running".
+    /// Enters the address, the port or the model's name that was typed and not yet entered.
+    private func commitTyped(address: Bool, port: Bool, model commitsModel: Bool) {
+        model.commitTyped(address: address ? draftAddress : nil, port: port ? draftPort : nil,
+                          model: commitsModel ? draftModel : nil)
+        if port { draftPort = "" }
+    }
+
+    /// A local provider's state in place of a key, and its port beside "isn't running" or "Can't reach".
     private var localState: some View {
         VStack(alignment: .leading, spacing: 4) {
             AIModeStateRow(model: model)
             if model.showsPort {
                 TextField(AgentText.portLabel, text: $draftPort, prompt: Text(verbatim: model.port.map(String.init) ?? ""))
+                    .focused($focused, equals: .port)
                     .onSubmit {
                         model.setPort(draftPort)
                         draftPort = ""
@@ -107,6 +134,7 @@ struct AISettingsView: View {
     @ViewBuilder private var modelRow: some View {
         if model.showsModelField {
             TextField(AgentText.modelLabel, text: $draftModel, prompt: Text(AgentText.modelPlaceholder))
+                .focused($focused, equals: .model)
                 .onSubmit { model.typeModel(draftModel) }
         } else {
             Picker(AgentText.modelLabel, selection: Binding(get: { model.model ?? "" }, set: { model.chooseModel($0) })) {

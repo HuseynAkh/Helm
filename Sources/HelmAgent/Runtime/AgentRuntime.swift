@@ -239,7 +239,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             case .wrongKey: return .wrongKey
             case .notRunning: return .notRunning
             case .notReady, .outOfCredit, .rateLimited, .overloaded, .noSuchModel, .noTools, .badRequest, .tooLarge,
-                 .unreachable, .timedOut, .unreadable, .cancelled:
+                 .unreachable, .timedOut, .unreadable, .cancelled, .declined:
                 return .cantReach
             }
         } catch {

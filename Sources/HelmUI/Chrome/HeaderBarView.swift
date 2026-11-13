@@ -77,6 +77,10 @@ extension HeaderBarDelegate {
     private static let buttonGap: CGFloat = 2
     private static let groupGap: CGFloat = 6
     private static let edgeGap: CGFloat = 8
+    /// Between the spark and the main menu: a little more than within a group, so their two lit fills never meet.
+    private static let sparkGap: CGFloat = 4
+    /// An icon on its own is exactly this wide, never wider or narrower, whatever the row does.
+    static let iconButtonWidth: CGFloat = 34
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -108,6 +112,10 @@ extension HeaderBarDelegate {
         right.spacing = Self.buttonGap
         right.setCustomSpacing(Self.groupGap, after: searchButton)
         right.setCustomSpacing(Self.groupGap, after: sortButton)
+        right.setCustomSpacing(Self.sparkGap, after: sparkButton)
+        for button in [sidebarButton, backButton, forwardButton, searchButton, viewButton, sparkButton, menuButton] as [NSView] {
+            button.widthAnchor.constraint(equalToConstant: Self.iconButtonWidth).isActive = true
+        }
         for view in [left, right, pathBar, searchField] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
@@ -157,11 +165,19 @@ extension HeaderBarDelegate {
     var widthWithSortWords: CGFloat {
         let left = [sidebarButton, backButton, forwardButton].map(\.laidOutWidth).reduce(0, +) + 2 * Self.buttonGap
         let right = searchButton.laidOutWidth + Self.groupGap + viewButton.laidOutWidth + Self.buttonGap
-            + sortButton.widthWithWords + Self.groupGap + sparkButton.laidOutWidth + Self.buttonGap + menuButton.laidOutWidth
+            + sortButton.widthWithWords + Self.groupGap + sparkButton.laidOutWidth + Self.sparkGap + menuButton.laidOutWidth
         // The search field sits in the path's place, hidden or not, so its own minimum counts too.
         let path = max(Self.pathRoom, pathBar.minimumWidth, searchField.minimumWidth)
         return leadingInset + left + Self.edgeGap + path + Self.edgeGap + right + Self.edgeGap
     }
+
+    /// The narrowest the bar can be with the sort's words dropped, with the sidebar shown or hidden.
+    func compactWidth(sidebarVisible: Bool) -> CGFloat {
+        let leading: CGFloat = sidebarVisible ? Self.edgeGap : Self.hiddenSidebarLeading
+        return widthWithSortWords - leadingInset + leading - (sortButton.widthWithWords - sortButton.compactWidth)
+    }
+    /// Where the buttons start with the sidebar hidden: clear of the window buttons.
+    static let hiddenSidebarLeading: CGFloat = 84
 
     /// With the sidebar hidden, the window buttons sit over the bar's left end, so the buttons move clear of them.
     func setSidebarVisible(_ visible: Bool, animated: Bool = false) {
@@ -169,7 +185,7 @@ extension HeaderBarDelegate {
         let words = visible ? "Hide Sidebar" : "Show Sidebar"
         sidebarButton.setAccessibilityLabel(words)
         sidebarButton.toolTip = HeaderShortcuts.tip(words, .sidebar)
-        let constant: CGFloat = visible ? Self.edgeGap : 84
+        let constant: CGFloat = visible ? Self.edgeGap : Self.hiddenSidebarLeading
         guard let leading, leading.constant != constant else { return }
         leading.constant = constant
         // The buttons moving over changes the room for the sort's words.
@@ -387,7 +403,15 @@ extension HeaderBarDelegate {
     /// Whether the field is drawn as being typed in.
     private(set) var showsEditing = false
     /// What the empty field says, such as "Search Home".
-    var placeholderStringForTesting: String? { field.placeholderString }
+    var placeholderStringForTesting: String? { field.placeholderAttributedString?.string ?? field.placeholderString }
+    /// Whether the empty field's words end in an ellipsis when they don't fit.
+    var placeholderTruncatesForTesting: Bool {
+        guard let words = field.placeholderAttributedString, words.length > 0,
+              let style = words.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle else { return false }
+        return style.lineBreakMode == .byTruncatingTail
+    }
+    /// Whether the lit fill is behind the spark.
+    var aiLitShownForTesting: Bool { !aiLit.isHidden }
     /// The room the words you type always keep, about nine letters: in a narrow window the scope gives way first.
     static let minimumTextWidth: CGFloat = 64
     /// The widest the scope gets: a folder with a long name is shortened in it, leaving the room to the words you type.
@@ -397,6 +421,10 @@ extension HeaderBarDelegate {
 
     /// The spark's side in the field, about the magnifier's size.
     static let aiMarkSize: CGFloat = 14
+    /// The header's lit fill behind the spark while AI search is on: the same share of the label colour and the same
+    /// corners as a header button that is on.
+    private let aiLit = NSView()
+    static let aiLitAlpha: CGFloat = 0.14
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -421,6 +449,9 @@ extension HeaderBarDelegate {
         aiToggle.setAccessibilityRole(.checkBox)
         aiToggle.setAccessibilitySubrole(.toggle)
         aiToggle.isHidden = true
+        aiLit.wantsLayer = true
+        aiLit.layer?.cornerRadius = 6
+        aiLit.isHidden = true
         field.isBordered = false; field.drawsBackground = false; field.focusRingType = .none
         field.font = .systemFont(ofSize: 14)
         field.placeholderString = "Search this folder"
@@ -448,7 +479,7 @@ extension HeaderBarDelegate {
         // The folder's name gives way, down to the chevron, before the words you type do, and a long name never makes
         // the window wider. Below the priority a fitting size presses with (50), so `minimumWidth` is the fitting width.
         scope.setContentCompressionResistancePriority(.init(40), for: .horizontal)
-        for view in [icon, field, clear, scope, aiToggle] as [NSView] {
+        for view in [icon, field, clear, scope, aiLit, aiToggle] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -461,6 +492,8 @@ extension HeaderBarDelegate {
             // the row's chain, so it adds no width.
             aiToggle.centerXAnchor.constraint(equalTo: icon.centerXAnchor), aiToggle.centerYAnchor.constraint(equalTo: centerYAnchor),
             aiToggle.widthAnchor.constraint(equalToConstant: markWidth + 8), aiToggle.heightAnchor.constraint(equalToConstant: 24),
+            aiLit.leadingAnchor.constraint(equalTo: aiToggle.leadingAnchor), aiLit.trailingAnchor.constraint(equalTo: aiToggle.trailingAnchor),
+            aiLit.topAnchor.constraint(equalTo: aiToggle.topAnchor), aiLit.bottomAnchor.constraint(equalTo: aiToggle.bottomAnchor),
             field.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), field.centerYAnchor.constraint(equalTo: centerYAnchor),
             field.trailingAnchor.constraint(equalTo: clear.leadingAnchor, constant: -4),
             clear.trailingAnchor.constraint(equalTo: scope.leadingAnchor, constant: -6), clear.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -506,7 +539,7 @@ extension HeaderBarDelegate {
     /// Clicking anywhere in the rounded field puts the caret in it, as with the path bar.
     override func mouseDown(with event: NSEvent) { focus(selectingAll: false) }
 
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateBackground() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); updateBackground(); updatePlaceholder() }
     private func setEditing(_ editing: Bool) {
         guard editing != showsEditing else { return }
         showsEditing = editing
@@ -516,6 +549,7 @@ extension HeaderBarDelegate {
     private func updateBackground() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(showsEditing ? 0.14 : 0.08).cgColor
+            aiLit.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(Self.aiLitAlpha).cgColor
         }
     }
 
@@ -563,7 +597,11 @@ extension HeaderBarDelegate {
         } else {
             words = "Search \(everywhere ? "This Mac" : (folderName ?? "This Mac"))"
         }
-        field.placeholderString = words
+        // A narrow field ends the words in an ellipsis rather than cutting a letter. Typed words keep scrolling.
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byTruncatingTail
+        field.placeholderAttributedString = NSAttributedString(string: words, attributes: [
+            .font: field.font ?? .systemFont(ofSize: 14), .foregroundColor: NSColor.placeholderTextColor, .paragraphStyle: style])
         field.setAccessibilityLabel(words)
     }
 
@@ -580,6 +618,8 @@ extension HeaderBarDelegate {
     private func updateAIMark() {
         icon.isHidden = isAIAvailable
         aiToggle.isHidden = !isAIAvailable
+        // On, it sits on the header's own lit fill, as a header button that is on does.
+        aiLit.isHidden = !(isAIAvailable && isAIOn)
         aiToggle.image = SparkMark.image(size: Self.aiMarkSize, lit: isAIOn)
         aiToggle.setAccessibilityValue(NSNumber(value: isAIOn))
     }

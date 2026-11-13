@@ -84,7 +84,7 @@ public enum CommandValidation {
         case .decompress: return .selection
         case .viewOptions, .computer: return .window
         case .goToTrash: return .window
-        case .aiPanel: return .window
+        case .aiPanel, .findWithAI: return .window
         }
     }
 

@@ -103,6 +103,8 @@ import Quartz
             await wait(seconds: 0.3)
         case "search":
             window.search(argument)
+            // An open, empty field shows the words too, as typing them would have.
+            window.showSearchWordsForTesting(argument)
             await wait(seconds: 0.8)
         case "setting":
             let bits = argument.split(separator: " ").map(String.init)
@@ -283,8 +285,13 @@ import Quartz
                 check(false, step, "usage"); return
             }
             app.showSettingsWindow(nil)
+            // The window settles at its first size before the pane is chosen, and again after, before the capture.
+            await wait(seconds: 0.4)
             app.settingsControllerForTesting?.select(pane)
             await wait(seconds: 0.8)
+            app.settingsWindowForTesting?.contentView?.layoutSubtreeIfNeeded()
+            app.settingsWindowForTesting?.displayIfNeeded()
+            await wait(seconds: 0.3)
             guard let view = app.settingsWindowForTesting?.contentView?.superview,
                   let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, step, "no window"); return }
             view.cacheDisplay(in: view.bounds, to: image)
@@ -396,13 +403,42 @@ import Quartz
                 check(false, step, "no view"); return
             }
             content.cacheDisplay(in: content.bounds, to: image)
-            let data = image.representation(using: .png, properties: [:])
+            let data = withMaterials(image, of: content).representation(using: .png, properties: [:])
             try? data?.write(to: URL(fileURLWithPath: argument))
             check(data != nil, step)
         default:
             if await performTrackVerb(verb, argument, step: step, window: window, app: app) { return }
             check(false, step, "unknown step")
         }
+    }
+
+    /// A capture drawn from the views leaves out what a material shows from behind the window, which some SDKs
+    /// leave see-through. Each material's frame is filled first with the colour it shows over a plain desktop, and
+    /// the capture is drawn on top, so the sidebar reads as it does on screen.
+    static func withMaterials(_ capture: NSBitmapImageRep, of root: NSView) -> NSBitmapImageRep {
+        guard let out = root.bitmapImageRepForCachingDisplay(in: root.bounds),
+              let context = NSGraphicsContext(bitmapImageRep: out) else { return capture }
+        var effects: [NSVisualEffectView] = []
+        func walk(_ view: NSView) {
+            if let effect = view as? NSVisualEffectView, !effect.isHiddenOrHasHiddenAncestor { effects.append(effect) }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        root.effectiveAppearance.performAsCurrentDrawingAppearance {
+            NSColor.windowBackgroundColor.setFill()
+            root.bounds.fill()
+            for effect in effects {
+                let frame = effect.convert(effect.bounds, to: root)
+                let color: NSColor = effect.material == .sidebar ? .underPageBackgroundColor : .windowBackgroundColor
+                color.setFill()
+                frame.fill()
+            }
+            capture.draw(in: root.bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return out
     }
 }
 #endif

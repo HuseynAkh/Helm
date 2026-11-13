@@ -57,6 +57,8 @@ public struct MenuModel: Equatable, Sendable {
         var sections = menu.sections
         switch menu.title {
         case "File":
+            // Beside Find, as its other half. The title is HelmAgent's own words, which a HelmUI test keeps equal.
+            sections[3] += [item("Find with AI", .findWithAI, "f", [.command, .option], isNew: true)]
             sections.insert([
                 item("Open", .open, "o", isNew: true), item("Open With", .openWith, isNew: true),
                 item("Open in New Tab", .openInNewTab, isNew: true), item("Open in New Window", .openInNewWindow, isNew: true),

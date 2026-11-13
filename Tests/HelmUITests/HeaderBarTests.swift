@@ -135,10 +135,11 @@ import HelmCore
         XCTAssertEqual(spark.frame.height, 32)
         XCTAssertEqual(spark.frame.width, 34)
         XCTAssertEqual(spark.frame.midY, header.menuButton.frame.midY, accuracy: 0.5)
-        // The view and the sort, then a group's gap, then the spark and the main menu side by side.
+        // The view and the sort, then a group's gap, then the spark and the main menu side by side, a little apart so
+        // their two lit fills never meet.
         XCTAssertEqual(header.sortButton.frame.minX - header.viewButton.frame.maxX, 2, accuracy: 0.5)
         XCTAssertEqual(spark.frame.minX - header.sortButton.frame.maxX, 6, accuracy: 0.5)
-        XCTAssertEqual(header.menuButton.frame.minX - spark.frame.maxX, 2, accuracy: 0.5)
+        XCTAssertEqual(header.menuButton.frame.minX - spark.frame.maxX, 4, accuracy: 0.5)
         XCTAssertEqual(header.viewButton.frame.minX - header.searchButton.frame.maxX, 6, accuracy: 0.5)
         let menu = header.convert(header.menuButton.bounds, from: header.menuButton)
         XCTAssertEqual(header.bounds.width - menu.maxX, 8, accuracy: 0.5, "The main menu stays at the end.")
@@ -277,6 +278,46 @@ import HelmCore
         XCTAssertEqual(field.placeholderStringForTesting, "Search This Mac")
         header.setAISearch(available: false, on: false)
         XCTAssertEqual(field.leadingMark, "magnifier")
+    }
+
+    func testANarrowFieldEndsItsPlaceholderInAnEllipsis() {
+        let header = HeaderBarView()
+        header.render(tab: tab())
+        XCTAssertTrue(header.searchField.placeholderTruncatesForTesting, "the words end in … rather than a cut letter")
+        header.setAISearch(available: true, on: true)
+        XCTAssertTrue(header.searchField.placeholderTruncatesForTesting)
+        XCTAssertEqual(header.searchField.placeholderStringForTesting, "Describe a file in Documents")
+    }
+
+    func testTheFieldsSparkSitsOnTheLitFillWhileOn() {
+        let (_, header) = laidOut()
+        header.beginSearch()
+        let field = header.searchField
+        header.setAISearch(available: true, on: false)
+        XCTAssertFalse(field.aiLitShownForTesting)
+        let width = field.frame.width
+        header.setAISearch(available: true, on: true)
+        XCTAssertTrue(field.aiLitShownForTesting, "on reads as a header button that is on")
+        XCTAssertEqual(field.frame.width, width, "and adds no width")
+        header.setAISearch(available: false, on: false)
+        XCTAssertFalse(field.aiLitShownForTesting)
+    }
+
+    func testIconButtonsAreExactlyTheirWidthAndDrawTheirSymbolWhole() throws {
+        let (_, header) = laidOut()
+        for button in [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.viewButton,
+                       header.sparkButton, header.menuButton] as [FlatButton] {
+            XCTAssertEqual(button.frame.width, 34, accuracy: 0.5, button.accessibilityLabel() ?? "")
+            XCTAssertEqual(button.frame.height, 32, accuracy: 0.5, button.accessibilityLabel() ?? "")
+        }
+        XCTAssertEqual(header.menuButton.imageScaling, .scaleNone, "the symbol is never scaled down to a short image rect")
+        let ink = try XCTUnwrap(header.menuButton.inkRectForTesting())
+        XCTAssertTrue(header.menuButton.bounds.insetBy(dx: 1, dy: 1).contains(ink), "\(ink)")
+        XCTAssertEqual(ink.width, 15, accuracy: 1.5)
+        XCTAssertEqual(ink.height, 15, accuracy: 1.5)
+        XCTAssertEqual(header.menuButton.layerContentsPlacement, .scaleAxesIndependently,
+                       "an icon on its own fills the button it was drawn for")
+        XCTAssertEqual(header.sortButton.layerContentsPlacement, .center, "the sort's words stay centred as it resizes")
     }
 
     func testTheFieldsSparkIsAToggleNamedFindWithAI() throws {

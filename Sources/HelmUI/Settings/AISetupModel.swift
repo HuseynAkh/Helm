@@ -26,6 +26,9 @@ import HelmPersistence
     @Published public private(set) var model: String?
     /// Why the address typed for Other wasn't taken, as one line. Nil when it was, or when none was typed.
     @Published private(set) var addressProblem: String?
+    /// How many times Done was pressed and the screen couldn't close, since the provider was last shown. The screen
+    /// marks a missing key as the problem and puts the caret back in its field each time.
+    @Published private(set) var refusedDone = 0
 
     /// What pressing Done does on the AI mode screen, with the key typed into its field and not yet entered. The
     /// window showing the screen sets it.
@@ -60,8 +63,14 @@ import HelmPersistence
     /// Whether a key is saved for the provider at its address. The key itself is never read.
     public var hasSavedKey: Bool { profile.map { services.secrets.has($0.secretID) } ?? false }
 
-    /// A local provider whose server isn't answering: its port may be the reason.
-    public var showsPort: Bool { isLocal && connection == .notRunning }
+    /// A local provider whose server isn't answering, or can't be reached: its port may be the reason.
+    public var showsPort: Bool { isLocal && (connection == .notRunning || connection == .cantReach) }
+    /// Done was pressed with no key for a provider that needs one, so "No key" is the problem to fix.
+    var flagsMissingKey: Bool { connection == .noKey && refusedDone > 0 }
+    /// The state line is drawn as a problem, in orange.
+    var stateIsProblem: Bool { offersTryAgain || connection == .wrongKey || flagsMissingKey }
+    /// The provider is reached where it is: for Other, once an address has been taken.
+    var hasProfile: Bool { profile != nil }
 
     /// Other, when its address gave no list of models to choose from.
     public var showsModelField: Bool {
@@ -160,6 +169,7 @@ import HelmPersistence
         }
         services.config.update { $0.keyOwners[profile.secretID.account] = nil }
         stopChecking()
+        refusedDone = 0
         models = []
         objectWillChange.send()
         connection = restingConnection
@@ -237,8 +247,27 @@ import HelmPersistence
             await settle()
         }
         let leaves = !isOn || isConnected
-        if leaves { markSeen() }
+        if leaves { markSeen() } else { refusedDone += 1 }
         return leaves
+    }
+
+    /// What was typed into the address, port and model name fields and not yet entered with Return: each is entered
+    /// now, when it holds something and says something other than what is saved. Done does this before it checks, so
+    /// a typed address is asked, and Settings does it as a field or the pane is left.
+    func commitTyped(address typedAddress: String? = nil, port typedPort: String? = nil, model typedModel: String? = nil) {
+        if let typedAddress, provider == .other {
+            let trimmed = typedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            let same = (try? AgentEndpoint(typed: trimmed)).map { Self.address(of: $0) == address } ?? false
+            if !trimmed.isEmpty, !same { setAddress(trimmed) }
+        }
+        if let typedPort, isLocal {
+            let digits = String(typedPort.unicodeScalars.filter { ("0"..."9").contains($0) })
+            if let number = Int(digits.prefix(Self.portDigits)), number != port { setPort(digits) }
+        }
+        if let typedModel, provider == .other {
+            let trimmed = typedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed != model { typeModel(trimmed) }
+        }
     }
 
     /// The AI mode screen was left some way other than Done, so AI mode is off: only Done leaves it on.
@@ -384,6 +413,7 @@ import HelmPersistence
         services.runtime.setOn(on)
         guard on != isOn else { return }
         isOn = on
+        refusedDone = 0
         stopChecking()
         models = []
         connection = restingConnection
@@ -399,6 +429,7 @@ import HelmPersistence
     private func show(_ next: AgentProviderID) {
         stopChecking()
         provider = next
+        refusedDone = 0
         models = []
         addressProblem = nil
         model = Self.model(for: next, in: services.config.config)

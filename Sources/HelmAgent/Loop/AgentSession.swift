@@ -218,7 +218,7 @@ public actor AgentSession: AgentConversing {
             }
             guard let result = finished else { return ended(.failed(.unreadable)) }
             switch result.stop {
-            case .refusal, .contentFilter: return ended(.reply(AgentText.failDeclined))
+            case .refusal, .contentFilter: return ended(.failed(.declined))
             case .maxTokens: return ended(.failed(.tooLarge))
             case .failed(let failure): return ended(.failed(failure))
             case .endTurn, .toolUse: break

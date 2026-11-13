@@ -12,6 +12,18 @@ final class AgentTextPinsTests: XCTestCase {
         XCTAssertEqual(rows.first?.title, AgentText.menuShowPanel)
     }
 
+    func testTheFindWithAIRowReadsAsTheSearchToggleDoesAndTakesOptionCommandF() {
+        let rows = MenuModel.menuBar.flatMap(\.sections).flatMap { $0 }.filter { $0.command == .findWithAI }
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.title, AgentText.searchToggle)
+        XCTAssertEqual(rows.first?.binding, KeyBinding(command: .findWithAI, key: "f", modifiers: [.command, .option]))
+        let file = MenuModel.menuBar.first { $0.title == "File" }
+        let section = file?.sections.first { $0.contains { $0.command == .find } }
+        XCTAssertEqual(section?.map(\.command), [.find, .findWithAI], "beside Find")
+        XCTAssertEqual(MenuModel.defaultBindings.filter { $0.key == "f" && $0.modifiers == [.command, .option] }.count, 1,
+                       "no other command takes ⌥⌘F")
+    }
+
     func testTheNoResultsButtonReadsAsTheSearchToggleDoes() {
         let home = URL(fileURLWithPath: "/home/helm", isDirectory: true)
         let folder = Location.directory(home.appendingPathComponent("Documents", isDirectory: true))

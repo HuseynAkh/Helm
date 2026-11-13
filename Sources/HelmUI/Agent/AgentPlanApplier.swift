@@ -29,15 +29,20 @@ public struct AgentApplyReport: Equatable, Sendable {
 
     init(window: BrowserWindowController) { self.window = window }
 
-    /// `progress` gets the changes handled so far, the changes in all, and the name of the item in hand.
-    func apply(_ plan: AgentChangePlan, ticked: Set<Int>, progress: @escaping (Int, Int, String) -> Void) async -> AgentApplyReport {
+    /// `progress` gets the changes handled so far, the changes in all, and the name of the item in hand. `shouldStop`
+    /// is asked before each command: once it says yes, nothing more runs and the report says it stopped early.
+    /// `pauseBetween` holds each command after the first back that long; scripted runs use it to press Stop midway.
+    func apply(_ plan: AgentChangePlan, ticked: Set<Int>, shouldStop: @escaping @MainActor () -> Bool = { false },
+               pauseBetween: TimeInterval = 0, progress: @escaping (Int, Int, String) -> Void) async -> AgentApplyReport {
         let commands = AgentPlanCompiler.commands(for: plan, ticked: ticked)
         let total = commands.reduce(0) { $0 + Self.size(of: $1) }
         let group = HistoryGroup(name: plan.title.text)
         var tally = Tally()
         var made: [String: URL] = [:]
 
-        for command in commands {
+        for (index, command) in commands.enumerated() {
+            if index > 0, pauseBetween > 0 { try? await Task.sleep(nanoseconds: UInt64(pauseBetween * 1_000_000_000)) }
+            if shouldStop() { tally.stopped = true }
             guard !tally.stopped else { break }
             guard let window else { tally.stopped = true; break }
             let fileSystem = window.dependencies.fileSystem

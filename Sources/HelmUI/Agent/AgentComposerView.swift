@@ -4,14 +4,14 @@ import Combine
 import HelmAgent
 import HelmCore
 
-/// The panel's composer, pinned to its bottom: a plain text view of one to five lines, a small menu naming the model,
-/// and Send, which becomes Stop while a request runs. Return sends; Shift-Return or Option-Return starts a new line;
+/// The panel's composer, pinned to its bottom: a plain text view of one to five lines, the model's name in quiet
+/// secondary text, which opens Settings › AI, and Send, which becomes Stop while a request or an Apply runs. Return sends; Shift-Return or Option-Return starts a new line;
 /// Command-Return presses Apply on the card that waits; Escape stops a request or gives the keys back to the files.
 @MainActor final class AgentComposerView: NSView, NSTextViewDelegate {
     let textView = AgentComposerTextView()
     private let scrollView = NSScrollView()
     private let box = NSView()
-    private let modelButton = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let modelButton = NSButton(title: "", target: nil, action: nil)
     private let sendButton = NSButton(title: AgentText.send, target: nil, action: nil)
     private var boxHeight: NSLayoutConstraint?
     private var watch: AnyCancellable?
@@ -74,10 +74,12 @@ import HelmCore
         scrollView.automaticallyAdjustsContentInsets = false
         scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
 
-        modelButton.controlSize = .small
-        modelButton.font = .systemFont(ofSize: 11)
         modelButton.isBordered = false
-        (modelButton.cell as? NSPopUpButtonCell)?.arrowPosition = .arrowAtBottom
+        modelButton.setButtonType(.momentaryChange)
+        modelButton.lineBreakMode = .byTruncatingMiddle
+        modelButton.toolTip = AgentText.modelMenuSettings
+        modelButton.target = self
+        modelButton.action = #selector(openSettings)
         sendButton.bezelStyle = .rounded
         sendButton.controlSize = .small
         sendButton.target = self
@@ -130,30 +132,29 @@ import HelmCore
 
     private func refresh() {
         guard let model else { return }
-        let running = model.phase == .working
+        let running = model.showsStop
         sendButton.title = running ? AgentText.stop : AgentText.send
         sendButton.isEnabled = running || model.canSend
-        let name = model.provider.model.isEmpty ? model.provider.name : model.provider.model
         textView.needsDisplay = true
-        // The menu is made again only when the model it names changes, so it never changes under the pointer.
+        // The model's id, or the provider's name when it has none, as the disk's and the model's words are: escaped.
+        let name = AgentTextEscaper.escape(model.provider.model.isEmpty ? model.provider.name : model.provider.model)
         guard name != shownModel else { return }
         shownModel = name
-        modelButton.removeAllItems()
-        modelButton.addItem(withTitle: name)
-        let current = NSMenuItem(title: name, action: nil, keyEquivalent: "")
-        current.state = .on
-        current.isEnabled = false
-        modelButton.menu?.addItem(current)
-        modelButton.menu?.addItem(.separator())
-        let settings = NSMenuItem(title: AgentText.modelMenuSettings, action: #selector(openSettings), keyEquivalent: "")
-        settings.target = self
-        modelButton.menu?.addItem(settings)
+        modelButton.attributedTitle = NSAttributedString(string: name, attributes: [
+            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+        modelButton.setAccessibilityLabel(name)
+        modelButton.setAccessibilityHelp(AgentText.modelMenuSettings)
     }
 
     @objc private func pressSend() {
         guard let model else { return }
-        if model.phase == .working { model.press(AgentText.stop) } else { model.send() }
+        if model.showsStop { model.press(AgentText.stop) } else { model.send() }
     }
+
+    /// For tests: the name under the composer, and a press on it.
+    var modelNameForTesting: String { modelButton.attributedTitle.string }
+    var sendTitleForTesting: (title: String, enabled: Bool) { (sendButton.title, sendButton.isEnabled) }
+    func pressModelNameForTesting() { modelButton.performClick(nil) }
 
     @objc private func openSettings() { model?.press(AgentText.modelMenuSettings) }
 

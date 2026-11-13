@@ -32,6 +32,13 @@ extension BrowserWindowController {
         search(text, usesAI: true)
     }
 
+    /// File › Find with AI (⌥⌘F): the search opens if it isn't open, and the spark turns over, as a press on it does.
+    func toggleAISearchFromMenu() {
+        guard isAISearchReady, let runner = aiSearchRunner else { return }
+        if !header.isSearching { header.beginSearch() }
+        headerSearchAIToggled(!runner.isOn)
+    }
+
     /// The search field's spark. It stays off while no model is ready.
     func headerSearchAIToggled(_ on: Bool) {
         guard let runner = aiSearchRunner else { return }
@@ -54,7 +61,10 @@ extension BrowserWindowController {
                 case .onThisMacOnly: coverage = AgentText.searchOnThisMac
                 case .namesOnly: coverage = AgentText.searchNamesOnly
                 }
-                let words = [assist.readAs, coverage].compactMap { $0 }.filter { !$0.isEmpty }
+                // Inside the dot list the coverage is one part of it, not a sentence: "… · Names only here".
+                let readAs = assist.readAs ?? ""
+                let part = readAs.isEmpty ? coverage : coverage.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 }
+                let words = [assist.readAs, part].compactMap { $0 }.filter { !$0.isEmpty }
                 return AISearchStatus(text: words.joined(separator: " · "), queries: assist.queriesRead)
             }
         }

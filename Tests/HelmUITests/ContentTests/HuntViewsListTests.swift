@@ -127,6 +127,36 @@ import HelmCore
         XCTAssertEqual(h.columnWidths, before)
     }
 
+    /// A narrower list, as when the AI panel opens beside it, takes its room from Name first, so Size, Modified and
+    /// Kind keep their words; only past Name's narrowest do the others give way. Wider again, Name gets its width back.
+    func testANarrowerListTakesRoomFromNameFirstAndGivesItBack() {
+        let h = harness([file("a.txt"), file("b.txt")])
+        func widths() -> [String: CGFloat] { h.list.columnWidthsForTesting }
+        h.window.setContentSize(NSSize(width: 1100, height: 420))
+        h.window.layoutIfNeeded()
+        XCTAssertEqual(widths()["name"] ?? 0, 340, accuracy: 0.5, "\(widths())")
+        h.window.setContentSize(NSSize(width: 760, height: 420))
+        h.window.layoutIfNeeded()
+        XCTAssertLessThan(widths()["name"] ?? 0, 340, "Name gave way first")
+        XCTAssertEqual(widths()["size"] ?? 0, 90, accuracy: 0.5, "\(widths())")
+        XCTAssertEqual(widths()["dateModified"] ?? 0, 180, accuracy: 0.5, "\(widths())")
+        XCTAssertEqual(widths()["kind"] ?? 0, 160, accuracy: 0.5, "Kind keeps its words: \(widths())")
+        let room = h.outline.enclosingScrollView?.contentView.bounds.width ?? 0
+        XCTAssertLessThanOrEqual(h.outline.frame.width, room + 1, "nothing is past the edge")
+        h.window.setContentSize(NSSize(width: 440, height: 420))
+        h.window.layoutIfNeeded()
+        XCTAssertEqual(widths()["name"] ?? 0, FileListController.narrowest["name"] ?? 0, accuracy: 0.5, "\(widths())")
+        for (column, width) in widths() {
+            XCTAssertGreaterThanOrEqual(width, (FileListController.narrowest[column] ?? 0) - 0.5, "\(column): \(widths())")
+        }
+        h.window.setContentSize(NSSize(width: 1100, height: 420))
+        h.window.layoutIfNeeded()
+        XCTAssertEqual(widths()["name"] ?? 0, 340, accuracy: 0.5, "Name has its width back: \(widths())")
+        XCTAssertEqual(widths()["size"] ?? 0, 90, accuracy: 0.5)
+        XCTAssertEqual(widths()["dateModified"] ?? 0, 180, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(widths()["kind"] ?? 0, 160 - 0.5, "the last column takes what is left over")
+    }
+
     // MARK: The column menu
 
     /// Right-click a column heading: the menu ticks the columns on show. The sorted column's heading carries an arrow

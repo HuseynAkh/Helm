@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import XCTest
 import HelmAgent
 import HelmCore
@@ -408,11 +409,192 @@ import HelmCore
         model.key("return")
         await settle(model)
         XCTAssertEqual(applied, [], "plain Return never presses Apply")
-        model.key("escape")
-        XCTAssertEqual(keysGivenBack, 1)
         model.commandReturn()
         await settle(model)
         XCTAssertEqual(applied, [plan().defaultTicked], "Command-Return does")
+        model.key("escape")
+        XCTAssertEqual(keysGivenBack, 1, "with nothing waiting, Escape gives the keys back")
+    }
+
+    func testEscapeCancelsAWaitingPlanThenGivesTheKeysBack() async {
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        await say(model, "tidy up")
+        XCTAssertEqual(model.phaseForTesting, "plan")
+        model.key("escape")
+        await settle(model)
+        XCTAssertEqual(model.phaseForTesting, "idle")
+        XCTAssertTrue(model.threadTextForTesting.hasSuffix(AgentText.planDismissed))
+        XCTAssertEqual(conversation.inner.outcomes, [.dismissed])
+        XCTAssertEqual(keysGivenBack, 0, "the first Escape only cancels the plan")
+        model.key("escape")
+        XCTAssertEqual(keysGivenBack, 1)
+    }
+
+    // MARK: Apply, Stop and Undo
+
+    func testApplyShowsALineAtOnceAndStopReachesTheApplier() async {
+        applyGate = PanelTestGate()
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        await say(model, "tidy up")
+        // An Apply that stops between commands when asked, as the window's applier does.
+        model.actions.apply = { [weak model] approved in
+            let ticket = await conversation.inner.beginApply(planID: approved.planID, ticked: approved.ticked)
+            guard case .go = ticket else { return nil }
+            model?.applyProgress(planID: approved.planID, done: 0, total: 2, name: "a.png")
+            while model?.applyStopAsked != true { try? await Task.sleep(nanoseconds: 5_000_000) }
+            return AgentApplyReport(done: 1, skipped: 0, total: 2, stoppedEarly: true, trashFailed: [], changed: [],
+                                    group: HistoryGroup(name: "Organize"))
+        }
+        model.press(AgentText.apply)
+        XCTAssertEqual(model.phaseForTesting, "applying")
+        XCTAssertTrue(model.threadTextForTesting.hasSuffix(AgentText.statusCheckingPlan), "a line at once")
+        XCTAssertTrue(model.showsStop, "Send reads Stop while a plan applies")
+        let moving = await until { model.threadTextForTesting.hasSuffix(AgentText.applyMoving(done: 1, total: 2, name: "a.png")) }
+        XCTAssertTrue(moving, model.threadTextForTesting)
+        model.press(AgentText.stop)
+        XCTAssertTrue(model.applyStopAsked, "Stop reached the applier")
+        await settle(model)
+        XCTAssertEqual(model.phaseForTesting, "result")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultStopped(done: 1, total: 2)), model.threadTextForTesting)
+        XCTAssertEqual(AgentText.resultStopped(done: 1, total: 2), "Stopped after 1 of 2.")
+        XCTAssertFalse(model.showsStop)
+    }
+
+    func testAnUndoThatWorkedTakesShowAwayAndQuietsTheLine() async {
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        await say(model, "tidy up")
+        model.actions.apply = { approved in
+            guard case .go = await conversation.inner.beginApply(planID: approved.planID, ticked: approved.ticked) else { return nil }
+            return AgentApplyReport(done: 2, skipped: 0, total: 2, stoppedEarly: false, trashFailed: [],
+                                    changed: [URL(fileURLWithPath: "/home/helm/Downloads/Images/a.png")], group: HistoryGroup(name: "Organize"))
+        }
+        model.actions.undo = { _ in true }
+        model.press(AgentText.apply)
+        await settle(model)
+        func outcome() -> AgentPanelModel.Outcome? {
+            for line in model.lines.reversed() { if case .outcome(let outcome) = line.kind { return outcome } }
+            return nil
+        }
+        XCTAssertEqual(outcome()?.changed.count, 1, "Show is offered")
+        model.press(AgentText.undo)
+        await settle(model)
+        XCTAssertEqual(outcome()?.undoLine, AgentText.undoDone)
+        XCTAssertEqual(outcome()?.changed, [], "nothing left to show")
+    }
+
+    // MARK: Lines
+
+    func testARefusalIsHelmsOwnLineAndNoModelSaysWhy() async {
+        let conversation = PanelTestConversation()
+        let model = await model(conversation)
+        conversation.failure = .declined
+        await say(model, "something")
+        guard case .helm(let words, nil)? = model.lines.last?.kind else { return XCTFail("not Helm's own line") }
+        XCTAssertEqual(words, AgentText.failDeclined)
+        conversation.failure = .notReady
+        await say(model, "again")
+        guard case .helm(let why, .openSettings?)? = model.lines.last?.kind else { return XCTFail("no line for notReady") }
+        XCTAssertEqual(why, AgentText.failNoKey("Claude"))
+        XCTAssertEqual(model.phaseForTesting, "failed")
+    }
+
+    func testTheTraceLineFollowsItsRequestAndTheCardStaysLast() async {
+        let conversation = PanelTestConversation(plan: plan())
+        conversation.traceAfter = (names: 6, destination: "Claude")
+        let model = await model(conversation)
+        await say(model, "tidy up")
+        let kinds = model.lines.map(\.kind)
+        guard let request = kinds.firstIndex(of: .request("tidy up")) else { return XCTFail("no request") }
+        XCTAssertEqual(kinds[request + 1], .helm(AgentText.traceSent(names: 6, destination: "Claude"), button: nil))
+        guard case .plan? = kinds.last else { return XCTFail("the card isn't last") }
+    }
+
+    func testARefusedAddGivesBackWhatWasTyped() async {
+        let conversation = PanelTestConversation()
+        conversation.inner.folderAnswers = ["~/Dowloads": .refused(.notFound)]
+        let model = await model(conversation)
+        await say(model, "/add ~/Dowloads")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addNotFound))
+        XCTAssertEqual(model.composerTextForTesting, "/add ~/Dowloads", "the typo can be put right")
+        await say(model, "/add /home/helm/Music")
+        XCTAssertEqual(model.composerTextForTesting, "", "a folder that was added leaves the composer empty")
+    }
+
+    // MARK: The composer
+
+    func testTheModelsNameOpensSettingsAndStopStaysPressableWhileAPlanApplies() async throws {
+        applyGate = PanelTestGate()
+        var opened = 0
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        model.actions.openSettings = { opened += 1 }
+        let composer = AgentComposerView(frame: NSRect(x: 0, y: 0, width: 340, height: 80))
+        composer.attach(model, dropTarget: AgentPanelHost())
+        XCTAssertEqual(composer.modelNameForTesting, "scripted-1", "the model's id, quietly, with no menu")
+        composer.pressModelNameForTesting()
+        XCTAssertEqual(opened, 1, "pressing the name opens Settings › AI")
+        await say(model, "tidy up")
+        model.press(AgentText.apply)
+        let stop = await until { composer.sendTitleForTesting == (AgentText.stop, true) }
+        XCTAssertTrue(stop, "\(composer.sendTitleForTesting)")
+        applyGate.open()
+        await settle(model)
+        let send = await until { composer.sendTitleForTesting.title == AgentText.send }
+        XCTAssertTrue(send)
+    }
+
+    func testTheFoldersRowFadesOnlyWhenItsChipsOverflow() {
+        XCTAssertFalse(AgentFoldersRow.fades(chips: 300, row: 339))
+        XCTAssertFalse(AgentFoldersRow.fades(chips: 339, row: 339))
+        XCTAssertTrue(AgentFoldersRow.fades(chips: 520, row: 339))
+        XCTAssertFalse(AgentFoldersRow.fades(chips: 520, row: 0), "a row not laid out yet doesn't fade")
+    }
+
+    // MARK: The card's words
+
+    private func movePlan(_ count: Int, guarded: Bool = false) -> AgentChangePlan {
+        let target = item("/home/helm/Documents", kind: .directory, handle: "d1")
+        let steps = (0..<count).map { AgentPlanStep.move(item(downloads + "/file-\($0).txt", handle: "f\($0)"), to: .existing(target)) }
+        return AgentChangePlan(title: .move(count), steps: steps,
+                               groups: [AgentPlanGroup(id: 1, kind: .moves(toLabel: "Documents", isNew: false), steps: Array(0..<count),
+                                                       guardedBy: guarded ? .leaves : nil, place: guarded ? "iCloud Drive" : nil)],
+                               notices: [], leftOut: [:])
+    }
+
+    func testTheCountsLineShowsOnlyWhenItSaysMoreThanTheTitle() {
+        let single = AgentPlanCard(plan: movePlan(1), roots: [])
+        XCTAssertEqual(single.title, "Move 1 Item")
+        XCTAssertEqual(single.shownCountsLine, "", "1 move under Move 1 Item says nothing new")
+        XCTAssertFalse(single.textLines.contains(AgentText.countMoves(1)))
+        let mixed = AgentPlanCard(plan: plan(), roots: [])
+        XCTAssertEqual(mixed.shownCountsLine, "2 moves · 1 new folder · 1 rename")
+        var unticked = AgentPlanCard(plan: movePlan(3), roots: [])
+        XCTAssertEqual(unticked.shownCountsLine, "")
+        unticked.toggle(1)
+        XCTAssertEqual(unticked.shownCountsLine, "", "nothing ticked counts nothing")
+    }
+
+    func testAGuardedGroupStartsOpenOnlyWhenItIsShort() {
+        let short = AgentPlanCard(plan: movePlan(10, guarded: true), roots: [])
+        XCTAssertEqual(short.groupRows.map(\.isOpen), [true])
+        let long = AgentPlanCard(plan: movePlan(11, guarded: true), roots: [])
+        XCTAssertEqual(long.groupRows.map(\.isOpen), [false], "Cancel and Apply stay in reach")
+        XCTAssertEqual(long.groupRows.map(\.mark), [AgentText.markLeaves("iCloud Drive")], "the mark still says why it is unticked")
+    }
+
+    func testARowLeavesOutWordsItsGroupAlreadySays() {
+        let share = AgentScopeRoot(alias: "r1", path: "/Volumes/share/Team", label: "Share", modelName: "Share", identity: nil,
+                                   storage: .thisMac, isTabFolder: true)
+        let renames = (0..<3).map { AgentPlanStep.rename(item("/Volumes/share/Team/share-0\($0).txt", handle: "f\($0)"), to: name("shared-0\($0).txt")) }
+        let plan = AgentChangePlan(title: .rename(3), steps: renames, groups: [AgentPlanGroup(id: 1, kind: .renames, steps: [0, 1, 2])],
+                                   notices: [], leftOut: [:])
+        let rows = AgentPlanCard(plan: plan, roots: [share]).groupRows[0].rows
+        XCTAssertEqual(rows.map(\.name), ["share-00.txt → shared-00.txt", "share-01.txt → shared-01.txt", "share-02.txt → shared-02.txt"])
+        XCTAssertEqual(rows.map(\.detail), ["", "", ""], "every row is in Share, the folder its chip names")
+        XCTAssertEqual(rows.flatMap(\.tags), [], "Renamed is the group's own kind")
     }
 
     // MARK: The plan card
@@ -544,8 +726,27 @@ import HelmCore
         let empty = AgentChangePlan(title: .organize(rootLabel: "Downloads"), steps: [], groups: [], notices: [], leftOut: [:])
         conversation.answerPlan = empty
         await say(model, "again")
-        XCTAssertEqual(model.notesForTesting, [AgentText.planNothing])
-        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.planReplaced), "the older card says it was replaced")
+        // Nothing to apply: the line shows alone as Helm's own, with no card, and the older card can't run.
+        XCTAssertTrue(model.threadTextForTesting.hasSuffix(AgentText.planNothing), model.threadTextForTesting)
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.planDismissed), "the older card can't be applied any more")
+        XCTAssertEqual(model.phaseForTesting, "idle")
+    }
+
+    func testAPlanWhoseChangesWereAllLeftOutShowsItsLineAloneAndOffersNoApply() async {
+        let leftOver = AgentChangePlan(title: .organize(rootLabel: "Downloads"), steps: [], groups: [],
+                                       notices: [.notDownloaded(1)], leftOut: [.not_downloaded: 1])
+        let conversation = PanelTestConversation(plan: leftOver)
+        let model = await model(conversation)
+        await say(model, "copy it")
+        XCTAssertTrue(model.threadTextForTesting.hasSuffix(AgentText.noteNotDownloaded(1)), model.threadTextForTesting)
+        XCTAssertEqual(AgentText.noteNotDownloaded(1), "1 item isn't downloaded, so Helm left it out.")
+        XCTAssertFalse(model.lines.contains { if case .plan = $0.kind { return true }; return false }, "no card")
+        guard let last = model.lines.last, case .helm(_, nil) = last.kind else { return XCTFail("not Helm's own line") }
+        XCTAssertEqual(model.phaseForTesting, "idle")
+        model.press(AgentText.apply)
+        await settle(model)
+        XCTAssertEqual(applied, [], "nothing to apply")
+        XCTAssertEqual(conversation.inner.outcomes, [.dismissed], "the plan is settled as dismissed")
     }
 
     func testApplyPressedTwiceRunsOnceAndCancelDismisses() async {
@@ -629,6 +830,13 @@ final class PanelTestConversation: AgentConversing, @unchecked Sendable {
         get { lock.withLock { otherPlan } }
         set { lock.withLock { otherPlan = newValue } }
     }
+    /// While set, a request says how many names went where, after the rest of its answer, as a real one does.
+    var traceAfter: (names: Int, destination: String)? {
+        get { lock.withLock { tracing } }
+        set { lock.withLock { tracing = newValue } }
+    }
+    private var tracing: (names: Int, destination: String)?
+
     /// While true, a request answers with no plan.
     var withoutPlan: Bool {
         get { lock.withLock { noPlan } }
@@ -657,7 +865,7 @@ final class PanelTestConversation: AgentConversing, @unchecked Sendable {
 
     func send(_ input: AgentPersonInput) -> AsyncStream<AgentSessionEvent> {
         let events = inner.send(input)
-        let (gate, failure, other, none) = lock.withLock { (heldBy, failing, otherPlan, noPlan) }
+        let (gate, failure, other, none, trace) = lock.withLock { (heldBy, failing, otherPlan, noPlan, tracing) }
         return AsyncStream { continuation in
             Task {
                 continuation.yield(.status(.thinking))
@@ -670,6 +878,9 @@ final class PanelTestConversation: AgentConversing, @unchecked Sendable {
                         switch event {
                         case .status: continue
                         case .plan(let plan): if !none { continuation.yield(.plan(other ?? plan)) }
+                        case .finished:
+                            if let trace { continuation.yield(.trace(.sent(names: trace.names, destination: trace.destination))) }
+                            continuation.yield(event)
                         default: continuation.yield(event)
                         }
                     }

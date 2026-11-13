@@ -41,7 +41,8 @@ extension HostSmokeDriver {
         case "hunt-search-placeholder":
             // The header search field's resting words, which name the folder a search would look in.
             let fields = allViews(in: window.window?.contentView?.superview).compactMap { $0 as? NSTextField }
-            let words = fields.compactMap(\.placeholderString).first { $0.hasPrefix("Search") } ?? "none"
+            let words = fields.compactMap { $0.placeholderAttributedString?.string ?? $0.placeholderString }
+                .first { $0.hasPrefix("Search") } ?? "none"
             check(words == argument, step, words)
         case "hunt-context-item", "hunt-context-bg":
             // "<enabled|disabled> <title>": right-clicks the selected row of the list view (or, for -bg, the empty space

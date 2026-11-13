@@ -129,7 +129,7 @@ final class AgentSessionTests: XCTestCase {
     // MARK: Turns that are dropped
 
     func testARefusalAndAMaxTokensStopRunNoTool() async {
-        for (message, expected) in [("refuse", "reply \(AgentText.failDeclined)"), ("filtered", "reply \(AgentText.failDeclined)"),
+        for (message, expected) in [("refuse", "failed declined"), ("filtered", "failed declined"),
                                     ("cutoff", "failed tooLarge")] {
             let rig = await self.rig()
             let words = await send(rig, message)

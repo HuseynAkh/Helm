@@ -123,6 +123,10 @@ extension HostSmokeDriver {
             guard let connector = services.connector as? MemoryServerConnector else { check(false, step, "not the stand-in connector"); return true }
             let opened = connector.opened.map(\.absoluteString)
             check(argument == "none" ? opened.isEmpty : opened.contains(argument), step, opened.joined(separator: ","))
+        case "agent-apply-pause":
+            // agent-apply-pause <seconds>: each command of an Apply after the first waits that long first, so a step
+            // can press Stop between two of them. 0 puts it back.
+            window.agentApplyPauseForTesting = Double(argument) ?? 0
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.

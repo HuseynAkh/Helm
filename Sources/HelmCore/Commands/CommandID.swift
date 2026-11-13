@@ -22,6 +22,8 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case goToTrash
     /// View › Show AI Panel: the panel beside the files where requests to a model are typed.
     case aiPanel
+    /// File › Find with AI: the search field's spark from the keyboard.
+    case findWithAI
 
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {

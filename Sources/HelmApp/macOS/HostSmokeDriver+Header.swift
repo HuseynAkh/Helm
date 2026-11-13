@@ -146,6 +146,11 @@ extension HostSmokeDriver {
             await wait(seconds: 0.5)
         case "title-bar-fits-header":
             check(titleBarProblems(window).isEmpty, step, titleBarProblems(window).joined(separator: "; "))
+        case "header-menu-whole":
+            // The main menu's dots in a circle are drawn whole: the button is 34 by 32, 8 points from the header's
+            // trailing edge, and its ink, about 15 points square, lies inside it with room to spare. The spark's
+            // ink is about the same size.
+            check(menuProblems(window).isEmpty, step, menuProblems(window).joined(separator: "; "))
         case "header-buttons-even":
             // Every header button's fill is the same height: 32 points, or 26 for the ⋯ inside the path. The view
             // button and the spark are among them.
@@ -171,7 +176,7 @@ extension HostSmokeDriver {
               let image = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return false }
         frameView.cacheDisplay(in: frameView.bounds, to: image)
         let scale = CGFloat(image.pixelsHigh) / max(1, frameView.bounds.height)
-        guard let whole = image.cgImage,
+        guard let whole = withMaterials(image, of: frameView).cgImage,
               let band = whole.cropping(to: CGRect(x: 0, y: 0, width: CGFloat(whole.width), height: min(CGFloat(whole.height), points * scale))),
               let data = NSBitmapImageRep(cgImage: band).representation(using: .png, properties: [:]) else { return false }
         return (try? data.write(to: URL(fileURLWithPath: path))) != nil
@@ -219,6 +224,19 @@ extension HostSmokeDriver {
                 problems.append("\(hit.map { String(describing: type(of: $0)) } ?? "nothing") takes \(Int(x)) under the header")
             }
         }
+        return problems
+    }
+
+    /// What keeps the main menu button from being drawn whole, if anything.
+    private static func menuProblems(_ window: BrowserWindowController) -> [String] {
+        let measure = window.headerMenuMeasureForTesting
+        var problems: [String] = []
+        if abs(measure.size.width - 34) > 0.5 || abs(measure.size.height - 32) > 0.5 { problems.append("size \(measure.size)") }
+        if abs(measure.trailingGap - 8) > 0.5 { problems.append("\(measure.trailingGap) from the trailing edge") }
+        guard let ink = measure.ink else { return problems + ["no ink"] }
+        if !measure.bounds.insetBy(dx: 1, dy: 1).contains(ink) { problems.append("ink \(ink) reaches the edge of \(measure.bounds)") }
+        if ink.width < 13.5 || ink.width > 16.5 || ink.height < 13.5 || ink.height > 16.5 { problems.append("ink \(ink.size)") }
+        if let spark = measure.sparkInk, spark.width < 13.5 || spark.width > 16.5 { problems.append("spark ink \(spark.size)") }
         return problems
     }
 

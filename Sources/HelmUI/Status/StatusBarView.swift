@@ -41,11 +41,24 @@ public struct StatusBarView: View {
                 }
         }
     }
-    private var words: some View {
-        Text(verbatim: text)
+    /// The words; while they open the list of queries, the spark before them and a small chevron after say that
+    /// they come from AI and can be pressed.
+    @ViewBuilder private var words: some View {
+        let plain = Text(verbatim: text)
             .font(.system(size: 12.5))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.middle)
+        if isPressable {
+            HStack(spacing: 5) {
+                Image(nsImage: SparkMark.image(size: 10, lit: false)).renderingMode(.template)
+                    .foregroundStyle(.secondary).accessibilityHidden(true)
+                plain
+                Image(systemName: "chevron.up").font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary).accessibilityHidden(true)
+            }
+        } else {
+            plain
+        }
     }
 }

@@ -30,7 +30,8 @@ struct AgentPlanCard: Equatable {
 
     private(set) var plan: AgentChangePlan
     private(set) var ticked: Set<Int>
-    /// Groups opened to their full list. A group that starts unticked starts open, so its items are seen.
+    /// Groups opened to their full list. A group that starts unticked starts open, so its items are seen, unless it
+    /// is long enough to push Cancel and Apply out of reach.
     private(set) var opened: Set<Int>
     var stage: Stage = .open
     /// Apply found that the folder had changed, so this is a new plan for the person to look at again.
@@ -45,7 +46,13 @@ struct AgentPlanCard: Equatable {
         self.plan = plan
         self.roots = roots
         ticked = plan.defaultTicked
-        opened = Set(plan.groups.filter { !$0.startsOn }.map(\.id))
+        opened = Self.startsOpen(plan)
+    }
+
+    /// The most rows a group that starts unticked shows before it is opened.
+    static let openRows = 10
+    private static func startsOpen(_ plan: AgentChangePlan) -> Set<Int> {
+        Set(plan.groups.filter { !$0.startsOn && $0.steps.count <= openRows }.map(\.id))
     }
 
     /// The approval of exactly what is ticked on this card now.
@@ -55,7 +62,7 @@ struct AgentPlanCard: Equatable {
     mutating func refresh(with plan: AgentChangePlan) {
         self.plan = plan
         ticked = plan.defaultTicked
-        opened = Set(plan.groups.filter { !$0.startsOn }.map(\.id))
+        opened = Self.startsOpen(plan)
         stage = .open
         wasRefreshed = true
         holdsKeyedApply = true
@@ -74,6 +81,20 @@ struct AgentPlanCard: Equatable {
 
     var title: String { plan.title.text }
     var countsLine: String { plan.counts(ticked: ticked).line }
+    /// The counts line, unless it only says again what the title says, such as "1 move" under "Move 1 Item". A line
+    /// with more than one part, such as "4 moves · 2 new folders", always shows.
+    var shownCountsLine: String {
+        let counts = plan.counts(ticked: ticked)
+        let repeats: Bool
+        switch plan.title {
+        case .move(let count): repeats = counts == AgentPlanCounts(moves: count)
+        case .copy(let count): repeats = counts == AgentPlanCounts(copies: count)
+        case .rename(let count): repeats = counts == AgentPlanCounts(renames: count)
+        case .trash(let count): repeats = counts == AgentPlanCounts(trash: count)
+        case .organize: repeats = false
+        }
+        return repeats ? "" : counts.line
+    }
     /// Apply works only on a card that waits, for a plan that changes something with these ticks.
     var canApply: Bool { stage == .open && !plan.isEmpty && plan.counts(ticked: ticked).total > 0 }
 
@@ -102,8 +123,25 @@ struct AgentPlanCard: Equatable {
     var groupRows: [GroupRow] {
         plan.groups.map { group in
             GroupRow(id: group.id, title: Self.title(of: group, in: plan), isOn: ticked.contains(group.id),
-                     isOpen: opened.contains(group.id), mark: Self.mark(of: group),
-                     rows: group.steps.filter { plan.steps.indices.contains($0) }.map(row))
+                     isOpen: opened.contains(group.id), mark: Self.mark(of: group), rows: rows(of: group))
+        }
+    }
+
+    /// A group's rows without the words its title already says: a tag that is the group's own kind ("Renamed" in a
+    /// group of renames), and the folder when every row is directly in the same folder the person added.
+    private func rows(of group: AgentPlanGroup) -> [ItemRow] {
+        let all = group.steps.filter { plan.steps.indices.contains($0) }.map(row)
+        let ownTag: String?
+        switch group.kind {
+        case .renames: ownTag = AgentText.tagRenamed
+        case .trash: ownTag = AgentText.tagTrash
+        case .newFolders: ownTag = AgentText.tagNew
+        case .moves, .copies: ownTag = nil
+        }
+        let labels = Set(roots.map { AgentTextEscaper.escape($0.label) })
+        let sameFolder = all.count > 1 && Set(all.map(\.detail)).count == 1 && labels.contains(all.first?.detail ?? "")
+        return all.map { row in
+            ItemRow(id: row.id, name: row.name, detail: sameFolder ? "" : row.detail, tags: row.tags.filter { $0 != ownTag })
         }
     }
 
@@ -204,7 +242,7 @@ struct AgentPlanCard: Equatable {
     /// Every line of the card, as the thread's text holds it.
     var textLines: [String] {
         var lines = [title]
-        if !countsLine.isEmpty { lines.append(countsLine) }
+        if !shownCountsLine.isEmpty { lines.append(shownCountsLine) }
         lines += notes.map(\.text)
         lines += groupRows.map(\.title)
         switch stage {
@@ -231,8 +269,8 @@ struct AgentPlanCardView: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: card.title).font(.system(size: 13, weight: .semibold))
-                if !card.countsLine.isEmpty {
-                    Text(verbatim: card.countsLine).font(.system(size: 12)).foregroundStyle(.secondary)
+                if !card.shownCountsLine.isEmpty {
+                    Text(verbatim: card.shownCountsLine).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
             ForEach(Array(card.notes.enumerated()), id: \.offset) { _, note in
@@ -269,7 +307,11 @@ struct AgentPlanCardView: View {
             }
             .controlSize(.small)
         case .applying(let line):
-            Text(verbatim: line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            HStack(spacing: 6) {
+                // The system's own spinner, which keeps still with Reduce Motion on.
+                ProgressView().controlSize(.mini)
+                Text(verbatim: line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
         case .applied:
             EmptyView()
         case .dismissed:
@@ -291,16 +333,19 @@ struct AgentPlanGroupView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Toggle(isOn: Binding(get: { group.isOn }, set: { _ in toggle() })) {
-                    Text(verbatim: group.title).font(.system(size: 12)).lineLimit(2)
+                    // The title keeps its own line; the mark that says why it starts unticked sits under it.
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(verbatim: group.title).font(.system(size: 12)).lineLimit(2)
+                        if let mark = group.mark {
+                            Text(verbatim: mark)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.primary.opacity(0.10)))
+                        }
+                    }
                 }
                 .toggleStyle(.checkbox)
                 .disabled(!isEnabled)
-                if let mark = group.mark {
-                    Text(verbatim: mark)
-                        .font(.system(size: 10, weight: .medium))
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Capsule().fill(Color.primary.opacity(0.10)))
-                }
                 Spacer(minLength: 0)
                 Button(action: toggleOpen) {
                     Image(systemName: group.isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
@@ -325,8 +370,10 @@ struct AgentPlanRowView: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(verbatim: row.name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
-            Text(verbatim: row.detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                .lineLimit(1).truncationMode(.head)
+            if !row.detail.isEmpty {
+                Text(verbatim: row.detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.head)
+            }
             Spacer(minLength: 0)
             ForEach(row.tags, id: \.self) { tag in
                 Text(verbatim: tag).font(.system(size: 10)).foregroundStyle(.secondary)

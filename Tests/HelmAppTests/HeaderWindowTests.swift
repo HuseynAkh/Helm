@@ -150,6 +150,73 @@ import HelmPersistence
         XCTAssertEqual(controller.sidebarWidthForTesting, sidebar, accuracy: 0.5)
     }
 
+    // MARK: The main menu, whole
+
+    /// The main menu's dots in a circle keep their 34-by-32 button 8 points from the trailing edge, and their ink stays
+    /// inside it, whatever the width, with the sidebar shown or hidden, with the search open, and after the window
+    /// is made narrow and wide again.
+    func testTheMainMenuIsDrawnWholeAtEveryWidth() async throws {
+        let controller = try await documentsWindow()
+        func check(_ label: String) {
+            let measure = controller.headerMenuMeasureForTesting
+            XCTAssertEqual(measure.size.width, 34, accuracy: 0.5, label)
+            XCTAssertEqual(measure.size.height, 32, accuracy: 0.5, label)
+            XCTAssertEqual(measure.trailingGap, 8, accuracy: 0.5, label)
+            guard let ink = measure.ink else { return XCTFail("no ink: \(label)") }
+            XCTAssertTrue(measure.bounds.insetBy(dx: 1, dy: 1).contains(ink), "\(ink) in \(measure.bounds): \(label)")
+            XCTAssertEqual(ink.width, 15, accuracy: 1.5, label)
+            XCTAssertEqual(ink.height, 15, accuracy: 1.5, label)
+            if let spark = measure.sparkInk { XCTAssertEqual(spark.width, 15, accuracy: 1.5, "the spark's ink: \(label)") }
+        }
+        let widths: [CGFloat] = [560, 620, 700, 760, 900, 1040, 1240, 1600]
+        for sidebar in [true, false] {
+            if controller.isSidebarVisibleForTesting != sidebar { controller.toggleSidebar(); await settle(0.3) }
+            for searching in [false, true] {
+                if searching { controller.beginSearch() } else if controller.isSearchingForTesting {
+                    _ = controller.searchFieldKeyForTesting("escape")
+                }
+                for width in widths {
+                    await resize(controller, to: width)
+                    check("\(Int(width)), sidebar \(sidebar), search \(searching)")
+                }
+            }
+        }
+        await resize(controller, to: 620)
+        await resize(controller, to: 1600)
+        check("narrowed and widened")
+    }
+
+    // MARK: Showing and hiding the sidebar
+
+    func testHidingTheSidebarNeverWidensTheWindowAndShowingAddsOnlyWhatItNeeds() async throws {
+        let controller = try await documentsWindow()
+        await resize(controller, to: 700)
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+        let sidebar = controller.sidebarWidthForTesting
+        controller.toggleSidebar()
+        await settle(0.4)
+        XCTAssertFalse(controller.isSidebarVisibleForTesting)
+        XCTAssertEqual(controller.headerLeadingForTesting, 84)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 700, accuracy: 0.5, "hiding the sidebar widened the window")
+        await resize(controller, to: 640)
+        controller.toggleSidebar()
+        await settle(0.4)
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+        XCTAssertEqual(controller.headerLeadingForTesting, 8)
+        let width = controller.window?.frame.width ?? 0
+        // As wide as the sidebar at its narrowest and the header without the sort's words need: no wider.
+        let needed = 190 + 1 + controller.header.compactWidth(sidebarVisible: true)
+        XCTAssertLessThanOrEqual(width, ceil(needed) + 1, "showing the sidebar added more than it needed: \(width) for \(needed)")
+        XCTAssertLessThan(width, 640 + sidebar, "it added the whole sidebar on top")
+        XCTAssertGreaterThanOrEqual(controller.sidebarWidthForTesting, min(sidebar, 190) - 0.5)
+        // In a wide window nothing changes size.
+        await resize(controller, to: 1040)
+        controller.toggleSidebar(); await settle(0.4)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 1040, accuracy: 0.5)
+        controller.toggleSidebar(); await settle(0.4)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 1040, accuracy: 0.5)
+    }
+
     // MARK: Where the keys go
 
     func testANavigationWhileTypingGivesTheFilesTheKeys() async throws {

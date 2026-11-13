@@ -35,7 +35,6 @@ import HelmCore
         var show: @MainActor ([URL]) -> Void = { _ in }
         var connect: @MainActor (ServerLocation) -> Bool = { _ in false }
         var openSettings: @MainActor () -> Void = {}
-        var chooseModel: @MainActor (String) -> Void = { _ in }
         /// Escape with nothing running: the files take the keys.
         var giveKeysBack: @MainActor () -> Void = {}
         /// The caret goes to the composer, as after a suggestion fills it.
@@ -127,6 +126,10 @@ import HelmCore
     private var pendingWork = 0
     private var settled: Phase = .idle
     private var stopAsked = false
+    /// Stop was pressed while a plan applied. The applier looks before each command and stops there.
+    private(set) var applyStopAsked = false
+    /// The request line of the request that is open, so its trace line can follow it.
+    private var requestLineID: Int?
     /// The last message sent, for Try Again.
     private var lastInput: AgentPersonInput?
     private var lastShown: String?
@@ -232,17 +235,13 @@ import HelmCore
         addFolder(path, origin: .dropped)
     }
 
-    public func chooseModel(_ id: String) {
-        actions.chooseModel(id)
-        provider.model = id
-    }
-
     /// "escape" or "return", as the composer would get it. Return sends and never presses Apply; Escape stops a
-    /// request, or gives the keys back to the files.
+    /// request, cancels a plan that waits, as a sheet's Cancel does, or gives the keys back to the files.
     public func key(_ name: String) {
         switch name {
         case "return": send()
-        case "escape": if requestOpen { stop() } else { actions.giveKeysBack() }
+        case "escape":
+            if requestOpen { stop() } else if openCardIndex != nil { dismissOpenCard() } else { actions.giveKeysBack() }
         default: break
         }
     }
@@ -341,7 +340,8 @@ import HelmCore
 
     /// How far Apply has got.
     func applyProgress(planID: UUID, done: Int, total: Int, name: String) {
-        guard let index = cardIndex(of: planID), case .plan(var card) = lines[index].kind, case .applying = card.stage else { return }
+        guard !applyStopAsked, let index = cardIndex(of: planID), case .plan(var card) = lines[index].kind,
+              case .applying = card.stage else { return }
         let step = min(total, done + 1)
         let line: String
         switch card.plan.title {
@@ -395,6 +395,8 @@ import HelmCore
     var composerTextForTesting: String { composerText }
 
     var isWorking: Bool { requestOpen || applying }
+    /// Send reads Stop and stays pressable while a request or an Apply runs.
+    var showsStop: Bool { phase == .working || phase == .applying }
     var canSend: Bool { !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !applying }
 
     /// A command offered while the composer holds only the start of one, and what choosing it types.
@@ -444,7 +446,7 @@ import HelmCore
             }
         case .add(let path):
             setComposer("", caret: 0)
-            addFolder(path, origin: .typed)
+            addFolder(path, origin: .typed, typed: typed)
         case .connect(let location):
             // Helm only offers the address to macOS, and only once the person presses Connect. Nothing is added.
             setComposer("", caret: 0)
@@ -538,6 +540,7 @@ import HelmCore
         lastInput = input
         lastShown = shown
         append(.request(shown))
+        requestLineID = lines.last?.id
         recomputePhase()
         Task { [weak self] in
             guard let self else { return }
@@ -548,18 +551,27 @@ import HelmCore
                 case .status(let status):
                     self.status = Self.words(for: status)
                 case .trace(.sent(let names, let destination)):
-                    self.append(.helm(AgentText.traceSent(names: names, destination: destination), button: nil))
+                    // Right under its request, so it never reads as something sent after the plan.
+                    self.insertAfterRequest(.helm(AgentText.traceSent(names: names, destination: destination), button: nil))
                 case .reply(let text):
                     self.append(.reply(Self.shownReply(text)))
                 case .plan(let plan):
                     let roots = await self.session.roots()
+                    let card = AgentPlanCard(plan: plan, roots: roots)
                     for index in self.lines.indices {
-                        if case .plan(var card) = self.lines[index].kind, card.stage == .open {
-                            card.stage = .replaced
-                            self.lines[index].kind = .plan(card)
+                        if case .plan(var older) = self.lines[index].kind, older.stage == .open {
+                            older.stage = plan.isEmpty ? .dismissed : .replaced
+                            self.lines[index].kind = .plan(older)
                         }
                     }
-                    self.append(.plan(AgentPlanCard(plan: plan, roots: roots)))
+                    if plan.isEmpty {
+                        // Nothing to apply: what the plan would say shows alone, as Helm's own line, with no card.
+                        for note in card.notes { self.append(.helm(note.text, button: nil)) }
+                        let id = plan.id
+                        self.work { model in await model.session.settle(planID: id, .dismissed) }
+                    } else {
+                        self.append(.plan(card))
+                    }
                 case .notice(let notice):
                     if notice == .stopped { saidStopped = true }
                     self.handle(notice)
@@ -578,27 +590,43 @@ import HelmCore
             self.status = nil
             if self.stopAsked, !saidStopped { self.append(.helm(AgentText.noticeStopped, button: nil)) }
             self.requestOpen = false
+            self.requestLineID = nil
             self.settled = failure == nil ? .idle : .failed
             self.recomputePhase()
             await self.refreshRoots()
         }
     }
 
+    /// Stops the request, or the Apply, that is running. An Apply stops before its next command, so what is done
+    /// stays done and the result says how far it got.
     private func stop() {
+        if applying {
+            guard !applyStopAsked else { return }
+            applyStopAsked = true
+            if let index = lines.lastIndex(where: { if case .plan(let card) = $0.kind, case .applying = card.stage { return true }; return false }),
+               case .plan(var card) = lines[index].kind {
+                card.stage = .applying(AgentText.statusStopping)
+                lines[index].kind = .plan(card)
+            }
+            return
+        }
         guard requestOpen, !stopAsked else { return }
         stopAsked = true
         status = AgentText.statusStopping
         Task { [session] in await session.stop() }
     }
 
-    private func addFolder(_ text: String, origin: AgentRootInput.Origin) {
+    /// `typed` is what the person typed for a /add: a folder Helm turns away gives it back, so a typo can be put right.
+    private func addFolder(_ text: String, origin: AgentRootInput.Origin, typed: String? = nil) {
         work { model in
             let answer = await model.session.folder(for: AgentRootInput(fromPerson: text, origin: origin))
             switch answer {
             case .added(let root): model.append(.helm(AgentText.addAdded(root.label), button: nil))
             case .root(let root): model.append(.helm(AgentText.addAlready(root.label), button: nil))
             case .inside(_, let name): model.append(.helm(AgentText.addAlready(name), button: nil))
-            case .refused(let reason): model.append(.helm(Self.refusalLine(reason), button: nil))
+            case .refused(let reason):
+                model.append(.helm(Self.refusalLine(reason), button: nil))
+                if let typed, model.composerText.isEmpty { model.setComposer(typed, caret: (typed as NSString).length) }
             }
             await model.refreshRoots()
         }
@@ -649,14 +677,17 @@ import HelmCore
         guard !requestOpen, !applying, let index = openCardIndex, case .plan(var card) = lines[index].kind, card.canApply else { return }
         let approval = card.approval()
         let plan = card.plan, ticked = card.ticked
-        card.stage = .applying("")
+        // A line at once, before the first change reports in.
+        card.stage = .applying(AgentText.statusCheckingPlan)
         lines[index].kind = .plan(card)
         applying = true
+        applyStopAsked = false
         recomputePhase()
         Task { [weak self] in
             guard let self else { return }
             let report = await self.actions.apply(approval)
             self.applying = false
+            self.applyStopAsked = false
             if let report { self.finish(plan, ticked: ticked, report: report) }
             self.recomputePhase()
         }
@@ -732,6 +763,8 @@ import HelmCore
             self.undoing = false
             if let at = self.lines.firstIndex(where: { $0.id == id }), case .outcome(var outcome) = self.lines[at].kind {
                 outcome.undoLine = undone ? AgentText.undoDone : AgentText.undoRefused
+                // What changed is back where it was, so there is nothing left to show.
+                if undone { outcome.changed = [] }
                 self.lines[at].kind = .outcome(outcome)
             }
             self.recomputePhase()
@@ -845,7 +878,11 @@ import HelmCore
             let isOllama = name == AgentProviderCatalog.name(.ollama)
             return (isOllama ? AgentText.failOllamaNotRunning : AgentText.failLMStudioNotRunning, .tryAgain)
         case .cancelled: return (AgentText.noticeStopped, nil)
-        case .off, .notReady: return nil
+        case .declined: return (AgentText.failDeclined, nil)
+        // No model was ready when the request went: the same line as a missing key, so it never hangs unanswered.
+        case .notReady: return (AgentText.failNoKey(name), .openSettings)
+        // The panel shuts when AI mode turns off, so there is no one to tell.
+        case .off: return nil
         }
     }
 
@@ -869,6 +906,13 @@ import HelmCore
 
     private func append(_ kind: Line.Kind) {
         lines.append(Line(id: nextLineID, kind: kind))
+        nextLineID += 1
+    }
+
+    /// Puts a line right after the open request's own line, or at the end when there is none.
+    private func insertAfterRequest(_ kind: Line.Kind) {
+        guard let requestLineID, let index = lines.firstIndex(where: { $0.id == requestLineID }) else { return append(kind) }
+        lines.insert(Line(id: nextLineID, kind: kind), at: index + 1)
         nextLineID += 1
     }
 

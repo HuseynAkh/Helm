@@ -147,6 +147,19 @@ extension BrowserWindowController {
     /// The search field's leading mark: magnifier, spark, or spark lit.
     public var searchFieldMarkForTesting: String { header.searchField.leadingMark }
     public var headerLeadingForTesting: CGFloat { header.leadingInset }
+    /// Puts a search's words in a search field that is already open, as typing them would have.
+    public func showSearchWordsForTesting(_ text: String) {
+        guard header.isSearching, header.searchText != text else { return }
+        header.searchField.stringValue = text
+    }
+    /// The main menu button as laid out: its size, its gap to the header's trailing edge, and where its drawing
+    /// leaves ink, in its own points. The spark's ink, for comparing the two: its sharp tips fade out over a pixel
+    /// or two, so it counts only the pixels at least half covered, as the eye does.
+    public var headerMenuMeasureForTesting: (size: NSSize, trailingGap: CGFloat, bounds: NSRect, ink: NSRect?, sparkInk: NSRect?) {
+        let menu = header.menuButton
+        let frame = menu.convert(menu.bounds, to: header)
+        return (menu.frame.size, header.bounds.maxX - frame.maxX, menu.bounds, menu.inkRectForTesting(), header.sparkButton.inkRectForTesting(threshold: 0.5))
+    }
     /// How wide the sidebar is as laid out; 0 while it's collapsed.
     public var sidebarWidthForTesting: CGFloat {
         guard let item = split.splitViewItems.first, !item.isCollapsed else { return 0 }

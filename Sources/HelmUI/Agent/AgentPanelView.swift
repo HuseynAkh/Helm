@@ -22,7 +22,7 @@ struct AgentPanelView: View {
                             AgentThreadLineView(line: line, model: model).id(line.id)
                         }
                         if let status = model.status {
-                            AgentHelmLineView(words: status, button: nil, press: {}).id(Self.statusID)
+                            AgentHelmLineView(words: status, button: nil, isLive: true, press: {}).id(Self.statusID)
                         }
                     }
                     .padding(.horizontal, 12)

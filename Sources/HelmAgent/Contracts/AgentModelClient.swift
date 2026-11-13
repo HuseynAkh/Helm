@@ -36,7 +36,9 @@ public struct AgentToolResult: Hashable, Sendable {
 /// never shown.
 public enum AgentFailure: String, Error, Sendable, CaseIterable {
     case off, notReady, noKey, keyDenied, wrongKey, outOfCredit, rateLimited, overloaded, noSuchModel, noTools,
-         badRequest, tooLarge, unreachable, notRunning, timedOut, unreadable, cancelled
+         badRequest, tooLarge, unreachable, notRunning, timedOut, unreadable, cancelled,
+         /// The model refused the request, or a content filter stopped it.
+         declined
 }
 
 /// Why a model's turn ended.

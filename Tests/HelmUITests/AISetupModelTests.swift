@@ -362,6 +362,76 @@ import HelmTestKit
         XCTAssertTrue(model.isOn, "Done leaves AI mode on")
     }
 
+    func testDoneRefusedForAMissingKeyMarksItAsTheProblem() async {
+        let (model, _, _, _, _) = rig(on: true)
+        XCTAssertEqual(model.connection, .noKey)
+        XCTAssertFalse(model.stateIsProblem, "No key is quiet until Done is pressed")
+        let closes = await model.done(pendingKey: nil)
+        XCTAssertFalse(closes)
+        XCTAssertEqual(model.refusedDone, 1, "the screen hears that Done couldn't close")
+        XCTAssertTrue(model.flagsMissingKey)
+        XCTAssertTrue(model.stateIsProblem, "No key turns orange, as Wrong key is")
+        _ = await model.done(pendingKey: nil)
+        XCTAssertEqual(model.refusedDone, 2, "every refusal is heard, so the caret goes back each time")
+        model.choose(.openAI)
+        XCTAssertEqual(model.connection, .noKey)
+        XCTAssertFalse(model.stateIsProblem, "another provider starts quiet")
+    }
+
+    func testDoneEntersATypedAddressPortAndModelName() async {
+        let (model, providers, _, services, _) = rig(on: true)
+        model.choose(.other)
+        providers.answers["other"] = .models(["served-model"])
+        // An address typed without Return: Done enters it, so the check runs.
+        model.commitTyped(address: "models.example.com", port: "", model: "")
+        let closes = await model.done(pendingKey: nil)
+        XCTAssertTrue(closes)
+        XCTAssertEqual(services.config.config.otherAddress, "models.example.com")
+        let asked = providers.asked
+        XCTAssertFalse(asked.isEmpty, "the typed address was checked")
+        XCTAssertTrue(asked.allSatisfy { $0 == "other" })
+        // The same address again, in another spelling, is not asked again.
+        model.commitTyped(address: "https://models.example.com", port: nil, model: nil)
+        await model.settle()
+        XCTAssertEqual(providers.asked, asked)
+
+        // A model's name typed where the address lists none.
+        providers.answers["other"] = .models([])
+        model.tryAgain()
+        await model.settle()
+        XCTAssertTrue(model.showsModelField)
+        model.commitTyped(model: " typed-model ")
+        XCTAssertEqual(model.model, "typed-model")
+
+        // A port typed for a local provider that isn't running.
+        providers.answers["ollama"] = .failure(.notRunning)
+        model.choose(.ollama)
+        await model.settle()
+        model.commitTyped(port: "11500")
+        XCTAssertEqual(services.config.config.ports["ollama"], 11500)
+        model.commitTyped(address: "elsewhere.example.com", port: "", model: "other-model")
+        XCTAssertNil(services.config.config.models["ollama"].flatMap { $0 == "other-model" ? $0 : nil },
+                     "an address and a model name are Other's alone")
+    }
+
+    func testALocalProviderThatCantBeReachedShowsItsPort() async {
+        let (model, providers, _, _, _) = rig(on: true)
+        providers.answers["ollama"] = .failure(.unreachable)
+        model.choose(.ollama)
+        await model.settle()
+        XCTAssertEqual(model.connection, .cantReach)
+        XCTAssertTrue(model.showsPort, "the port may be why it can't be reached")
+        XCTAssertTrue(AIModeScreen.parts(for: model).contains(.port))
+    }
+
+    func testOtherHasNoModelRowUntilItsAddressIsTaken() {
+        let (model, _, _, _, _) = rig(on: true)
+        model.choose(.other)
+        XCTAssertFalse(model.hasProfile)
+        model.setAddress("models.example.com")
+        XCTAssertTrue(model.hasProfile)
+    }
+
     func testDoneAsksAProviderThatHasNotBeenAskedYet() async {
         let (model, providers, _, _, _) = rig(config: AIConfig(provider: "ollama"), on: true)
         providers.answers["ollama"] = .models(["llama4:8b"])

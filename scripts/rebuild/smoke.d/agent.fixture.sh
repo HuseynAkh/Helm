@@ -61,6 +61,11 @@ places = [
         "Every file gets a longer name.",
         renames=[{"item": "@name:share-%s.txt" % n, "name": "shared-%s.txt" % n} for n in numbers])]},
     {"when": "look around", "turns": [listing(), {"text": "That's everything in it."}]},
+    # A new folder and one file into it: two changes, one command each, so Stop can come between them.
+    {"when": "stop halfway", "turns": [listing(), proposal(
+        "A folder, then the memo into it.",
+        new_folders=[{"key": "n1", "parent": "@root", "name": "Halfway"}],
+        moves=[{"items": ["@name:memo.txt"], "all_in": "", "to": "n1"}])]},
 ]
 
 script = {"rules": places + [

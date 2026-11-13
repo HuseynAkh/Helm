@@ -43,6 +43,8 @@ extension BrowserWindowController {
         updateTitle(of: item, for: command)
         let state = CommandValidation.state(for: command, in: commandContext())
         item.isHidden = state == .hidden
+        // Find with AI waits for a model that is ready, as the search field's spark does.
+        if command == .findWithAI { return state == .enabled && isAISearchReady }
         return state == .enabled
     }
 
@@ -62,6 +64,7 @@ extension BrowserWindowController {
             item.title = starred ? "Remove from Starred" : "Star"
         case .compress: item.title = compressTitle()
         case .aiPanel: item.title = isAgentPanelOpen ? AgentText.menuHidePanel : AgentText.menuShowPanel
+        case .findWithAI: item.state = aiSearchRunner?.isOn == true ? .on : .off
         default: break
         }
     }
@@ -195,6 +198,8 @@ extension BrowserWindowController {
         case .printSelection, .columns, .gallery, .previewPane, .network, .tags: break
         // View › Show AI Panel: shows and hides the panel beside the files.
         case .aiPanel: toggleAgentPanel()
+        // File › Find with AI: opens the search if it isn't open, and turns the spark over.
+        case .findWithAI: toggleAISearchFromMenu()
         }
     }
 
@@ -1143,6 +1148,12 @@ extension BrowserWindowController {
     }
     public var hasSheetForTesting: Bool { window?.attachedSheet != nil }
     public func dismissSheetForTesting() { if let sheet = window?.attachedSheet { window?.endSheet(sheet) } }
+    /// The tick a command's menu item shows now.
+    public func menuItemStateForTesting(_ command: CommandID) -> NSControl.StateValue {
+        let item = commandItem(command.rawValue, command)
+        _ = validateMenuItem(item)
+        return item.state
+    }
     public func title(of command: CommandID) -> (String, Bool) {
         let item = commandItem(command.rawValue, command)
         let enabled = validateMenuItem(item)

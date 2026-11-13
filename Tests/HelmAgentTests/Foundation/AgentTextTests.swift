@@ -165,6 +165,7 @@ final class AgentTextTests: XCTestCase {
         ("stateNoModels", AgentText.stateNoModels("Ollama"), "Ollama has no models yet."),
         ("portLabel", AgentText.portLabel, "Port"),
         ("addressLabel", AgentText.addressLabel, "Address"),
+        ("addressPrompt", AgentText.addressPrompt, "https://"),
         ("addressNeedsHTTPS", AgentText.addressNeedsHTTPS, "Helm needs an https address."),
         ("addressOtherDevice", AgentText.addressOtherDevice, "Servers on other devices aren't supported yet."),
         ("modelLabel", AgentText.modelLabel, "Model"),
@@ -177,8 +178,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 156)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 156, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 157)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 157, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {

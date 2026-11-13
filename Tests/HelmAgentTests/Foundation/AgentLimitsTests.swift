@@ -94,7 +94,7 @@ final class AgentLimitsTests: XCTestCase {
     func testTheFixedLists() {
         XCTAssertEqual(AgentFailure.allCases.map(\.rawValue), [
             "off", "notReady", "noKey", "keyDenied", "wrongKey", "outOfCredit", "rateLimited", "overloaded", "noSuchModel", "noTools",
-            "badRequest", "tooLarge", "unreachable", "notRunning", "timedOut", "unreadable", "cancelled"
+            "badRequest", "tooLarge", "unreachable", "notRunning", "timedOut", "unreadable", "cancelled", "declined"
         ])
         XCTAssertEqual(AgentStop.failed(.timedOut), .failed(.timedOut))
         XCTAssertNotEqual(AgentStop.failed(.timedOut), .failed(.unreachable))

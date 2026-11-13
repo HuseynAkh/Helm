@@ -83,7 +83,12 @@ struct AgentPlanAssembly {
                     walked[item.path] = holdsDataless
                 }
             }
-            let ruling = AgentPlaceRules.rule(for: step, source: source, destination: destination, holdsDataless: holdsDataless)
+            // Notes name a place as its folder's chip does: the label of the root it is in.
+            var targetName: String?
+            if let target = folders.target, let destination { targetName = Self.placeName(of: target, roots: roots, facts: destination) }
+            let names = (source: Self.placeName(of: folders.source, roots: roots, facts: source), target: targetName)
+            let ruling = AgentPlaceRules.rule(for: step, source: source, destination: destination, holdsDataless: holdsDataless,
+                                              names: names)
             rulings[index] = ruling
             if let code = ruling.leftOut, let key = chart.newKey(of: index) { leftKeys[key] = code }
         }
@@ -106,6 +111,13 @@ struct AgentPlanAssembly {
             } else {
                 kept.append(index)
             }
+        }
+        // Once changes were left out, a new folder that nothing goes into any more was never asked for on its own, so
+        // it goes too: a plan never offers to make an empty folder in place of what it couldn't do.
+        if tally.values.contains(where: { $0 > 0 }) {
+            var used: Set<String> = []
+            for index in kept where steps[index].transferTarget != nil { used.formUnion(chart.keysAbove(index)) }
+            kept.removeAll { index in chart.newKey(of: index).map { !used.contains($0) } ?? false }
         }
 
         // Many changes, or any folder, in a place others are known to share.
@@ -154,6 +166,17 @@ struct AgentPlanAssembly {
         let title = Self.title(finalSteps, chart: finalChart, roots: roots)
         return .success(AgentChangePlan(title: title, steps: finalSteps, groups: groups, notices: notices,
                                         keepsBoth: keepsBoth, leftOut: tally.filter { $0.value > 0 }))
+    }
+
+    /// What a note calls the place a folder is in: the label of the root that holds it, as a chip and the line that
+    /// says a place isn't responding name it, or else the kind of place.
+    static func placeName(of folder: String, roots: [AgentScopeRoot], facts: StorageFacts) -> String {
+        let parts = folder.split(separator: "/")
+        let holder = roots.filter { root in
+            let rootParts = root.path.split(separator: "/")
+            return parts.count >= rootParts.count && Array(parts.prefix(rootParts.count)) == rootParts
+        }.max { $0.path.count < $1.path.count }
+        return holder?.label ?? facts.name
     }
 
     // MARK: Not downloaded

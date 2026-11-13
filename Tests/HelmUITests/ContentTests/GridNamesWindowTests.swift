@@ -463,6 +463,9 @@ import HelmCore
         let name = "Quarterly report final version.pdf"
         let h = HuntViewsListHarness(tab: loadedTab([file(name), file("notes.txt"), file(long)]), context: context)
         let id = ItemID(url: root.appendingPathComponent(name))
+        // A list wide enough for Name's own width: a narrower one takes room from Name first.
+        h.window.setContentSize(NSSize(width: 900, height: 420))
+        h.window.layoutIfNeeded()
         let wide = try XCTUnwrap(h.list.nameFitForTesting(id))
         XCTAssertEqual(wide.words, name)
         XCTAssertTrue(wide.fitsWhole, "a name the column has room for is shown whole, at \(wide.columnWidth) points")

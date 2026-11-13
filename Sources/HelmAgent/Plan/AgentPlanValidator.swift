@@ -164,12 +164,7 @@ public struct AgentPlanValidator: AgentPlanValidating {
 
     /// What the person is told is quiet: the root the folder is in, or else the place.
     private static func label(of folder: String, roots: [AgentScopeRoot], facts: StorageFacts) -> String {
-        let parts = folder.split(separator: "/")
-        let holder = roots.filter { root in
-            let rootParts = root.path.split(separator: "/")
-            return parts.count >= rootParts.count && Array(parts.prefix(rootParts.count)) == rootParts
-        }.max { $0.path.count < $1.path.count }
-        return holder?.label ?? facts.name
+        AgentPlanAssembly.placeName(of: folder, roots: roots, facts: facts)
     }
 }
 

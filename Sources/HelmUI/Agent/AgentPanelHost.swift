@@ -6,7 +6,8 @@ import HelmCore
 
 /// The AI panel's column: under the header, beside the files, `width` wide while open and zero wide while shut.
 /// The tab strip, the files, the operations rows and the status bar end at its leading edge. It is shut at every
-/// launch. Opening it in a window too narrow for the files first hides the sidebar, then widens the window.
+/// launch. Opening it in a window too narrow for the files first hides the sidebar, then widens the window; shutting
+/// it gives both back, unless the person has moved the sidebar or the window's edge since.
 @MainActor final class AgentPanelHost: NSView {
     static let width: CGFloat = 340, minimumFilesWidth: CGFloat = 420
     /// The fixed space above the folders row. The panel never takes a top inset from the title bar, which is taller
@@ -29,6 +30,9 @@ import HelmCore
     private var closeObserver: NSObjectProtocol?
     /// The files' own minimum, put back when the panel shuts.
     private var filesMinimum: CGFloat?
+    /// What opening took to make room: the sidebar it hid, and the width it added and the width that left the window.
+    private var hidSidebar = false
+    private var added: (width: CGFloat, leftAt: CGFloat)?
 
     /// Whether the keys are in the panel: its first responder is the panel or inside it.
     var holdsKeys: Bool {
@@ -95,6 +99,7 @@ import HelmCore
             if let files = browser.split.splitViewItems.last, let filesMinimum { files.minimumThickness = filesMinimum }
             filesMinimum = nil
             superview?.layoutSubtreeIfNeeded()
+            giveRoomBack(in: browser)
             if hadKeys { browser.focusContent() }
             column.isHidden = true
         }
@@ -170,7 +175,10 @@ import HelmCore
     }
 
     /// Room for the files beside the panel: the sidebar goes first, then the window grows by what is still missing.
+    /// What it took is kept, to give back when the panel shuts.
     private func makeRoom(in browser: BrowserWindowController) {
+        hidSidebar = false
+        added = nil
         guard let root = superview else { return }
         root.layoutSubtreeIfNeeded()
         var room = root.bounds.width - Self.width
@@ -179,14 +187,44 @@ import HelmCore
             browser.sidebarVisibilityChanged(false, animated: false)
             browser.split.view.layoutSubtreeIfNeeded()
             room = root.bounds.width - Self.width
+            hidSidebar = true
         }
         if room < Self.minimumFilesWidth, let window = browser.window {
             var frame = window.frame
-            frame.size.width += Self.minimumFilesWidth - room
+            let grow = Self.minimumFilesWidth - room
+            frame.size.width += grow
             window.setFrame(frame, display: window.isVisible)
             browser.split.view.layoutSubtreeIfNeeded()
+            added = (grow, window.frame.width)
         }
     }
+
+    /// The panel shut: the width it added goes, if the window is still the width it left it at, and a sidebar it
+    /// hid comes back, if it is still hidden.
+    private func giveRoomBack(in browser: BrowserWindowController) {
+        defer { hidSidebar = false; added = nil }
+        guard let window = browser.window else { return }
+        if let added {
+            // The person resized the window meanwhile: what they chose stays, sidebar and all.
+            guard abs(window.frame.width - added.leftAt) < 0.5 else { return }
+            var frame = window.frame
+            frame.size.width -= added.width
+            window.setFrame(frame, display: window.isVisible)
+        }
+        if hidSidebar, let sidebar = browser.split.splitViewItems.first, sidebar.isCollapsed {
+            browser.setSidebarShown(true, animated: false)
+        }
+        browser.split.view.layoutSubtreeIfNeeded()
+    }
+
+    /// The person showed or hid the sidebar while the panel was open: it is theirs now, and so is the width.
+    func sidebarToggledByPerson() {
+        hidSidebar = false
+        added = nil
+    }
+
+    /// For tests: whether shutting the panel would give back a hidden sidebar or added width.
+    var givesBackForTesting: (sidebar: Bool, width: CGFloat) { (hidSidebar, added?.width ?? 0) }
 
     // MARK: Drops
 

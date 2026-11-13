@@ -12,9 +12,14 @@ final class AgentModelListerTests: XCTestCase {
         XCTAssertEqual(try ids("claude", .claude), ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"])
     }
 
-    func testOpenAIPutsItsChatModelsFirst() throws {
-        XCTAssertEqual(try ids("openai", .openAI),
-                       ["gpt-6-astra", "gpt-6-luna", "gpt-6.1-sol", "dall-e-4", "text-embedding-4", "whisper-2"])
+    func testOpenAIKeepsOnlyItsChatModelsGPTFirst() throws {
+        XCTAssertEqual(try ids("openai", .openAI), ["gpt-6-astra", "gpt-6-luna", "gpt-6.1-sol"])
+        let names = ["tts-2-hd", "whisper-2", "dall-e-4", "text-embedding-4-large", "omni-moderation-latest", "davinci-002",
+                     "babbage-002", "gpt-image-2", "o5-mini", "chatgpt-6-latest", "gpt-6-astra", "o4", "gpt-6-luna"]
+        let entries = names.map { #"{"id":"\#($0)","object":"model","owned_by":"system"}"# }.joined(separator: ",")
+        let body = Data(#"{"object":"list","data":[\#(entries)]}"#.utf8)
+        XCTAssertEqual(try AgentModelLister.models(from: body, provider: .openAI).map(\.id),
+                       ["gpt-6-astra", "gpt-6-luna", "chatgpt-6-latest", "o4", "o5-mini"])
     }
 
     func testGrokReadsTheLanguageModelList() throws {

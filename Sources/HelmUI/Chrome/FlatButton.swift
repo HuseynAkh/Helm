@@ -5,6 +5,8 @@ import HelmCore
 /// The header bar's button: flat until the pointer is over it, like a libadwaita header button.
 /// Every one answers the same way: a faint fill under the pointer, a stronger one while it's held down, and the lit
 /// fill while it's on. The fills fade in and out quickly, and change at once with Reduce Motion on.
+/// An icon on its own is drawn by the button itself, centred at the symbol's own size, so it is always whole: the
+/// button cell's image rect could be shorter than the symbol and shrink it.
 @MainActor class FlatButton: NSButton {
     private var hovering = false { didSet { if hovering != oldValue { refresh(animated: true) } } }
     /// True while the mouse holds the button down. The cell reports it, so dragging off the button lets go.
@@ -52,6 +54,7 @@ import HelmCore
         wantsLayer = true
         layer?.cornerRadius = 8
         self.target = target; self.action = action
+        imageScaling = .scaleNone
         setSymbol(symbol, pointSize: pointSize, label: label, toolTip: toolTip)
         contentTintColor = .labelColor
         translatesAutoresizingMaskIntoConstraints = false
@@ -70,6 +73,48 @@ import HelmCore
         imagePosition = title.isEmpty ? .imageOnly : .imageLeading
         self.toolTip = toolTip ?? label
         setAccessibilityLabel(label)
+        needsDisplay = true
+    }
+    override var contentTintColor: NSColor? { didSet { needsDisplay = true } }
+
+    /// The symbol in the button's tint, at its own size, for drawing it whole.
+    var tintedSymbol: NSImage? {
+        guard !symbolName.isEmpty else { return nil }
+        return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .regular)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [contentTintColor ?? .labelColor])))
+    }
+    /// Where an icon on its own goes: centred, at the symbol's own size, on the backing's pixels.
+    func symbolRect(for size: NSSize) -> NSRect {
+        backingAlignedRect(NSRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
+                                  width: size.width, height: size.height), options: .alignAllEdgesNearest)
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        guard title.isEmpty, let icon = tintedSymbol else { super.draw(dirtyRect); return }
+        icon.draw(in: symbolRect(for: icon.size))
+    }
+    /// Where its drawing leaves ink, at rest, in its own points: the box round every pixel it draws. Nil when it
+    /// draws nothing.
+    func inkRectForTesting(threshold: CGFloat = 0.1) -> NSRect? {
+        guard bounds.width > 0, let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / bounds.width
+        var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > threshold {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        // The bitmap's rows run from the top.
+        return NSRect(x: CGFloat(minX) / scale, y: bounds.height - CGFloat(maxY + 1) / scale,
+                      width: CGFloat(maxX - minX + 1) / scale, height: CGFloat(maxY - minY + 1) / scale)
+    }
+
+    /// Moved to a screen with another scale, the drawing is made again at that scale, never stretched from the old one.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        needsDisplay = true
     }
     override var isEnabled: Bool {
         didSet {
@@ -102,7 +147,11 @@ import HelmCore
         guard let window else { hovering = false; return }
         hovering = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
     }
-    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refresh(animated: false, force: true) }
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refresh(animated: false, force: true)
+        needsDisplay = true
+    }
 
     /// The focus ring follows the button's rounded fill rather than its square frame.
     override var focusRingMaskBounds: NSRect { bounds }
@@ -186,8 +235,6 @@ import HelmCore
 
     init(symbol: String, label: String, title: String = "", toolTip: String? = nil, height: CGFloat = 32) {
         super.init(symbol: symbol, label: label, toolTip: toolTip, height: height, target: nil, action: nil)
-        // While its width animates to fit new words, the drawing stays centred rather than stretching.
-        layerContentsPlacement = .center
         text = title
         applyTitle(animated: false)
         target = self; action = #selector(open)
@@ -204,6 +251,9 @@ import HelmCore
     var shownWords: String { isCompact ? "" : text }
 
     private func applyTitle(animated: Bool) {
+        // While its width animates to fit new words, the drawing stays centred rather than stretching. An icon on its
+        // own keeps the usual placement, so its drawing always fills the button it was made for.
+        layerContentsPlacement = drawsOwnContent ? .center : .scaleAxesIndependently
         if animated, !HeaderMotion.isReduced, let layer {
             let fade = CATransition()
             fade.type = .fade

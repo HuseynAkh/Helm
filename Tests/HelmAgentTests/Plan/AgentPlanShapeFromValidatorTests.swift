@@ -79,6 +79,20 @@ final class AgentPlanShapeFromValidatorTests: XCTestCase {
         XCTAssertEqual(cased.keepsBoth, [], "its own name doesn't count as taken")
     }
 
+    func testANewFolderLeftEmptyByALeftOutCopyGoesToo() async {
+        let photo = await h("photo.png")
+        let plan = await validate(Kit.proposal(newFolders: [("n1", "r1", "Copies")], copies: [(["f999"], "", "n1")]))
+        XCTAssertTrue(plan.steps.isEmpty, "no empty folder in place of the copy: \(Kit.names(plan))")
+        XCTAssertTrue(plan.isEmpty)
+        XCTAssertFalse(plan.leftOut.isEmpty)
+        XCTAssertFalse(plan.showsNothingToDo, "the left-out line says what happened")
+        // A folder something still goes into stays, and so does one asked for with nothing left out.
+        let kept = await validate(Kit.proposal(newFolders: [("n1", "r1", "Copies")], copies: [(["f999", photo], "", "n1")]))
+        XCTAssertEqual(Kit.names(kept), ["new n1 Copies", "copy photo.png"])
+        let asked = await validate(Kit.proposal(newFolders: [("n1", "r1", "Later")]))
+        XCTAssertEqual(Kit.names(asked), ["new n1 Later"])
+    }
+
     func testEveryStepIsInExactlyOneGroupInTheCardsOrder() async {
         let photo = await h("photo.png"), shot = await h("shot.jpg"), doc = await h("doc.txt"), a = await h("A")
         let inner = await h("A/inner.txt")

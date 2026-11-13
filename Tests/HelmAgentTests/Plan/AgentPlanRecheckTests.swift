@@ -97,7 +97,8 @@ final class AgentPlanRecheckTests: XCTestCase {
         guard case .changed(let fresh) = await recheck(plan) else { return XCTFail("a read-only place ran") }
         XCTAssertTrue(fresh.steps.isEmpty)
         XCTAssertEqual(fresh.leftOut, [.read_only: 3])
-        XCTAssertEqual(fresh.cardNotes, [.readOnly(place: "Server")])
+        // The note names the place as its chip does.
+        XCTAssertEqual(fresh.cardNotes, [.readOnly(place: "Work")])
     }
 
     func testASilentPlaceStopsApply() async {
