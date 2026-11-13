@@ -84,7 +84,7 @@ Grid or list is one switch. The sort button names the order, such as "A to Z" or
 
 ## Privacy
 
-Helm never connects to the internet. It has no accounts, analytics, crash reporting or update checks, and it doesn't read your name, your Mac's name or its serial number. It reads each disk's ID only to list the disk once, and never keeps or sends it. Files leave your Mac only when you send them: Share, AirDrop, Connect to Server, Open With, Services, drag and drop, the clipboard, or by putting them in iCloud Drive, a cloud provider's folder or a server.
+Helm connects only to the AI provider you choose, and only while AI mode is on. AI mode is off until you turn it on, and it sends your requests and the names and details of files, never what's inside them. Keys stay in your Mac's login keychain. Helm has no accounts, analytics, crash reporting or update checks, and it doesn't read your name, your Mac's name or its serial number. It reads each disk's ID only to list the disk once, and never keeps or sends it. Files leave your Mac only when you send them: Share, AirDrop, Connect to Server, Open With, Services, drag and drop, the clipboard, or by putting them in iCloud Drive, a cloud provider's folder or a server.
 
 What Helm keeps stays on your Mac, in `~/Library/Application Support/Helm`:
 
@@ -95,11 +95,12 @@ What Helm keeps stays on your Mac, in `~/Library/Application Support/Helm`:
 | `session.json` | Your windows and tabs, only while **Reopen windows and tabs** is on. |
 | `bookmarks.json`, `stars.json`, `sidebar.json`, `tag-catalog.json` | Your sidebar and tags. A star or bookmark you remove leaves nothing in them. |
 | `view-options.json` | Views you set for particular folders. |
+| `ai.json` | AI mode's provider, models, ports and the address you typed for Other, never a key. |
 | `trash-origins.json` | Where trashed items came from, for Put Back. A record goes when its item leaves the Trash through Helm, or at Helm's next launch once it sees the item is gone. Without Full Disk Access Helm can't look in the Trash, so a Trash emptied in Finder leaves its records, up to 1,000. |
 
-Settings live in `~/Library/Preferences/com.helm.filemanager.dev.plist`. To remove everything, first click **Restore Finder** in Settings › General and turn off **Show next to Finder in the Dock** and **Open at login**. Then quit Helm and delete that file and the folder above.
+Settings live in `~/Library/Preferences/com.helm.filemanager.dev.plist`. To remove everything, first click **Restore Finder** in Settings › General and turn off **Show next to Finder in the Dock** and **Open at login**. Then quit Helm and delete that file and the folder above. A saved key stays in the keychain until you click **Remove Key** in Settings › AI.
 
-Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network, tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls, web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking by default, so any try at it fails the run.
+Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network code appears outside AI mode's one transport, or if tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls, web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking by default, so any try at it fails the run.
 
 ## Install
 
