@@ -63,11 +63,22 @@ mark carries it, so a listing does too; a detached task doesn't. Tests show the 
 a queue thread and that it is put back. None can hold a file that is in a cloud only, so
 the refusal itself is still to be seen on a Mac with a cloud folder.
 
+A listing or a size stream (`enumerate`, `sizeOfTree`) must be made inside `off`. Its reads
+run on a task that starts when the stream is made, not when it is read, so the stream
+carries the mark of the task that made it. One made before `off` and read inside it runs
+with downloads on; one made inside keeps them off wherever it is read.
+
 `IOExecutor.reopenAll()` reopens every lane a timed-out mutation shut, and
-`LiveFileSystem.reopenAfterStall()` calls it. A lane stays shut while a timed-out call on
-it is still out, and the answer is then false. Call it only once the person has
+`LiveFileSystem.reopenAfterStall()` calls it. Such a lane stays shut while a timed-out call
+on it is still out, and the answer is then false. Call it only once the person has
 acknowledged the stalled change: that is the reconciliation `clearQuarantine` asks for.
-A lane shut by a timed-out read still reopens by itself when the read returns.
+
+True means every lane a stalled change shut is open again. It doesn't mean nothing is out.
+A lane shut only by a timed-out read is left alone and doesn't make the answer false: a
+read changes nothing, and waiting for it would hold up every other lane. That lane reopens
+by itself when the read returns. Until then a change on it still fails as timed out, so a
+caller that keeps a stall flag of its own can see one more timed-out failure there after a
+true.
 
 `CanonicalPath` is the one place that asks for an item's real path. `realPath` answers nil
 when any part of the path is missing.

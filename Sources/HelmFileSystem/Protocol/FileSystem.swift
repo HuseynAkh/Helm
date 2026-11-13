@@ -79,7 +79,10 @@ public protocol FileSystem: Sendable {
     func sizeOfTree(at url: URL) -> AsyncThrowingStream<Int64, Error>
     func makeMonitor(for directory: URL) -> any DirectoryMonitor
     /// Lets changes through again after one stalled and shut its disk off from further changes. Call it once the
-    /// person has acknowledged the stalled change. False means a stalled call is still out: ask again when it returns.
+    /// person has acknowledged the stalled change. True means every disk a stalled change shut is open again. False
+    /// means a stalled call is still out on one of them: ask again when it returns.
+    /// True doesn't mean nothing is out. A read changes nothing, so one that is still out doesn't make the answer
+    /// false. The disk it is on stays shut until it returns, and until then a change there still fails as timed out.
     func reopenAfterStall() async -> Bool
 }
 /// Monitor lifetime is explicit; each handle belongs to one consumer (B-072).

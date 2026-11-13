@@ -15,6 +15,9 @@ public enum DatalessGuard {
     @TaskLocal public static var isOff: Bool = false
 
     /// Runs `work` with downloads off. Tasks that `work` starts are marked too, apart from detached ones.
+    /// A listing or a size stream (`enumerate`, `sizeOfTree`) must be made inside `work`. Its reads run on a task
+    /// that starts when the stream is made, so it carries the mark of the task that made it, not of the one that
+    /// reads it: a stream made outside and read inside runs with downloads on.
     public static func off<T>(_ work: () async throws -> T) async rethrows -> T {
         try await $isOff.withValue(true) { try await work() }
     }

@@ -84,7 +84,11 @@ public final class IOExecutor: @unchecked Sendable {
     }
     /// Reopens every lane a timed-out mutation shut, as `clearQuarantine` does for one. For the moment the person
     /// has acknowledged the stalled change, which is the reconciliation `clearQuarantine` asks for.
-    /// A lane with a timed-out call still out stays shut, and the answer is then false: ask again once it returns.
+    /// Such a lane stays shut while a timed-out call on it is still out, and the answer is then false: ask again
+    /// once it returns. True means every lane a mutation shut is open again.
+    /// A lane shut only by a timed-out read is left alone and doesn't make the answer false, since a read leaves
+    /// nothing to reconcile. It reopens by itself when the read returns, and until then every call on it, a
+    /// mutation included, still fails as timed out.
     @discardableResult public func reopenAll() -> Bool {
         lock.lock(); defer { lock.unlock() }
         let stillOut = timedOutBodies.values.reduce(into: Set<String>()) { $0.formUnion($1) }

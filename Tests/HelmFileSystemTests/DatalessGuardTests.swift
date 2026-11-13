@@ -177,10 +177,14 @@ final class DatalessGuardTests: XCTestCase {
         XCTAssertFalse(plainSaw, "A body queued beside a marked one was touched")
     }
 
-    func testEveryLiveFileSystemCallRunsWithDownloadsOffInsideTheMark() async throws {
+    /// Seen through the two seams a LiveFileSystem has: what reads an item's details, and the Trash. The calls with
+    /// neither (the plain creates, copies, moves and removes, and the questions about a volume) hand their bodies
+    /// to the same executor, and the executor's own test above covers every way into it.
+    func testLiveFileSystemCallsRunWithDownloadsOffInsideTheMark() async throws {
         let temp = try TempDirectory()
         defer { try? temp.remove() }
         let file = temp.url.appendingPathComponent("a.txt")
+        let copy = temp.url.appendingPathComponent("copy.txt"), moved = temp.url.appendingPathComponent("moved.txt")
         try Data("x".utf8).write(to: file)
         let seen = Seen()
         let reads = LiveFileSystem(readMetadata: { url, resolve, volume in
@@ -195,17 +199,69 @@ final class DatalessGuardTests: XCTestCase {
         XCTAssertEqual(seen.take(), [false, false, false])
 
         try await DatalessGuard.off {
+            // One read each: the item, the folder's one child for the listing and again for its names, then the
+            // item and the folder asked about.
             _ = try await reads.entry(at: file)
             // A listing reads on a task of its own, which carries the mark with it.
             for try await _ in reads.enumerate(temp.url) {}
             _ = try await reads.childNames(of: temp.url)
-            _ = try await reads.mutationPrecondition(at: file)
+            let exists = await reads.exists(file)
+            let isFolder = await reads.isDirectory(temp.url)
+            XCTAssertTrue(exists)
+            XCTAssertTrue(isFolder)
+            XCTAssertEqual(seen.take(), [true, true, true, true, true])
+
+            // The conditional changes that Apply and Undo go through. Each reads its source again on the queue's
+            // thread before it changes anything, so there is one read for the evidence and one for the change.
+            let evidence = try await reads.mutationPrecondition(at: file)
+            _ = try await reads.mutate(.copy(to: copy), source: file, requiring: evidence)
+            let copied = try await reads.mutationPrecondition(at: copy)
+            _ = try await reads.mutate(.move(to: moved), source: copy, requiring: copied)
+            XCTAssertEqual(seen.take(), [true, true, true, true])
+
+            // A size walks on a task of its own, and lists on another: the folder, its two children as listed,
+            // then each child.
+            for try await _ in reads.sizeOfTree(at: temp.url) {}
+            XCTAssertEqual(seen.take(), [true, true, true, true, true])
+
+            // The Trash, plainly and as a conditional change. The stand-in keeps the item where it is.
             _ = try await changes.trashItem(at: file)
+            let kept = try await changes.mutationPrecondition(at: file)
+            _ = try await changes.mutate(.trash, source: file, requiring: kept)
+            XCTAssertEqual(seen.take(), [true, true])
         }
-        XCTAssertEqual(seen.take(), [true, true, true, true, true])
+        let wasMoved = FileManager.default.fileExists(atPath: moved.path) && !FileManager.default.fileExists(atPath: copy.path)
+        XCTAssertTrue(wasMoved, "The changes inside the mark didn't happen")
 
         _ = try await reads.entry(at: file)
         XCTAssertEqual(seen.take(), [false])
+    }
+
+    func testAListingOrSizeCarriesTheMarkOfTheTaskThatMadeIt() async throws {
+        let temp = try TempDirectory()
+        defer { try? temp.remove() }
+        try Data("x".utf8).write(to: temp.url.appendingPathComponent("a.txt"))
+        let seen = Seen()
+        let reads = LiveFileSystem(readMetadata: { url, resolve, volume in
+            seen.add(DatalessGuard.threadPolicyIsOffForTesting)
+            return try MetadataReader().read(url, resolveSymlinkTargets: resolve, volumeIdentifier: volume)
+        })
+        // A listing reads its one child. A size reads the folder, lists it, then reads the child: four reads.
+
+        // Made outside and read inside: the stream's task started unmarked, so downloads stay on.
+        let listedOutside = reads.enumerate(temp.url), sizedOutside = reads.sizeOfTree(at: temp.url)
+        try await DatalessGuard.off {
+            for try await _ in listedOutside {}
+            for try await _ in sizedOutside {}
+        }
+        XCTAssertEqual(seen.take(), [false, false, false, false], "A stream made outside the mark picked it up from its reader")
+
+        // Made inside and read outside: downloads are off, though the reader isn't marked.
+        let (listedInside, sizedInside) = await DatalessGuard.off { (reads.enumerate(temp.url), reads.sizeOfTree(at: temp.url)) }
+        XCTAssertFalse(DatalessGuard.isOff)
+        for try await _ in listedInside {}
+        for try await _ in sizedInside {}
+        XCTAssertEqual(seen.take(), [true, true, true, true], "A stream made inside the mark lost it")
     }
     #endif
 }
