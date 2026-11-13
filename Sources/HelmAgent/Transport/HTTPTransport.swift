@@ -154,8 +154,9 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     private func streamLines(_ route: AgentRoute, body: Data, emit: @escaping @Sendable (String) -> Void) async throws {
         let spec = try spec(route)
         let limits = self.limits
-        try await withRetries { handedOn in
-            try await self.exchange(spec, body: body, accept: "text/event-stream") { bytes, response, watch in
+        let deadline = Self.deadline(after: limits.totalSeconds)
+        try await withRetries(until: deadline) { handedOn in
+            try await self.exchange(spec, body: body, accept: "text/event-stream", deadline: deadline) { bytes, response, watch in
                 guard (200..<300).contains(response.statusCode) else {
                     let text = try await Self.collect(bytes, cap: limits.listBytes, watch: watch, cutsShort: true)
                     throw Hitch.rejected(status: response.statusCode, body: text, retryAfter: Self.retryAfter(response))
@@ -171,6 +172,9 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
                     let line: String?
                     do { line = try reader.take(byte) } catch { throw AgentTransportError.tooLarge }
                     if let line {
+                        // A line, however short, is something heard, so a stream of small pieces isn't taken for
+                        // silence.
+                        watch.touch()
                         handedOn.raise()
                         emit(line)
                     }
@@ -187,8 +191,9 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     private func fetchReply(_ route: AgentRoute) async throws -> AgentHTTPReply {
         let spec = try spec(route)
         let limits = self.limits
-        return try await withRetries { _ in
-            try await self.exchange(spec, body: nil, accept: "application/json") { bytes, response, watch in
+        let deadline = Self.deadline(after: limits.totalSeconds)
+        return try await withRetries(until: deadline) { _ in
+            try await self.exchange(spec, body: nil, accept: "application/json", deadline: deadline) { bytes, response, watch in
                 let status = response.statusCode
                 let fine = (200..<300).contains(status)
                 let body = try await Self.collect(bytes, cap: limits.listBytes, watch: watch, cutsShort: !fine)
@@ -203,16 +208,19 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     /// One request, with its time limits kept by a watch that runs beside it. The reply is checked before `consume`
     /// sees a byte of its body: a redirect and a reply from another host are errors.
     private func exchange<Value: Sendable>(
-        _ spec: AgentRouteSpec, body: Data?, accept: String,
+        _ spec: AgentRouteSpec, body: Data?, accept: String, deadline: UInt64,
         consume: @escaping @Sendable (URLSession.AsyncBytes, HTTPURLResponse, Watch) async throws -> Value
     ) async throws -> Value {
         let request = try await makeRequest(spec, body: body, accept: accept)
-        let watch = Watch(limits: limits)
+        let watch = Watch(limits: limits, deadline: deadline)
         let endpoint = profile.endpoint
         let session = self.session
         do {
             return try await withThrowingTaskGroup(of: Value?.self) { group in
                 group.addTask {
+                    // Nothing goes out once the transport is shut down or the request is stopped, even when the
+                    // key was being read meanwhile.
+                    try self.ensureOpen()
                     let (bytes, response) = try await session.bytes(for: request, delegate: watch)
                     watch.touch()
                     guard let reply = response as? HTTPURLResponse else { throw AgentTransportError.unreachable }
@@ -260,8 +268,17 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         guard spec.auth != .none else { return request }
         // Checked before the key is looked up, so a key that may not go here is never even read.
         guard Self.mayCarryKey(profile) || !profile.needsKey else { throw AgentTransportError.insecure }
-        try Self.sign(&request, style: spec.auth, secret: try await key(), profile: profile)
+        let secret = try await key()
+        // Reading the key can wait on macOS's keychain question: AI mode may have been turned off meanwhile.
+        try ensureOpen()
+        try Self.sign(&request, style: spec.auth, secret: secret, body: body, profile: profile)
         return request
+    }
+
+    /// Throws `.cancelled` once the transport is shut down or the request has been stopped.
+    private func ensureOpen() throws {
+        if Task.isCancelled { throw AgentTransportError.cancelled }
+        try locked { if isShut { throw AgentTransportError.cancelled } }
     }
 
     // MARK: The key
@@ -294,8 +311,8 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     }
 
     /// The one place a key is put on a request, in the header `style` names. A provider that needs a key has none to
-    /// go without. A body that holds the key, as written or as JSON writes it, is refused.
-    private static func sign(_ request: inout URLRequest, style: AgentAuthStyle, secret: AgentSecret?,
+    /// go without. A request whose `body` holds the key, as written or as JSON writes it, is refused.
+    private static func sign(_ request: inout URLRequest, style: AgentAuthStyle, secret: AgentSecret?, body: Data?,
                              profile: AgentProviderProfile) throws {
         guard style != .none else { return }
         guard let secret else {
@@ -304,7 +321,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         }
         guard mayCarryKey(profile) else { throw AgentTransportError.insecure }
         let text = secret.revealSecret()
-        if let body = request.httpBody, holds(body, text) { throw AgentTransportError.keyInBody }
+        if let body, holds(body, text) { throw AgentTransportError.keyInBody }
         switch style {
         case .xAPIKey: request.setValue(text, forHTTPHeaderField: "x-api-key")
         case .bearer: request.setValue("Bearer " + text, forHTTPHeaderField: "Authorization")
@@ -331,13 +348,17 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     /// Turned away for a while: too many requests, the service overloaded or unavailable, or a gateway that gave up.
     private static let retriedStatuses: Set<Int> = [429, 503, 504, 529]
     /// Words in a reply that mean a spending or credit limit was reached, which waiting won't fix.
-    private static let spendingWords = ["spend_limit", "insufficient_quota", "credit_balance", "usage_limit", "billing"]
+    /// The same words the error mapper reads as out of credit.
+    private static let spendingWords = ["spend_limit", "insufficient_quota", "credit_balance", "usage_limit", "billing",
+                                        "spend limit", "credit balance"]
     /// The longest wait a server may ask for before a try; one that asks for more isn't tried again.
     private static let longestWait = 30.0
     /// How many bytes may arrive between two notes to the watch that something arrived.
     private static let touchEvery = 1_024
 
-    private func withRetries<Value>(_ body: (Flag) async throws -> Value) async throws -> Value {
+    /// Runs `body`, and again after a hitch that may be tried again, while the whole request's `deadline` allows: a
+    /// wait that would end past it isn't made, and the hitch stands as the answer.
+    private func withRetries<Value>(until deadline: UInt64, _ body: (Flag) async throws -> Value) async throws -> Value {
         var tries = 0
         while true {
             let handedOn = Flag()
@@ -347,10 +368,16 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
                 guard !handedOn.isRaised, tries < limits.retries, let wait = Self.wait(after: error, tries: tries) else {
                     throw error
                 }
+                guard Self.deadline(after: wait) < deadline else { throw error }
                 tries += 1
                 try await Task.sleep(nanoseconds: Self.nanoseconds(wait))
             }
         }
+    }
+
+    /// The uptime, in nanoseconds, `seconds` from now.
+    private static func deadline(after seconds: Double) -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds &+ nanoseconds(seconds)
     }
 
     /// How long to wait before trying again after `error`, or nil when it isn't tried again.
@@ -475,11 +502,12 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         private var cancelledProxy = false
         private var cancelledOther = false
 
-        init(limits: AgentTransportLimits) {
+        /// `deadline` is when the whole request ends, however many tries it takes.
+        init(limits: AgentTransportLimits, deadline: UInt64) {
             let now = DispatchTime.now().uptimeNanoseconds
             idle = HTTPTransport.nanoseconds(limits.idleSeconds)
             started = now
-            deadline = now &+ HTTPTransport.nanoseconds(limits.totalSeconds)
+            self.deadline = deadline
             lastHeard = now
         }
 
