@@ -285,6 +285,12 @@ public actor AgentSession: AgentConversing {
                         counts.oversized += 1
                         if counts.oversized >= 2 { ending = .failed(.tooLarge) }
                     }
+                    // A place the plan touches stopped answering: the request ends with one line and no retry.
+                    if isProposal, code == .not_responding, ending == nil {
+                        let label: String
+                        if let slow = runner.slowRoot { label = slow } else { label = await quietRootLabel() }
+                        ending = .notice(.notResponding(label: label))
+                    }
                 case .result(let json, let count):
                     counts.badInARow = 0
                     let sent = resultHook?(json) ?? json
@@ -376,6 +382,13 @@ public actor AgentSession: AgentConversing {
     }
 
     private var isStopping: Bool { slot.isStopping || Task.isCancelled }
+
+    /// The folder named when a plan's place stopped answering and no listing said which one: the folder on show,
+    /// else the first folder.
+    private func quietRootLabel() async -> String {
+        let roots = await scope.roots()
+        return (roots.first(where: \.isTabFolder) ?? roots.first)?.label ?? ""
+    }
 
     /// Text Helm built never holds the home folder's path, as given or canonical.
     private func isClean(_ text: String) async -> Bool {
