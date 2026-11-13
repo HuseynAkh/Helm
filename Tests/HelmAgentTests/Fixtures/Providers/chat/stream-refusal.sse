@@ -1,0 +1,7 @@
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Sure"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"refusal":"I can't help with that."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-3","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_r","type":"function","function":{"name":"propose_changes","arguments":"{}"}}]},"finish_reason":"stop"}]}
+
+data: [DONE]

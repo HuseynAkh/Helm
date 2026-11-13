@@ -1,0 +1,5 @@
+{"data": [
+  {"id": "anthropic/claude-opus-5-5", "canonical_slug": "anthropic/claude-opus-5-5", "name": "Anthropic: Claude Opus 5.5", "context_length": 1000000},
+  {"id": "openai/gpt-6-astra", "canonical_slug": "openai/gpt-6-astra", "name": "OpenAI: GPT-6 Astra", "context_length": 400000},
+  {"id": "meta-llama/llama-5:free", "canonical_slug": "meta-llama/llama-5", "name": "Llama 5 (free)", "context_length": 131072}
+], "links": {"next": null}, "total_count": 3}

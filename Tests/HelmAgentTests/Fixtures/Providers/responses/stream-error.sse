@@ -1,0 +1,14 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_05","status":"in_progress","output":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_05","output_index":0,"content_index":0,"delta":"Working"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":2,"output_index":1,"item":{"type":"function_call","id":"fc_06","call_id":"call_e","name":"list_folder","arguments":"{\"folder\":\"r1\",\"depth\":1,\"after\":\"\"}","status":"completed"}}
+
+event: error
+data: {"type":"error","sequence_number":3,"code":"rate_limit_exceeded","message":"Rate limit reached","param":null}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":4,"response":{"id":"resp_05","status":"completed","output":[]}}

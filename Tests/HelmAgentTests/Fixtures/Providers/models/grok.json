@@ -1,0 +1,4 @@
+{"models": [
+  {"id": "grok-4.7", "fingerprint": "fp_1", "created": 1762000000, "object": "model", "owned_by": "xai", "version": "1.0", "input_modalities": ["text"], "output_modalities": ["text"], "aliases": ["grok-latest"]},
+  {"id": "grok-4.7-mini", "fingerprint": "fp_2", "created": 1761000000, "object": "model", "owned_by": "xai", "version": "1.0", "input_modalities": ["text"], "output_modalities": ["text"], "aliases": []}
+]}

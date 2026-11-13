@@ -1,0 +1,7 @@
+{"models": [
+  {"name": "qwen3:8b", "model": "qwen3:8b", "modified_at": "2026-11-01T10:00:00Z", "size": 5200000000, "digest": "a1b2", "details": {"format": "gguf", "family": "qwen3", "parameter_size": "8.2B", "quantization_level": "Q4_K_M"}},
+  {"name": "gpt-oss:120b-cloud", "model": "gpt-oss:120b-cloud", "modified_at": "2026-10-20T10:00:00Z", "size": 384, "digest": "c3d4", "remote_model": "gpt-oss:120b", "remote_host": "ollama.com:443", "details": {"format": "", "family": "gptoss"}},
+  {"name": "llama3.2:latest", "model": "llama3.2:latest", "modified_at": "2026-09-01T10:00:00Z", "size": 2000000000, "digest": "e5f6", "details": {"format": "gguf", "family": "llama"}},
+  {"name": "deepseek-v4:cloud", "model": "deepseek-v4:cloud", "modified_at": "2026-09-02T10:00:00Z", "size": 300, "digest": "a7b8"},
+  {"name": "my model with spaces", "model": "my model with spaces", "modified_at": "2026-09-03T10:00:00Z", "size": 1, "digest": "c9d0"}
+]}

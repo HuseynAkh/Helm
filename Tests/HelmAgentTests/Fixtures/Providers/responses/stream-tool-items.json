@@ -1,0 +1,7 @@
+[
+  {"type": "reasoning", "id": "rs_01", "summary": [], "encrypted_content": "gAAAAexampleEncryptedReasoningComplete"},
+  {"type": "message", "id": "msg_01", "role": "assistant", "status": "completed",
+   "content": [{"type": "output_text", "text": "Let me look first.", "annotations": []}]},
+  {"type": "function_call", "id": "fc_01", "call_id": "call_12345xyz", "name": "list_folder",
+   "arguments": "{\"folder\":\"r1\",\"depth\":1,\"after\":\"\"}", "status": "completed"}
+]

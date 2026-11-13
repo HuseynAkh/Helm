@@ -1,0 +1,11 @@
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_02","status":"in_progress","output":[]}}
+
+data: {"type":"response.output_item.done","sequence_number":1,"output_index":0,"item":{"type":"reasoning","id":"rs_02","summary":[],"encrypted_content":"xaiEncryptedExample"}}
+
+data: {"type":"response.output_item.done","sequence_number":2,"output_index":1,"item":{"type":"function_call","id":"fc_02","call_id":"call_a","name":"list_folder","arguments":"{\"folder\":\"r1\",\"depth\":0,\"after\":\"\"}","status":"completed"}}
+
+data: {"type":"response.output_item.done","sequence_number":3,"output_index":2,"item":{"type":"function_call","id":"fc_03","call_id":"call_b","name":"find_items","arguments":"{\"folder\":\"r2\"}","status":"completed"}}
+
+data: {"type":"response.completed","sequence_number":4,"response":{"id":"resp_02","status":"completed","output":[]}}
+
+data: [DONE]

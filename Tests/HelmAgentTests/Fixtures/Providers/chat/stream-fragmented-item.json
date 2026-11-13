@@ -1,0 +1,4 @@
+{"role": "assistant", "content": null, "tool_calls": [
+  {"id": "call_abc", "type": "function",
+   "function": {"name": "list_folder", "arguments": "{\"folder\":\"r1\",\"depth\":1,\"after\":\"\"}"}}
+]}

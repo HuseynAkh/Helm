@@ -1,0 +1,12 @@
+{
+  "id": "resp_06",
+  "object": "response",
+  "status": "completed",
+  "error": null,
+  "output": [
+    {"type": "reasoning", "id": "rs_06", "summary": [], "encrypted_content": "gAAAAexample"},
+    {"type": "message", "id": "msg_06", "role": "assistant", "status": "completed",
+     "content": [{"type": "output_text", "text": "Here it is: {\"ranked\": [{\"row\": 2, \"why\": [\"name\"]}]} as asked.", "annotations": []}]}
+  ],
+  "usage": {"input_tokens": 90, "output_tokens": 30, "total_tokens": 120}
+}
