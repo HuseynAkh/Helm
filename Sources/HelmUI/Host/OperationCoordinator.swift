@@ -97,6 +97,7 @@ import HelmPersistence
         let result = await execute(plan, title: OperationText.title(for: command), replacing: row, admission: { id, plan in
             await history.bindExecution(request: request, operation: id, plan: plan)
         }, onFailure: onFailure)
+        await noteStall(in: history)
         await followTrashRecords(after: result, undoing: false)
         let entry = await executor.journal.entry(result.id)
         if let entry { await history.completeForward(request: request, entry: entry) }
@@ -126,6 +127,7 @@ import HelmPersistence
         let result = await execute(request.plan, title: "Undo \(top.name)", admission: { id, plan in
             await history.bindExecution(request: request.request, operation: id, plan: plan)
         })
+        await noteStall(in: history)
         await followTrashRecords(after: result, undoing: true)
         await history.complete(request: request.request, outcome: result)
         return .success(result)
@@ -158,7 +160,20 @@ import HelmPersistence
     /// every later change from starting. Changes run again once every stalled call has returned. A call that is still
     /// out keeps them refused for now, and the next change asks again before it starts, so no relaunch is needed.
     public func clearStallIfSettled() async {
-        stallAcknowledged = !(await executor.clearQuarantine())
+        // Another window acknowledging its own unsure change doesn't acknowledge the stall: that is the stalled
+        // window's to do, so the latch waits while that window still has the change to settle.
+        if let stalled = stalledHistory, await stalled.snapshot().reconciliation != nil { return }
+        let reopened = await executor.clearQuarantine()
+        stallAcknowledged = !reopened
+        if reopened { stalledHistory = nil }
+    }
+    /// The history whose change stalled and shut later changes out, until the latch reopens. Weak, so a window that
+    /// closes with the change unsettled doesn't keep every other window shut out.
+    private weak var stalledHistory: WindowOperationHistory?
+    /// After a change in `history`: remembers it when that change left the latch shut and no earlier one holds it.
+    private func noteStall(in history: WindowOperationHistory) async {
+        guard stalledHistory == nil, await executor.isQuarantined else { return }
+        stalledHistory = history
     }
     /// A stall was let go of while one of its calls was still out, so the next change asks again before it starts.
     private var stallAcknowledged = false

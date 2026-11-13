@@ -172,6 +172,8 @@ public actor OperationExecutor {
         await progress(OperationProgress(id: id, itemsDone: outcomes.filter(\.succeeded).count, itemsTotal: plan.steps.count, currentName: nil))
         return result
     }
+    /// Whether a stalled or stopped step is refusing every later operation until `clearQuarantine()` lets them go.
+    public var isQuarantined: Bool { quarantined }
     /// Lets operations run again after a step stalled or was stopped partway through a file system call, which
     /// refuses every later one as busy. Call it once the person has acknowledged that change. The file system is
     /// asked first: false means a stalled call is still out, so the latch stays and the caller asks again later.

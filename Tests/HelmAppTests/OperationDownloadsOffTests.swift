@@ -219,6 +219,27 @@ import HelmPersistence
         XCTAssertFalse(exists)
     }
 
+    func testOnlyTheStalledWindowsAcknowledgementReopensChanges() async throws {
+        let (coordinator, stalledWindow, recorder) = try await fixture()
+        let otherWindow = WindowOperationHistory()
+        let result = try await run(.move(sources: [stuck], destinationDirectory: target), coordinator, stalledWindow)
+        XCTAssertEqual(result.error, .timedOut)
+        // Another window acknowledging an unsure change of its own asks the coordinator to reopen. It must not.
+        await coordinator.clearStallIfSettled()
+        let refused = try await unrelated("Fresh", coordinator, otherWindow)
+        XCTAssertEqual(refused.error, .busy, "the stalled window hasn't acknowledged its change yet")
+        let early = await made("Fresh", recorder)
+        XCTAssertFalse(early)
+        // The stalled window acknowledges its change: later changes run, in any window.
+        let acknowledged = await stalledWindow.acknowledgeReconciliation()
+        XCTAssertTrue(acknowledged)
+        await coordinator.clearStallIfSettled()
+        let later = try await unrelated("Fresh", coordinator, otherWindow)
+        XCTAssertNil(later.error)
+        let exists = await made("Fresh", recorder)
+        XCTAssertTrue(exists)
+    }
+
     func testAStallOnAReadThatChangedNothingLetsLaterChangesRun() async throws {
         let (coordinator, history, recorder) = try await fixture()
         // A new folder in Deep/Inner: before making it, the executor reads each folder above it, and Deep stalls.
