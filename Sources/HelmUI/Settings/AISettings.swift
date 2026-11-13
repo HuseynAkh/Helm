@@ -9,6 +9,9 @@ import SwiftUI
 struct AISettingsView: View {
     @ObservedObject var model: AISetupModel
     @State private var draftKey = ""
+    /// Who the typed key is for: the provider and address shown when it was typed.
+    @State private var draftKeyFor: String?
+    @FocusState private var keyFocused: Bool
     @State private var draftAddress = ""
     @State private var draftPort = ""
     @State private var draftModel = ""
@@ -39,12 +42,15 @@ struct AISettingsView: View {
         .formStyle(.grouped)
         .frame(width: Self.width)
         .onAppear { draftAddress = model.address }
+        // Settings has no Done, so a key typed and not yet entered is entered as the pane goes away.
+        .onDisappear { enterDraftKey() }
         // A key typed but not yet entered never follows a change of provider or address.
         .onChange(of: model.provider) { _, _ in
             draftKey = ""
             draftAddress = model.address
         }
         .onChange(of: model.address) { _, _ in draftKey = "" }
+        .onChange(of: draftKey) { _, typed in draftKeyFor = typed.isEmpty ? nil : keyOwner }
     }
 
     private var address: some View {
@@ -60,16 +66,27 @@ struct AISettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 SecureField(AgentText.keyLabel, text: $draftKey, prompt: Text(AgentText.keyPlaceholder))
-                    .onSubmit {
-                        let typed = draftKey
-                        draftKey = ""
-                        model.enterKey(typed)
-                    }
+                    .focused($keyFocused)
+                    .onSubmit { enterDraftKey() }
+                    // Leaving the field enters what was typed, as Return does.
+                    .onChange(of: keyFocused) { _, focused in if !focused { enterDraftKey() } }
                 if model.hasSavedKey { Button(AgentText.removeKey) { model.removeKey() } }
             }
             AIModeStateRow(model: model)
         }
     }
+
+    /// Enters the typed key, once, and only for the provider and address it was typed for.
+    private func enterDraftKey() {
+        let typed = draftKey
+        guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, draftKeyFor == keyOwner,
+              model.showsKeyField else { return }
+        draftKey = ""
+        draftKeyFor = nil
+        model.enterKey(typed)
+    }
+
+    private var keyOwner: String { model.provider.rawValue + "|" + model.address }
 
     /// A local provider's state in place of a key, and its port beside "isn't running".
     private var localState: some View {

@@ -140,8 +140,8 @@ struct AgentFolderChipView: View {
     }
 }
 
-/// The three suggestions, or the line said in their place. Organize runs as soon as it is pressed; its menu offers
-/// how deep to go. Move and Copy fill the composer.
+/// The three suggestions, or the line said in their place. Organize runs as soon as it is pressed; on the folder its
+/// menu offers how deep to go. Move and Copy fill the composer.
 struct AgentSuggestionsRow: View {
     @ObservedObject var model: AgentPanelModel
 
@@ -159,27 +159,12 @@ struct AgentSuggestionsRow: View {
             }
             .padding(.horizontal, 6)
         } else if !model.suggestions.isEmpty {
-            HStack(spacing: 6) {
-                ForEach(model.suggestions) { suggestion in
-                    if suggestion.kind == .organize {
-                        Menu {
-                            ForEach(AgentPanelModel.depths, id: \.title) { depth in
-                                Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
-                            }
-                        } label: {
-                            Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1)
-                        } primaryAction: {
-                            model.choose(suggestion, depth: .thisFolder)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .modifier(AgentSuggestionLook())
-                    } else {
-                        Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
-                            Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
-                        }
-                        .buttonStyle(.plain)
-                        .modifier(AgentSuggestionLook())
-                    }
+            // Organize has a row of its own and Move and Copy share the next, so each title keeps its count and its
+            // "to…" at the panel's fixed width.
+            VStack(spacing: 6) {
+                ForEach(model.suggestions.filter { $0.kind == .organize }) { chip(for: $0) }
+                HStack(spacing: 6) {
+                    ForEach(model.suggestions.filter { $0.kind != .organize }) { chip(for: $0) }
                 }
             }
             .padding(.horizontal, 8)
@@ -190,9 +175,33 @@ struct AgentSuggestionsRow: View {
                 .padding(.horizontal, 12)
         }
     }
+
+    /// Organize on the folder offers how deep to go; on a selection the items are already chosen, so it is a plain
+    /// button, as Move and Copy are.
+    @ViewBuilder private func chip(for suggestion: AgentSuggestion) -> some View {
+        if suggestion.kind == .organize, !suggestion.isSelection {
+            Menu {
+                ForEach(AgentPanelModel.depths, id: \.title) { depth in
+                    Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
+                }
+            } label: {
+                Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
+            } primaryAction: {
+                model.choose(suggestion, depth: .thisFolder)
+            }
+            .menuStyle(.borderlessButton)
+            .modifier(AgentSuggestionLook())
+        } else {
+            Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
+                Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .buttonStyle(.plain)
+            .modifier(AgentSuggestionLook())
+        }
+    }
 }
 
-/// A suggestion's chip: an equal share of the row, a soft fill and rounded corners.
+/// A suggestion's chip: its row's full width or an equal share of it, a soft fill and rounded corners.
 private struct AgentSuggestionLook: ViewModifier {
     func body(content: Content) -> some View {
         content
