@@ -293,7 +293,8 @@ public actor AgentScope: AgentHandleResolving {
         case .other:
             return .failure(.not_allowed)
         case .symlinkToDirectory, .symlinkToFile, .danglingSymlink, .alias, .package, .regular:
-            return .success(true)
+            // Never entered, because of its kind; it isn't a guarded folder, so a plan may still move or rename it.
+            return .success(false)
         case .directory:
             let otherDisk = item.identity?.scope != nil && root.identity?.scope != nil && item.identity?.scope != root.identity?.scope
             return .success(otherDisk || gate.isProtectedLeaf(path: item.path, under: root))
