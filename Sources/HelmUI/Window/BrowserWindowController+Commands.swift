@@ -658,13 +658,15 @@ extension BrowserWindowController {
     /// Undoes the latest change, then, while it was one of a group and each step succeeds, the next one down for as
     /// long as it belongs to the same group. Each step is handled as one Undo is: moved items followed, an unsure
     /// result settled, a failure shown. With `group`, the latest change must belong to it. Runs inside a turn.
+    /// A change of a group is undone with downloads off, as its plan was applied, however the Undo was asked for.
     /// Answers whether every step it took succeeded.
     private static func undoInTurn(group: UUID?, downloadsOff: Bool, window: BrowserWindowController?,
                                    dependencies: WindowDependencies, history: WindowOperationHistory) async -> Bool {
         if let group, await history.snapshot().undoEntries.last?.group?.id != group { return false }
         while true {
             let top = await history.snapshot().undoEntries.last
-            let outcome = await dependencies.operations.undo(history: history, downloadsOff: downloadsOff)
+            let off = downloadsOff || top?.group != nil
+            let outcome = await dependencies.operations.undo(history: history, downloadsOff: off)
             dependencies.followMovedItems(outcome)
             await window?.refreshHistory()
             let told = await window?.settleReconciliation(outcome, alreadyAsked: false) ?? false

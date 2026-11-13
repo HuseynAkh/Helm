@@ -12,7 +12,7 @@ import HelmPersistence
 /// The pieces AI mode stands on, in a real window and a real app on a throwaway home, with AI mode off: the services
 /// every run gets, Connect to Server through one seam, a search handed to an AI search runner, a command run for an
 /// applied plan, the fixture Trash's refusals, ai.json, and the AI tab in Settings.
-@MainActor final class AgentFoundationHooksTests: XCTestCase {
+@MainActor final class AgentWindowHooksTests: XCTestCase {
     private var root: URL!
     private var app: AppController?
     private var controllers: [BrowserWindowController] = []
@@ -245,6 +245,31 @@ import HelmPersistence
         XCTAssertNotEqual(controller.focusOwnerForTesting, "assistant")
     }
 
+    /// Something in the panel's column with the keys: the file commands are off, as Return, Space and Delete are the
+    /// panel's, and the window says the assistant has the keys. Back on the files, both are as before.
+    func testWhileThePanelHoldsTheKeysTheFileCommandsAreOff() async throws {
+        let (controller, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        let notes = try XCTUnwrap(controller.activeTab?.snapshot.sortedEntries.first { $0.name == "notes.txt" })
+        controller.store.send(.tab(controller.activeTabID, .setSelection([notes.id], source: .user)))
+        controller.focusFilesForTesting()
+        XCTAssertEqual(controller.focusOwnerForTesting, "files")
+        let fileCommands: [CommandID] = [.open, .trash, .rename, .copy]
+        XCTAssertEqual(fileCommands.map { controller.title(of: $0).1 }, [true, true, true, true], "the selection's commands are on")
+
+        // A plain view, not a text field, so it's the panel's hold on the keys that turns them off.
+        let inside = AgentHooksKeyView()
+        controller.agentPanelHost.addSubview(inside)
+        XCTAssertTrue(window.makeFirstResponder(inside))
+        XCTAssertEqual(controller.focusOwnerForTesting, "assistant")
+        XCTAssertEqual(fileCommands.map { controller.title(of: $0).1 }, [false, false, false, false], "the file commands are off")
+
+        controller.focusFilesForTesting()
+        XCTAssertEqual(controller.focusOwnerForTesting, "files")
+        XCTAssertEqual(fileCommands.map { controller.title(of: $0).1 }, [true, true, true, true], "back on with the files")
+        inside.removeFromSuperview()
+    }
+
     func testAnAISearchGoesToTheRunnerWithTodaysSearchAsItsBaseline() async throws {
         HostEffectRunner.spotlightAnswersForTesting = { _ in AsyncStream { $0.yield([]); $0.finish() } }
         let (controller, _) = try await window()
@@ -335,6 +360,11 @@ import HelmPersistence
     func showSettings(pane: SettingsPane) {}
     func requestQuitAnyway() {}
     func showAIModeScreen(from window: BrowserWindowController?) { aiScreenRequests += 1 }
+}
+
+/// A view that takes the keys and is no kind of text.
+private final class AgentHooksKeyView: NSView {
+    override var acceptsFirstResponder: Bool { true }
 }
 
 /// Records what it's asked and what the baseline hands it, and sends nothing until told to.

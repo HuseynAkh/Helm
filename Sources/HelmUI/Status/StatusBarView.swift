@@ -6,8 +6,11 @@ import HelmCore
 /// During and after a search with a model's help, its line takes the place of the usual words. When that line has
 /// the queries that ran, it's a button, and pressing it lists them, one per line.
 public struct StatusBarView: View {
-    private let text: String
-    private let queries: [String]
+    /// The words on show: the AI line during such a search, the usual words otherwise.
+    let text: String
+    let queries: [String]
+    /// Whether the line is a button that lists the queries.
+    var isPressable: Bool { !queries.isEmpty }
     @State private var showsQueries = false
     public init(status: StatusPresentation, aiSearch: AISearchStatus? = nil) {
         text = aiSearch?.text ?? StatusText.format(status)
@@ -21,7 +24,7 @@ public struct StatusBarView: View {
             .overlay(alignment: .top) { Divider() }
     }
     @ViewBuilder private var line: some View {
-        if queries.isEmpty {
+        if !isPressable {
             words.accessibilityLabel(Text(verbatim: text))
         } else {
             Button { showsQueries.toggle() } label: { words }
