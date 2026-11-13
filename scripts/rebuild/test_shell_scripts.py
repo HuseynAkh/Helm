@@ -21,8 +21,8 @@ ADDRESS_LIST = RELEASE / 'allowed_addresses.txt'
 NEEDS_MAC = (sys.platform == 'darwin' and shutil.which('otool') is not None, 'the binary check needs macOS tools')
 
 # What a transport that keeps DESIGN.md section 3 imports, as `nm -um | swift-demangle` spells it: an ephemeral
-# session, a request with its method, body, header and time limit set, the async data and bytes calls, and the
-# bytes read one at a time and as lines.
+# session, a request with its method, body, header and time limit set, the request handed to the delegate that
+# refuses every redirect, the async data and bytes calls, and the bytes read one at a time and as lines.
 SESSION = '(extension in Foundation):__C.NSURLSession'
 BYTES = f'{SESSION}.AsyncBytes'
 DATA_CALL = (f'{SESSION}.data(for: Foundation.URLRequest, delegate: __C.NSURLSessionTaskDelegate?) async throws '
@@ -37,6 +37,7 @@ TRANSPORT_SYMBOLS = [
     'Foundation.URLRequest.httpMethod.setter : Swift.String?', 'Foundation.URLRequest.httpBody.setter : Foundation.Data?',
     'Foundation.URLRequest.setValue(_: Swift.String?, forHTTPHeaderField: Swift.String) -> ()',
     'Foundation.URLRequest.timeoutInterval.setter : Swift.Double',
+    'static Foundation.URLRequest._unconditionallyBridgeFromObjectiveC(__C.NSURLRequest?) -> Foundation.URLRequest',
     DATA_CALL, f'async function pointer to {DATA_CALL}', BYTES_CALL, f'async function pointer to {BYTES_CALL}',
     f'type metadata accessor for {BYTES}', f'nominal type descriptor for {BYTES}',
     f'protocol conformance descriptor for {BYTES} : Swift.AsyncSequence in Foundation',
@@ -55,6 +56,8 @@ LIST_MEMBERS = [
     r'Foundation\.URLRequest\.init\(url: .*',
     r'Foundation\.URLRequest\.(httpMethod|httpBody|timeoutInterval)\.setter : .*',
     r'Foundation\.URLRequest\.setValue\(_: Swift\.String\?, forHTTPHeaderField: Swift\.String\) -> \(\)',
+    # The redirect delegate's request arrives through this bridge; it reads nothing from the network.
+    r'static Foundation\.URLRequest\._unconditionallyBridgeFromObjectiveC\(__C\.NSURLRequest\?\) -> Foundation\.URLRequest',
     r'(async function pointer to )?\(extension in Foundation\):__C\.NSURLSession\.(data|bytes)\(for: .*',
     r'((type metadata accessor|nominal type descriptor|protocol conformance descriptor) for |async function pointer to )?'
     r'\(extension in Foundation\):__C\.NSURLSession\.AsyncBytes([ .].*)?',
