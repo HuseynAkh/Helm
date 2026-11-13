@@ -243,6 +243,48 @@ import HelmCore
         XCTAssertEqual(spy.dismissed, 0)
     }
 
+    func testReturnTellsTheWindowWithTheWords() {
+        let (window, header, spy, _) = hosted()
+        header.beginSearch()
+        type("q2", in: window)
+        (window.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        XCTAssertEqual(spy.submitted, ["q2"])
+        settle()
+        XCTAssertTrue(header.isSearchFieldEditing, "Return keeps the caret in the field.")
+        // Other keys aren't Return.
+        (window.firstResponder as? NSTextView)?.doCommand(by: #selector(NSResponder.moveDown(_:)))
+        XCTAssertEqual(spy.submitted, ["q2"])
+    }
+
+    func testPressingTheSparkKeepsAnEmptySearchOpenWithTheCaret() {
+        let (_, header, spy, _) = hosted()
+        header.setAISearch(available: true, on: false)
+        header.beginSearch()
+        settle()
+        header.searchField.pressAIToggleForTesting()
+        settle()
+        XCTAssertEqual(spy.aiToggles, [true])
+        XCTAssertTrue(header.isSearching)
+        XCTAssertTrue(header.isSearchFieldEditing, "The caret stays in the field.")
+        XCTAssertEqual(spy.dismissed, 0)
+    }
+
+    func testPressingTheSparkInARestingSearchPutsTheCaretBack() {
+        let (window, header, spy, files) = hosted()
+        header.setAISearch(available: true, on: false)
+        header.beginSearch()
+        type("q2", in: window)
+        window.makeFirstResponder(files)
+        settle()
+        XCTAssertFalse(header.isSearchFieldEditing)
+        header.searchField.pressAIToggleForTesting()
+        settle()
+        XCTAssertEqual(spy.aiToggles, [true])
+        XCTAssertTrue(header.isSearchFieldEditing)
+        XCTAssertEqual((window.firstResponder as? NSTextView)?.selectedRange(), NSRange(location: 2, length: 0),
+                       "The caret goes after the words, as after choosing a scope.")
+    }
+
     func testEscapeInTheFieldClosesIt() {
         let (window, header, spy, _) = hosted()
         header.beginSearch()

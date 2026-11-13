@@ -1,6 +1,7 @@
 # Header: these start in the Documents tab, in list view, with two tabs open, and leave it that way, sort and all.
-# The Grid | List switch shows the view you're in, and the sort button says the sort
+# The view button shows the view you'd switch to, with its key in the tooltip, and the sort button says the sort
 header-view-is list
+header-tooltips
 sort-fits
 sort-save
 header-shot @SHOTS@/header-list.png
@@ -71,7 +72,7 @@ search-shown false
 focus-is files
 path-reads Home / Documents
 lacks q2.txt
-# Choosing a view while you type leaves the caret, and the empty search, in the field
+# Choosing a view with the view button while you type leaves the caret, and the empty search, in the field
 search-open
 header-switch list
 header-view-is list
@@ -201,7 +202,8 @@ sidebar-visible-is false
 sidebar-divider 232
 header-leading-is 8
 sidebar-visible-is true
-# The window's edges stay macOS's own, in each view, with tabs and without the sidebar
+# The window's edges stay macOS's own, in each view, with tabs and without the sidebar; every header button,
+# the view button and the spark among them, is 32 points high
 window-edges-native
 view list
 header-view-is list

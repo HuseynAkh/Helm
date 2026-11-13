@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 import HelmUI
 
@@ -44,10 +45,14 @@ extension HostSmokeDriver {
             window.pressEscapeInFilesForTesting()
             await wait(seconds: 0.4)
         case "header-view-is":
+            // The view the header's view button says the tab is in.
             check(window.headerViewModeForTesting.rawValue == argument, step, window.headerViewModeForTesting.rawValue)
         case "header-switch":
-            // grid or list: a click on that half of the header's switch, wherever the keys are.
+            // grid or list: a click on the header's view button that chooses that view, wherever the keys are. It
+            // fails when the button offers the other view.
             guard let mode = ViewMode(rawValue: argument) else { check(false, step, "grid or list"); return true }
+            let offered = window.headerViewOfferedForTesting
+            check(offered == mode, step, "the button offers \(offered.rawValue)")
             window.clickHeaderViewForTesting(mode)
             await wait(seconds: 0.4)
         case "sidebar-width-save":
@@ -77,10 +82,15 @@ extension HostSmokeDriver {
             await wait(seconds: 0.4)
             check(window.activeTab?.sort == savedSort, step)
         case "header-tooltips":
-            // Each control's tooltip names its shortcut.
+            // Each control's tooltip names its shortcut. The view button names the view it switches to, so only
+            // that view's key; the spark names its key once a model is ready, and otherwise says it sets AI mode up.
             let tips = window.headerToolTipsForTesting
-            let missing = ["⌃⌘S", "⌘[", "⌘]", "⌘F", "⌘1", "⌘2", "⌘J"].filter { key in !tips.contains { $0.contains(key) } }
-            check(missing.isEmpty, step, "missing \(missing) in \(tips)")
+            let grid = window.headerViewModeForTesting == .grid
+            let offeredKey = grid ? "⌘2" : "⌘1", shownKey = grid ? "⌘1" : "⌘2"
+            var missing = ["⌃⌘S", "⌘[", "⌘]", "⌘F", offeredKey, "⌘J"].filter { key in !tips.contains { $0.contains(key) } }
+            if !tips.contains(where: { $0 == AgentText.sparkSetUp || $0.contains("⌃⌘I") }) { missing.append("the spark") }
+            let extra = tips.filter { $0.contains(shownKey) }
+            check(missing.isEmpty && extra.isEmpty, step, "missing \(missing), extra \(extra) in \(tips)")
         case "window-width":
             guard let frameWindow = window.window, let width = Double(argument) else { check(false, step, "usage"); return true }
             var frame = frameWindow.frame
@@ -137,9 +147,14 @@ extension HostSmokeDriver {
         case "title-bar-fits-header":
             check(titleBarProblems(window).isEmpty, step, titleBarProblems(window).joined(separator: "; "))
         case "header-buttons-even":
-            // Every header button's fill is the same height: 32 points, or 26 for the ⋯ inside the path.
-            let uneven = headerButtons(window).filter { $0.height != ($0.inPath ? 26 : 32) }
-            check(uneven.isEmpty, step, uneven.map { "\($0.name) \($0.height)" }.joined(separator: ", "))
+            // Every header button's fill is the same height: 32 points, or 26 for the ⋯ inside the path. The view
+            // button and the spark are among them.
+            let buttons = headerButtons(window)
+            let uneven = buttons.filter { $0.height != ($0.inPath ? 26 : 32) }
+            let kinds = Set(buttons.map(\.kind))
+            let absent = ["ViewModeButton", "SparkButton"].filter { !kinds.contains($0) }
+            check(uneven.isEmpty && absent.isEmpty, step,
+                  (uneven.map { "\($0.name) \($0.height)" } + absent.map { "no \($0)" }).joined(separator: ", "))
         default: return false
         }
         return true
@@ -207,14 +222,17 @@ extension HostSmokeDriver {
         return problems
     }
 
-    /// The header's buttons as laid out: name, height, and whether it sits inside the path field.
-    private static func headerButtons(_ window: BrowserWindowController) -> [(name: String, height: CGFloat, inPath: Bool)] {
-        var found: [(name: String, height: CGFloat, inPath: Bool)] = []
+    /// The header's flat buttons, of every kind.
+    private static let flatButtonKinds: Set<String> = ["FlatButton", "FlatMenuButton", "ViewModeButton", "SparkButton"]
+    /// The window's buttons as laid out: name, kind, height, and whether it sits inside the path field.
+    private static func headerButtons(_ window: BrowserWindowController)
+        -> [(name: String, kind: String, height: CGFloat, inPath: Bool)] {
+        var found: [(name: String, kind: String, height: CGFloat, inPath: Bool)] = []
         func walk(_ view: NSView, inPath: Bool) {
             let kind = String(describing: type(of: view))
             let path = inPath || kind == "PathBarView"
-            if kind == "FlatButton" || kind == "FlatMenuButton", !view.isHiddenOrHasHiddenAncestor {
-                found.append((view.accessibilityLabel() ?? kind, view.frame.height, path))
+            if flatButtonKinds.contains(kind), !view.isHiddenOrHasHiddenAncestor {
+                found.append((view.accessibilityLabel() ?? kind, kind, view.frame.height, path))
             }
             view.subviews.forEach { walk($0, inPath: path) }
         }
