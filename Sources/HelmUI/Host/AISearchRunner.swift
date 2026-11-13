@@ -45,8 +45,16 @@ import HelmSearch
              send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let delivery = AISearchDelivery(tab: tab, generation: generation, send: send)
         // With no model ready this is the plain search, sent as it always is.
-        guard query.usesAI, case .ready(_, _, _, let isLocal) = dependencies.agent.runtime.state,
-              case .success(let client) = dependencies.agent.runtime.client() else {
+        guard query.usesAI, case .ready(_, _, _, let isLocal) = dependencies.agent.runtime.state else {
+            return baseline { results in delivery.baseline(results) }
+        }
+        // Words that hold a key are never sent, as in the panel's composer: the name matches show and the status
+        // bar says why.
+        if AgentComposerIntent.parse(query.text) == .looksLikeKey {
+            delivery.assist(SearchAssist(phase: .done, readAs: AgentText.composerLooksLikeKey))
+            return baseline { results in delivery.baseline(results) }
+        }
+        guard case .success(let client) = dependencies.agent.runtime.client() else {
             return baseline { results in delivery.baseline(results) }
         }
         delivery.assist(SearchAssist(phase: .thinking))

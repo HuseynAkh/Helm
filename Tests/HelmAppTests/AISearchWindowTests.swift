@@ -303,6 +303,22 @@ import HelmPersistence
         XCTAssertTrue(client.asks.first?.user.contains("scan pdf") == true)
     }
 
+    func testWordsThatHoldAKeyAreNeverSent() async throws {
+        standInFanOut()
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\"report\"]}"), rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client)
+        let key = "sk-ant-api03-testfake0123456789abcdefghij"
+        await searchWithAI(controller, "report \(key)")
+        let said = await until { controller.aiSearchStatusForTesting?.text == AgentText.composerLooksLikeKey }
+        XCTAssertTrue(said, "the status bar says why nothing was asked")
+        await settle(0.6)
+        XCTAssertTrue(client.asks.isEmpty, "no question went to the model")
+        XCTAssertFalse(client.allSentText().contains(key))
+        controller.submitSearchForTesting()
+        await settle(0.6)
+        XCTAssertTrue(client.asks.isEmpty, "Return again sends nothing either")
+    }
+
     // MARK: Failures and cancelling
 
     func testAModelFailureKeepsTheNameMatchesAndSaysSo() async throws {
