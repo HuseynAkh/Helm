@@ -14,7 +14,8 @@ import HelmSearch
 /// put the plain order back. It runs in the tab's search lane: Escape, an edit or another search cancels it, and an
 /// answer that arrives after that is dropped by the search's generation.
 ///
-/// Every item that is merged or sent passes `AgentItemFilter.allowsSearchRow`, whatever Show Hidden Files says.
+/// Every item that is merged or sent passes `AgentItemFilter.allowsSearchRow` and sits in no folder with the hidden
+/// flag, whatever Show Hidden Files says. Hits are looked up with downloads off.
 /// A model never sees a path: rows carry the name, the folder in Helm's words, the kind, a rounded size and dates.
 @MainActor final class AISearchRunner: AISearchRunning {
     private let dependencies: WindowDependencies
@@ -87,11 +88,15 @@ import HelmSearch
         let queries = Self.queries(plan.queries, coverage: coverage, request: query.text)
 
         // 2. Fan out.
-        let found = await fanOut(queries, search: query, scopeRoot: scopeRoot, place: place, coverage: coverage)
+        let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
+        let found = await fanOut(queries, search: query, scopeRoot: scopeRoot, place: place, coverage: coverage,
+                                 hiddenFolders: hiddenFolders)
         guard !Task.isCancelled else { return }
 
         // 3. Fuse with the plain search, and show that at once.
         let plainResults = await delivery.firstBaseline(waiting: Self.baselineWaitSeconds)
+        guard !Task.isCancelled else { return }
+        let plainKept = await hiddenFolders.outside(plainResults.map(\.entry).filter { allows($0) })
         guard !Task.isCancelled else { return }
         var entries: [ItemID: FileEntry] = [:]
         var foundBy: [ItemID: Int] = [:]
@@ -103,7 +108,6 @@ import HelmSearch
             }
             lists.append((RankFusion.queryWeights[min(index, RankFusion.queryWeights.count - 1)], hits.map(\.id)))
         }
-        let plainKept = plainResults.map(\.entry).filter { allows($0) }
         for entry in plainKept where entries[entry.id] == nil { entries[entry.id] = entry }
         lists.append((RankFusion.baselineWeight, plainKept.map(\.id)))
         var order = RankFusion.fuse(lists).prefix(max(1, query.limit)).compactMap { entries[$0] }
@@ -118,7 +122,13 @@ import HelmSearch
         }
         var reasons: [ItemID: SearchReason] = [:]
         for entry in order { reasons[entry.id] = queryReason(entry) }
-        let queriesRead = queries.map { SearchReasonBuilder.readAs(count: nil, query: $0, calendar: calendar, locale: locale) }
+        // A word a model chose for a name, a folder or an extension is shown only when the person typed it or a
+        // result bears it. A query left with nothing to show has no line.
+        func shown(_ planned: AISearchQuery) -> AISearchQuery {
+            SearchReasonBuilder.backed(planned, request: query.text, results: order, scopeRoot: scopeRoot)
+        }
+        let queriesRead = queries.map { SearchReasonBuilder.readAs(count: nil, query: shown($0), calendar: calendar, locale: locale) }
+            .filter { !$0.isEmpty }
         delivery.settle(order)
         delivery.assist(SearchAssist(phase: .thinking, reasons: reasons, queriesRead: queriesRead, coverage: coverage))
 
@@ -146,14 +156,15 @@ import HelmSearch
         }
         guard !Task.isCancelled else { return }
         // How the request was read, from the strictest query; with no query left, the count alone.
-        let readAs = SearchReasonBuilder.readAs(count: order.count, query: queries.first ?? AISearchQuery(), calendar: calendar,
+        let readAs = SearchReasonBuilder.readAs(count: order.count, query: shown(queries.first ?? AISearchQuery()), calendar: calendar,
                                                 locale: locale)
         delivery.assist(SearchAssist(phase: .done, reasons: reasons, readAs: readAs, queriesRead: queriesRead, coverage: coverage))
     }
 
-    /// Runs every planned query and answers what each found, best first, in the plan's order.
+    /// Runs every planned query and answers what each found, best first, in the plan's order. Each hit is looked up
+    /// with downloads off, so a hit in a cloud folder that isn't loaded is skipped and nothing is fetched.
     private func fanOut(_ queries: [AISearchQuery], search: SearchQuery, scopeRoot: URL?, place: StorageFacts,
-                        coverage: SearchAssist.Coverage) async -> [[FileEntry]] {
+                        coverage: SearchAssist.Coverage, hiddenFolders: AISearchHiddenFolders) async -> [[FileEntry]] {
         let fileSystem = dependencies.fileSystem
         let hook = Self.fanOutAnswersForTesting
         // A fixture run keeps its keys in memory. It never asks Spotlight; the walk and the hook stand in.
@@ -177,12 +188,16 @@ import HelmSearch
                     }
                 }
                 for await (index, urls) in group {
-                    var indexed: [FileEntry] = []
-                    for url in urls.prefix(Self.spotlightReadLimit) {
-                        guard !Task.isCancelled else { break }
-                        if let entry = try? await fileSystem.entry(at: url) { indexed.append(entry) }
+                    let indexed = await DatalessGuard.off { () async -> [FileEntry] in
+                        var indexed: [FileEntry] = []
+                        for url in urls.prefix(Self.spotlightReadLimit) {
+                            guard !Task.isCancelled else { break }
+                            if let entry = try? await fileSystem.entry(at: url) { indexed.append(entry) }
+                        }
+                        return indexed
                     }
-                    found[index] = keep(indexed, walked: walked, for: queries[index], search: search, scopeRoot: scopeRoot)
+                    let outside = await hiddenFolders.outside(indexed)
+                    found[index] = keep(outside, walked: walked, for: queries[index], search: search, scopeRoot: scopeRoot)
                 }
             }
         }
@@ -325,6 +340,49 @@ import HelmSearch
         case .iCloud, .cloud: return (6, 5_000)
         case .network: return (4, 2_000)
         }
+    }
+}
+
+/// The folders of one AI search that carry macOS's hidden flag. An agent listing never enters such a folder, so an
+/// item inside one is never a result or a row either, whoever found it. Each folder between the item's place (the
+/// home folder, a cloud provider's folder, a disk or the Shared folder) and the item is looked up once, with
+/// downloads off; one that can't be read counts as hidden.
+@MainActor private final class AISearchHiddenFolders {
+    private let fileSystem: any FileSystem
+    private let home: URL
+    private var known: [String: Bool] = [:]
+
+    init(fileSystem: any FileSystem, home: URL) { self.fileSystem = fileSystem; self.home = home }
+
+    /// The entries no hidden folder holds, in order.
+    func outside(_ entries: [FileEntry]) async -> [FileEntry] {
+        var kept: [FileEntry] = []
+        for entry in entries where !Task.isCancelled {
+            if await !isInHiddenFolder(entry) { kept.append(entry) }
+        }
+        return kept
+    }
+
+    private func isInHiddenFolder(_ entry: FileEntry) async -> Bool {
+        let homeParts = home.standardizedFileURL.pathComponents.count
+        let placeParts: Int
+        switch AgentItemFilter.area(ofPath: entry.url.path, home: home.path) {
+        case .home, .shared: placeParts = homeParts
+        // Library, the cloud folder's parent and the provider's own folder. Library itself carries the flag.
+        case .cloud: placeParts = homeParts + 3
+        case .volume: placeParts = 3
+        case .refused: return true
+        }
+        var folder = entry.url.standardizedFileURL.deletingLastPathComponent()
+        while folder.pathComponents.count > placeParts {
+            if known[folder.path] == nil {
+                let lookedUp = await DatalessGuard.off { [fileSystem, folder] in try? await fileSystem.entry(at: folder) }
+                known[folder.path] = lookedUp?.isHidden ?? true
+            }
+            if known[folder.path] == true { return true }
+            folder = folder.deletingLastPathComponent()
+        }
+        return false
     }
 }
 

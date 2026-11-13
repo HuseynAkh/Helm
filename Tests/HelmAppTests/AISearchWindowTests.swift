@@ -31,7 +31,7 @@ import HelmPersistence
     }
     override func tearDown() {
         for controller in controllers { controller.window?.close() }
-        controllers = []; keep = []
+        controllers = []; keep = []; fileSystems = []
         HostEffectRunner.spotlightAnswersForTesting = nil
         AISearchRunner.fanOutAnswersForTesting = nil
         HeaderMotion.isDisabledForTesting = false
@@ -43,24 +43,29 @@ import HelmPersistence
     private let reports = (1...6).map { "report-\($0).txt" }
     private var scan: URL { documents.appendingPathComponent("Scan_0042.pdf") }
     /// What the planned queries find besides the scan: a file in a dot folder, a key file, a file with the hidden
-    /// flag, and one outside the home folder. None may be a result or a row.
+    /// flag, a file in a folder with the hidden flag, and one outside the home folder. None may be a result or a row.
     private var forbidden: [URL] {
         [documents.appendingPathComponent(".secret/scan-dot.txt"), documents.appendingPathComponent("scan.pem"),
-         documents.appendingPathComponent("flagged-scan.txt"), URL(fileURLWithPath: "/elsewhere/outside-scan.txt")]
+         documents.appendingPathComponent("flagged-scan.txt"), documents.appendingPathComponent("Vault/scan-vault-secret.txt"),
+         URL(fileURLWithPath: "/elsewhere/outside-scan.txt")]
     }
+    private var fileSystems: [AISearchWindowFileSystem] = []
 
     private func window(client: AISearchWindowClient, on: Bool = true,
                         storage: MemoryStorageFactsReader? = nil) async throws -> (BrowserWindowController, InMemoryFileSystem) {
         let env = try await AppEnvironment.test(home: home)
         let memory = try XCTUnwrap(env.fileSystem as? InMemoryFileSystem)
-        for folder in [documents, documents.appendingPathComponent(".secret"), URL(fileURLWithPath: "/elsewhere")] {
+        for folder in [documents, documents.appendingPathComponent(".secret"), documents.appendingPathComponent("Vault"),
+                       URL(fileURLWithPath: "/elsewhere")] {
             try await memory.createDirectory(at: folder)
         }
-        for name in reports + ["Scan_0042.pdf", "scan.pem", "flagged-scan.txt", ".secret/scan-dot.txt"] {
+        for name in reports + ["Scan_0042.pdf", "scan.pem", "flagged-scan.txt", ".secret/scan-dot.txt", "Vault/scan-vault-secret.txt"] {
             try await memory.createFileExclusively(at: documents.appendingPathComponent(name), contents: Data(name.utf8))
         }
         try await memory.createFileExclusively(at: URL(fileURLWithPath: "/elsewhere/outside-scan.txt"), contents: Data([1]))
-        let fileSystem = AISearchWindowFileSystem(base: memory, flagged: [documents.appendingPathComponent("flagged-scan.txt").path])
+        let fileSystem = AISearchWindowFileSystem(base: memory, flagged: [documents.appendingPathComponent("flagged-scan.txt").path,
+                                                                          documents.appendingPathComponent("Vault").path])
+        fileSystems.append(fileSystem)
         let operations = OperationCoordinator(fileSystem: fileSystem, origins: env.trashOrigins, journal: env.journal)
         let volumes = VolumeCenter(isLive: false, home: env.directories.home) { false }
         let secrets = MemorySecretStore()
@@ -197,8 +202,30 @@ import HelmPersistence
         let done = await until { controller.activeTab?.search?.assist?.phase == .done }
         XCTAssertTrue(done)
         let status = try XCTUnwrap(controller.aiSearchStatusForTesting)
-        XCTAssertEqual(status.queries, ["PDF · “scan”", "“scan”, “invoice”", "Mentions “report”"])
+        XCTAssertEqual(status.queries, ["PDF · “scan”", "“scan”", "Mentions “report”"],
+                       "“invoice” was neither typed nor in a result's name")
         XCTAssertTrue(status.text.hasPrefix("\(names(controller).count) matches · PDF · “scan”"), status.text)
+    }
+
+    func testAWordAModelChoseAloneIsNeverInTheStatusBarOrItsQueries() async throws {
+        standInFanOut()
+        let chosen = ["Helm", "license", "expired", "visit", "helm-renew.example", "now"]
+        let words = chosen.map { "\"\($0)\"" }.joined(separator: ", ")
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\(words)]}, {\"name_any\": [\"scan\", \(words)]}"),
+                                          rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client)
+        await searchWithAI(controller, "report")
+        let done = await until { controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        let status = try XCTUnwrap(controller.aiSearchStatusForTesting)
+        for shown in [status.text] + status.queries {
+            for word in chosen {
+                XCTAssertFalse(shown.contains("“\(word)”"), "“\(word)” in “\(shown)”")
+            }
+            XCTAssertFalse(shown.contains("helm-renew.example"), shown)
+        }
+        XCTAssertEqual(status.queries, ["“scan”"], "a result bears “scan”; the first query has nothing left to show")
+        XCTAssertEqual(status.text, "\(names(controller).count) matches")
     }
 
     // MARK: What is never sent
@@ -228,7 +255,32 @@ import HelmPersistence
             XCTAssertFalse(sent.contains(home.path), "no home path is sent")
             XCTAssertFalse(sent.contains("aisearch"), "the account's name isn't sent")
             XCTAssertFalse(sent.contains(".secret"))
+            XCTAssertFalse(sent.contains("Vault"), "a folder with the hidden flag isn't named either")
         }
+    }
+
+    func testEveryLookupOfAnAISearchRunsWithDownloadsOff() async throws {
+        standInFanOut()
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\"scan\"]}, {\"name_any\": [\"report\"]}"),
+                                          rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client)
+        let fileSystem = try XCTUnwrap(fileSystems.last)
+        controller.setAISearchForTesting(true)
+        controller.typeIntoSearchForTesting("report")
+        _ = await until { controller.activeTab?.search?.query.text == "report" && controller.activeTab?.search?.isGathering == false }
+        fileSystem.lookups.removeAll()
+        controller.submitSearchForTesting()
+        let done = await until { controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        let lookups = fileSystem.lookups.all
+        let found = Set(([scan] + forbidden + reports.map { documents.appendingPathComponent($0) }).map(\.path))
+        XCTAssertTrue(lookups.contains { found.contains($0.path) }, "the planned queries' hits were looked up")
+        XCTAssertTrue(lookups.contains { $0.path == documents.appendingPathComponent("Vault").path }, "and the folders above them")
+        XCTAssertTrue(lookups.contains { $0.path == documents.path && $0.downloadsOff }, "the folder above the reports too")
+        // The plain search on the person's words looks at the folder it walks as it always has; nothing else is
+        // looked up with downloads on.
+        let on = lookups.filter { !$0.downloadsOff && $0.path != documents.path }
+        XCTAssertEqual(on.map(\.path), [], "every lookup of the AI search ran with downloads off")
     }
 
     func testNothingIsSentWhileTyping() async throws {
@@ -462,6 +514,8 @@ final class AISearchWindowClient: AgentModelClient, @unchecked Sendable {
 final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
     let base: InMemoryFileSystem
     let flagged: Set<String>
+    /// Every item looked up, and whether downloads were off for it.
+    let lookups = AISearchWindowLookups()
     init(base: InMemoryFileSystem, flagged: Set<String>) { self.base = base; self.flagged = flagged }
 
     private func marked(_ entry: FileEntry) -> FileEntry {
@@ -469,7 +523,10 @@ final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
         return FileEntry(url: entry.url, kind: entry.kind, isHidden: true, size: entry.size, modificationDate: entry.modificationDate,
                          volumeIdentifier: entry.volumeIdentifier, objectIdentity: entry.objectIdentity)
     }
-    func entry(at url: URL) async throws -> FileEntry { marked(try await base.entry(at: url)) }
+    func entry(at url: URL) async throws -> FileEntry {
+        lookups.append(path: url.path, downloadsOff: DatalessGuard.isOff)
+        return marked(try await base.entry(at: url))
+    }
     func enumerate(_ directory: URL, options: EnumerationOptions) -> AsyncThrowingStream<[FileEntry], Error> {
         let base = self.base
         return AsyncThrowingStream { continuation in
@@ -506,5 +563,13 @@ final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
     func isCaseSensitive(at url: URL) async throws -> Bool { try await base.isCaseSensitive(at: url) }
     func volumeIdentifier(for url: URL) async throws -> String { try await base.volumeIdentifier(for: url) }
     func availableCapacity(of url: URL) async throws -> Int64 { try await base.availableCapacity(of: url) }
+}
+/// The items a file system was asked about, in order.
+final class AISearchWindowLookups: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [(path: String, downloadsOff: Bool)] = []
+    var all: [(path: String, downloadsOff: Bool)] { lock.lock(); defer { lock.unlock() }; return recorded }
+    func append(path: String, downloadsOff: Bool) { lock.lock(); recorded.append((path, downloadsOff)); lock.unlock() }
+    func removeAll() { lock.lock(); recorded = []; lock.unlock() }
 }
 #endif

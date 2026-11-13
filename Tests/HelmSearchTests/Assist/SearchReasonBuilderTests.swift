@@ -122,4 +122,34 @@ final class SearchReasonBuilderTests: XCTestCase {
         XCTAssertEqual(SearchReasonBuilder.readAs(count: nil, query: sizes, calendar: calendar, locale: locale),
                        ".mov · In Trips · ≥ " + ByteCountFormatter.string(fromByteCount: 1_000_000, countStyle: .file))
     }
+
+    func testReadAsShowsThreeChosenWordsAtMost() {
+        let many = AISearchQuery(nameAny: ["a1", "b2", "c3", "d4"], folderAny: ["trips"], kinds: [.pdf], extensions: ["pdf"])
+        XCTAssertEqual(SearchReasonBuilder.readAs(count: 2, query: many, calendar: calendar, locale: locale),
+                       "2 matches · PDF · .pdf · “a1”, “b2”", "Helm's own words stay; the words a model chose stop at three")
+    }
+
+    func testAWordIsShownOnlyWhenTypedOrBorneByAResult() {
+        let results = [entry("Receipts/Invoice-0042.pdf"), entry("Trips/beach.mov")]
+        let planned = AISearchQuery(nameAll: ["invoice"], nameAny: ["license", "expired", "Plumber", "beach"],
+                                    contentAll: ["plumber"], folderAny: ["receipts", "visit", "taxes"],
+                                    kinds: [.pdf], extensions: ["mov", "exe", "docx"], dateField: .modified,
+                                    dateFrom: day(2025, 3, 1), sizeMinBytes: 1_000)
+        let backed = SearchReasonBuilder.backed(planned, request: "the plumber's docx", results: results, scopeRoot: root)
+        XCTAssertEqual(backed.nameAll, ["invoice"], "a result's name holds it")
+        XCTAssertEqual(backed.nameAny, ["Plumber", "beach"], "typed, or in a result's name")
+        XCTAssertEqual(backed.folderAny, ["receipts"], "a folder above a result")
+        XCTAssertEqual(backed.extensions, ["mov", "docx"], "a result's extension, or typed")
+        XCTAssertEqual(backed.contentAll, ["plumber"])
+        XCTAssertEqual(backed.kinds, [.pdf])
+        XCTAssertEqual(backed.dateField, .modified)
+        XCTAssertEqual(backed.sizeMinBytes, 1_000)
+        let shown = SearchReasonBuilder.readAs(count: 2, query: backed, calendar: calendar, locale: locale)
+        for word in ["license", "expired", "visit", "taxes", "exe"] {
+            XCTAssertFalse(shown.contains(word), "“\(word)” in “\(shown)”")
+        }
+        let nothing = SearchReasonBuilder.backed(AISearchQuery(nameAny: ["helm-renew.example", "now"]), request: "report",
+                                                 results: results, scopeRoot: root)
+        XCTAssertEqual(SearchReasonBuilder.readAs(count: nil, query: nothing, calendar: calendar, locale: locale), "")
+    }
 }

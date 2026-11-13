@@ -28,22 +28,54 @@ public enum SearchReasonBuilder {
     }
 
     /// How a query was read: "12 matches · PDF · “invoice” · Mar–Jun 2026". With a count it is the status bar's
-    /// line; without one it is a line of the list of queries that ran.
+    /// line; without one it is a line of the list of queries that ran. At most `chosenWordsPerLine` words for an
+    /// extension, a name or a folder are shown; pass the query through `backed` first so each of them is one the
+    /// person typed or a result bears.
     public static func readAs(count: Int?, query: AISearchQuery, calendar: Calendar, locale: Locale) -> String {
         var parts: [String] = []
+        var room = chosenWordsPerLine
+        func take(_ words: [String]) -> [String] {
+            let taken = Array(words.prefix(max(0, room)))
+            room -= taken.count
+            return taken
+        }
         if let count { parts.append(matches(count, locale: locale)) }
         if !query.kinds.isEmpty { parts.append(query.kinds.map(kindWord).joined(separator: ", ")) }
-        if !query.extensions.isEmpty { parts.append(query.extensions.map { "." + escaped($0) }.joined(separator: ", ")) }
-        let names = query.nameAll + query.nameAny
+        let extensions = take(query.extensions)
+        if !extensions.isEmpty { parts.append(extensions.map { "." + escaped($0) }.joined(separator: ", ")) }
+        let names = take(query.nameAll + query.nameAny)
         if !names.isEmpty { parts.append(names.map(quoted).joined(separator: ", ")) }
         if !query.contentAll.isEmpty { parts.append(mentions + query.contentAll.map(quoted).joined(separator: ", ")) }
-        if !query.folderAny.isEmpty { parts.append(inFolder + query.folderAny.map(escaped).joined(separator: ", ")) }
+        let folders = take(query.folderAny)
+        if !folders.isEmpty { parts.append(inFolder + folders.map(escaped).joined(separator: ", ")) }
         if let range = dateRange(query, calendar: calendar, locale: locale) {
             let word = dateWord(query.dateField)
             parts.append(word.map { $0 + " " + range } ?? range)
         }
         if let sizes = sizeRange(query) { parts.append(sizes) }
         return parts.joined(separator: separator)
+    }
+
+    /// The most words for an extension, a name or a folder that one "read as" line shows.
+    public static let chosenWordsPerLine = 3
+
+    /// `query` with only the words a "read as" line may show. A model chooses the words for names, folders and
+    /// extensions, so each is kept only when the person typed it in `request` or a result in `results` bears it:
+    /// in its name, its extension or a folder above it below `scopeRoot`. Words inside files are already the
+    /// person's own, and kinds, dates and sizes are written in Helm's words.
+    public static func backed(_ query: AISearchQuery, request: String, results: [FileEntry], scopeRoot: URL?) -> AISearchQuery {
+        // The same test the plan's words inside files pass: typed by the person, compared without case or accents.
+        func typed(_ word: String) -> Bool { !AISearchQuery(contentAll: [word]).clamped(request: request).contentAll.isEmpty }
+        let names = results.map(\.name)
+        let extensions = Set(results.map { $0.url.pathExtension.lowercased() })
+        let folders = Set(results.flatMap { AISearchMatcher.folderNames(of: $0.url, below: scopeRoot) })
+        func named(_ word: String) -> Bool { typed(word) || names.contains { AISearchMatcher.holds($0, word) } }
+        var backed = query
+        backed.nameAll = query.nameAll.filter(named)
+        backed.nameAny = query.nameAny.filter(named)
+        backed.extensions = query.extensions.filter { typed($0) || extensions.contains($0.lowercased()) }
+        backed.folderAny = query.folderAny.filter { word in typed(word) || folders.contains { AISearchMatcher.holds($0, word) } }
+        return backed
     }
 
     // MARK: Words
