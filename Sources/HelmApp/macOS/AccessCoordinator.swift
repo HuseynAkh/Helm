@@ -7,6 +7,7 @@ import HelmUI
 /// Full Disk Access across the app: the shared permission, the welcome window and its guide, and trying blocked
 /// places again when Helm comes back to the front. A fixture run uses stand-ins for the permission and for moving Helm
 /// into Applications, never opens the welcome by itself, and never opens System Settings, copies Helm or relaunches.
+/// The same window shows the AI mode screen, which a fixture run never opens by itself either.
 @MainActor final class AccessCoordinator {
     let privacy: any PrivacyAccessProviding
     let permissions: PermissionCenter
@@ -25,6 +26,14 @@ import HelmUI
     private var pendingRequest: OnboardingModel.Mode?
     /// What a fixture run's welcome window takes VoiceOver to be doing. A scripted run never asks the real Mac.
     var voiceOverForTesting = false
+    /// What Settings › AI and the AI mode screen show, made the first time either is needed.
+    var aiSetup: AISetupModel?
+    /// What Done does for the window whose spark opened the AI mode screen, once AI mode ended connected.
+    var openAgentPanel: (BrowserWindowController) -> Void = { $0.openAgentPanel() }
+    /// Lets a test's background run open the AI mode screen by itself at launch, as a person's launch would.
+    var opensAIIntroForTesting = false
+    /// The first launch's checklist is open: the AI mode screen waits for it to close.
+    private var aiIntroAfterWelcome: AISetupModel?
 
     init(isolated: Bool, interactive: Bool) {
         isIsolated = isolated
@@ -121,6 +130,7 @@ import HelmUI
         if isIsolated { controller.model.isVoiceOverRunning = { [weak self] in self?.voiceOverForTesting ?? false } }
         controller.onSeen = { [weak self] in self?.markWelcomeSeen() }
         controller.onCarry = { [weak self] rows in self?.saveCarried(rows) }
+        controller.onClosed = { [weak self] mode in self?.onboardingClosed(mode) }
         onboarding = controller
         return controller
     }
@@ -129,6 +139,40 @@ import HelmUI
     private func markWelcomeSeen() {
         guard let settings, !settings.snapshot.bool(.onboardingCompleted) else { return }
         settings.set(.bool(true), for: .onboardingCompleted)
+    }
+
+    // MARK: The AI mode screen
+
+    /// Shows the AI mode screen in the welcome window. When it ends connected and `window`'s spark opened it, Done
+    /// opens that window's panel.
+    func showAIMode(_ model: AISetupModel, from window: BrowserWindowController?) {
+        guard settings != nil else { return }
+        aiIntroAfterWelcome = nil
+        let controller = onboarding ?? makeOnboarding()
+        controller.showAIMode(model, activate: isInteractive) { [weak self, weak window] connected in
+            guard connected, let self, let window else { return }
+            self.openAgentPanel(window)
+        }
+    }
+
+    /// Once at launch, until it has been seen: straight away for someone who set Helm up before, or when the first
+    /// launch's checklist closes. Never by itself in a fixture run or a scripted one.
+    func showAIIntroIfNeeded(_ model: () -> AISetupModel?) {
+        guard (!isIsolated && isInteractive) || opensAIIntroForTesting, let settings,
+              !settings.snapshot.bool(.aiIntroSeen) else { return }
+        if onboarding?.isSetupShown == true {
+            aiIntroAfterWelcome = model()
+            return
+        }
+        guard settings.snapshot.bool(.onboardingCompleted), let model = model() else { return }
+        showAIMode(model, from: nil)
+    }
+
+    private func onboardingClosed(_ mode: OnboardingModel.Mode) {
+        guard mode == .setup, let model = aiIntroAfterWelcome else { return }
+        aiIntroAfterWelcome = nil
+        guard let settings, !settings.snapshot.bool(.aiIntroSeen) else { return }
+        showAIMode(model, from: nil)
     }
 
     /// Settings › General › Access.
