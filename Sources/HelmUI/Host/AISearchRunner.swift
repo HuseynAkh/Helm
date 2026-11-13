@@ -68,7 +68,12 @@ import HelmSearch
         let scopeRoot: URL?
         if case .currentFolder(let url) = query.scope { scopeRoot = url } else { scopeRoot = nil }
         var place = StorageFacts.thisMac
-        if let scopeRoot { place = await dependencies.agent.storage.facts(for: scopeRoot) }
+        if let scopeRoot {
+            // The place is read for the folder as the disk spells it, as the panel reads its folders' places: a
+            // window may spell the same folder through a link, such as /tmp for /private/tmp.
+            let spelled = await dependencies.agent.disk.canonicalPath(scopeRoot.path) ?? scopeRoot.path
+            place = await dependencies.agent.storage.facts(for: URL(fileURLWithPath: spelled, isDirectory: true))
+        }
         let coverage = Self.coverage(of: place, scoped: scopeRoot != nil)
         let label = scopeRoot.map { AgentItemFilter.placeWords(path: $0.path, home: home.path, storage: place).last ?? place.name }
             ?? StorageFacts.thisMac.name
