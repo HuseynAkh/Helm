@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
-# Checks a built Helm.app against the privacy promise. Helm itself never connects to a server,
-# doesn't read the person's name or the Mac's name or serial number (it reads a disk's ID only to tell
-# disks apart, and never keeps it), and carries no folder paths from the Mac that built it.
+# Checks a built Helm.app against the privacy promise. Helm connects only to the model provider the person
+# chose, and only while AI mode is on. It doesn't read the person's name or the Mac's name or serial number (it
+# reads a disk's ID only to tell disks apart, and never keeps it), and carries no folder paths from the Mac
+# that built it.
 #
 # usage: scripts/release/check_binary_privacy.sh <Helm.app>
+#        scripts/release/check_binary_privacy.sh --network-symbols <Helm.app>
+#
+# The second form checks nothing. It prints every imported symbol that check 3 holds to
+# allowed_network_symbols.txt, sorted, one a line, so a spelling on that list can be corrected.
+#
+# Two lists next to this script name what may reach the network, and a change to either is a reviewed edit:
+#   allowed_network_symbols.txt  The URL session calls the transport to the provider makes. One demangled imported
+#                                symbol a line, or a prefix ending in *. A call that makes a session task, the shared
+#                                session, a background session, and the cache, cookie and credential types fail even
+#                                when listed.
+#   allowed_addresses.txt        The providers' fixed addresses, one a line. The app may hold no other web address.
 #
 # It only reads the app, and works on copies in a temporary folder. Each problem is printed, and the
 # exit status is 1 if there is any (2 if the check can't run). scripts/privacy_check.py checks the
-# source, and scripts/rebuild/host_smoke.sh runs the app with the network blocked. This checks what ships.
+# source, so only the transport file names a URL session, and scripts/rebuild/host_smoke.sh runs the app
+# with the network blocked, so nothing connects while AI mode is off. This checks what ships.
 # What it can't see: a web address put together as the app runs, a web read through a call that also reads
 # files (such as Data(contentsOf:)), the tools the app starts, and lookups by name at run time. Swift also keeps
 # strings of up to 15 bytes inside the code, so checks 5 and 6 see those only in the Intel slice, 8 bytes at a
@@ -17,8 +30,13 @@
 # Needs Xcode's command line tools. Written for the bash 3.2 that comes with macOS.
 set -uo pipefail
 
+mode=check
+if [ $# -eq 2 ] && [ "$1" = --network-symbols ]; then
+    mode=symbols
+    shift
+fi
 if [ $# -ne 1 ] || [ ! -d "$1" ]; then
-    echo "usage: $0 <Helm.app>" >&2
+    echo "usage: $0 [--network-symbols] <Helm.app>" >&2
     exit 2
 fi
 for tool in otool nm codesign plutil file lipo xcrun; do
@@ -27,11 +45,40 @@ done
 xcrun --find swift-demangle >/dev/null 2>&1 || { echo "error: swift-demangle is missing. Install Xcode." >&2; exit 2; }
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
+here=$(cd "$(dirname "$0")" && pwd)
+symbol_list="$here/allowed_network_symbols.txt"
+address_list="$here/allowed_addresses.txt"
 app=$(cd "$1" && pwd)
 plist="$app/Contents/Info.plist"
 exe=$(plutil -extract CFBundleExecutable raw -o - "$plist" 2>/dev/null) || { echo "error: $plist names no executable." >&2; exit 2; }
 bin="$app/Contents/MacOS/$exe"
 [ -f "$bin" ] || { echo "error: $bin is missing." >&2; exit 2; }
+
+# The symbols that name a URL session or a URL request. Check 3 holds each of them to allowed_network_symbols.txt.
+network_family='URLSession|URLRequest'
+# What allowed_network_symbols.txt can't let in: a call that makes a session task (only the async data and bytes
+# calls may fetch), the shared or a background session, and the cache, cookie and credential types. "__shared" is
+# how Swift spells a parameter convention, so it isn't the shared session.
+network_never='([Dd]ata|[Dd]ownload|[Uu]pload|[Ss]tream|[Ww]ebSocket)Task|\.(download|upload)\(|(^|[^_[:alnum:]])shared|[a-z]Shared'
+network_never="$network_never|[Bb]ackground|URLCache|CachedURLResponse|HTTPCookie|URLCredential"
+# Swift names are demangled, so the lists can be read and written by hand.
+imports=$(nm -um -arch all "$bin" | xcrun swift-demangle)
+# The name of each imported symbol, one a line and sorted, without nm's "(undefined) external" and "(from ...)".
+imported_names() {
+    printf '%s\n' "$imports" | grep -E '^[[:space:]]*\(undefined\) ' | sed -E \
+        -e 's/^[[:space:]]*\(undefined\) (weak )?external //' \
+        -e 's/ \((from [^()]*|dynamically looked up)\)$//' | LC_ALL=C sort -u
+}
+if [ "$mode" = symbols ]; then
+    imported_names | grep -E "$network_family"
+    exit 0
+fi
+for list in "$symbol_list" "$address_list"; do
+    [ -f "$list" ] || { echo "error: $list is missing." >&2; exit 2; }
+done
+# The lines of a list, without blank lines, a carriage return or spaces at the end.
+entries() { sed -e 's/[[:space:]]*$//' "$1" | grep -v '^$'; }
+
 work=$(mktemp -d) || { echo "error: can't make a temporary folder." >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 problems=0
@@ -62,8 +109,10 @@ fi
 
 # 2. Linked libraries: only Apple's, and only these. A new one needs a reviewed edit here.
 # CoreText measures the lines of the grid's names (GridNameLines); it lays out text and opens nothing.
+# CFNetwork holds the URL session classes the transport to the chosen provider uses. Check 3 lists which of its
+# calls Helm may make.
 allowed='^(/usr/lib/libobjc\.A\.dylib|/usr/lib/libSystem\.B\.dylib|/usr/lib/swift/libswift[A-Za-z_]+\.dylib'
-allowed="$allowed|/System/Library/Frameworks/(AppKit|Combine|CoreFoundation|CoreGraphics|CoreServices|CoreText|CoreTransferable"
+allowed="$allowed|/System/Library/Frameworks/(AppKit|CFNetwork|Combine|CoreFoundation|CoreGraphics|CoreServices|CoreText|CoreTransferable"
 allowed="$allowed|Foundation|Quartz|QuartzCore|QuickLookThumbnailing|QuickLookUI|Security|ServiceManagement|SwiftUI"
 allowed="$allowed|UniformTypeIdentifiers)\.framework/.+)$"
 libraries=$(otool -arch all -L "$bin" | awk '/^[[:space:]]/ { print $1 }' | sort -u)
@@ -75,12 +124,11 @@ else
 fi
 
 # 3. Imported symbols: nothing that opens a connection, looks up a host name, or reads who the person or
-# the Mac is. Swift names are demangled first. CoreServices and Foundation bring CFNetwork along, so its
-# names are listed too. URL.lines, URL.resourceBytes and SwiftUI's AsyncImage load web addresses through
-# Foundation and SwiftUI, which are allowed, so they are named here. dlopen isn't, because dlsym, which
-# macOS's own availability check uses, finds the same things. scripts/privacy_check.py reviews every
-# dynamic lookup in the source.
-imports=$(nm -um -arch all "$bin" | xcrun swift-demangle)
+# the Mac is, but the URL session calls on allowed_network_symbols.txt. CoreServices and Foundation bring
+# CFNetwork along, so its other names are listed too. URL.lines, URL.resourceBytes and SwiftUI's AsyncImage load
+# web addresses through Foundation and SwiftUI, which are allowed, so they are named here. dlopen isn't,
+# because dlsym, which macOS's own availability check uses, finds the same things. scripts/privacy_check.py
+# reviews every dynamic lookup in the source.
 count=$(printf '%s\n' "$imports" | grep -c external)
 denied=$(printf '%s\n' "$imports" | grep -E \
     -e 'external _(socket|connect|connectx|bind|listen|accept|sendto|sendmsg|recvfrom|recvmsg)( |$)' \
@@ -88,34 +136,70 @@ denied=$(printf '%s\n' "$imports" | grep -E \
     -e 'external _(gethostuuid|gethostname|getlogin(_r)?|getpwuid(_r)?|getpwnam(_r)?|NSUserName|NSFullUserName|CSCopyUserName|CSCopyMachineName)( |$)' \
     -e 'external _(DNSService|nw_|CFSocket|CFStreamCreatePair|CFHost|CFHTTP|CFFTP|CFNetService|CFNetDiagnostic|CFNetwork|CFURLConnection)' \
     -e 'external _(CFReadStreamCreateForHTTPRequest|CF(Read|Write)StreamCreateWithFTPURL|SCNetworkReachability|SCDynamicStore|IOService|IORegistry)' \
-    -e 'OBJC_CLASS_\$_(NSURLSession[A-Za-z]*|NSURLConnection|NSURLDownload|NSURLRequest|NSMutableURLRequest|NSHTTPCookieStorage|NSURLCache)( |$)' \
+    -e 'OBJC_CLASS_\$_(NSURLConnection|NSURLDownload|NSHTTPCookieStorage|NSURLCache|NSURLCredentialStorage)( |$)' \
     -e 'OBJC_CLASS_\$_(NSURLProtocol|NSHost|NSNetService[A-Za-z]*|WKWebView|WebView|NSUbiquitousKeyValueStore|NSUserActivity|NSAppleScript|NSXPCConnection)( |$)' \
-    -e 'URLSession|URLRequest|Network\.NW|FoundationNetworking|SwiftUI\.AsyncImage' \
+    -e 'Network\.NW|FoundationNetworking|SwiftUI\.AsyncImage|URLConnection|URLDownload|URLCache|HTTPCookie|URLCredentialStorage|URLProtocol' \
     -e 'Foundation\.URL\.(lines|resourceBytes|AsyncBytes)' | sed 's/^ *//' | sort -u)
+# The URL session and request symbols: each must be on the list, and none may be one the list can't let in.
+network=$(imported_names | grep -E "$network_family")
+# An entry that names no URL session or request lets nothing in, so a lone * can't let every symbol in.
+unlisted=$( { printf '%s\n' "$network" | awk -v list="$symbol_list" -v family="$network_family" '
+    BEGIN {
+        while ((getline entry < list) > 0) {
+            sub(/[[:space:]]+$/, "", entry)
+            if (entry !~ family) continue
+            if (substr(entry, length(entry)) == "*") prefixes[++n] = substr(entry, 1, length(entry) - 1)
+            else exact[entry] = 1
+        }
+    }
+    $0 == "" || ($0 in exact) { next }
+    { for (i = 1; i <= n; i++) if (index($0, prefixes[i]) == 1) next; print }'
+    printf '%s\n' "$network" | grep -E "$network_never"; } | grep -v '^$' | LC_ALL=C sort -u)
+# A list entry has to name a URL session or request, and can't be one the list can't let in.
+bad_entries=$( { entries "$symbol_list" | grep -Ev "$network_family"; entries "$symbol_list" | grep -E "$network_never"; } |
+    LC_ALL=C sort -u)
 if [ "$count" -eq 0 ]; then
     fail "imported symbols: nm listed none, so they weren't checked"
-elif [ -z "$denied" ]; then
-    pass "imported symbols: $count, none for the network or identifiers"
+elif [ -z "$denied" ] && [ -z "$unlisted" ] && [ -z "$bad_entries" ]; then
+    if [ -z "$network" ]; then
+        pass "imported symbols: $count, none for the network or identifiers"
+    else
+        pass "imported symbols: $count, none for the network or identifiers but $(printf '%s\n' "$network" | wc -l | tr -d ' ') URL session symbols on allowed_network_symbols.txt"
+    fi
 else
-    fail "imported symbols for the network or identifiers:"
-    printf '%s\n' "$denied" | head -n 20 | sed 's/^/       /'
+    if [ -n "$denied" ]; then
+        fail "imported symbols for the network or identifiers:"
+        printf '%s\n' "$denied" | head -n 20 | sed 's/^/       /'
+    fi
+    if [ -n "$unlisted" ]; then
+        fail "imported URL session symbols that aren't on allowed_network_symbols.txt, or that it can't let in:"
+        printf '%s\n' "$unlisted" | head -n 40 | sed 's/^/       /'
+    fi
+    if [ -n "$bad_entries" ]; then
+        fail "allowed_network_symbols.txt has entries that name no URL session or request, or that it can't let in:"
+        printf '%s\n' "$bad_entries" | sed 's/^/       /'
+    fi
 fi
 
-# 4. Objective-C method names that fetch from the web, or read the user or host name.
-# Each row is an address and a name.
+# 4. Objective-C method names that fetch from the web outside the async data and bytes calls, or read the
+# user or host name. The shared session, the default and background configurations and a credential made from
+# a server's certificate leave no imported symbol, only a method name, so they are named here. So is the call
+# that removes a downloaded copy of a cloud file. Each row is an address and a name.
 names=$(otool -arch all -v -s __TEXT __objc_methname "$bin" | awk '$1 ~ /^[0-9a-f]+$/ && NF == 2 { print $2 }')
 methods=$(printf '%s\n' "$names" | grep -E \
     -e '^(dataTaskWith|downloadTaskWith|uploadTaskWith|streamTaskWith|webSocketTaskWith|sendSynchronousRequest)' \
-    -e '^(hostName|userName|fullUserName|startDownloadingUbiquitousItemAtURL:error:)$' | sort -u)
+    -e '^(sharedSession|defaultSessionConfiguration|backgroundSessionConfiguration|credentialForTrust:|initWithTrust:)' \
+    -e '^(hostName|userName|fullUserName|startDownloadingUbiquitousItemAtURL:error:|evictUbiquitousItemAtURL:error:)$' | sort -u)
 if [ -z "$names" ]; then
     fail "method names: otool listed none, so they weren't checked"
 elif [ -z "$methods" ]; then
-    pass "method names: none that fetch from the web or read the user or host name"
+    pass "method names: none that fetch from the web outside the async calls, evict a download, or read the user or host name"
 else
-    fail "method names that fetch from the web or read the user or host name: $(printf '%s\n' "$methods" | tr '\n' ' ')"
+    fail "method names that fetch from the web outside the async calls, evict a download, or read the user or host name: $(printf '%s\n' "$methods" | tr '\n' ' ')"
 fi
 
-# 5. Web addresses, in any file. Apple's plist header names its DTD by address: nothing fetches it.
+# 5. Web addresses, in any file: only the providers' addresses on allowed_addresses.txt, each matched whole.
+# Apple's plist header names its DTD by address: nothing fetches it.
 # A Mach-O file is read from a copy without its signature: a Developer ID signature holds the addresses
 # of Apple's certificate services, which Helm itself never uses.
 urls=$(files | while IFS= read -r f; do
@@ -126,11 +210,23 @@ urls=$(files | while IFS= read -r f; do
     fi
     LC_ALL=C grep -aoE '(https?|wss?)://[A-Za-z0-9._~:/?#@!$&+,;=%-]*' "$target" | awk -v f="$f" '{ print f ": " $0 }'
 done | grep -Ev ': https?://www\.apple\.com/DTDs/PropertyList-1\.0\.dtd$' | sort -u)
+# Each row is a file and an address, and an address holds no space, so it is what follows the last ": ".
+other_urls=$(printf '%s\n' "$urls" | awk -v list="$address_list" '
+    BEGIN {
+        while ((getline entry < list) > 0) {
+            sub(/[[:space:]]+$/, "", entry)
+            if (entry != "") listed[entry] = 1
+        }
+    }
+    $0 == "" { next }
+    { count = split($0, parts, ": "); if (!(parts[count] in listed)) print }')
 if [ -z "$urls" ]; then
     pass "web addresses: none"
+elif [ -z "$other_urls" ]; then
+    pass "web addresses: only the providers' on allowed_addresses.txt ($(printf '%s\n' "$urls" | wc -l | tr -d ' ') found)"
 else
-    fail "web addresses:"
-    printf '%s\n' "$urls" | head -n 20 | sed 's/^/       /'
+    fail "web addresses that aren't on allowed_addresses.txt:"
+    printf '%s\n' "$other_urls" | head -n 20 | sed 's/^/       /'
 fi
 
 # 6. Folder paths from the Mac that built the app: any home folder, temporary or Xcode build folder, this
@@ -158,16 +254,25 @@ else
     printf '%s\n' "$leaks" | sed 's/^/       /'
 fi
 
-# 7. Info.plist: no App Transport Security exceptions, URL schemes, Bonjour or local network keys,
-# Handoff activity types, or an update feed.
+# 7. Info.plist: no URL schemes, Bonjour or local network keys, Handoff activity types, or an update feed.
+# App Transport Security has no exceptions, but one: plain http to this Mac, which is how a local model is
+# reached. Its key is absent, or holds exactly ats_shape, read as JSON so a 1 or a "YES" isn't taken for true.
+ats_shape='{"NSAllowsLocalNetworking":true}'
 keys=""
-for key in NSAppTransportSecurity CFBundleURLTypes NSBonjourServices NSLocalNetworkUsageDescription NSUserActivityTypes SUFeedURL; do
+for key in CFBundleURLTypes NSBonjourServices NSLocalNetworkUsageDescription NSUserActivityTypes SUFeedURL; do
     plutil -extract "$key" xml1 -o /dev/null "$plist" >/dev/null 2>&1 && keys="$keys $key"
 done
-if [ -z "$keys" ]; then
-    pass "Info.plist: no network, URL scheme, Handoff or update keys"
-else
+ats=""
+if plutil -extract NSAppTransportSecurity xml1 -o /dev/null "$plist" >/dev/null 2>&1; then
+    ats=$(plutil -extract NSAppTransportSecurity json -o - "$plist" 2>/dev/null)
+    [ "$ats" = "$ats_shape" ] || keys="$keys NSAppTransportSecurity (with more than NSAllowsLocalNetworking = true)"
+fi
+if [ -n "$keys" ]; then
     fail "Info.plist has these keys:$keys"
+elif [ -n "$ats" ]; then
+    pass "Info.plist: no network, URL scheme, Handoff or update keys but NSAllowsLocalNetworking, for this Mac only"
+else
+    pass "Info.plist: no network, URL scheme, Handoff or update keys"
 fi
 
 # 8. Signature, for each architecture: the hardened runtime on, and no entitlements at all.
