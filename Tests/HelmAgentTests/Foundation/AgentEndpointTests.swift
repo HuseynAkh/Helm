@@ -104,6 +104,25 @@ final class AgentEndpointTests: XCTestCase {
         XCTAssertEqual(try AgentEndpoint(typed: "https://my-models.example.co.uk").host, "my-models.example.co.uk")
     }
 
+    func testAnAddressWithoutItsSchemeReadsAsTheSameAddressWithHTTPS() {
+        let spellings = ["models.example.com", "models.example.com:8443/v1/", "openrouter.ai/api/v1", "127.0.0.1@evil.example",
+                         "user:pw@models.example.com", "localhost.evil.example", "127.1", "0x7f000001", "169.254.169.254",
+                         "localhost", "localhost.", "models.example.com.", "[::1]:8080", "exa_mple.example.com", "-bad.example.com",
+                         "a..example.com", ".example.com", "models.example.com/v1/../admin", "models.example.com//v1",
+                         "models.example.com/a%2Fb", "exam%70le.com", "models.example.com/v1?x=1", "models.example.com#top",
+                         "models.example.com:0", "models.example.com:99999", "bücher.example", "xn--bcher-kva.example", "/v1"]
+        for text in spellings {
+            let bare = Result { try AgentEndpoint(typed: text) }
+            let written = Result { try AgentEndpoint(typed: "https://" + text) }
+            switch (bare, written) {
+            case (.success(let left), .success(let right)): XCTAssertEqual(left, right, text)
+            case (.failure(let left), .failure(let right)):
+                XCTAssertEqual(left as? AgentEndpointRefusal, right as? AgentEndpointRefusal, text)
+            default: XCTFail("\(text): \(bare) without the scheme, \(written) with it")
+            }
+        }
+    }
+
     func testAnythingButHTTPSNeedsHTTPS() {
         for text in ["http://models.example.com", "HTTP://models.example.com/v1", "http://127.0.0.1:11434", "http://localhost:1234",
                      "ftp://models.example.com", "ws://models.example.com", "wss://models.example.com", "file:///home/helm/x",

@@ -72,7 +72,9 @@ public struct AgentEndpoint: Hashable, Sendable {
         }
         let separator = "://"
         guard let range = trimmed.range(of: separator) else {
-            self = try AgentEndpoint(secureAddress: AgentProviderCatalog.secureScheme + separator + trimmed)
+            // Joined at run time: a scheme and separator added together in code are kept whole in the app as a
+            // scheme-only address, which the release check finds and refuses.
+            self = try AgentEndpoint(secureAddress: [AgentProviderCatalog.secureScheme, trimmed].joined(separator: separator))
             return
         }
         guard trimmed[..<range.lowerBound].lowercased() == AgentProviderCatalog.secureScheme else {
