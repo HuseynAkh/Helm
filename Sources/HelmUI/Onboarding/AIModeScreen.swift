@@ -27,7 +27,7 @@ struct AIModeScreen: View {
         if model.isOn {
             parts.append(.provider)
             if model.provider == .other { parts.append(.address) }
-            if model.takesKey { parts.append(.key) }
+            if model.showsKeyField { parts.append(.key) }
             parts.append(.state)
             if model.showsPort { parts.append(.port) }
             if model.showsModelField { parts.append(.modelName) }
@@ -62,8 +62,15 @@ struct AIModeScreen: View {
             focusKey()
         }
         .onChange(of: model.isOn) { _, _ in focusKey() }
+        // A key typed but not yet entered belongs to the provider and address it was typed for: it never follows a
+        // change of either.
         .onChange(of: model.provider) { _, _ in
+            draftKey = ""
             draftAddress = model.address
+            focusKey()
+        }
+        .onChange(of: model.address) { _, _ in
+            draftKey = ""
             focusKey()
         }
     }
@@ -132,7 +139,7 @@ struct AIModeScreen: View {
         case .done:
             HStack {
                 Spacer()
-                Button(AgentText.done) { model.donePressed?(takeDraftKey()) }
+                Button(AgentText.done) { model.donePressed?(handOverDraftKey()) }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }
@@ -147,9 +154,22 @@ struct AIModeScreen: View {
         return key.isEmpty ? nil : key
     }
 
+    /// The typed key, for Done. A field still being typed in keeps its own copy of the text until it lets go of the
+    /// caret, so the field lets go first and is emptied on the next turn, once its copy is gone; then it takes the
+    /// caret back.
+    private func handOverDraftKey() -> String? {
+        let key = draftKey
+        keyFocused = false
+        DispatchQueue.main.async {
+            draftKey = ""
+            focusKey()
+        }
+        return key.isEmpty ? nil : key
+    }
+
     /// The caret starts in the key field whenever there is one to type in.
     private func focusKey() {
-        guard model.isOn, model.takesKey else { return }
+        guard model.isOn, model.showsKeyField else { return }
         DispatchQueue.main.async { keyFocused = true }
     }
 }

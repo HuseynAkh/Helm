@@ -303,6 +303,23 @@ import HelmTestKit
         XCTAssertFalse(model.showsModelField)
     }
 
+    func testOtherShowsTheKeyFieldOnlyOnceItsAddressIsTaken() async {
+        let (model, providers, _, _, _) = rig(on: true)
+        XCTAssertTrue(model.showsKeyField, "Claude takes a key at once")
+        model.choose(.other)
+        XCTAssertFalse(model.showsKeyField, "a key typed now would have no address to be saved under")
+        XCTAssertFalse(AIModeScreen.parts(for: model).contains(.key))
+        model.setAddress("http://models.example.com")
+        XCTAssertFalse(model.showsKeyField, "a refused address isn't taken")
+        providers.answers["other"] = .models(["served-model"])
+        model.setAddress("models.example.com")
+        XCTAssertTrue(model.showsKeyField)
+        XCTAssertEqual(AIModeScreen.parts(for: model), [.titleRow, .sentence, .provider, .address, .key, .state, .consent, .done])
+        await model.settle()
+        model.choose(.ollama)
+        XCTAssertFalse(model.showsKeyField, "a local provider has no key field")
+    }
+
     func testAnAddressWhoseModelsAreUnderV1IsSavedWithV1() async {
         let (model, providers, _, services, _) = rig(on: true)
         model.choose(.other)

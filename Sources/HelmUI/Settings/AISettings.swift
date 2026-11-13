@@ -31,7 +31,7 @@ struct AISettingsView: View {
                         }
                     }
                     if model.provider == .other { address }
-                    if model.takesKey { key } else { localState }
+                    if model.showsKeyField { key } else if !model.takesKey { localState }
                     modelRow
                 }
             }
@@ -39,7 +39,12 @@ struct AISettingsView: View {
         .formStyle(.grouped)
         .frame(width: Self.width)
         .onAppear { draftAddress = model.address }
-        .onChange(of: model.provider) { _, _ in draftAddress = model.address }
+        // A key typed but not yet entered never follows a change of provider or address.
+        .onChange(of: model.provider) { _, _ in
+            draftKey = ""
+            draftAddress = model.address
+        }
+        .onChange(of: model.address) { _, _ in draftKey = "" }
     }
 
     private var address: some View {

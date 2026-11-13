@@ -70,6 +70,9 @@ import HelmPersistence
     var isLocal: Bool { provider == .ollama || provider == .lmStudio }
     /// The providers that take a key: the four cloud ones and a typed address.
     var takesKey: Bool { provider != .ollama && provider != .lmStudio }
+    /// The key field shows for a provider that takes a key, and for Other only once its address has been taken, so a
+    /// key is always saved under the address it is for.
+    var showsKeyField: Bool { takesKey && profile != nil }
     /// The port a local provider is asked on.
     var port: Int? { services.config.config.ports[provider.rawValue] ?? AgentProviderCatalog.defaultPort(provider) }
     /// The address saved for Other, as it was taken.

@@ -84,6 +84,59 @@ import HelmPersistence
         return found.sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
     }
 
+    /// The kinds of AppKit control on show, top to bottom. SwiftUI draws its buttons itself, so a button never shows
+    /// here: this finds any control the screen gains beyond the switch, the provider menu and the key field.
+    private func controlKinds(in screen: OnboardingWindowController) -> [String] {
+        controls(in: screen).map { view in
+            switch view {
+            case is NSSwitch: return "switch"
+            case is NSPopUpButton: return "menu"
+            case is NSSecureTextField: return "key"
+            case is NSTextField: return "field"
+            case is NSButton: return "button"
+            default: return String(describing: Swift.type(of: view))
+            }
+        }
+    }
+
+    /// Presses Done from the keyboard, as Return does wherever the caret isn't in a field that takes Return itself:
+    /// through the window's default button, which is Done. Then waits for what Done decided.
+    private func pressDoneByKeyboard(_ screen: OnboardingWindowController) async throws {
+        let window = try XCTUnwrap(screen.window)
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                   windowNumber: window.windowNumber, context: nil, characters: "\r",
+                                                   charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        XCTAssertTrue(window.performKeyEquivalent(with: event), "Done is the window's default button")
+        // The press starts Done's work at once, or a moment later; work that has already ended is not waited for.
+        _ = await until(2) { screen.aiDoneWork != nil }
+        await screen.aiDoneWork?.value
+    }
+
+    /// The keys the fixture run keeps in memory.
+    private func secrets(_ app: AppController) throws -> MemorySecretStore {
+        try XCTUnwrap(app.agentServicesForTesting?.secrets as? MemorySecretStore)
+    }
+
+    /// Types `text` into `field` as the keyboard does: the field takes the caret and its editor gets the characters.
+    private func type(_ text: String, into field: NSTextField) -> Bool {
+        guard let window = field.window, window.makeFirstResponder(field),
+              let editor = field.currentEditor() as? NSTextView else { return false }
+        editor.insertText(text, replacementRange: editor.selectedRange())
+        return true
+    }
+
+    /// Return in `field`, as the keyboard sends it.
+    private func pressReturn(in field: NSTextField) {
+        (field.currentEditor() as? NSTextView)?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+    }
+
+    /// Whether `field` has the caret: it, or the editor typing into it, is its window's first responder.
+    private func hasCaret(_ field: NSTextField) -> Bool {
+        guard let responder = field.window?.firstResponder else { return false }
+        if responder === field { return true }
+        return (responder as? NSTextView)?.delegate === field
+    }
+
     // MARK: The screen
 
     func testTheAIModeIsAThirdModeOfTheWelcomeWindowWithOneSwitchAndOneButton() async throws {
@@ -107,6 +160,7 @@ import HelmPersistence
         var shown = controls(in: screen)
         XCTAssertEqual(shown.filter { $0 is NSSwitch }.count, 1)
         XCTAssertTrue(shown.first is NSSwitch, "the switch is in the title row, above everything else")
+        XCTAssertEqual(controlKinds(in: screen), ["switch"], "no other control beside Done, which SwiftUI draws itself")
 
         // Once on: the provider menu, starting on Claude, and the key field, with still one button.
         model.setOn(true)
@@ -120,6 +174,10 @@ import HelmPersistence
         XCTAssertEqual(menu.itemTitles, AgentProviderID.allCases.map(AgentProviderCatalog.name))
         XCTAssertEqual(shown.filter { $0 is NSSecureTextField }.count, 1, "the key field")
         XCTAssertEqual(shown.filter { $0 is NSSwitch }.count, 1)
+        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "key"], "and still no other button")
+        let keyField = try XCTUnwrap(shown.compactMap { $0 as? NSSecureTextField }.first)
+        let caretInKeyField = await until { self.hasCaret(keyField) }
+        XCTAssertTrue(caretInKeyField, "the caret starts in the key field")
         XCTAssertTrue(model.linesForTesting.contains(AgentText.consent("Claude")))
         XCTAssertTrue(model.linesForTesting.contains(AgentText.stateNoKey))
 
@@ -134,6 +192,96 @@ import HelmPersistence
         await model.settle()
         XCTAssertEqual(AIModeScreen.parts(for: model), [.titleRow, .sentence, .provider, .state, .consent, .done])
         XCTAssertEqual(AIModeScreen.buttonTitles(for: model), [AgentText.done])
+    }
+
+    func testAKeyTypedIntoTheFieldIsSavedUnderItsAddressTheFieldEmptiesAndItIsChecked() async throws {
+        let app = await composedApp()
+        let store = try secrets(app)
+        app.showAIModeScreen(from: nil)
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        let model = try XCTUnwrap(app.aiSetupModelForTesting)
+        model.setOn(true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let field = try XCTUnwrap(controls(in: screen).compactMap { $0 as? NSSecureTextField }.first)
+        XCTAssertTrue(type(testKey, into: field))
+        pressReturn(in: field)
+        let entered = await until { store.accounts == ["claude|api.anthropic.com:443"] }
+        XCTAssertTrue(entered, "Return saved the key under its provider and address")
+        await model.settle()
+        XCTAssertEqual(model.connectionForTesting, "connected")
+        let emptied = await until { field.stringValue.isEmpty }
+        XCTAssertTrue(emptied, "the field is emptied once the key is entered")
+        XCTAssertEqual(screen.modeForTesting, "ai", "Return enters the key; only Done closes")
+
+        // Typed and not entered, Done enters it and empties the field; a key the provider turns down keeps it open.
+        try store.remove(AgentSecretID(provider: .claude, host: "api.anthropic.com", port: 443))
+        app.agentServicesForTesting?.runtime.scriptedClientForTesting?.modelsFailure = .wrongKey
+        XCTAssertTrue(type(testKey, into: field))
+        try await pressDoneByKeyboard(screen)
+        XCTAssertEqual(store.accounts, ["claude|api.anthropic.com:443"], "Done entered the typed key")
+        XCTAssertEqual(model.connectionForTesting, "wrongKey")
+        XCTAssertEqual(screen.modeForTesting, "ai")
+        let emptiedByDone = await until { field.stringValue.isEmpty }
+        XCTAssertTrue(emptiedByDone, "Done empties the field as it hands the key over")
+        let caretBack = await until { self.hasCaret(field) }
+        XCTAssertTrue(caretBack, "the caret goes back to the key field")
+    }
+
+    func testAKeyTypedForOneProviderIsNeverSentToTheNext() async throws {
+        let app = await composedApp()
+        let store = try secrets(app)
+        app.showAIModeScreen(from: nil)
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        let model = try XCTUnwrap(app.aiSetupModelForTesting)
+        model.setOn(true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let field = try XCTUnwrap(controls(in: screen).compactMap { $0 as? NSSecureTextField }.first)
+        XCTAssertTrue(type(testKey, into: field))
+        model.choose(.openAI)
+        let emptied = await until { field.stringValue.isEmpty }
+        XCTAssertTrue(emptied, "a change of provider empties the field")
+        try await pressDoneByKeyboard(screen)
+        XCTAssertEqual(store.accounts, [], "nothing was saved for OpenAI")
+        XCTAssertEqual(model.connectionForTesting, "noKey")
+        XCTAssertEqual(screen.modeForTesting, "ai")
+    }
+
+    func testAKeyTypedIntoSettingsIsSavedTheFieldEmptiesAndItIsChecked() async throws {
+        let app = await composedApp()
+        let store = try secrets(app)
+        app.makeSettingsWindowIfNeeded()
+        let settings = try XCTUnwrap(app.settingsControllerForTesting)
+        defer { settings.close() }
+        app.installAISettingsPane(in: settings)
+        settings.select(.ai)
+        let model = try XCTUnwrap(settings.aiSetupModel)
+        model.setOn(true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let content = try XCTUnwrap(settings.window?.contentView)
+        content.layoutSubtreeIfNeeded()
+        func secureFields(in view: NSView) -> [NSSecureTextField] {
+            (view.isHiddenOrHasHiddenAncestor ? [] : [view].compactMap { $0 as? NSSecureTextField })
+                + view.subviews.flatMap(secureFields)
+        }
+        let field = try XCTUnwrap(secureFields(in: content).first, "Settings › AI's key field")
+        XCTAssertTrue(type(testKey, into: field))
+        pressReturn(in: field)
+        let entered = await until { store.accounts == ["claude|api.anthropic.com:443"] }
+        XCTAssertTrue(entered, "Return saved the key under its provider and address")
+        await model.settle()
+        XCTAssertEqual(model.connectionForTesting, "connected")
+        let emptied = await until { field.stringValue.isEmpty }
+        XCTAssertTrue(emptied, "the field is emptied once the key is entered")
+
+        // A key typed for one provider is dropped when another is picked, so Return can't save it for that one.
+        XCTAssertTrue(type(testKey, into: field))
+        model.choose(.openAI)
+        let dropped = await until { field.stringValue.isEmpty }
+        XCTAssertTrue(dropped, "a change of provider empties the field")
+        pressReturn(in: field)
+        await model.settle()
+        XCTAssertEqual(store.accounts, ["claude|api.anthropic.com:443"], "nothing was saved for OpenAI")
+        XCTAssertEqual(model.connectionForTesting, "noKey")
     }
 
     func testDoneWithTheSwitchOffClosesAndLeavesAIModeOff() async throws {
