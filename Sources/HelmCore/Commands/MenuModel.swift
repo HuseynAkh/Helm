@@ -74,6 +74,9 @@ public struct MenuModel: Equatable, Sendable {
             sections.append([item("Copy as Pathname", .copyAsPathname, "c", [.command, .option], isNew: true), item("Move Items Here", .moveItemsHere, "v", [.command, .option], isNew: true)])
         case "View":
             sections[0] += [item("as Columns", .columns, isNew: true), item("as Gallery", .gallery, isNew: true)]
+            // Beside Toggle Sidebar, since it shows and hides the window's other side panel. The title is the same
+            // words as HelmAgent's own, which HelmCore can't see; a HelmUI test keeps the two equal.
+            sections[1] += [item("Show AI Panel", .aiPanel, "i", [.command, .control], isNew: true)]
             sections.append([item("Show Preview", .previewPane, isNew: true), item("Show View Options", .viewOptions, "j", isNew: true)])
         case "Go":
             sections.append([item("Recents", .recents, "F", isNew: true), item("Desktop", .desktop, "D", isNew: true), item("Documents", .documents, "O", isNew: true),

@@ -15,12 +15,15 @@ public struct SearchQuery: Sendable, Equatable {
     public var limit: Int
     /// Also match what's inside documents, through Spotlight's content index, as Finder does.
     public var includesContents: Bool
+    /// The person asked a model to help with this search. The words are still their own.
+    public var usesAI: Bool
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
-                lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false) {
+                lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false,
+                usesAI: Bool = false) {
         self.text = text; self.scope = scope; self.bookmarkPaths = bookmarkPaths
         self.homeDirectory = homeDirectory; self.lastDirectory = lastDirectory
         self.showHidden = showHidden; self.limit = limit; self.filters = filters
-        self.includesContents = includesContents
+        self.includesContents = includesContents; self.usesAI = usesAI
     }
 }
 /// Ranked metadata preserves search ordering (F-044); smaller ordinal ranks indicate stronger matches.
@@ -39,8 +42,12 @@ public struct SearchState: Sendable, Equatable {
     public var generation: Generation
     public var results: [SearchResult]
     public var isGathering: Bool
-    public init(query: SearchQuery, generation: Generation = Generation(), results: [SearchResult] = [], isGathering: Bool = true) {
+    /// What a model added to this search: where it has got to, and why each result matched. Nil for a plain search.
+    public var assist: SearchAssist?
+    public init(query: SearchQuery, generation: Generation = Generation(), results: [SearchResult] = [], isGathering: Bool = true,
+                assist: SearchAssist? = nil) {
         self.query = query; self.generation = generation; self.results = results; self.isGathering = isGathering
+        self.assist = assist
     }
 }
 /// Search lifecycle keeps incremental results separate from indexing availability (F-046).

@@ -241,6 +241,10 @@ public enum TabReducer {
             for result in results { ranks[result.entry.id] = min(ranks[result.entry.id] ?? Int.max, result.rank) }
             let order: ItemSort = next.snapshot.rankByID == nil ? .relevance : next.snapshot.sort
             present(SnapshotBuilder.build(location: next.location, entries: results.map(\.entry), sort: order, rankByID: ranks), state: &next)
+        case .searchAssist(let generation, let assist):
+            // A model's answer can arrive after the words changed or the search closed; it belongs to neither.
+            guard generation == next.searchGeneration, next.search != nil else { return (state, []) }
+            next.search?.assist = assist
         case .searchEnded: endSearch(&next, effects: &effects)
         case .addressBar(let action):
             let (editor, editorEffects) = AddressEditor.reduce(next.addressBar, action)

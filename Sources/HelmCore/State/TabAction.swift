@@ -32,6 +32,8 @@ public enum TabAction: Sendable {
     /// Reloads, then selects these items once they exist: pasted copies, a renamed file, the next item after Trash.
     case refreshSelecting(Set<ItemID>)
     case searchStarted(SearchQuery), searchResults(Generation, [SearchResult]), searchEnded
+    /// What a model added to the search on show. Dropped unless it is for the tab's current search.
+    case searchAssist(Generation, SearchAssist)
     case addressBar(AddressEditorAction)
     case activated, deactivated
     /// The folder on show gets a new watch, as when updates from disk are turned on or off in Settings.

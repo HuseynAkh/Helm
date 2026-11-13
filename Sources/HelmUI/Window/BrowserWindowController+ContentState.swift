@@ -34,6 +34,8 @@ extension BrowserWindowController {
         case .grantAccess(let pane): dependencies.permissions.showGuide(pane)
         case .openTrashInFinder: dependencies.permissions.openTrashInFinder()
         case .goHome: perform(.home)
+        // The no-results page's button for searching with a model's help.
+        case .findWithAI: break
         }
     }
 

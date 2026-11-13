@@ -8,7 +8,8 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 30)
+        XCTAssertEqual(snapshot.values.count, 32)
+        XCTAssertEqual(SettingKey.allCases.count, 32)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -36,6 +37,24 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(SettingsSchema.appliesLive(.rememberRecentItems))
         XCTAssertFalse(SettingsSchema.appliesLive(.defaultViewMode))
         XCTAssertTrue(SettingsSchema.appliesLive(.gridIconSize))
+    }
+    /// AI mode is off until the person turns it on, and its screen hasn't been shown. Both take effect at once.
+    func testAIModeKeysAreOffAndApplyLive() {
+        let snapshot = SettingsSnapshot()
+        XCTAssertEqual(SettingKey.aiModeEnabled.rawValue, "helm.aiModeEnabled")
+        XCTAssertEqual(SettingKey.aiIntroSeen.rawValue, "helm.aiIntroSeen")
+        for key in [SettingKey.aiModeEnabled, .aiIntroSeen] {
+            XCTAssertEqual(SettingsSchema.defaultValue(for: key), .bool(false), key.rawValue)
+            XCTAssertFalse(snapshot.bool(key), key.rawValue)
+            XCTAssertTrue(SettingsSchema.appliesLive(key), key.rawValue)
+            XCTAssertEqual(SettingsSchema.validated(.bool(true), for: key), .bool(true), key.rawValue)
+            // Only a true or false turns it on: a stored word or number reads as off.
+            XCTAssertEqual(SettingsSchema.validated(.string("true"), for: key), .bool(false), key.rawValue)
+            XCTAssertEqual(SettingsSchema.validated(.integer(1), for: key), .bool(false), key.rawValue)
+        }
+        let on = SettingsSnapshot(reader: Reader(values: [.aiModeEnabled: .bool(true)]))
+        XCTAssertTrue(on.bool(.aiModeEnabled))
+        XCTAssertFalse(on.bool(.aiIntroSeen))
     }
     func testValidationAndReader() throws {
         let snapshot = SettingsSnapshot(reader: Reader(values: [

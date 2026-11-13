@@ -10,6 +10,8 @@ public struct OperationHistoryState: Sendable {
     public internal(set) var lastOutcome: HistoryOutcome?
     public internal(set) var reconciliation: HistoryOutcome?
     public internal(set) var executingOperation: OperationID?
+    /// The group of the forward that is pending, which its entry will carry.
+    internal var pendingGroup: HistoryGroup?
     internal var usedRequests: Set<HistoryRequestID> = []
     internal var recordedOperations: Set<OperationID> = []
     public init() {}
@@ -37,6 +39,13 @@ public enum OperationHistoryReducer {
             // Invalidate before the host can suspend or perform a new edit.
             state.redoEntries.removeAll()
             state.pending = .forward(request, name: name)
+            state.pendingGroup = nil
+            state.lastOutcome = nil
+        case .beginGroupedForward(let request, let group):
+            guard admit(&state, request) else { return [] }
+            state.redoEntries.removeAll()
+            state.pending = .forward(request, name: group.name)
+            state.pendingGroup = group
             state.lastOutcome = nil
         case .startForward(let request, let operation):
             guard case .forward(request, _) = state.pending, state.executingOperation == nil,
@@ -45,6 +54,7 @@ public enum OperationHistoryReducer {
         case .abortForward(let request, let failure):
             guard case .forward(request, _) = state.pending, state.executingOperation == nil else { return [] }
             state.pending = nil
+            state.pendingGroup = nil
             state.lastOutcome = failure.outcome
         case .finishForward(let request, let operation, let outcome):
             guard case .forward(request, let name) = state.pending,
@@ -52,10 +62,12 @@ public enum OperationHistoryReducer {
                   !state.recordedOperations.contains(operation) else { return [] }
             state.executingOperation = nil
             state.recordedOperations.insert(operation)
+            let group = state.pendingGroup
             state.pending = nil
+            state.pendingGroup = nil
             state.lastOutcome = outcome
             if outcome == .succeeded || outcome.needsReconciliation {
-                state.undoEntries.append(HistoryEntry(operationID: operation, name: name))
+                state.undoEntries.append(HistoryEntry(operationID: operation, name: name, group: group))
             }
             if case .reconciliationRequired = outcome { state.reconciliation = outcome }
         case .beginUndo(let request):
@@ -78,13 +90,16 @@ public enum OperationHistoryReducer {
             state.lastOutcome = outcome
             if outcome == .succeeded {
                 state.undoEntries.removeLast()
-                state.redoEntries.append(entry)
+                // A redo runs the original command again by path. For one command of a group that would skip the
+                // checks the group was approved under, so an undone grouped entry is let go.
+                if entry.group == nil { state.redoEntries.append(entry) }
             }
             if outcome.needsReconciliation { state.reconciliation = outcome }
         case .beginRedoForward(let request):
             guard let entry = state.redoEntries.last, admit(&state, request) else { return [] }
             state.redoEntries.removeLast()
             state.pending = .forward(request, name: entry.name)
+            state.pendingGroup = nil
             state.lastOutcome = nil
         case .acknowledgeReconciliation:
             guard state.pending == nil, state.reconciliation != nil else { return [] }

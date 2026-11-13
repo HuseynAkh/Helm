@@ -78,7 +78,7 @@ def main():
         self_test()
         return 0
     failures = []
-    libraries = ('HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'HelmUI', 'HelmApp')
+    libraries = ('HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'HelmAgent', 'HelmUI', 'HelmApp')
     if not args.ui_only:
         for module in libraries:
             folder = args.root / 'Sources' / module

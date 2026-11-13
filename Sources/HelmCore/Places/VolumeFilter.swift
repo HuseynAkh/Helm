@@ -11,9 +11,12 @@ public struct VolumeInfo: Hashable, Sendable {
     public let isHidden: Bool
     /// A provider's folder such as Google Drive or iCloud Drive, shown with the drives but with nothing to eject.
     public let isCloud: Bool
+    /// A share on a server, not a disk attached to this Mac.
+    public let isNetwork: Bool
     public init(url: URL, name: String, uuid: String? = nil, isInternal: Bool = false,
-                isRemovable: Bool = false, isBrowsable: Bool = true, isHidden: Bool = false, isCloud: Bool = false) {
-        self.isCloud = isCloud
+                isRemovable: Bool = false, isBrowsable: Bool = true, isHidden: Bool = false, isCloud: Bool = false,
+                isNetwork: Bool = false) {
+        self.isCloud = isCloud; self.isNetwork = isNetwork
         self.url = url.standardizedFileURL; self.name = name; self.uuid = uuid
         self.isInternal = isInternal; self.isRemovable = isRemovable
         self.isBrowsable = isBrowsable; self.isHidden = isHidden

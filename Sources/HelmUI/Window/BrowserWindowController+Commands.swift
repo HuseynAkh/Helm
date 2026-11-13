@@ -181,6 +181,8 @@ extension BrowserWindowController {
         // Every mounted disk, as Finder's Computer shows them.
         case .computer: navigate(to: .directory(URL(fileURLWithPath: "/Volumes", isDirectory: true)))
         case .printSelection, .columns, .gallery, .previewPane, .network, .tags: break
+        // View › Show AI Panel: shows and hides the panel beside the files.
+        case .aiPanel: break
         }
     }
 

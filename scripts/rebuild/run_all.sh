@@ -22,10 +22,17 @@ run_check() {
     fi
 }
 # Explicit portable targets: never a bare swift build, even as the manifest evolves.
-for target in HelmCore HelmFileSystem HelmPersistence HelmOperations HelmSearch HelmTestKit; do
+targets=(HelmCore HelmFileSystem HelmPersistence HelmOperations HelmSearch HelmTestKit)
+suites='Core|FileSystem|Persistence|Operations|Search|TestKit'
+# The manifest declares HelmAgent and its tests on macOS only, so they join the gate there.
+if [[ "$(uname -s)" == Darwin ]]; then
+    targets+=(HelmAgent)
+    suites+='|Agent'
+fi
+for target in "${targets[@]}"; do
     run_check "build-$target" swift build --scratch-path "$scratch" --target "$target"
 done
-run_check tests swift test --scratch-path "$scratch" --filter 'Helm(Core|FileSystem|Persistence|Operations|Search|TestKit)Tests'
+run_check tests swift test --scratch-path "$scratch" --filter "Helm($suites)Tests"
 counts=$(python3 - "$scratch/logs/tests.log" <<'PY'
 import re, sys
 # SwiftPM can build one bundle per test target, each with its own closing summary. Sum them all,

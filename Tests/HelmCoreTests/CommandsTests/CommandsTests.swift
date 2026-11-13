@@ -125,7 +125,7 @@ final class CommandsTests: XCTestCase {
             .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh,
             .home, .minimize, .zoom, .selectAll, .location, .eject, .closeWindow, .reopenClosedTab,
             .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer,
-            .viewOptions, .computer, .goToTrash]
+            .viewOptions, .computer, .goToTrash, .aiPanel]
         let hidden: Set<CommandID> = [.putBack, .emptyTrash, .clearRecent]
         for command in CommandID.allCases {
             let expected: CommandAvailability = enabled.contains(command) ? .enabled : hidden.contains(command) ? .hidden : .disabled
@@ -149,6 +149,42 @@ final class CommandsTests: XCTestCase {
         context.selectionCount = 0
         XCTAssertEqual(CommandValidation.state(for: .putBack, in: context), .disabled)
         XCTAssertEqual(CommandValidation.state(for: .permanentDelete, in: context), .disabled)
+    }
+
+    /// View › Show AI Panel, Control-Command-I, beside Toggle Sidebar. It belongs to a window and is an addition:
+    /// the legacy menus never had it.
+    func testAIPanelCommandAndItsMenuRow() {
+        XCTAssertEqual(CommandID.aiPanel.rawValue, "aiPanel")
+        XCTAssertEqual(CommandID(rawValue: "aiPanel"), .aiPanel)
+        XCTAssertFalse(CommandID.aiPanel.isPlanned)
+        XCTAssertEqual(CommandValidation.rule(for: .aiPanel), .window)
+        XCTAssertEqual(CommandValidation.state(for: .aiPanel, in: CommandContext()), .enabled)
+        XCTAssertEqual(CommandValidation.state(for: .aiPanel, in: CommandContext(hasWindow: false)), .disabled)
+        // A window command works whatever is selected and wherever the caret is.
+        XCTAssertEqual(CommandValidation.state(for: .aiPanel, in: CommandContext(selectionCount: 3, locationKind: .trash,
+                                                                                 textFieldFocused: true)), .enabled)
+
+        let rows = items(MenuModel.menuBar).filter { $0.command == .aiPanel }
+        XCTAssertEqual(rows, [CommandMenuItem(title: "Show AI Panel", command: .aiPanel,
+                                              binding: KeyBinding(command: .aiPanel, key: "i", modifiers: [.command, .control]),
+                                              isNew: true)])
+        XCTAssertEqual(rows.first?.binding?.displayString, "⌃⌘I")
+        XCTAssertEqual(rows.first?.validationRuleID, .window)
+        let view = MenuModel.menuBar.first { $0.title == "View" }
+        XCTAssertEqual(view?.sections[1].map(\.title), ["Toggle Sidebar", "Show AI Panel"])
+        for menu in MenuModel.menuBar where menu.title != "View" {
+            XCTAssertFalse(items([menu]).contains { $0.command == .aiPanel }, menu.title)
+        }
+        XCTAssertFalse(items(MenuModel.legacy).contains { $0.command == .aiPanel })
+        XCTAssertFalse(items(MenuModel.legacy).contains { $0.title == "Show AI Panel" })
+        // Its keys are its own: Command-I alone is still Properties, and nothing else answers Control-Command-I.
+        XCTAssertEqual(MenuModel.defaultBindings.filter { $0.key.lowercased() == "i" }.map(\.command), [.properties, .aiPanel])
+        XCTAssertEqual(MenuModel.defaultBindings.filter { $0.command == .aiPanel }.count, 1)
+        XCTAssertTrue(BindingConflictDetector.conflicts(in: MenuModel.defaultBindings, context: CommandContext()).isEmpty)
+        // No context menu offers it.
+        for kind in [CommandMenuContext.file, .folder, .multiple, .background, .trash, .recent] {
+            XCTAssertFalse(items([ContextMenuModel.menu(for: kind, selectionCount: 2)]).contains { $0.command == .aiPanel })
+        }
     }
 
     /// Several selected items get Open With too, just after Open, as in Finder (P-228); Properties stays one item's.

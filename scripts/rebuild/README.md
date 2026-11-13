@@ -2,7 +2,8 @@
 # K11 Linux tooling
 
 Run `bash scripts/rebuild/run_all.sh` from any directory. It activates the installed
-toolchain, builds the six portable targets explicitly, runs all six XCTest targets,
+toolchain, builds the six portable targets explicitly, runs all six XCTest targets
+(on macOS, where the manifest declares them, also HelmAgent and HelmAgentTests),
 runs rebuild, static-check and privacy-check Python unit tests, K1 static checks and
 the privacy check (both through `scripts/static_checks.sh`), SDK-name guards,
 UI syntax checks and coverage report-only.
@@ -11,7 +12,7 @@ Logs and Swift artifacts remain in `/tmp/build-K11`; override with
 A missing plan directory fails explicitly before builds.
 The script returns nonzero on any failed command or zero discovered XCTest cases.
 The full SDK-name guard currently fails for four retained Core names pending an
-owner-approved rename. It scans all six portable libraries plus UI/App, and checks
+owner-approved rename. It scans all six portable libraries plus HelmAgent and UI/App, and checks
 unqualified retained names in every SwiftUI-importing HelmUI file. New collisions
 are failures too; no blanket warning exception hides them.
 It does not install dependencies, access the network, commit or modify the ledger.

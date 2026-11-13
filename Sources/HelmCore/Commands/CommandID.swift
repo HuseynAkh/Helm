@@ -20,6 +20,8 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case applications, utilities, computer, network, compress, decompress, tags
     /// Go › Trash, so the Trash and Put Back stay in reach when its sidebar row is hidden.
     case goToTrash
+    /// View › Show AI Panel: the panel beside the files where requests to a model are typed.
+    case aiPanel
 
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {

@@ -36,6 +36,10 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     case setupCarriedRows = "helm.setupCarriedRows"
     /// Recent and the apps you've used for each kind of file. Off, Helm keeps neither.
     case rememberRecentItems = "helm.rememberRecentItems"
+    /// AI mode. Off, which it is until the person turns it on, Helm connects to nothing.
+    case aiModeEnabled = "helm.aiModeEnabled"
+    /// The AI mode screen has been shown once, so it doesn't open by itself again.
+    case aiIntroSeen = "helm.aiIntroSeen"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

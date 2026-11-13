@@ -8,11 +8,14 @@ DAG = {
     'HelmCore': set(), 'HelmFileSystem': {'HelmCore'}, 'HelmPersistence': {'HelmCore'},
     'HelmOperations': {'HelmCore', 'HelmFileSystem'},
     'HelmSearch': {'HelmCore', 'HelmFileSystem'}, 'HelmTestKit': {'HelmCore', 'HelmFileSystem'},
-    'HelmUI': {'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch'},
-    'HelmApp': {'HelmUI', 'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch'},
+    # AI mode's module sees HelmCore alone: nothing that reads or changes a file is within its reach.
+    'HelmAgent': {'HelmCore'},
+    'HelmUI': {'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmAgent'},
+    'HelmApp': {'HelmUI', 'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmAgent'},
     'Helm': {'HelmApp'},
 }
-CORE = set(list(DAG)[:6])
+# The modules with no AppKit or SwiftUI. Written out by name, so a new module is never one of them by its place in DAG.
+CORE = {'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'HelmAgent'}
 APPLE = {'AppKit', 'SwiftUI', 'Combine', 'Cocoa', 'QuickLook', 'QuickLookUI',
          'QuickLookThumbnailing', 'UniformTypeIdentifiers', 'CoreServices'}
 

@@ -32,21 +32,27 @@ var targets: [Target] = [
     .testTarget(name: "HelmTestKitTests", dependencies: ["HelmTestKit"]),
 ]
 #if os(macOS)
+// AI mode's own module. It depends on HelmCore alone, so the code that talks to a model provider can't reach a file.
+targets += [
+    .target(name: "HelmAgent", dependencies: ["HelmCore"], exclude: ["README.md"]),
+    .testTarget(name: "HelmAgentTests", dependencies: ["HelmAgent", "HelmCore", "HelmFileSystem", "HelmTestKit"],
+                resources: [.copy("Fixtures")]),
+]
 targets += [
     .target(name: "HelmUI", dependencies: ["HelmCore", "HelmFileSystem",
-        "HelmPersistence", "HelmOperations", "HelmSearch"],
+        "HelmPersistence", "HelmOperations", "HelmSearch", "HelmAgent"],
         exclude: ["README.md", "Part3-README.md", "Content/README.md",
                   "Sheets/README.md", "ViewOptions/README.md"]),
     .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmCore",
-        "HelmOperations", "HelmSearch", "HelmTestKit"], exclude: ["PortableRunner"])
+        "HelmOperations", "HelmSearch", "HelmAgent", "HelmTestKit"], exclude: ["PortableRunner"])
 ]
 products += [.library(name: "HelmApp", targets: ["HelmApp"])]
 targets += [
     .target(name: "HelmApp", dependencies: ["HelmUI", "HelmCore",
-        "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch"],
+        "HelmFileSystem", "HelmPersistence", "HelmOperations", "HelmSearch", "HelmAgent"],
         exclude: ["README.md"]),
     .testTarget(name: "HelmAppTests", dependencies: ["HelmApp", "HelmCore",
-        "HelmPersistence", "HelmTestKit"], exclude: ["LinuxRunner"])
+        "HelmPersistence", "HelmAgent", "HelmTestKit"], exclude: ["LinuxRunner"])
 ]
 products += [.executable(name: "HelmDev", targets: ["HelmDev"])]
 targets += [.executableTarget(name: "HelmDev", dependencies: ["HelmApp"], path: "Sources/Helm")]

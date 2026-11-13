@@ -1,0 +1,3 @@
+# HelmAgent
+
+AI mode's own module: the model providers, the transport that reaches them, the loop that carries a request to a model and back, the folders a request may see, the change plans it ends in, and the planning side of AI search. It imports `Foundation`, `Security` and `HelmCore`, and nothing else: no AppKit, no SwiftUI and no other Helm module. So the code that can reach a model provider has no way to change or open a file. It learns about the disk only through HelmCore's read-only `AgentDisk`, and turning an approved plan into file changes belongs to HelmUI. `scripts/static_checks.py` fails when the module imports another Helm module, AppKit or SwiftUI.

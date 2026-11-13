@@ -17,6 +17,11 @@ confirmation. It retires only the blocked top undo entry and clears the latch;
 it does not repair files, retry work, create redo authority, or erase evidence.
 Pending work and absent latches make acknowledgement a no-op.
 
+A forward begun with `beginGroupedForward` is named after its `HistoryGroup` and its
+entry carries the group, so a host can undo the entries of one group in a row as one
+change. An undone grouped entry is dropped, never moved to the redo stack: a redo would
+run one command of the group again by path, without the checks the group was approved under.
+
 Redo is explicitly unsupported even when an undone entry exists. Safe reconstruction
 from intent and fresh evidence needs a later reviewed integration. Reconciliation UI,
 durable recovery, bounded history retention and native text routing remain open.
