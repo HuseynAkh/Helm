@@ -129,7 +129,9 @@ public actor OperationExecutor {
                 failure = mapped
                 // Read-only refusals cannot leave an uncertain mutation. Missing evidence for
                 // an earlier completed output still requires reconciliation (B-038/B-041).
-                let uncertain = (executionFailure != nil && !(cause is ConditionalMutationError) && mapped != .conflict)
+                // An item that isn't downloaded is refused, with downloads off, before anything is read or written.
+                let refusedUnchanged = (cause as? FileSystemError) == .notDownloaded
+                let uncertain = (executionFailure != nil && !(cause is ConditionalMutationError) && mapped != .conflict && !refusedUnchanged)
                     || (mapped == .verificationUnavailable && (forward.isMissing(step.source) || forward.isMissing(step.destination)))
                 // Ask what to do, unless nothing else can safely happen: a cancelled, timed-out or quarantined run stops.
                 let askable = !quarantined && mapped != .cancelled && mapped != .timedOut && mapped != .busy && mapped != .invalidPlan
