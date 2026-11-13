@@ -52,3 +52,12 @@ only when the inverse contains no Trash restoration.
 `beginForward(command, group:)` reserves under a `HistoryGroup`: the reservation and the
 entry it leads to take the group's name, and the entry carries the group. Without a group
 nothing changes.
+
+A host undoes a group by undoing the top entry and going on while the next one carries the
+same group and the last Undo succeeded. A failed Undo leaves that entry and the rest in place;
+one left unsure latches the history, and acknowledging it retires that entry only.
+
+A step that stalls leaves the executor refusing every later operation as busy. After the
+person acknowledges the stalled change, the host calls `OperationExecutor.clearQuarantine()`.
+It asks `FileSystem.reopenAfterStall()` and lets operations run again only when that answers
+true; false means a stalled call is still out, so the host asks again before its next operation.

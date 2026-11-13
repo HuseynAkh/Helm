@@ -154,9 +154,29 @@ import HelmPersistence
         if !back.isEmpty { await origins.record(back) }
     }
 
-    /// Called once the person has acknowledged a change that ended unsure, which may be one that stalled. The executor
-    /// has no stall latch that can be cleared, so there is nothing to do.
-    public func clearStallIfSettled() async {}
+    /// Called once the person has acknowledged a change that ended unsure, which may be one that stalled and so kept
+    /// every later change from starting. Changes run again once every stalled call has returned. A call that is still
+    /// out keeps them refused for now, and the next change asks again before it starts, so no relaunch is needed.
+    public func clearStallIfSettled() async {
+        stallAcknowledged = !(await executor.clearQuarantine())
+    }
+    /// A stall was let go of while one of its calls was still out, so the next change asks again before it starts.
+    private var stallAcknowledged = false
+    /// Before a change starts: lets it run if an acknowledged stall has settled since.
+    private func reopenIfAcknowledgedStallSettled() async {
+        guard stallAcknowledged else { return }
+        await clearStallIfSettled()
+    }
+    /// A step that stalled on a read before it changed anything leaves nothing unsure, so nobody is asked to
+    /// acknowledge it, yet the executor still refuses later changes. Its result already tells the person; let them go on.
+    private func releaseStallThatChangedNothing(_ result: OperationResult) async {
+        let stalled = result.outcomes.contains {
+            if case .failure(.timedOut) = $0.result { return true }
+            return false
+        }
+        guard stalled, !result.outcomes.contains(where: \.requiresReconciliation) else { return }
+        await clearStallIfSettled()
+    }
 
     public func redo(history: WindowOperationHistory, resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
         guard let (request, command) = await history.beginRedoForward() else {
@@ -208,7 +228,8 @@ import HelmPersistence
         let items = PlanItems(plan.steps)
         let task = Task { [weak self] () -> OperationResult in
             await previous?.value
-            return await executor.execute(plan, progress: { progress in
+            await self?.reopenIfAcknowledgedStallSettled()
+            let result = await executor.execute(plan, progress: { progress in
                 await MainActor.run { self?.update(Self.itemProgress(progress, items: items), title: title) }
             }, admission: { id, plan in
                 await MainActor.run { self?.register(id, title: title, box: box, replacing: replacing) }
@@ -218,6 +239,9 @@ import HelmPersistence
                 guard let onFailure, failure.remaining > 0 || failure.canRetry else { return .stop }
                 return await onFailure(failure)
             })
+            // In turn, before the next change starts, so it isn't refused for a stall that left nothing to settle.
+            await self?.releaseStallThatChangedNothing(result)
+            return result
         }
         box.cancel = { task.cancel() }
         // Waiting behind another window's work, the preparing row's cancel button stops this one.
