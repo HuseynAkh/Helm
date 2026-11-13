@@ -35,6 +35,9 @@ struct AgentPlanCard: Equatable {
     var stage: Stage = .open
     /// Apply found that the folder had changed, so this is a new plan for the person to look at again.
     private(set) var wasRefreshed = false
+    /// A refreshed card answers no key until the person has looked at it: a tick, a group opened or shut, or a click
+    /// on Apply. A second Command-Return pressed straight after the first, or a held key, applies nothing.
+    private(set) var holdsKeyedApply = false
     /// The folders of the conversation when the plan arrived, to say where each item is now.
     let roots: [AgentScopeRoot]
 
@@ -55,15 +58,18 @@ struct AgentPlanCard: Equatable {
         opened = Set(plan.groups.filter { !$0.startsOn }.map(\.id))
         stage = .open
         wasRefreshed = true
+        holdsKeyedApply = true
     }
 
     mutating func toggle(_ group: Int) {
         guard stage == .open, plan.groups.contains(where: { $0.id == group }) else { return }
         if ticked.contains(group) { ticked.remove(group) } else { ticked.insert(group) }
+        holdsKeyedApply = false
     }
 
     mutating func toggleOpen(_ group: Int) {
         if opened.contains(group) { opened.remove(group) } else { opened.insert(group) }
+        holdsKeyedApply = false
     }
 
     var title: String { plan.title.text }

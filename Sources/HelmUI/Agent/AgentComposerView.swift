@@ -225,7 +225,11 @@ import HelmCore
         switch Int(event.keyCode) {
         case 36, 76: // Return and Enter
             if flags.isEmpty { onReturn?(); return }
-            if flags == [.command] { onCommandReturn?(); return }
+            // A held Command-Return presses Apply once, never again on the card that follows.
+            if flags == [.command] {
+                if !event.isARepeat { onCommandReturn?() }
+                return
+            }
             if flags == [.shift] || flags == [.option] { insertNewlineIgnoringFieldEditor(nil); return }
         case 53: // Escape
             if flags.isEmpty { onEscape?(); return }
@@ -235,11 +239,11 @@ import HelmCore
         super.keyDown(with: event)
     }
 
-    /// Command-Return reaches a text view as a key equivalent first.
+    /// Command-Return reaches a text view as a key equivalent first. A repeat of a held key is taken and does nothing.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
         if event.type == .keyDown, window?.firstResponder === self, [36, 76].contains(Int(event.keyCode)), flags == [.command] {
-            onCommandReturn?()
+            if !event.isARepeat { onCommandReturn?() }
             return true
         }
         return super.performKeyEquivalent(with: event)

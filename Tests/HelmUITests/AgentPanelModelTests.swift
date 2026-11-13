@@ -407,6 +407,87 @@ import HelmCore
         XCTAssertEqual(applied, [changed.defaultTicked])
     }
 
+    func testACommandReturnStraightAfterARefreshAppliesNothing() async {
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        await say(model, "tidy up")
+        model.tick("Rename 1 item")
+        conversation.inner.nextTicket = .changed(plan(title: .move(3)))
+        // A double press, or a key held down: the second lands on the refreshed card.
+        model.commandReturn()
+        await settle(model)
+        model.commandReturn()
+        await settle(model)
+        XCTAssertEqual(applied, [], "the refreshed card, with the rename ticked again, was not applied by a key")
+        XCTAssertEqual(model.phaseForTesting, "plan")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.planChanged))
+
+        // Once the person has acted on it, the key works again, with exactly what is ticked.
+        model.tick("Rename 1 item")
+        model.commandReturn()
+        await settle(model)
+        XCTAssertEqual(applied, [[0]])
+    }
+
+    func testStopWhileTheEndingFolderIsLookedUpSendsNothing() async {
+        let conversation = PanelTestConversation()
+        let model = await model(conversation)
+        let lookup = PanelTestGate()
+        conversation.folderGate = lookup
+        model.type("Move everything in this folder to /home/helm/Pictures")
+        model.press(AgentText.send)
+        let working = await until { model.phase == .working }
+        XCTAssertTrue(working)
+        model.key("escape")
+        model.press(AgentText.stop)
+        lookup.open()
+        await settle(model)
+        XCTAssertEqual(conversation.inner.sent.count, 0, "nothing was sent after Stop")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.noticeStopped))
+        XCTAssertEqual(model.phaseForTesting, "idle")
+        XCTAssertEqual(keysGivenBack, 0, "Escape stopped the request and kept the keys")
+
+        // The next message goes as usual.
+        conversation.folderGate = nil
+        await say(model, "Move everything in this folder to /home/helm/Pictures")
+        XCTAssertEqual(conversation.inner.sent.count, 1)
+    }
+
+    func testTryAgainDoesNothingWhileAPlanIsApplied() async {
+        applyGate = PanelTestGate()
+        let conversation = PanelTestConversation(plan: plan())
+        let model = await model(conversation)
+        conversation.failure = .unreachable
+        await say(model, "tidy up")
+        conversation.failure = nil
+        await say(model, "tidy up")
+        XCTAssertEqual(model.phaseForTesting, "plan")
+        model.press(AgentText.apply)
+        let applying = await until { model.phase == .applying }
+        XCTAssertTrue(applying)
+        model.press(AgentText.tryAgain)
+        XCTAssertEqual(model.phaseForTesting, "applying")
+        XCTAssertEqual(conversation.inner.sent.count, 2, "no request starts during Apply")
+        applyGate.open()
+        await settle(model)
+        XCTAssertEqual(model.phaseForTesting, "result")
+    }
+
+    func testAChipShowsAFolderNameEscaped() async {
+        let conversation = PanelTestConversation()
+        let model = await model(conversation)
+        let hostile = "Invoices\u{202E}fdp.exe"
+        await say(model, "/add /home/helm/" + hostile)
+        let label = AgentTextEscaper.escape(hostile)
+        XCTAssertNotEqual(label, hostile)
+        XCTAssertTrue(model.chipsForTesting.contains(label + ":thisMac"), "\(model.chipsForTesting)")
+        XCTAssertFalse(model.chipsForTesting.joined().unicodeScalars.contains { $0.value == 0x202E }, "no reading-order control on show")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addAdded(hostile)))
+        model.press(AgentText.chipRemove(label))
+        await settle(model)
+        XCTAssertEqual(model.chipsForTesting, ["Downloads:thisMac"], "its remove button still finds it")
+    }
+
     func testACardShowsAtMostThreeNotes() async {
         let conversation = PanelTestConversation(plan: plan())
         let model = await model(conversation)
@@ -466,6 +547,7 @@ final class PanelTestConversation: AgentConversing, @unchecked Sendable {
     private var failing: AgentFailure?
     private var otherPlan: AgentChangePlan?
     private var noPlan = false
+    private var lookupHeldBy: PanelTestGate?
 
     init(plan: AgentChangePlan? = nil, reply: String = "") { inner = StandInConversation(plan: plan, reply: reply) }
 
@@ -490,10 +572,19 @@ final class PanelTestConversation: AgentConversing, @unchecked Sendable {
         set { lock.withLock { noPlan = newValue } }
     }
 
+    /// While set, looking up a folder the person typed waits for the gate.
+    var folderGate: PanelTestGate? {
+        get { lock.withLock { lookupHeldBy } }
+        set { lock.withLock { lookupHeldBy = newValue } }
+    }
+
     var notices: AsyncStream<AgentNotice> { inner.notices }
     func roots() async -> [AgentScopeRoot] { await inner.roots() }
     func setTabFolder(_ input: AgentRootInput?) async -> AgentTabFolder { await inner.setTabFolder(input) }
-    func folder(for input: AgentRootInput) async -> AgentFolderRef { await inner.folder(for: input) }
+    func folder(for input: AgentRootInput) async -> AgentFolderRef {
+        await folderGate?.wait()
+        return await inner.folder(for: input)
+    }
     func removeRoot(alias: String) async { await inner.removeRoot(alias: alias) }
     func beginApply(planID: UUID, ticked: Set<Int>) async -> AgentApplyTicket { await inner.beginApply(planID: planID, ticked: ticked) }
     func settle(planID: UUID, _ outcome: AgentPlanOutcome) async { await inner.settle(planID: planID, outcome) }

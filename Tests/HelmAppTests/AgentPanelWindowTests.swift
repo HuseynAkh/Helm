@@ -134,10 +134,11 @@ import HelmTestKit
         ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted()
     }
 
-    private func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags = [], in controller: BrowserWindowController) throws -> NSEvent {
+    private func key(_ code: UInt16, _ text: String, _ flags: NSEvent.ModifierFlags = [], repeats: Bool = false,
+                     in controller: BrowserWindowController) throws -> NSEvent {
         try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
                                        windowNumber: controller.window?.windowNumber ?? 0, context: nil, characters: text,
-                                       charactersIgnoringModifiers: text, isARepeat: false, keyCode: code))
+                                       charactersIgnoringModifiers: text, isARepeat: repeats, keyCode: code))
     }
 
     // MARK: Opening and shutting
@@ -226,12 +227,21 @@ import HelmTestKit
         let fileCommands: [CommandID] = [.rename, .quickLook, .trash, .open]
         XCTAssertEqual(fileCommands.map { controller.title(of: $0).1 }, [false, false, false, false], "no file command can act")
 
+        // Each key goes the way AppKit sends it: to the window's views as a key equivalent, then to the menu bar,
+        // whose Rename is plain Return, Quick Look is Space and Move to Trash is Command-Delete, then to the composer.
+        // While the composer has the keys those rows are off, so what matters is that none of them acted.
+        let menu = fileMenu(for: controller)
         let text = controller.agentPanelHost.composerTextViewForTesting
-        text.keyDown(with: try key(36, "\r", in: controller))
-        text.keyDown(with: try key(49, " ", in: controller))
-        _ = controller.window?.performKeyEquivalent(with: try key(51, "\u{8}", .command, in: controller))
+        for event in [try key(36, "\r", in: controller), try key(49, " ", in: controller), try key(51, "\u{8}", .command, in: controller)] {
+            XCTAssertFalse(controller.window?.performKeyEquivalent(with: event) ?? true, "a view took key \(event.keyCode)")
+            _ = menu.performKeyEquivalent(with: event)
+            menu.update()
+            XCTAssertEqual(menu.items.map(\.isEnabled), [false, false, false], "a file row was on for key \(event.keyCode)")
+            text.keyDown(with: event)
+        }
         await settle(controller, model)
         XCTAssertNil(controller.activeTab?.inlineRenameID, "Return renamed nothing")
+        XCTAssertEqual(controller.activeTab?.selection, [notes.id], "the selection is untouched")
         XCTAssertEqual(model.composerTextForTesting, " ", "Space was typed, not a preview")
         XCTAssertTrue(FileManager.default.fileExists(atPath: documents.appendingPathComponent("a.txt").path), "nothing went to the Trash")
         XCTAssertEqual(box.made?.sent.count, 0)
@@ -241,6 +251,27 @@ import HelmTestKit
         text.keyDown(with: try key(53, "\u{1b}", in: controller))
         XCTAssertEqual(controller.focusOwnerForTesting, "files")
         XCTAssertEqual(controller.title(of: .rename).1, true, "the file commands are back")
+        // The same Return through the menu bar now renames, so the pass above could have caught a leak.
+        XCTAssertTrue(menu.performKeyEquivalent(with: try key(36, "\r", in: controller)), "the menu bar's Rename takes Return again")
+        let renaming = await until(10) { controller.activeTab?.inlineRenameID != nil }
+        XCTAssertTrue(renaming, "Return renames once the files have the keys")
+    }
+
+    /// The File menu's rows for Return, Space and Command-Delete, as the menu bar builds them, aimed at this window.
+    private func fileMenu(for controller: BrowserWindowController) -> NSMenu {
+        let menu = NSMenu(title: "File")
+        menu.autoenablesItems = true
+        for (title, command, key, flags) in [("Rename", CommandID.rename, "\r", NSEvent.ModifierFlags()),
+                                             ("Quick Look", .quickLook, " ", []),
+                                             ("Move to Trash", .trash, "\u{8}", .command)] {
+            let item = NSMenuItem(title: title, action: #selector(BrowserWindowController.helmCommand(_:)), keyEquivalent: key)
+            item.keyEquivalentModifierMask = flags
+            item.representedObject = command.rawValue
+            item.target = controller
+            menu.addItem(item)
+        }
+        keep.append(menu)
+        return menu
     }
 
     func testPlainReturnNeverAppliesAndCommandReturnDoes() async throws {
@@ -252,6 +283,12 @@ import HelmTestKit
         await settle(controller, model)
         XCTAssertEqual(model.phaseForTesting, "plan", "plain Return pressed nothing")
         XCTAssertTrue(FileManager.default.fileExists(atPath: documents.appendingPathComponent("a.txt").path))
+
+        // The repeats of a held Command-Return are taken and press nothing.
+        XCTAssertTrue(text.performKeyEquivalent(with: try key(36, "\r", .command, repeats: true, in: controller)))
+        text.keyDown(with: try key(36, "\r", .command, repeats: true, in: controller))
+        await settle(controller, model)
+        XCTAssertEqual(model.phaseForTesting, "plan", "a repeated key pressed nothing")
 
         XCTAssertTrue(text.performKeyEquivalent(with: try key(36, "\r", .command, in: controller)))
         await settle(controller, model)

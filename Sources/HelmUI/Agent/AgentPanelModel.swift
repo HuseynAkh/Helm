@@ -245,8 +245,11 @@ import HelmCore
         }
     }
 
-    /// Command-Return: Apply on the card that waits.
-    func commandReturn() { applyOpenCard() }
+    /// Command-Return: Apply on the card that waits, unless it was refreshed and nobody has looked at it since.
+    func commandReturn() {
+        guard openCard?.holdsKeyedApply != true else { return }
+        applyOpenCard()
+    }
 
     /// The composer's text changed as the person typed.
     func composerEdited(_ text: String, caret: Int) {
@@ -459,6 +462,7 @@ import HelmCore
             return
         }
         requestOpen = true
+        stopAsked = false
         recomputePhase()
         Task { [weak self] in
             guard let self else { return }
@@ -468,12 +472,15 @@ import HelmCore
                 if let id = answer.modelID {
                     if case .added(let root) = answer { self.append(.helm(AgentText.addAdded(root.label), button: nil)) }
                     await self.refreshRoots()
+                    // Stop or Escape while the folder was looked up: the message never goes.
+                    if self.stopAsked { self.endStoppedLookup(); return }
                     let input = AgentPersonInput(typedByPerson: candidate.prefix + id, selectedPaths: self.tab.selectedPaths)
                     self.requestOpen = false
                     self.begin(input, shown: message)
                     return
                 }
                 if case .refused(let reason) = answer { refusal = reason }
+                if self.stopAsked { self.endStoppedLookup(); return }
             }
             self.append(.helm(Self.refusalLine(refusal), button: nil))
             // What they typed comes back, so the path can be put right.
@@ -481,6 +488,15 @@ import HelmCore
             self.requestOpen = false
             self.recomputePhase()
         }
+    }
+
+    /// A message stopped before it was sent, while the folder it ends in was looked up.
+    private func endStoppedLookup() {
+        status = nil
+        append(.helm(AgentText.noticeStopped, button: nil))
+        requestOpen = false
+        settled = .idle
+        recomputePhase()
     }
 
     /// Starts a request and follows it to its end.
@@ -570,7 +586,8 @@ import HelmCore
         case .openSettings:
             actions.openSettings()
         case .tryAgain:
-            guard let input = lastInput, let shown = lastShown, !requestOpen else { return }
+            // As Send is: never while a request, an Apply or an Undo runs.
+            guard let input = lastInput, let shown = lastShown, !requestOpen, !applying, !undoing else { return }
             lines[index].kind = .helm(text, button: nil)
             begin(input, shown: shown)
         case .connect(let location):
@@ -728,8 +745,9 @@ import HelmCore
         if root.storage.isReadOnly { marks.append(AgentText.chipReadOnly) }
         if !root.storage.isResponding { marks.append(AgentText.chipNotResponding) }
         let tooltip = ([AgentTextEscaper.escape(path), place] + marks).filter { !$0.isEmpty }.joined(separator: "\n")
-        return Chip(id: root.alias, label: root.label, kind: root.storage.kind, symbol: root.storage.symbolName, tooltip: tooltip,
-                    placeLine: place, marks: marks, removable: !root.isTabFolder)
+        // The label is the folder's own name from the disk, so it is shown escaped, as every other disk name is.
+        return Chip(id: root.alias, label: AgentTextEscaper.escape(root.label), kind: root.storage.kind, symbol: root.storage.symbolName,
+                    tooltip: tooltip, placeLine: place, marks: marks, removable: !root.isTabFolder)
     }
 
     /// The second line of a chip's tooltip: the kind of place, from fixed words.
