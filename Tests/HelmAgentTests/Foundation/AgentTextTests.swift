@@ -111,6 +111,7 @@ final class AgentTextTests: XCTestCase {
         ("resultCopied", AgentText.resultCopied(12), "Copied 12 items."),
         ("resultRenamed", AgentText.resultRenamed(12), "Renamed 12 items."),
         ("resultTrashed", AgentText.resultTrashed(12), "Moved 12 items to the Trash."),
+        ("resultMadeFolders", AgentText.resultMadeFolders(6), "Made 6 new folders."),
         ("resultPartial", AgentText.resultPartial(done: 210, total: 214, skipped: 4), "210 of 214 done, and 4 were skipped."),
         ("resultStopped", AgentText.resultStopped(done: 3, total: 12), "Stopped after 3 of 12."),
         ("undo", AgentText.undo, "Undo"),
@@ -147,6 +148,7 @@ final class AgentTextTests: XCTestCase {
         ("aiSentence", AgentText.aiSentence, "Ask Helm to organize, move and find files for you."),
         ("consent", AgentText.consent("Claude"), "Sends your requests and file names to Claude, never file contents."),
         ("destinationOnThisMac", AgentText.destinationOnThisMac("Ollama"), "Ollama on this Mac"),
+        ("destinationNotSet", AgentText.destinationNotSet, "the address you enter"),
         ("providerLabel", AgentText.providerLabel, "Provider"),
         ("keyLabel", AgentText.keyLabel, "Key"),
         ("keyPlaceholder", AgentText.keyPlaceholder, "Paste your key"),
@@ -175,8 +177,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 154)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 154, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 156)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 156, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
@@ -230,6 +232,7 @@ final class AgentTextTests: XCTestCase {
         XCTAssertEqual(AgentText.resultCopied(1), "Copied 1 item.")
         XCTAssertEqual(AgentText.resultRenamed(1), "Renamed 1 item.")
         XCTAssertEqual(AgentText.resultTrashed(1), "Moved 1 item to the Trash.")
+        XCTAssertEqual(AgentText.resultMadeFolders(1), "Made 1 new folder.")
         XCTAssertEqual(AgentText.resultPartial(done: 9, total: 10, skipped: 1), "9 of 10 done, and 1 was skipped.")
         XCTAssertEqual(AgentText.fillMoveSelected(1), "Move the 1 selected item to ")
         XCTAssertEqual(AgentText.fillCopySelected(1), "Copy the 1 selected item to ")

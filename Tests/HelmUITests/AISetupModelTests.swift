@@ -76,6 +76,8 @@ import HelmTestKit
         model.choose(.ollama)
         XCTAssertEqual(model.consentLine, "Sends your requests and file names to Ollama on this Mac, never file contents.")
         model.choose(.other)
+        XCTAssertEqual(model.consentLine, "Sends your requests and file names to the address you enter, never file contents.",
+                       "Other before an address is saved names no provider called Other")
         model.setAddress("models.example.com")
         XCTAssertEqual(model.consentLine, "Sends your requests and file names to models.example.com, never file contents.")
         XCTAssertEqual(model.consentLine, AgentText.consent("models.example.com"))

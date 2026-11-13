@@ -52,7 +52,10 @@ import HelmPersistence
     // MARK: What the screens show
 
     /// The one line that says what is sent and to whom.
-    public var consentLine: String { AgentText.consent(profile?.destination ?? AgentProviderCatalog.name(provider)) }
+    public var consentLine: String {
+        if let profile { return AgentText.consent(profile.destination) }
+        return AgentText.consent(provider == .other ? AgentText.destinationNotSet : providerName)
+    }
 
     /// Whether a key is saved for the provider at its address. The key itself is never read.
     public var hasSavedKey: Bool { profile.map { services.secrets.has($0.secretID) } ?? false }

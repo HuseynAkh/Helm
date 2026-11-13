@@ -149,6 +149,7 @@ public enum AgentText {
     public static func resultCopied(_ count: Int) -> String { "Copied \(counted(count, "item", "items"))." }
     public static func resultRenamed(_ count: Int) -> String { "Renamed \(counted(count, "item", "items"))." }
     public static func resultTrashed(_ count: Int) -> String { "Moved \(counted(count, "item", "items")) to the Trash." }
+    public static func resultMadeFolders(_ count: Int) -> String { "Made \(counted(count, "new folder", "new folders"))." }
     public static func resultPartial(done: Int, total: Int, skipped: Int) -> String {
         "\(number(done)) of \(number(total)) done, and \(number(skipped)) \(skipped == 1 ? "was" : "were") skipped."
     }
@@ -198,6 +199,7 @@ public enum AgentText {
         "Sends your requests and file names to \(shown(destination)), never file contents."
     }
     public static func destinationOnThisMac(_ provider: String) -> String { "\(shown(provider)) on this Mac" }
+    public static let destinationNotSet = "the address you enter"
     public static let providerLabel = "Provider"
     public static let keyLabel = "Key"
     public static let keyPlaceholder = "Paste your key"

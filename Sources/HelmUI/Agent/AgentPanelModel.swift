@@ -114,6 +114,8 @@ import HelmCore
     var composerSet: ((String, Int) -> Void)?
 
     private let home: String
+    /// The home folder the panel was given, for the place test on a dragged item's path.
+    var homePath: String { home }
     private var caret = 0
     private var tab = TabContext(folder: nil, itemCount: 0, selectedPaths: [])
     private var tabRoot: AgentScopeRoot?
@@ -454,8 +456,10 @@ import HelmCore
     }
 
     /// A message that may end in a folder. The folder is added first, through the same rules as /add, and the
-    /// message goes with the folder's id in place of its path. If no reading of the path is a folder that can be
-    /// used, the usual line says why and nothing is sent.
+    /// message goes with the folder's id in place of its path. A full stop or the like after the path is tried
+    /// without it too. When the message ends in a path and no reading of it is a folder that can be used, the usual
+    /// line says why and nothing is sent. A path typed mid-sentence that names nothing Helm could add is part of the
+    /// sentence, so the message goes as typed; one that reaches a folder Helm refuses still stops it.
     private func send(_ message: String, typed: String, candidates: [AgentTrailingPath]) {
         guard !candidates.isEmpty else {
             begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths), shown: message)
@@ -466,27 +470,54 @@ import HelmCore
         recomputePhase()
         Task { [weak self] in
             guard let self else { return }
-            var refusal: AgentScopeRefusal?
+            var missing: AgentScopeRefusal?
+            var refused: AgentScopeRefusal?
             for candidate in candidates {
-                let answer = await self.session.folder(for: AgentRootInput(fromPerson: candidate.path, origin: .typed))
-                if let id = answer.modelID {
-                    if case .added(let root) = answer { self.append(.helm(AgentText.addAdded(root.label), button: nil)) }
-                    await self.refreshRoots()
-                    // Stop or Escape while the folder was looked up: the message never goes.
+                for path in Self.readings(of: candidate.path) {
+                    let answer = await self.session.folder(for: AgentRootInput(fromPerson: path, origin: .typed))
+                    if let id = answer.modelID {
+                        if case .added(let root) = answer { self.append(.helm(AgentText.addAdded(root.label), button: nil)) }
+                        await self.refreshRoots()
+                        // Stop or Escape while the folder was looked up: the message never goes.
+                        if self.stopAsked { self.endStoppedLookup(); return }
+                        let input = AgentPersonInput(typedByPerson: candidate.prefix + id, selectedPaths: self.tab.selectedPaths)
+                        self.requestOpen = false
+                        self.begin(input, shown: message)
+                        return
+                    }
+                    if case .refused(let reason) = answer {
+                        if Self.namesNothing(reason) { missing = missing ?? reason } else { refused = refused ?? reason }
+                    }
                     if self.stopAsked { self.endStoppedLookup(); return }
-                    let input = AgentPersonInput(typedByPerson: candidate.prefix + id, selectedPaths: self.tab.selectedPaths)
-                    self.requestOpen = false
-                    self.begin(input, shown: message)
-                    return
                 }
-                if case .refused(let reason) = answer { refusal = reason }
-                if self.stopAsked { self.endStoppedLookup(); return }
             }
-            self.append(.helm(Self.refusalLine(refusal), button: nil))
+            let endsInPath = candidates.last.map { !$0.path.contains(where: \.isWhitespace) } ?? false
+            if refused == nil, !endsInPath {
+                self.requestOpen = false
+                self.begin(AgentPersonInput(typedByPerson: message, selectedPaths: self.tab.selectedPaths), shown: message)
+                return
+            }
+            self.append(.helm(Self.refusalLine(refused ?? missing), button: nil))
             // What they typed comes back, so the path can be put right.
             if self.composerText.isEmpty { self.setComposer(typed, caret: (typed as NSString).length) }
             self.requestOpen = false
             self.recomputePhase()
+        }
+    }
+
+    /// A path as typed, then without the full stop, comma or the like that ends a sentence after it.
+    private static func readings(of path: String) -> [String] {
+        var trimmed = Substring(path)
+        while let last = trimmed.last, sentenceEnds.contains(last) { trimmed = trimmed.dropLast() }
+        return trimmed.isEmpty || trimmed.count == path.count ? [path] : [path, String(trimmed)]
+    }
+    private static let sentenceEnds: Set<Character> = [".", ",", ";", ":", "!", "?", "\u{2026}"]
+
+    /// Nothing Helm could add is at the path: it isn't there, it isn't a folder, or it isn't a path at all.
+    private static func namesNothing(_ reason: AgentScopeRefusal) -> Bool {
+        switch reason {
+        case .notFound, .badText, .notAFolder: return true
+        case .system, .hidden, .insidePackage, .full, .notResponding: return false
         }
     }
 
@@ -652,6 +683,7 @@ import HelmCore
             if counts.moves > 0 { return AgentText.resultOrganized(items: counts.moves, folders: destinations(of: plan, ticked: ticked)) }
             if counts.renames > 0 { return AgentText.resultRenamed(counts.renames) }
             if counts.copies > 0 { return AgentText.resultCopied(counts.copies) }
+            if counts.trash == 0, counts.newFolders > 0 { return AgentText.resultMadeFolders(counts.newFolders) }
             return AgentText.resultTrashed(counts.trash)
         case .move: return AgentText.resultMoved(counts.moves)
         case .copy: return AgentText.resultCopied(counts.copies)

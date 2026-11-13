@@ -192,10 +192,21 @@ import HelmCore
 
     /// A folder dropped on the panel is added to the folders AI mode can use. It is never moved.
     private func droppedFolders(_ info: NSDraggingInfo) -> [URL] {
-        guard isOpen, model != nil else { return [] }
+        guard isOpen, let model else { return [] }
         let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return urls.filter { $0.hasDirectoryPath || (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        return Self.folders(urls, home: model.homePath)
     }
+
+    /// The dropped items that may be folders AI mode can use. The place test runs on the path's text first, as the
+    /// scope gate's does, so an item in a place AI mode never uses, such as a host under /net, is not looked up on
+    /// the disk while it is dragged.
+    nonisolated static func folders(_ urls: [URL], home: String, isFolder: (URL) -> Bool = AgentPanelHost.isFolder) -> [URL] {
+        urls.filter { url in
+            url.isFileURL && AgentItemFilter.area(ofPath: url.path, home: home) != .refused && (url.hasDirectoryPath || isFolder(url))
+        }
+    }
+
+    private nonisolated static func isFolder(_ url: URL) -> Bool { (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { droppedFolders(sender).isEmpty ? [] : .link }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { droppedFolders(sender).isEmpty ? [] : .link }

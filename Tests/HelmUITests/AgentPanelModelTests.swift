@@ -283,6 +283,41 @@ import HelmCore
         XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addAdded("2026")))
     }
 
+    func testAPathTypedMidSentenceThatNamesNoFolderIsSentAsTyped() async {
+        let conversation = PanelTestConversation()
+        conversation.inner.folderAnswers = ["/home/helm/Projects by date": .refused(.notFound),
+                                            "~/Downloads/report.pdf to old.pdf": .refused(.notFound)]
+        let model = await model(conversation)
+        await say(model, "Sort the files in /home/helm/Projects by date")
+        await say(model, "Rename ~/Downloads/report.pdf to old.pdf")
+        XCTAssertEqual(conversation.inner.sent.map(\.text),
+                       ["Sort the files in /home/helm/Projects by date", "Rename ~/Downloads/report.pdf to old.pdf"])
+        XCTAssertFalse(model.threadTextForTesting.contains(AgentText.addNotFound))
+        XCTAssertEqual(model.chipsForTesting, ["Downloads:thisMac"], "nothing was added")
+    }
+
+    func testAFullStopAfterAPathIsTriedWithoutIt() async {
+        let conversation = PanelTestConversation()
+        conversation.inner.folderAnswers = ["/home/helm/Pictures.": .refused(.notFound)]
+        let model = await model(conversation)
+        await say(model, "Move everything to /home/helm/Pictures.")
+        XCTAssertEqual(conversation.inner.sent.map(\.text), ["Move everything to r2"])
+        XCTAssertTrue(model.chipsForTesting.contains("Pictures:thisMac"))
+    }
+
+    func testAMessageEndingInAMissingPathOrReachingARefusedFolderSendsNothing() async {
+        let conversation = PanelTestConversation()
+        conversation.inner.folderAnswers = ["/home/helm/Nope": .refused(.notFound),
+                                            "/System/Library files here": .refused(.system)]
+        let model = await model(conversation)
+        await say(model, "Move everything to /home/helm/Nope")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addNotFound))
+        XCTAssertEqual(model.composerTextForTesting, "Move everything to /home/helm/Nope")
+        await say(model, "Copy /System/Library files here")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addRefused))
+        XCTAssertEqual(conversation.inner.sent.count, 0)
+    }
+
     func testARefusedPathShowsItsLineAndSendsNothing() async {
         let conversation = PanelTestConversation()
         conversation.inner.folderAnswers = ["/System/Library": .refused(.system)]
@@ -292,6 +327,19 @@ import HelmCore
         XCTAssertTrue(model.threadTextForTesting.contains(AgentText.addRefused))
         XCTAssertEqual(model.composerTextForTesting, "Copy everything in this folder to /System/Library", "what was typed comes back")
         XCTAssertEqual(model.phaseForTesting, "idle")
+    }
+
+    func testADraggedItemOutsideTheAllowedPlacesIsNeverLookedUp() {
+        var lookedUp: [String] = []
+        let urls = [URL(string: "file:///net/host.example/x")!, URL(string: "file:///System/Library")!,
+                    URL(string: "file:///home/helm/Projects")!, URL(string: "file:///home/helm/notes.txt")!,
+                    URL(string: "file:///Volumes/Backup/Photos/")!, URL(string: "https://example.test/folder/")!]
+        let kept = AgentPanelHost.folders(urls, home: "/home/helm") { url in
+            lookedUp.append(url.path)
+            return url.lastPathComponent == "Projects"
+        }
+        XCTAssertEqual(lookedUp, ["/home/helm/Projects", "/home/helm/notes.txt"], "only items in an allowed place are looked up")
+        XCTAssertEqual(kept.map(\.path), ["/home/helm/Projects", "/Volumes/Backup/Photos"])
     }
 
     func testADroppedFolderIsAddedNeverMovedAndGoesInAtTheCaret() async {
@@ -519,6 +567,21 @@ import HelmCore
         XCTAssertEqual(model.phaseForTesting, "idle")
         XCTAssertTrue(model.threadTextForTesting.contains(AgentText.planDismissed))
         XCTAssertEqual(conversation.inner.outcomes, [.dismissed])
+    }
+
+    func testAPlanThatOnlyMakesNewFoldersSaysSo() async {
+        let root = item(downloads, kind: .directory, handle: "r1")
+        let steps: [AgentPlanStep] = [.newFolder(key: "n1", parent: .existing(root), name: name("Images")),
+                                      .newFolder(key: "n2", parent: .existing(root), name: name("Notes"))]
+        let folders = AgentChangePlan(title: .organize(rootLabel: "Downloads"), steps: steps,
+                                      groups: [AgentPlanGroup(id: 0, kind: .newFolders, steps: [0, 1])], notices: [], leftOut: [:])
+        let model = await model(PanelTestConversation(plan: folders))
+        await say(model, "make two folders")
+        model.press(AgentText.apply)
+        await settle(model)
+        XCTAssertEqual(model.phaseForTesting, "result")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultMadeFolders(2)))
+        XCTAssertFalse(model.threadTextForTesting.contains("Trash"), "nothing went to the Trash")
     }
 
     func testAReplyIsShownEscapedAsPlainText() async {
