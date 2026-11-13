@@ -271,9 +271,12 @@ RULES = [
      r'|AESend\w*|NSDistributedNotificationCenter|DistributedNotificationCenter'
      r'|CFNotificationCenterGetDistributedCenter|NSXPCConnection|SMJobBless)\b', SWIFT),
     # The xattr names are declared by hand for Linux in NativeTagAttributes.swift.
+    # A class found by its name from a bundle, a selector made from a string, and a perform of one reach a type by a
+    # name this check can't read.
     ('dynamic-lookup', 'dynamic lookup, which can hide a call this check looks for',
      r'\b(?:NSClassFromString|NSSelectorFromString|dlopen|dlsym|objc_getClass|objc_lookUpClass)\s*\('
-     r'|@_silgen_name\s*\(\s*"(?!(?:getxattr|setxattr|removexattr|listxattr)")', SWIFT),
+     r'|@_silgen_name\s*\(\s*"(?!(?:getxattr|setxattr|removexattr|listxattr)")'
+     r'|\bclassNamed\s*\(|\bSelector\s*\(|\.perform\s*\(\s*Selector', SWIFT),
     # Every Apple plist starts with the address of its DTD. Nothing fetches it.
     ('web-address', 'web address',
      r'\b(?:https?|wss?|ftps?)://(?!www\.apple\.com/DTDs/PropertyList-1\.0\.dtd")', APP),
@@ -308,7 +311,7 @@ RULES = [
      r'|(?:NS)?UserDefaults|CFPreferences\w*|NSKeyedArchiver'
      r'|(?:removeItem|moveItem|copyItem|replaceItem|trashItem|createDirectory|createFile)(?:At\w*)?|setResourceValues?'
      r'|DispatchIO|f?setxattr|f?removexattr|rename(?:at|x_np|atx_np)|NSTask|NSUser\w*Task|posix_spawn\w*|NSWorkspace'
-     r'|NSFileVersion|NSAppleEventDescriptor|Darwin|Glibc|Musl)\b'
+     r'|NSFileVersion|NSAppleEventDescriptor|Darwin|Glibc|Musl|tmpfile|CFBundleCreate\w*)\b'
      r'|\.\s*`?write\b|\bwrite`?\s*\(\s*to(?:File)?\s*:|\bProcess\b(?![ \t]+[a-z])', SWIFT, inside(AGENT)),
     # In a comment or a string a call is the name and its bracket, so a sentence such as "a link (never followed)"
     # passes. In code a space or a line break may come between them, or the name may stand alone, handed on to be
@@ -330,7 +333,9 @@ RULES = [
      r'\b(?:contentsOf(?:Mapped)?File|contentsOfDirectory|(?:NS)?InputStream|NSKeyedUnarchiver|f?getxattr|f?listxattr'
      r'|(?:promisedItemR|r)esourceValues|get(?:PromisedItem)?ResourceValue|check(?:Resource|PromisedItem)IsReachable\w*'
      r'|resolvingSymlinksInPath|NSMetadataQuery|NSMetadataItem|completePath|resolvingAliasFileAt|bookmarkData\w*'
-     r'|resolvingBookmarkData)\b|\benumerator\s*\(|\bBundle\s*(?:\.\s*init\s*)?\(\s*(?:path|url)\s*:',
+     r'|resolvingBookmarkData)\b|\benumerator\s*\(|\bBundle\s*(?:\.\s*init\s*)?\(\s*(?:path|url)\s*:'
+     # CoreFoundation's own ways to read or set a file's details and bookmarks, which the module needs none of.
+     r'|\bCFURL\w*\s*\(',
      SWIFT, inside(AGENT), BOTH),
     ('agent-no-read', READS, bare(READ_CALLS), SWIFT, inside(AGENT)),
     ('agent-no-read', READS, bare(READ_CALLS, r'\s+'), SWIFT, inside(AGENT), 'code'),
@@ -364,6 +369,10 @@ ONE_FILE = [
     # The one call that turns a key into text, and the one way to hand a session a loader of its own.
     (r'\brevealSecret\b', {SECRETS, KEYCHAIN, TRANSPORT}, None),
     (r'\bprotocolClasses\b', {TRANSPORT}, None),
+    # The parts that build a live client and its transport: only the runtime's own file and the app, which hands
+    # them to the runtime, so nothing else can make a client while AI mode is off. The name of its file, written in a
+    # comment, names no type.
+    (r'\bAgentLiveParts\b(?!\.swift\b)', {LIVE_PARTS, 'Sources/HelmApp/macOS/AppController+Agent.swift'}, None),
 ]
 # The first label of an initializer, the type it makes, and the only files that may call it. A declaration,
 # `init(fromPerson text: String`, has no colon after the label, so it passes; `.init(fromPerson:` and a call that

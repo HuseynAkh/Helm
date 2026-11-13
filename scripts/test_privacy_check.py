@@ -435,6 +435,17 @@ class PrivacyCheckTests(unittest.TestCase):
             self.assertTrue(self.swift(code), code)
         self.assertEqual(self.swift('p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")'), [])
 
+    def test_lookups_by_a_name_built_at_run_time_fail_everywhere(self):
+        for code in ['guard let type = Bundle.main.classNamed(name) as? NSObject.Type else { return }',
+                     'let found = bundle.classNamed (["NSURL", "Session"].joined())',
+                     '_ = type.perform(Selector(["shared", "Session"].joined()))', 'let pick = Selector("sharedSession")',
+                     'object.perform(Selector(("removeItemAtPath:error:")), with: path)', '_ = type.perform( Selector(name))']:
+            self.expect('dynamic-lookup', code, fails=(HEADER, CORE, 'Sources/HelmApp/macOS/AppController.swift', LOOP,
+                                                       TRANSPORT))
+        for code in ['button.action = #selector(open)', 'item.action = #selector(NSResponder.cancelOperation(_:))',
+                     'let names = bundle.classNames', 'view.performClick(nil)', 'try await model.perform(step)']:
+            self.expect('dynamic-lookup', code, passes=(HEADER, CORE, 'Sources/HelmApp/macOS/AppController.swift'))
+
     def test_allowed_line_is_one_line_in_one_file(self):
         allowed = '        do { data = try Data(contentsOf: url) }\n'
         own = 'Sources/HelmPersistence/Tags/PreferenceDocumentFile.swift'
@@ -502,6 +513,7 @@ class PrivacyCheckTests(unittest.TestCase):
             ({keychain}, agent),
             ({agent + 'Contracts/AgentSecrets.swift', keychain, transport}, None),
             ({transport}, None),
+            ({agent + 'Runtime/AgentLiveParts.swift', 'Sources/HelmApp/macOS/AppController+Agent.swift'}, None),
             ({panel + 'AgentPlanCard.swift'}, None),
             ({panel + 'AgentPanelModel.swift'}, None),
             ({panel + 'AgentPanelModel.swift', 'Sources/HelmUI/Window/BrowserWindowController+Agent.swift'}, None),
@@ -775,6 +787,36 @@ class PrivacyCheckTests(unittest.TestCase):
             self.expect('agent-no-write', code,
                         fails=(LOOP, 'Sources/HelmAgent/Scripted/MemoryAgentDisk.swift', TRANSPORT, KEYCHAIN),
                         passes=(HEADER, 'Sources/HelmOperations/Execute/OperationExecutor.swift'))
+
+    def test_helm_agent_reaches_no_file_through_core_foundation(self):
+        reads = ['CFURLCopyResourcePropertyForKey(url, kCFURLFileSizeKey, &value, nil)',
+                 'CFURLSetResourcePropertyForKey(url, kCFURLIsHiddenKey, kCFBooleanTrue, nil)',
+                 'CFURLSetResourcePropertyForKey(url, kCFURLIsUserImmutableKey, kCFBooleanTrue, nil)',
+                 'let there = CFURLResourceIsReachable(url, nil)',
+                 'let mark = CFURLCreateBookmarkData(nil, url, [], nil, nil, nil)',
+                 'CFURLSetTemporaryResourcePropertyForKey(url, key, value)', 'let values = CFURLCopyResourcePropertiesForKeys (url, keys, nil)']
+        for code in reads:
+            self.expect('agent-no-read', code, fails=(LOOP, 'Sources/HelmAgent/Scope/AgentScopeGate.swift', TRANSPORT),
+                        passes=(HEADER, 'Sources/HelmFileSystem/Live/LiveFileSystem.swift'))
+        for code in ['let file = tmpfile()', 'let bundle = CFBundleCreate(nil, url)',
+                     'let bundles = CFBundleCreateBundlesFromDirectory(nil, url, nil)']:
+            self.expect('agent-no-write', code, fails=(LOOP, 'Sources/HelmAgent/Scripted/MemoryAgentDisk.swift', TRANSPORT),
+                        passes=(HEADER, 'Sources/HelmOperations/Execute/OperationExecutor.swift'))
+        # The module's own names that start the same way pass.
+        for code in ['let kind: CFURLPathStyle', 'let url = URL(fileURLWithPath: path)']:
+            self.expect('agent-no-read', code, passes=(LOOP,))
+
+    def test_the_live_parts_are_named_only_by_the_runtime_and_the_app(self):
+        app = 'Sources/HelmApp/macOS/AppController+Agent.swift'
+        for code in ['let client = AgentLiveParts.makeClient(profile, "claude-opus-5-5", store)',
+                     'let parts = AgentRuntimeParts(secrets: s, makeClient: AgentLiveParts.makeClient)',
+                     'let make = AgentLiveParts.makeSession', 'typealias Live = AgentLiveParts',
+                     '// AgentLiveParts builds the client', 'let name = "AgentLiveParts"']:
+            self.expect('one-file', code, passes=(LIVE_PARTS, app), fails=(
+                'Sources/HelmUI/Probe/ProbeOne.swift', 'Sources/HelmAgent/Runtime/AgentRuntime.swift', LOOP, PANEL_MODEL,
+                'Sources/HelmApp/macOS/AppController.swift', 'Sources/HelmApp/macOS/HostSmokeDriver+Agent.swift', CORE))
+        self.passes('one-file', LOOP, 'let parts: AgentRuntimeParts')
+        self.passes('one-file', LOOP, '// as Runtime/AgentLiveParts.swift does')
 
     def test_helm_agent_names_no_way_to_open_or_look_up_a_file(self):
         for code in [

@@ -25,8 +25,11 @@
 # files (such as Data(contentsOf:)), the tools the app starts, and lookups by name at run time. Swift also keeps
 # strings of up to 15 bytes inside the code, so checks 5 and 6 see those only in the Intel slice, 8 bytes at a
 # time, and make_release.sh refuses a build without it. scripts/privacy_check.py, which make_release.sh runs first,
-# reviews web reads, launched tools, lookups by name and written-out web addresses in the source. Nothing reviews
-# a web address put together at run time, or a short home-folder path in an Apple silicon only build.
+# reviews web reads, launched tools and written-out web addresses in the source, and the lookups by name it lists:
+# NSClassFromString, NSSelectorFromString, dlopen, dlsym, objc_getClass, objc_lookUpClass, @_silgen_name, a
+# bundle's classNamed, a Selector made from a string and a perform of one. A lookup by name through any other call
+# is not reviewed, nor is a web address put together at run time, or a short home-folder path in an Apple silicon
+# only build.
 # Needs Xcode's command line tools. Written for the bash 3.2 that comes with macOS.
 set -uo pipefail
 
