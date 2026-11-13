@@ -70,15 +70,23 @@ public struct VolumeReader: Sendable {
         if let injectedRead { return try injectedRead(url) }
         #if os(macOS)
         let keys: Set<URLResourceKey> = [.volumeNameKey, .volumeUUIDStringKey, .volumeIsInternalKey,
-            .volumeIsRemovableKey, .volumeIsBrowsableKey, .isHiddenKey, .volumeIsEjectableKey]
+            .volumeIsRemovableKey, .volumeIsBrowsableKey, .isHiddenKey, .volumeIsEjectableKey, .volumeIsLocalKey]
         let values = try url.resourceValues(forKeys: keys)
-        let volume = VolumeInfo(url: url, name: values.volumeName ?? url.lastPathComponent,
-            uuid: values.volumeUUIDString, isInternal: values.volumeIsInternal ?? false,
-            isRemovable: values.volumeIsRemovable ?? false, isBrowsable: values.volumeIsBrowsable ?? true,
-            isHidden: values.isHidden ?? false)
-        return VolumeDetails(volume: volume, isEjectable: values.volumeIsEjectable)
+        return Self.details(url: url, name: values.volumeName, uuid: values.volumeUUIDString,
+                            isInternal: values.volumeIsInternal, isRemovable: values.volumeIsRemovable,
+                            isBrowsable: values.volumeIsBrowsable, isHidden: values.isHidden,
+                            isEjectable: values.volumeIsEjectable, isLocal: values.volumeIsLocal)
         #else
         return VolumeDetails(volume: VolumeInfo(url: url, name: "/", isInternal: true), isEjectable: nil)
         #endif
+    }
+    /// A volume's details from the keys macOS answered; nil is a key it didn't answer. A volume that isn't stored on
+    /// this Mac is a share on a server. One that didn't say is taken as local, as before.
+    static func details(url: URL, name: String?, uuid: String?, isInternal: Bool?, isRemovable: Bool?,
+                        isBrowsable: Bool?, isHidden: Bool?, isEjectable: Bool?, isLocal: Bool?) -> VolumeDetails {
+        let volume = VolumeInfo(url: url, name: name ?? url.lastPathComponent, uuid: uuid, isInternal: isInternal ?? false,
+                                isRemovable: isRemovable ?? false, isBrowsable: isBrowsable ?? true, isHidden: isHidden ?? false,
+                                isNetwork: isLocal == false)
+        return VolumeDetails(volume: volume, isEjectable: isEjectable)
     }
 }
