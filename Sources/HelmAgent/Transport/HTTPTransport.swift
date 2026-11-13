@@ -76,6 +76,11 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
 
     /// Cancels every request, forgets the key and closes the session. Requests made afterwards throw `.cancelled`.
     public func shutdown() async {
+        refuseRequests()
+    }
+
+    /// What `shutdown()` does, done at once by a caller that can't wait for it.
+    public func refuseRequests() {
         let (cancels, closeNow) = locked { () -> ([@Sendable () -> Void], Bool) in
             isShut = true
             cachedSecret = nil

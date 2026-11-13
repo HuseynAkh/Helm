@@ -96,6 +96,10 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         await transport.shutdown()
     }
 
+    public func refuseRequests() {
+        transport.refuseRequests()
+    }
+
     // MARK: Parts
 
     /// Failures after which a typed address's other model list is worth asking for.

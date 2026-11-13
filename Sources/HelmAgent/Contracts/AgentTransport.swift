@@ -23,6 +23,12 @@ public protocol AgentTransport: Sendable {
     /// A GET whose whole reply is wanted.
     func fetch(_ route: AgentRoute) async throws -> AgentHTTPReply
     func shutdown() async
+    /// Turns every request away from now on, cancels those under way and forgets a cached key, without waiting.
+    func refuseRequests()
+}
+
+extension AgentTransport {
+    public func refuseRequests() {}
 }
 
 /// How long a request may take and how much may come back.

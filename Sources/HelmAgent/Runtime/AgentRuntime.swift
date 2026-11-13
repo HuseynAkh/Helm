@@ -103,6 +103,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             dropClient()
             let out = Array(probes.values)
             probes.removeAll()
+            for probe in out { probe.refuseRequests() }
             let held = openSessions()
             later {
                 for probe in out { await probe.shutdown() }
@@ -253,9 +254,12 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
         changes.send(now)
     }
 
+    /// The client is let go at once: a caller that still holds it, such as a conversation between two turns, finds
+    /// every request turned away. The rest of its shutdown waits its turn.
     private func dropClient() {
         guard let client = liveClient else { return }
         liveClient = nil
+        client.refuseRequests()
         later { await client.shutdown() }
     }
 

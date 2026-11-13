@@ -112,4 +112,14 @@ public protocol AgentModelClient: Sendable {
 }
 
 /// A client that holds a connection, which is let go when AI mode turns off or the provider changes.
-public protocol AgentLiveClient: AgentModelClient { func shutdown() async }
+public protocol AgentLiveClient: AgentModelClient {
+    func shutdown() async
+    /// Turns every request away from now on and forgets a cached key, before `shutdown()` gets its turn. It never
+    /// waits, so AI mode turning off or the provider changing takes effect at once, even for a caller that still
+    /// holds the client.
+    func refuseRequests()
+}
+
+extension AgentLiveClient {
+    public func refuseRequests() {}
+}

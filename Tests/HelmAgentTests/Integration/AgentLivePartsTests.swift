@@ -86,4 +86,34 @@ import HelmCore
         XCTAssertEqual(server.requests.count, asked)
         if case .failure(.off) = runtime.client() {} else { XCTFail("no client while AI mode is off") }
     }
+
+    func testAClientHeldAcrossOffSendsNothingEvenWhileTheMainThreadIsBusy() throws {
+        defer { AgentStubLoader.reset { _ in [.fail(.cannotConnectToHost)] } }
+        AgentStubLoader.reset { _ in [.respond(status: 200, headers: ["Content-Type": "application/json"], from: nil),
+                                      .send(T.data("{\"models\":[]}")), .finish] }
+        let home = "/home/helm"
+        let runtime = AgentRuntime(parts: AgentRuntimeParts(
+            secrets: MemorySecretStore(), disk: MemoryAgentDisk(home: home), home: home, supportFolder: home + "/.helm-support",
+            clock: SystemHelmClock(), buildStamp: "", makeClient: { profile, model, secrets in
+                LiveModelClient(profile: profile, model: model, transport: HTTPTransport(
+                    liveProfile: profile, secrets: secrets, limits: T.roomy, testProtocols: [AgentStubLoader.self]))
+            }))
+        var config = AIConfig()
+        config.provider = AgentProviderID.ollama.rawValue
+        config.models[AgentProviderID.ollama.rawValue] = "stand-in:latest"
+        runtime.configure(config)
+        runtime.setOn(true)
+        guard case .success(let client) = runtime.client() else { return XCTFail("no client while AI mode is on") }
+
+        runtime.setOn(false)
+        // A conversation between two turns still holds the client, and the main thread is busy, so the queued
+        // shutdown can't run yet.
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            _ = try? await client.models()
+            done.signal()
+        }
+        XCTAssertEqual(done.wait(timeout: .now() + 10), .success)
+        XCTAssertEqual(AgentStubLoader.seen.count, 0, "nothing reached the wire after AI mode turned off")
+    }
 }
