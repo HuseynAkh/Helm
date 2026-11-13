@@ -40,12 +40,18 @@ import HelmPersistence
     }
 
     /// Plans against the disk as it is now, asks about conflicts, runs, and records the result in `history`.
+    /// Under a `group` the history entry carries it, so the group's operations are undone as one. With
+    /// `downloadsOff` nothing is fetched from a cloud while it plans and runs: an item kept there in name only fails
+    /// instead.
     @discardableResult
     public func run(_ command: Command, sources: [URL], destinations: [URL], history: WindowOperationHistory,
-                    resolver: ConflictResolver?, onFailure: FailureResolver? = nil) async -> Result<OperationResult, Failure> {
-        guard let request = await history.beginForward(command) else { return .failure(.busy) }
-        return await runReserved(request: request, command: command, sources: sources, destinations: destinations,
-                                 history: history, resolver: resolver, onFailure: onFailure)
+                    resolver: ConflictResolver?, onFailure: FailureResolver? = nil,
+                    group: HistoryGroup? = nil, downloadsOff: Bool = false) async -> Result<OperationResult, Failure> {
+        guard let request = await history.beginForward(command, group: group) else { return .failure(.busy) }
+        return await DatalessGuard.off(if: downloadsOff) {
+            await runReserved(request: request, command: command, sources: sources, destinations: destinations,
+                              history: history, resolver: resolver, onFailure: onFailure)
+        }
     }
 
     private func runReserved(request: HistoryRequestID, command: Command, sources: [URL], destinations: [URL],
@@ -97,7 +103,11 @@ import HelmPersistence
         return .success(result)
     }
 
-    public func undo(history: WindowOperationHistory) async -> Result<OperationResult, Failure> {
+    /// Undoes the latest entry in `history`, one step. With `downloadsOff` nothing is fetched from a cloud meanwhile.
+    public func undo(history: WindowOperationHistory, downloadsOff: Bool = false) async -> Result<OperationResult, Failure> {
+        await DatalessGuard.off(if: downloadsOff) { await undoTop(history: history) }
+    }
+    private func undoTop(history: WindowOperationHistory) async -> Result<OperationResult, Failure> {
         let state = await history.snapshot()
         guard let top = state.undoEntries.last else { return .failure(.message("Nothing to undo.")) }
         var recorded: [URL: URL] = [:]
@@ -143,6 +153,10 @@ import HelmPersistence
         if !left.isEmpty { origins.removeOrigins(for: left) }
         if !back.isEmpty { await origins.record(back) }
     }
+
+    /// Called once the person has acknowledged a change that ended unsure, which may be one that stalled. The executor
+    /// has no stall latch that can be cleared, so there is nothing to do.
+    public func clearStallIfSettled() async {}
 
     public func redo(history: WindowOperationHistory, resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
         guard let (request, command) = await history.beginRedoForward() else {

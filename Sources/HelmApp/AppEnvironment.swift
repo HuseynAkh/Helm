@@ -38,6 +38,8 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public let openWith: OpenWithStore
     /// The sidebar's order and hidden rows. In memory unless live() loads sidebar.json, as it records load failures.
     public private(set) var sidebarLayout: SidebarLayoutStore
+    /// AI mode's provider, models, ports and typed address, never a key. In memory unless live() loads ai.json.
+    public let aiConfig: AIConfigStore
     public let fileSystem: any FileSystem
     public let journal: OperationJournal
     public let clock: any HelmClock
@@ -51,9 +53,10 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
                 recents: any AppRecentStoring, session: any AppSessionStoring, trashOrigins: any AppTrashOriginStoring,
                 tagCatalog: any AppTagCatalogStoring, viewOptions: any AppViewOptionsStoring,
                 fileSystem: any FileSystem, journal: OperationJournal, clock: any HelmClock, directories: AppDirectories,
-                openWith: OpenWithStore? = nil) {
+                openWith: OpenWithStore? = nil, aiConfig: AIConfigStore? = nil) {
         self.openWith = openWith ?? OpenWithStore()
         self.sidebarLayout = SidebarLayoutStore()
+        self.aiConfig = aiConfig ?? AIConfigStore()
         self.settings = settings; self.bookmarks = bookmarks; self.stars = stars; self.recents = recents
         self.session = session; self.trashOrigins = trashOrigins; self.fileSystem = fileSystem
         self.tagCatalog = tagCatalog; self.viewOptions = viewOptions
@@ -93,13 +96,14 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
         let viewOptions: any AppViewOptionsStoring = await loaded("view-options", { try await LocationViewOptionsStore(url: locations.viewOptions) }, fallback: { AppMemoryViewOptions() })
         let openWith: OpenWithStore = await loaded("open-with", { try await OpenWithStore(url: locations.openWith) }, fallback: { OpenWithStore() })
         let sidebar: SidebarLayoutStore = await loaded("sidebar", { try await SidebarLayoutStore(url: locations.sidebar) }, fallback: { SidebarLayoutStore() })
+        let aiConfig: AIConfigStore = await loaded("ai", { try await AIConfigStore(url: locations.ai) }, fallback: { AIConfigStore() })
         let environment = AppEnvironment(settings: SettingsStore(storage: settingsStorage), bookmarks: bookmarks,
             stars: stars, recents: recents, session: session, trashOrigins: origins,
             tagCatalog: tagCatalog, viewOptions: viewOptions,
             fileSystem: LiveFileSystem(volumeRoots: directories.volumeRoots,
                                        privacyRoots: PrivacyAreas.askingRoots(home: directories.home), trash: trash),
             journal: OperationJournal(),
-            clock: clock, directories: directories, openWith: openWith)
+            clock: clock, directories: directories, openWith: openWith, aiConfig: aiConfig)
         environment.loadFailures = failures
         environment.sidebarLayout = sidebar
         if failures.isEmpty { environment.forgetSidebarRowsAlreadyGone() }
@@ -130,7 +134,8 @@ public struct AppFlushFailure: Error, Equatable, Sendable {
     public func flushStores() async -> [AppFlushFailure] {
         let stores: [(String, any AppFlushable)] = [("bookmarks", bookmarks), ("stars", stars),
             ("recent", recents), ("session", session), ("trash-origins", trashOrigins),
-            ("tag-catalog", tagCatalog), ("view-options", viewOptions), ("open-with", openWith), ("sidebar", sidebarLayout)]
+            ("tag-catalog", tagCatalog), ("view-options", viewOptions), ("open-with", openWith), ("sidebar", sidebarLayout),
+            ("ai", aiConfig)]
         var failures: [AppFlushFailure] = []
         for (name, store) in stores {
             do { try await store.flush() }

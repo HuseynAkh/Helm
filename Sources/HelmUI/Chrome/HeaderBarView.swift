@@ -20,6 +20,18 @@ import HelmCore
     func headerSearchScopeChanged()
     /// The Down arrow in the search field moves the keys to the results. False when there's nothing to move to.
     func headerSearchMoveToResults() -> Bool
+    /// The spark: shows or hides the AI panel.
+    func headerToggleAIPanel()
+    /// Return in the search field.
+    func headerSearchSubmitted(_ text: String)
+    /// The search field's spark turned searching with a model's help on or off.
+    func headerSearchAIToggled(_ on: Bool)
+}
+
+extension HeaderBarDelegate {
+    func headerToggleAIPanel() {}
+    func headerSearchSubmitted(_ text: String) {}
+    func headerSearchAIToggled(_ on: Bool) {}
 }
 
 /// The Nautilus header bar: back and forward, the path in the middle, then search, the Grid | List switch, sort and
@@ -235,6 +247,14 @@ import HelmCore
         sortButton.isOn = shown
         if !shown { sortButton.updateHover() }
     }
+
+    // MARK: AI mode
+
+    /// Whether the AI panel is open, a request is running in it, and a model is ready. The header has no spark, so
+    /// nothing shows any of this.
+    func setAIPanel(open: Bool, working: Bool, ready: Bool) {}
+    /// Whether searching with a model's help is available, and on. The window owns the state; the field shows nothing.
+    func setAISearch(available: Bool, on: Bool) {}
 
     // MARK: Search
 

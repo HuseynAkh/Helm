@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 import HelmFileSystem
 import HelmOperations
@@ -60,6 +61,7 @@ extension BrowserWindowController {
             let starred = !selectedEntries().isEmpty && selectedEntries().allSatisfy { dependencies.stars.isStarred($0.url) }
             item.title = starred ? "Remove from Starred" : "Star"
         case .compress: item.title = compressTitle()
+        case .aiPanel: item.title = isAgentPanelOpen ? AgentText.menuHidePanel : AgentText.menuShowPanel
         default: break
         }
     }
@@ -86,7 +88,17 @@ extension BrowserWindowController {
                               hasWindow: true, canGoBack: !(tab?.history.back.isEmpty ?? true),
                               canGoForward: !(tab?.history.forward.isEmpty ?? true), canGoUp: canGoUp)
         applyContentState(to: &context)
+        applyAgentPanelFocus(to: &context)
         return context
+    }
+
+    /// While the AI panel has the keys, Return, Space and Delete are its own: no file command reaches the selection,
+    /// as when a card stands in for the listing.
+    private func applyAgentPanelFocus(to context: inout CommandContext) {
+        guard agentPanelHost.holdsKeys else { return }
+        context.selectionCount = 0
+        context.hasMutationTarget = false
+        context.paneFocused = false
     }
 
     public func perform(_ command: CommandID) {
@@ -182,7 +194,7 @@ extension BrowserWindowController {
         case .computer: navigate(to: .directory(URL(fileURLWithPath: "/Volumes", isDirectory: true)))
         case .printSelection, .columns, .gallery, .previewPane, .network, .tags: break
         // View › Show AI Panel: shows and hides the panel beside the files.
-        case .aiPanel: break
+        case .aiPanel: toggleAgentPanel()
         }
     }
 
@@ -263,10 +275,11 @@ extension BrowserWindowController {
         url.lastPathComponent.hasPrefix(".") || (try? url.resourceValues(forKeys: [.isHiddenKey]))?.isHidden == true
     }
 
-    /// A typed `smb://` address goes to macOS, the same way Finder's Connect to Server does.
+    /// A typed `smb://` address goes to macOS, the same way Finder's Connect to Server does. A fixture run's
+    /// connector notes it and opens nothing.
     func connect(to url: URL) {
         shownContentFocus()
-        if !NSWorkspace.shared.open(url) { pathBar.shake() }
+        if !dependencies.agent.connector.open(url) { pathBar.shake() }
     }
     private func shownContentFocus() { focusContent() }
     private func connectToServerPrompt() {
@@ -466,6 +479,32 @@ extension BrowserWindowController {
             self?.pendingOperations -= 1
         }
     }
+    /// Runs `work` in this window's turn, as `enqueueOperation` does, and hands back what it answers.
+    func enqueueOperationAwaiting<T>(_ work: @escaping @MainActor () async -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            enqueueOperation { continuation.resume(returning: await work()) }
+        }
+    }
+    /// Runs one command for work that has its own way of telling the person what happened, such as an applied plan.
+    /// Called inside one of this window's turns. It follows moved items, refreshes the history and the tabs it
+    /// touched, and lets go of an unsure result without asking, as `run` does, but shows no message. A failure of
+    /// `.cancelled` from a command left with nothing to do means nothing happened.
+    func runAwaiting(_ command: Command, group: HistoryGroup?, resolver: OperationCoordinator.ConflictResolver?,
+                     onFailure: OperationCoordinator.FailureResolver?, downloadsOff: Bool) async -> Result<OperationResult, OperationCoordinator.Failure> {
+        let command = OperationPlanner.outermostSources(of: command)
+        let scope = OperationCoordinator.scope(of: command)
+        let outcome = await dependencies.operations.run(command, sources: scope.sources, destinations: scope.destinations,
+                                                        history: history, resolver: resolver, onFailure: onFailure,
+                                                        group: group, downloadsOff: downloadsOff)
+        dependencies.followMovedItems(outcome)
+        await refreshHistory()
+        _ = await settleReconciliation(outcome, alreadyAsked: true)
+        if case .success(let result) = outcome {
+            refreshTabs(touching: result.affectedDirectories, selecting: [])
+            forgetFreeSpace()
+        }
+        return outcome
+    }
     /// Whether this window has an operation running or waiting its turn. Undo and Redo don't start then, since what
     /// they'd undo or redo is still changing; they say so instead.
     var isRunningOperations: Bool { pendingOperations > 0 }
@@ -491,6 +530,8 @@ extension BrowserWindowController {
             told = true
         }
         await history.acknowledgeReconciliation()
+        // A change that stalled kept other changes from starting. Once it's acknowledged they may run again.
+        await dependencies.operations.clearStallIfSettled()
         await refreshHistory()
         return told
     }
@@ -598,15 +639,40 @@ extension BrowserWindowController {
         run(make(urls))
     }
     static let busyMessage = "Helm is still working on a change in this window. Try again when it’s done."
+    /// Edit › Undo. A change made as one of a group, such as an applied plan, is undone with the rest of its group.
     private func runUndo() {
         guard !isRunningOperations else { show(message: Self.busyMessage); return }
-        let dependencies = dependencies, operations = dependencies.operations, history = history
+        let dependencies = dependencies, history = history
         enqueueOperation { [weak self] in
-            let outcome = await operations.undo(history: history)
+            _ = await Self.undoInTurn(group: nil, downloadsOff: false, window: self, dependencies: dependencies, history: history)
+        }
+    }
+    /// Undoes an applied plan, in this window's turn and with nothing fetched from a cloud: every change at the top of
+    /// the history made under `group`. False when the latest change isn't of that group, or a step failed.
+    public func undoAgentPlan(_ group: UUID) async -> Bool {
+        let dependencies = dependencies, history = history
+        return await enqueueOperationAwaiting { [weak self] in
+            await Self.undoInTurn(group: group, downloadsOff: true, window: self, dependencies: dependencies, history: history)
+        }
+    }
+    /// Undoes the latest change, then, while it was one of a group and each step succeeds, the next one down for as
+    /// long as it belongs to the same group. Each step is handled as one Undo is: moved items followed, an unsure
+    /// result settled, a failure shown. With `group`, the latest change must belong to it. Runs inside a turn.
+    /// Answers whether every step it took succeeded.
+    private static func undoInTurn(group: UUID?, downloadsOff: Bool, window: BrowserWindowController?,
+                                   dependencies: WindowDependencies, history: WindowOperationHistory) async -> Bool {
+        if let group, await history.snapshot().undoEntries.last?.group?.id != group { return false }
+        while true {
+            let top = await history.snapshot().undoEntries.last
+            let outcome = await dependencies.operations.undo(history: history, downloadsOff: downloadsOff)
             dependencies.followMovedItems(outcome)
-            await self?.refreshHistory()
-            let told = await self?.settleReconciliation(outcome, alreadyAsked: false) ?? false
-            self?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
+            await window?.refreshHistory()
+            let told = await window?.settleReconciliation(outcome, alreadyAsked: false) ?? false
+            window?.handle(outcome, explicit: nil, completion: nil, alreadyAsked: told)
+            let state = await history.snapshot()
+            // A step that failed, or left the disk unsure, ends the group there.
+            guard case .success = outcome, state.lastOutcome == .succeeded else { return false }
+            guard let id = top?.group?.id, state.undoEntries.last?.group?.id == id else { return true }
         }
     }
     private func runRedo() {

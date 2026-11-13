@@ -62,7 +62,7 @@ struct WindowTints: Equatable {
     public let store: WindowStore
     let history = WindowOperationHistory()
     var historyState = OperationHistoryState()
-    private let effects: HostEffectRunner
+    let effects: HostEffectRunner
     private let directoryRunner: DirectoryEffectRunner
 
     let split = NSSplitViewController()
@@ -86,6 +86,8 @@ struct WindowTints: Equatable {
     /// Why the listing is empty, or why a place couldn't open, shown in its place.
     let statePage = ContentStatePage()
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
+    /// The AI panel's column, beside the files and under the header. Zero wide while shut.
+    let agentPanelHost = AgentPanelHost()
     private var operationsHeight: NSLayoutConstraint?
     private var tabStripHeight: NSLayoutConstraint?
     private(set) var shownContent: FileContentPresenting?
@@ -178,6 +180,8 @@ struct WindowTints: Equatable {
         effects.window = self
         configureWindow(window)
         subscribe()
+        installAgentPanel()
+        installAISearch()
         for tab in tabs { store.send(.tab(tab.id, .navigate(tab.location, intents[tab.id] ?? .restore))) }
         render(store.state)
         focusContent()
@@ -242,7 +246,7 @@ struct WindowTints: Equatable {
         root.blendingMode = .behindWindow
         root.state = .active
         let stateView = statePage.view
-        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost] as [NSView] {
+        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost, agentPanelHost] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -257,20 +261,24 @@ struct WindowTints: Equatable {
             header.topAnchor.constraint(equalTo: root.topAnchor),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor), header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             tabStrip.topAnchor.constraint(equalTo: header.bottomAnchor),
-            tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             stripHeight,
             contentContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
-            contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: operationsHost.topAnchor),
             // Centred in the content area and never pinned to the window's edges.
             stateView.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor), stateView.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
             stateView.widthAnchor.constraint(lessThanOrEqualTo: contentContainer.widthAnchor, constant: -16),
             stateView.heightAnchor.constraint(lessThanOrEqualTo: contentContainer.heightAnchor),
-            operationsHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), operationsHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            operationsHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), operationsHost.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             operations,
             operationsHost.bottomAnchor.constraint(equalTo: statusHost.topAnchor),
-            statusHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), statusHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 28)
+            statusHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), statusHost.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
+            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 28),
+            // The AI panel takes the window's trailing side below the header, all the way down.
+            agentPanelHost.topAnchor.constraint(equalTo: header.bottomAnchor),
+            agentPanelHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            agentPanelHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), agentPanelHost.widthConstraint
         ])
         return root
     }
@@ -352,6 +360,7 @@ struct WindowTints: Equatable {
         finishPendingWork(tab)
         selectFirstResultIfWanted(tab)
         followSelectionInQuickLook()
+        agentWindowDidRender()
         // A field that had the keys can go away, such as the location bar after Return or a search that closed,
         // which leaves the window itself holding them. The files take them, so arrows and Space keep working.
         if let window, window.firstResponder === window, window.attachedSheet == nil { focusContent() }
@@ -450,7 +459,7 @@ struct WindowTints: Equatable {
         shownStatus = StatusPresentation(itemCount: shown, selectedCount: selected.count,
                                          selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
                                          isSearch: tab.search != nil)
-        statusHost.rootView = StatusBarView(status: shownStatus)
+        statusHost.rootView = StatusBarView(status: shownStatus, aiSearch: aiSearchStatus(for: tab))
     }
     /// What the status bar says now.
     public var statusTextForTesting: String { StatusText.format(shownStatus) }
@@ -538,6 +547,7 @@ struct WindowTints: Equatable {
     // MARK: Header bar
 
     func headerToggleSidebar() { toggleSidebar() }
+    func headerToggleAIPanel() { toggleAgentPanel() }
     func toggleSidebar() {
         guard let sidebarItem else { return }
         let hide = !sidebarItem.isCollapsed
@@ -627,7 +637,8 @@ struct WindowTints: Equatable {
         store.send(.tab(activeTabID, .searchEnded))
         focusContent()
     }
-    public func search(_ text: String) {
+    /// Searches the tab for `text`. With `usesAI`, a model helps when a runner for that is installed.
+    public func search(_ text: String, usesAI: Bool = false) {
         guard let tab = activeTab else { return }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             store.send(.tab(tab.id, .searchEnded)); return
@@ -639,7 +650,8 @@ struct WindowTints: Equatable {
         if let url = tab.location.mutationTarget, !header.searchesEverywhere { scope = .currentFolder(url) } else { scope = .thisMac }
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
-                                limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents))
+                                limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
+                                usesAI: usesAI)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

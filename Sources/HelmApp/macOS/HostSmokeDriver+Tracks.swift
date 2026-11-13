@@ -24,6 +24,10 @@ extension HostSmokeDriver {
         if await performOpenWithVerb(verb, argument, step: step, window: window, app: app) { return true }
         if await performGridNamesVerb(verb, argument, step: step, window: window, app: app) { return true }
         if await performThumbnailsVerb(verb, argument, step: step, window: window, app: app) { return true }
+        if await performAgentVerb(verb, argument, step: step, window: window, app: app) { return true }
+        if await performAgentPlacesVerb(verb, argument, step: step, window: window, app: app) { return true }
+        if await performAISearchVerb(verb, argument, step: step, window: window, app: app) { return true }
+        if await performAgentSetupVerb(verb, argument, step: step, window: window, app: app) { return true }
         return false
     }
 }

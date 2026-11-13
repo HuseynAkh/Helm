@@ -31,7 +31,21 @@ final class SettingsBindingsTests: XCTestCase {
         XCTAssertEqual(view.number(.gridIconSize).wrappedValue, 128)
         XCTAssertEqual(view.string(.defaultViewMode).wrappedValue, "list")
         XCTAssertTrue(view.supportsSingleClick)
-        XCTAssertEqual(SettingsPane.allCases.map(\.id), ["General", "View", "Appearance", "Sidebar", "Search", "Advanced"])
+        XCTAssertEqual(SettingsPane.allCases.map(\.id), ["General", "AI", "View", "Appearance", "Sidebar", "Search", "Advanced"])
         XCTAssertEqual(SettingsPane.sidebar.symbol, "sidebar.left")
+    }
+
+    /// Settings › AI is the second pane, right after General, and its tab is named AI. It draws Helm's spark rather
+    /// than a symbol, and has a height of its own like every other pane.
+    func testTheAIPaneComesSecond() {
+        XCTAssertEqual(SettingsPane.allCases.first, .general)
+        XCTAssertEqual(SettingsPane.allCases.dropFirst().first, .ai)
+        XCTAssertEqual(SettingsPane.ai.rawValue, "AI")
+        XCTAssertEqual(SettingsPane(rawValue: "AI"), .ai)
+        XCTAssertEqual(SettingsPane.ai.symbol, "")
+        XCTAssertGreaterThan(SettingsPane.ai.height, 0)
+        // The other panes keep their order, names and symbols.
+        XCTAssertEqual(SettingsPane.allCases.filter { $0 != .ai }.map(\.symbol),
+                       ["gearshape", "square.grid.2x2", "circle.lefthalf.filled", "sidebar.left", "magnifyingglass", "slider.horizontal.3"])
     }
 }

@@ -80,11 +80,14 @@ extension BrowserWindowController {
     // MARK: Header test support
 
     public func focusFilesForTesting() { focusContent() }
+    /// Presses the header's spark, as a person would.
+    public func clickSparkForTesting() { headerToggleAIPanel() }
     /// Who has the keys: files, search, path, sidebar, window or other.
     public var focusOwnerForTesting: String {
         guard let window else { return "none" }
         let responder = window.firstResponder
         if responder === window { return "window" }
+        if agentPanelHost.holdsKeys { return "assistant" }
         if let files = contentKeyResponder, responder === files { return "files" }
         if header.isSearchFieldEditing { return "search" }
         if pathBar.isEditingLocation, responder is NSTextView { return "path" }

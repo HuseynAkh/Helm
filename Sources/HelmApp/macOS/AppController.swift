@@ -24,6 +24,11 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--continue-setup viewer,access,move`: a copy just moved into Applications reopens the welcome window and
     /// carries on with the rows chosen before the move. Only Helm's own mover passes it.
     public var continueSetup: [SetupRow]?
+    /// `--live-agent`: AI mode without the scripted model, as a real launch has it, while keys, the disk, folder facts
+    /// and servers stay stand-ins. Honoured only with both `--home` and `--support`, for the network-denied checks.
+    public var liveAgent = false
+    /// Whether `--live-agent` applies to this run.
+    var usesLiveAgent: Bool { liveAgent && home != nil && support != nil }
     public var isIsolated: Bool { home != nil || support != nil }
     public var isRoleCommand: Bool { defaultViewer != nil || dockFirst != nil || viewerStatus }
     public init() {}
@@ -62,6 +67,7 @@ public struct LaunchOptions: Equatable, Sendable {
             case "--dock-first":
                 switch value() { case "on": options.dockFirst = true; case "off": options.dockFirst = false; default: return nil }
             case "--viewer-status": options.viewerStatus = true
+            case "--live-agent": options.liveAgent = true
             case SetupRow.continueFlag:
                 guard let rows = value() else { return nil }
                 options.continueSetup = SetupRow.rows(fromFlag: rows)
@@ -78,14 +84,14 @@ public struct LaunchOptions: Equatable, Sendable {
 
 /// Owns everything that outlives a window: the environment, the windows, the menu, launch and quit (F-001, F-068).
 @MainActor public final class AppController: NSObject, NSApplicationDelegate, BrowserWindowHost, NSMenuDelegate {
-    private let options: LaunchOptions
-    private var environment: AppEnvironment?
+    let options: LaunchOptions
+    private(set) var environment: AppEnvironment?
     private var windows: [BrowserWindowController] = []
     private var router = LaunchRouter()
     private var registry = WindowRegistry()
     private var ids: [ObjectIdentifier: AppWindowID] = [:]
     private var quit = QuitCoordinator()
-    private var dependencies: WindowDependencies?
+    private(set) var dependencies: WindowDependencies?
     private var settingsWindow: SettingsWindowController?
     private var fileViewer: FileViewerModel?
     /// Paths from the command line, until the first launch takes them.
@@ -122,6 +128,8 @@ public struct LaunchOptions: Equatable, Sendable {
     var staysInBackground: Bool { didSet { access.isInteractive = !staysInBackground } }
     /// Whether Archive Utility is running now. A fixture run never asks the real Mac, so what runs there can't change it.
     var isArchiveUtilityRunning: () -> Bool
+    /// Folders the fixture Trash refuses, as a place with no Trash does. Only a fixture run's Trash reads it.
+    let fixtureTrashRules = FixtureTrashRules()
 
     public init(options: LaunchOptions) {
         self.options = options
@@ -168,18 +176,23 @@ public struct LaunchOptions: Equatable, Sendable {
                 persistsWindowFrames: !options.isIsolated, openWith: environment.openWith, permissions: access.permissions,
                 handoffs: handoffs,
                 // A fixture run hands files to a stand-in: no app opens and no default app changes.
-                launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher())
+                launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher(),
+                agent: makeAgentServices(environment))
             await access.start(settings: settings, fileViewer: { [weak self] in self?.fileViewerModel() },
                                windows: { [weak self] in self?.allWindows ?? [] })
             if options.smokeScript != nil { SmokeBackground.start() }
             await launchWindows(environment)
             environment.followPrivacySettings()
+            followAIMode()
             // Off the launch path: a slow or missing disk mustn't hold up the first window.
             Task { @MainActor in await environment.forgetItemsGoneFromTrash() }
             unreportedLoadFailures = environment.loadFailures
             reportLoadFailures()
             // A launch that only passed something on to Finder stays out of the way.
-            if !startedForFinder { access.showWelcomeIfNeeded(continuing: options.continueSetup) }
+            if !startedForFinder {
+                access.showWelcomeIfNeeded(continuing: options.continueSetup)
+                showAIIntroIfNeeded()
+            }
             if let script = options.smokeScript { HostSmokeDriver.run(script: script, app: self) }
         } catch {
             let alert = NSAlert(error: error)
@@ -195,9 +208,12 @@ public struct LaunchOptions: Equatable, Sendable {
             let support = options.support ?? home.appendingPathComponent(".helm-support")
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let trash = home.appendingPathComponent(".Trash", isDirectory: true)
+            let rules = fixtureTrashRules
             return try await AppEnvironment.live(directories: AppDirectories(home: home, applicationSupport: support),
                                                  settingsStorage: IsolatedSettings(), legacyReader: NoLegacyDefaults(),
                                                  trash: { url in
+                // A place a script marked as having no Trash refuses, as a server without one does.
+                if rules.refuses(url.path) { throw FileSystemError.unsupported }
                 // Stands in for the system Trash, which a fixture run must never touch.
                 try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
                 var destination = trash.appendingPathComponent(url.lastPathComponent)
@@ -573,6 +589,7 @@ public struct LaunchOptions: Equatable, Sendable {
         makeSettingsWindowIfNeeded()
         fileViewer?.refresh()
         if let dependencies, settingsWindow?.sidebarModel == nil { settingsWindow?.showSidebarRows(SidebarSettingsModel(dependencies: dependencies)) }
+        if let settingsWindow { installAISettingsPane(in: settingsWindow) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)
     }

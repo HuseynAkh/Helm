@@ -3,12 +3,14 @@ import HelmCore
 
 /// Settings leaf categories regroup the legacy forms without changing keys (F-065).
 public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
-    case general = "General", view = "View", appearance = "Appearance", sidebar = "Sidebar", search = "Search", advanced = "Advanced"
+    case general = "General", ai = "AI", view = "View", appearance = "Appearance", sidebar = "Sidebar", search = "Search", advanced = "Advanced"
     public var id: String { rawValue }
-    /// The toolbar symbol, as in System Settings and Finder's own settings.
+    /// The toolbar symbol, as in System Settings and Finder's own settings. AI has none: its tab draws Helm's own
+    /// spark (`SparkMark`).
     public var symbol: String {
         switch self {
         case .general: return "gearshape"
+        case .ai: return ""
         case .view: return "square.grid.2x2"
         case .appearance: return "circle.lefthalf.filled"
         case .sidebar: return "sidebar.left"
@@ -21,6 +23,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     public var height: CGFloat {
         switch self {
         case .general: return 716
+        case .ai: return 277
         case .view: return 277
         case .appearance: return 277
         case .sidebar: return 415
@@ -57,6 +60,8 @@ public struct SettingsPaneView: View {
         Form {
             switch pane {
             case .general: general
+            // Settings › AI puts a pane of its own in place of this form.
+            case .ai: EmptyView()
             case .view: viewSettings
             case .appearance: appearance
             case .sidebar: sidebarSettings
