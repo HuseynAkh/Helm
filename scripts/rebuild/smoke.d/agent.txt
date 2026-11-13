@@ -153,8 +153,157 @@ agent-client-built no
 agent-script @FIX@/agent-script.json
 agent-say /clear
 agent-chips AgentMess:thisMac
-# Steps 9 to 15 of the design's test plan (cloud and server places, Connect, AI search, Settings and the AI mode
-# screen, the header with the panel open) go here, before the closing steps below.
+# 9. A folder in the Google Drive stand-in: its chip names Google Drive, a plan there says the changes sync, and 30
+# moves inside it arrive ticked. A copy of a file that isn't downloaded is left out with its own line, and nothing
+# sent names the provider's folder or the account in it
+go @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess
+wait 0.5
+agent-chips Drive Mess:cloud
+agent-chip-kind Drive Mess=In Google Drive.
+agent-say gather the pages
+agent-phase plan
+agent-plan-reads 30 moves · 1 new folder
+agent-group Move 30 items to “Pages” on
+agent-reads Changes sync to your devices and to anyone this is shared with.
+agent-press Cancel
+agent-reads Plan dismissed.
+agent-cloud-only @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/page-01.txt
+agent-say copy the first page
+agent-phase plan
+agent-reads 1 item isn't downloaded, so Helm left it out.
+agent-lacks Everything here is already in place.
+agent-press Cancel
+exists @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/page-01.txt
+missing @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/Pages
+agent-sent-lacks me@example.com
+agent-sent-lacks GoogleDrive
+# 10. One folder holding two places: Documents on show, on this Mac, with its Reports folder answering as iCloud
+# Drive, as iCloud's Desktop and Documents do. A move out of Reports arrives in a group marked as leaving iCloud
+# Drive, unticked. (Home itself can't be the folder on show here: Documents is one of the folders macOS asks about,
+# which AI mode lists by name and never enters from above.)
+agent-place iCloud=@FIX@/home/Documents/Reports
+go @FIX@/home/Documents
+wait 0.5
+agent-chips Documents:thisMac
+agent-say file the report
+agent-phase plan
+agent-group Move 1 item to “Documents” off
+agent-group-mark Move 1 item to “Documents”=Leaves iCloud Drive
+agent-press Cancel
+exists @FIX@/home/Documents/Reports/q1.txt
+missing @FIX@/home/Documents/q1.txt
+# 11. A folder that answers as a shared server with no Trash: the Trash step is left out, a copy there can't be
+# undone and reaches everyone who uses it, and 30 renames arrive unticked and marked Shared. A listing there that
+# stops answering ends the request with one line
+agent-place network,shared,notrash=@FIX@/home/AgentPlaces/Share
+go @FIX@/home/AgentPlaces/Share
+wait 0.5
+agent-chips Share:network
+agent-chip-kind Share=On a server.
+agent-say share changes
+agent-phase plan
+agent-reads “Server” has no Trash, so Helm won't remove anything from it.
+agent-reads Copies on “Server” can't be undone.
+agent-reads Changes reach everyone who uses “Server”.
+agent-group Copy 1 item to “Copies” on
+agent-press Cancel
+agent-say rename the share
+agent-phase plan
+agent-group Rename 30 items off
+agent-group-mark Rename 30 items=Shared
+agent-tick Rename 30 items
+agent-plan-reads 30 renames
+agent-press Cancel
+agent-fast-limits
+agent-delay 2 @FIX@/home/AgentPlaces/Share
+agent-say look around
+agent-reads “Share” isn't responding.
+agent-delay 0 @FIX@/home/AgentPlaces/Share
+agent-fast-limits off
+exists @FIX@/home/AgentPlaces/Share/share-01.txt
+missing @FIX@/home/AgentPlaces/Share/shared-01.txt
+# 12. A server address typed alone gets one line with Connect, and only Connect hands it to macOS (here the
+# stand-in connector, which opens nothing). No folder is added for it, and the model never sees it
+agent-say /add smb://stand-in/share
+agent-reads Connect to “stand-in”?
+agent-connected none
+agent-press Connect
+agent-connected smb://stand-in/share
+agent-chips Share:network
+agent-sent-lacks stand-in
+agent-say /clear
+# 13. AI search: the search field's spark is the toggle and Return sends the words. Each result carries Helm's
+# reason, the status bar says how the request was read and lists every query, a model that fails leaves the name
+# matches with one line, and the server stand-in is searched by name only. The toggle is off once the search closes
+go @FIX@/home/AgentMess
+wait 0.5
+search-ai-is off
+search-ai on
+search-ai-is on
+search-status-reads Return sends your words
+search memo
+search-return
+search-status-reads 1 match · “memo”
+search-queries-read “memo”
+result-reason memo.txt=Name has “memo”
+agent-script @FIX@/agent-search-fails.json
+search-return
+search-status-reads AI search isn't available.
+agent-script @FIX@/agent-script.json
+search-key escape
+search-shown false
+search-ai-is off
+go @FIX@/home/AgentPlaces/Share
+wait 0.5
+search-ai on
+search share-05
+search-return
+search-status-reads Names only here.
+search-key escape
+search-shown false
+search-ai-is off
+go @FIX@/home/AgentMess
+wait 0.5
+# 14. The AI mode screen and Settings › AI, with keys in memory. Closing the screen with the switch on leaves AI mode
+# off. With a key entered, Done leaves it on and opens the panel in the window whose spark asked, and ai.json never
+# holds the key
+agent-close
+setting aiModeEnabled false
+wait 0.5
+ai-screen open
+ai-screen-is open
+ai-screen-press AI Mode
+setting-is aiModeEnabled true
+ai-screen close
+ai-screen-is closed
+setting-is aiModeEnabled false
+agent-is closed
+agent-open
+ai-screen-is open
+agent-is closed
+ai-screen-press AI Mode
+setting-is aiModeEnabled true
+ai-state-is noKey
+ai-key test-key-for-the-smoke-run
+ai-state-is connected
+ai-screen-reads Connected
+ai-screen-press Done
+ai-screen-is closed
+setting-is aiModeEnabled true
+agent-is open
+wait 1
+exists @FIX@/support/ai.json
+file-lacks @FIX@/support/ai.json=test-key-for-the-smoke-run
+hunt-settings-open ai
+hunt-settings-reads Switch: on
+hunt-settings-reads Text: Claude
+ai-state-is connected
+hunt-settings-close
+# 15. The header with the panel open: its buttons are even, the title bar fits it and the window keeps its own edges
+agent-is open
+header-buttons-even
+title-bar-fits-header
+window-edges-native
 # 16. Closing: the panel shut, AI mode off, the stand-ins put back, the tab closed and the width as it was
 agent-close
 agent-is closed

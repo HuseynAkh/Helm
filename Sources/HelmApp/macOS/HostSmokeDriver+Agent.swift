@@ -62,6 +62,10 @@ extension HostSmokeDriver {
         case "agent-reads":
             let reached = await until { model?.threadTextForTesting.contains(argument) == true }
             check(reached, step, model?.threadTextForTesting.replacingOccurrences(of: "\n", with: " | ") ?? "no panel")
+        case "agent-lacks":
+            // The thread doesn't hold this text, after the request that might have put it there has ended.
+            let thread = model?.threadTextForTesting ?? ""
+            check(!thread.contains(argument), step, thread.replacingOccurrences(of: "\n", with: " | "))
         case "agent-plan-reads":
             let reached = await until { model?.planCountsForTesting == argument }
             check(reached, step, model?.planCountsForTesting ?? "no card")
@@ -115,11 +119,14 @@ extension HostSmokeDriver {
             let built = services.runtime.clientBuildCount > 0 ? "yes" : "no"
             check(built == argument, step, built)
         case "agent-connected":
+            // agent-connected <address>|none: the stand-in connector was handed this address, or nothing yet.
             guard let connector = services.connector as? MemoryServerConnector else { check(false, step, "not the stand-in connector"); return true }
-            check(connector.opened.contains { $0.absoluteString == argument }, step,
-                  connector.opened.map(\.absoluteString).joined(separator: ","))
+            let opened = connector.opened.map(\.absoluteString)
+            check(argument == "none" ? opened.isEmpty : opened.contains(argument), step, opened.joined(separator: ","))
         case "agent-fast-limits":
-            services.runtime.listSecondsOverrideForTesting = 0.5
+            // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
+            // limits back.
+            services.runtime.listSecondsOverrideForTesting = argument == "off" ? nil : 0.5
         default:
             return false
         }

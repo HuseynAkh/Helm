@@ -2,3 +2,6 @@
 setting-is aiModeEnabled false
 agent-is closed
 agent-client-built no
+# ai.json kept the provider chosen on the AI mode screen, and never the key entered there
+exists @FIX@/support/ai.json
+file-lacks @FIX@/support/ai.json=test-key-for-the-smoke-run
