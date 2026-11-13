@@ -63,7 +63,8 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
     }
 
     public func failure(status: Int, body: Data) -> AgentFailure {
-        AgentErrorMapper.failure(status: status, body: body, provider: .other)
+        // This wire serves several providers, so the answer must not depend on which one sent it.
+        AgentErrorMapper.failure(status: status, body: body)
     }
 
     private func common(model: String, system: String, messages: [AgentJSON]) -> [String: AgentJSON] {
@@ -197,8 +198,11 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
             var slot: Int
             if let index = AgentWireParts.integer(fields["index"]) {
                 slot = index
-                // Two whole calls sent under one index are two calls.
-                if let id, let held = calls[slot], !held.id.isEmpty, held.id != id { slot = (calls.keys.max() ?? -1) + 1 }
+                // Two whole calls sent under one index are two calls. A server that repeats each call's id on every
+                // piece under that one index sends the later pieces to the call that already holds the id.
+                if let id, let held = calls[slot], !held.id.isEmpty, held.id != id {
+                    slot = calls.first(where: { $0.value.id == id })?.key ?? (calls.keys.max() ?? -1) + 1
+                }
             } else if let id {
                 slot = calls.first(where: { $0.value.id == id })?.key ?? (calls.keys.max() ?? -1) + 1
             } else {

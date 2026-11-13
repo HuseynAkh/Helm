@@ -41,7 +41,10 @@ public enum AgentErrorMapper {
 
     /// A reply whose status wasn't a success, where only the shape of the wire is known.
     static func failure(status: Int, body: Data) -> AgentFailure {
-        failure(status: status, words: AgentErrorWords(body: body))
+        let words = AgentErrorWords(body: body)
+        // Gemini's billing answer reads the same here as it does when the provider is known.
+        if status == 400, words.hasToken("failed_precondition") { return .outOfCredit }
+        return failure(status: status, words: words)
     }
 
     /// An error that arrived inside a stream after the reply had started: Claude's `error` event, a Responses

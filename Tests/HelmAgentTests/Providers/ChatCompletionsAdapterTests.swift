@@ -130,6 +130,20 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(ProviderFixtures.play(hosted, lines).result.calls.map(\.id), ["a", "b"])
     }
 
+    func testPiecesThatRepeatTheirCallsIdUnderOneIndexStayWithThatCall() throws {
+        let lines = [
+            #"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"list_folder","arguments":"{\"folder\":"}}]}}]}"#,
+            #"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"a","function":{"arguments":"\"r1\"}"}}]}}]}"#,
+            #"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"b","function":{"name":"find_items","arguments":"{\"words\":"}}]}}]}"#,
+            #"data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"b","function":{"arguments":"\"x\"}"}}]},"finish_reason":"tool_calls"}]}"#
+        ]
+        let result = ProviderFixtures.play(hosted, lines).result
+        XCTAssertEqual(result.stop, .toolUse)
+        XCTAssertEqual(result.calls.map(\.id), ["a", "b"], "one call per id, not one per piece")
+        XCTAssertEqual(try AgentJSON(data: try XCTUnwrap(result.calls.first).arguments), .object(["folder": .string("r1")]))
+        XCTAssertEqual(try AgentJSON(data: try XCTUnwrap(result.calls.last).arguments), .object(["words": .string("x")]))
+    }
+
     func testATextStreamEndsTheTurnWithItsText() throws {
         let played = try ProviderFixtures.play(hosted, fixture: "chat/stream-text.sse")
         XCTAssertEqual(played.result.stop, .endTurn)
@@ -201,5 +215,14 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(hosted.failure(status: 400, body: try ProviderFixtures.data("errors/gemini-bad-key.json")), .wrongKey)
         XCTAssertEqual(local.failure(status: 400, body: try ProviderFixtures.data("errors/ollama-no-tools.json")), .noTools)
         XCTAssertEqual(local.failure(status: 404, body: Data(#"{"error":"model 'qwen9' not found"}"#.utf8)), .noSuchModel)
+    }
+
+    func testGeminiWantingBillingIsOutOfCreditOnThisWireAsWithTheProviderKnown() {
+        let body = Data(#"{"error":{"code":400,"message":"Billing required","status":"FAILED_PRECONDITION"}}"#.utf8)
+        XCTAssertEqual(hosted.failure(status: 400, body: body), .outOfCredit)
+        XCTAssertEqual(hosted.failure(status: 400, body: body), AgentErrorMapper.failure(status: 400, body: body, provider: .gemini))
+        // The same answer arriving inside a stream.
+        let lines = [#"data: {"error":{"code":400,"message":"Billing required","status":"FAILED_PRECONDITION"}}"#]
+        XCTAssertEqual(ProviderFixtures.play(hosted, lines).result.stop, .failed(.outOfCredit))
     }
 }
