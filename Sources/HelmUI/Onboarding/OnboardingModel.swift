@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import Combine
+import HelmAgent
 import HelmCore
 
 /// One thing the welcome window sets up, in the order the rows show.
@@ -76,6 +77,9 @@ public enum SetupRowState: Equatable, Sendable {
         case setup
         /// Only the Full Disk Access row, reached from a refusal, Help › Full Disk Access… or Settings.
         case guide
+        /// The AI mode screen, drawn from `aiSetup`: after the checklist on the first launch, once at launch for
+        /// someone who set Helm up before AI mode existed, and from a window's spark while no model is ready.
+        case ai
     }
     /// What the footer's main button does.
     public enum Action: Sendable { case setUp, openSettings, finish }
@@ -93,6 +97,8 @@ public enum SetupRowState: Equatable, Sendable {
     /// Its row then shows Helm's icon and its own Open System Settings button, which leaves the other rows alone.
     @Published public private(set) var accessHelpRequested = false
     @Published private var progress: [SetupRow: SetupRowState] = [:]
+    /// What the AI mode screen shows and changes, while that screen is on show.
+    @Published public private(set) var aiSetup: AISetupModel?
 
     public let permissions: PermissionCenter
     /// The default file viewer and Dock switches, as in Settings › General. Nil leaves that row out.
@@ -131,6 +137,7 @@ public enum SetupRowState: Equatable, Sendable {
     /// How each row stood when last looked at, so only a change is announced.
     private var heard: [SetupRow: SetupRowState] = [:]
     private var forwarding: [AnyCancellable] = []
+    private var aiForwarding: AnyCancellable?
 
     /// Without a mover, a stand-in that never moves anything.
     public init(permissions: PermissionCenter, fileViewer: FileViewerModel?, mover: (any AppMoving)? = nil) {
@@ -147,6 +154,7 @@ public enum SetupRowState: Equatable, Sendable {
 
     /// The rows on show: only what applies to this copy of Helm.
     public var rows: [SetupRow] {
+        if mode == .ai { return [] }
         if mode == .guide { return [.fullDiskAccess] }
         var shown: [SetupRow] = []
         if fileViewer?.canRegister == true { shown.append(.fileViewer) }
@@ -220,6 +228,7 @@ public enum SetupRowState: Equatable, Sendable {
         switch mode {
         case .setup: return started || nothingToDo ? .finish : .setUp
         case .guide: return openedSettings || isDone(.fullDiskAccess) || isOutsideApp ? .finish : .openSettings
+        case .ai: return .finish
         }
     }
     public var primaryTitle: String {
@@ -231,6 +240,8 @@ public enum SetupRowState: Equatable, Sendable {
     }
     /// Not Now, while there's still something to decide.
     public var secondaryTitle: String? { primaryAction == .finish ? nil : "Not Now" }
+    /// The line under the checklist's title: the promise about what leaves the Mac.
+    public var headerLine: String? { mode == .setup ? AgentText.setupHeader : nil }
 
     public func primary() {
         switch primaryAction {
@@ -247,6 +258,7 @@ public enum SetupRowState: Equatable, Sendable {
 
     /// Presses a button by its title, as a click would. Scripted runs use this; nobody is there to click.
     public func press(_ title: String) -> Bool {
+        if mode == .ai { return aiSetup?.pressed(title) ?? false }
         if title == primaryTitle { primary(); return true }
         if title == secondaryTitle { notNow(); return true }
         if title == "Open System Settings", rowOpensSettings { openFullDiskAccess(); return true }
@@ -259,6 +271,7 @@ public enum SetupRowState: Equatable, Sendable {
     /// still going stops at its next step.
     public func begin(_ next: Mode) {
         stop()
+        if next != .ai { aiSetup = nil; aiForwarding = nil }
         mode = next
         checked = Set(SetupRow.allCases)
         started = false; openedSettings = false; moved = false; accessHelpRequested = false; staysOpen = false
@@ -267,6 +280,14 @@ public enum SetupRowState: Equatable, Sendable {
         // What's already done when it opens isn't news.
         heard = states()
         changed()
+    }
+
+    /// Starts the AI mode screen afresh, drawn from `model`. The window follows the model's changes, so it fits
+    /// what the screen shows.
+    public func beginAI(_ model: AISetupModel) {
+        aiSetup = model
+        aiForwarding = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        begin(.ai)
     }
 
     /// The guide becomes the checklist, as Help › Set Up Helm… asks while the guide is open. If System Settings is open

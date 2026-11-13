@@ -2,7 +2,9 @@
 import AppKit
 import Foundation
 import XCTest
+import HelmAgent
 import HelmCore
+import HelmPersistence
 import HelmTestKit
 @testable import HelmUI
 
@@ -840,5 +842,48 @@ import HelmTestKit
         XCTAssertEqual(OnboardingWindowController.level(waitingForAccess: false, interactive: true, hasAccess: false, frontmost: settings), .normal)
         XCTAssertEqual(OnboardingWindowController.level(waitingForAccess: true, interactive: false, hasAccess: false, frontmost: settings), .normal)
     }
+
+    /// The AI mode screen is the window's third mode: no checklist row, no welcome counted as seen, and closing it is
+    /// a way out that turns AI mode off. Opened over the checklist, it takes the checklist's place.
+    func testTheAIModeScreenIsTheWindowsThirdMode() async throws {
+        let controller = controller()
+        defer { controller.close() }
+        let settings = SettingsStore(storage: OnboardingAIMemory())
+        let ai = AISetupModel(settings: settings, services: .standIn(home: URL(fileURLWithPath: "/home/helm"), clock: FakeClock()))
+        var seen = 0, done: [Bool] = [], closed: [OnboardingModel.Mode] = []
+        controller.onSeen = { seen += 1 }
+        controller.onClosed = { closed.append($0) }
+        controller.show(.setup, activate: false)
+        controller.showAIMode(ai, activate: false) { done.append($0) }
+        XCTAssertEqual(controller.modeForTesting, "ai")
+        XCTAssertEqual(seen, 1, "the checklist it replaced counts as seen")
+        XCTAssertEqual(controller.model.rows, [])
+        XCTAssertNil(controller.model.headerLine)
+        XCTAssertFalse(controller.isSetupShown)
+        XCTAssertFalse(controller.pressForTesting("Not Now"), "the checklist's buttons aren't there")
+        XCTAssertTrue(controller.pressForTesting(AgentText.aiTitle), "the title row is the switch")
+        XCTAssertTrue(settings.snapshot.bool(.aiModeEnabled))
+        controller.close()
+        XCTAssertEqual(seen, 1)
+        XCTAssertEqual(done, [], "only Done reports how it ended")
+        XCTAssertFalse(settings.snapshot.bool(.aiModeEnabled), "closing it turns AI mode off")
+        XCTAssertTrue(settings.snapshot.bool(.aiIntroSeen))
+        XCTAssertNil(ai.donePressed)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(closed, [.ai])
+        // Done with the switch off closes it and reports it ended unconnected.
+        controller.showAIMode(ai, activate: false) { done.append($0) }
+        XCTAssertTrue(controller.pressForTesting(AgentText.done))
+        await controller.aiDoneWork?.value
+        XCTAssertEqual(controller.modeForTesting, "closed")
+        XCTAssertEqual(done, [false])
+    }
+}
+
+private final class OnboardingAIMemory: KeyValueStoring {
+    var values: [String: Any] = [:]
+    func object(forKey key: String) -> Any? { values[key] }
+    func set(_ value: Any, forKey key: String) { values[key] = value }
+    func register(defaults: [String: Any]) { values.merge(defaults) { old, _ in old } }
 }
 #endif
