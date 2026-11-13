@@ -12,6 +12,8 @@ public actor OperationExecutor {
     public let journal: OperationJournal
     private var running: Bool = false
     private var quarantined: Bool = false
+    /// How many times a step has stalled, so a latch cleared on an older answer can't hide a newer stall.
+    private var stalls: Int = 0
     public init(fileSystem: any FileSystem, copier: (any FileCopier)? = nil,
                 verifier: (any CopyVerifying)? = nil,
                 origins: any TrashOriginRecording, journal: OperationJournal = OperationJournal()) {
@@ -121,7 +123,9 @@ public actor OperationExecutor {
                 else { mapped = .other(String(describing: cause)) }
                 // A thrown filesystem mutation may have partially completed. Never automatically retry it.
                 // Timeout may finish late: this executor remains quarantined until external reconciliation.
-                if mapped == .timedOut || (mapped == .cancelled && executionFailure != nil && !(cause is ConditionalMutationError)) { quarantined = true }
+                if mapped == .timedOut || (mapped == .cancelled && executionFailure != nil && !(cause is ConditionalMutationError)) {
+                    quarantined = true; stalls += 1
+                }
                 failure = mapped
                 // Read-only refusals cannot leave an uncertain mutation. Missing evidence for
                 // an earlier completed output still requires reconciliation (B-038/B-041).
@@ -165,6 +169,18 @@ public actor OperationExecutor {
         await journal.complete(result)
         await progress(OperationProgress(id: id, itemsDone: outcomes.filter(\.succeeded).count, itemsTotal: plan.steps.count, currentName: nil))
         return result
+    }
+    /// Lets operations run again after a step stalled or was stopped partway through a file system call, which
+    /// refuses every later one as busy. Call it once the person has acknowledged that change. The file system is
+    /// asked first: false means a stalled call is still out, so the latch stays and the caller asks again later.
+    /// True means operations run again. Without a stall it only asks the file system, and answers what it says.
+    public func clearQuarantine() async -> Bool {
+        let seen = stalls
+        guard await fileSystem.reopenAfterStall() else { return false }
+        // Another step stalled while the file system was being asked: that answer is about the calls before it.
+        guard stalls == seen else { return false }
+        quarantined = false
+        return true
     }
     private func refuse(_ plan: OperationPlan, id: OperationID, error: OperationError) async -> OperationResult {
         let result = OperationResult(id: id, command: plan.command, outcomes: plan.steps.map {
