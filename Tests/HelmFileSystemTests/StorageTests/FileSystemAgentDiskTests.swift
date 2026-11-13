@@ -49,11 +49,13 @@ final class FileSystemAgentDiskTests: XCTestCase {
 
     func testLinksAreNotFollowedInMemory() async throws {
         let fileSystem = try await memoryHome()
-        let disk = agentDisk(fileSystem)
+        let recording = StorageRecordingFileSystem(inner: fileSystem, home: home)
+        let disk = agentDisk(recording)
         let link = await disk.item(at: home + "/Linked")
+        XCTAssertEqual(recording.take().map(\.call), ["entry unresolved"], "the link is described without its target")
         let target = await disk.item(at: home + "/Downloads")
         XCTAssertEqual(link?.path, home + "/Linked")
-        XCTAssertEqual(link?.kind, .symlinkToDirectory)
+        XCTAssertEqual(link?.kind, .danglingSymlink, "a link reads as a link, as it does in a listing")
         XCTAssertNotNil(link?.identity)
         XCTAssertNotEqual(link?.identity, target?.identity, "the link itself, not what it points at")
         let throughLink = await disk.list(home + "/Linked", limit: 10, idleSeconds: 2)
@@ -73,9 +75,15 @@ final class FileSystemAgentDiskTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         try Data("x".utf8).write(to: folder.appendingPathComponent("inside.txt"))
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
-        let disk = FileSystemAgentDisk(fileSystem: LiveFileSystem(), storage: MemoryStorageFactsReader(home: temp.url), home: temp.url.path)
+        let described = StorageMetadataReads()
+        let live = LiveFileSystem(readMetadata: { url, resolve, volume in
+            described.note(url.path, resolve)
+            return try MetadataReader().read(url, resolveSymlinkTargets: resolve, volumeIdentifier: volume)
+        })
+        let disk = FileSystemAgentDisk(fileSystem: live, storage: MemoryStorageFactsReader(home: temp.url), home: temp.url.path)
         let item = await disk.item(at: link.path)
-        XCTAssertEqual(item?.kind, .symlinkToDirectory)
+        XCTAssertEqual(described.take(), ["\(link.path) unresolved"], "where the link points is never looked at")
+        XCTAssertEqual(item?.kind, .danglingSymlink, "a link reads as a link, as it does in a listing")
         XCTAssertEqual(item?.path, link.path)
         let targetItem = await disk.item(at: folder.path)
         XCTAssertNotEqual(item?.identity, targetItem?.identity)
@@ -86,18 +94,21 @@ final class FileSystemAgentDiskTests: XCTestCase {
         XCTAssertEqual(listed.items.map(\.name), ["Linked", "Target"])
         XCTAssertEqual(listed.items.first?.kind, .danglingSymlink)
         XCTAssertEqual(listed.items.last?.kind, .directory)
+        XCTAssertFalse(described.take().contains { $0.hasSuffix(" resolved") }, "no read looked through a link")
     }
 
     func testANotLoadedFolderAnswersNotLoadedAndIsNeverListed() async throws {
         let fileSystem = try await memoryHome()
         await fileSystem.setCloudAvailability(.evicted, at: URL(fileURLWithPath: home + "/Documents"))
         await fileSystem.setCloudAvailability(.evicted, at: URL(fileURLWithPath: home + "/B.txt"))
-        let disk = agentDisk(fileSystem)
+        let recording = StorageRecordingFileSystem(inner: fileSystem, home: home)
+        let disk = agentDisk(recording)
         let listing = await disk.list(home + "/Documents", limit: 10, idleSeconds: 2)
         XCTAssertEqual(listing.state, .notLoaded)
         XCTAssertEqual(listing.items, [])
-        let reads = await fileSystem.reads
-        XCTAssertEqual(reads, [], "its names were never asked for")
+        let calls = recording.take().map(\.call)
+        XCTAssertFalse(calls.isEmpty)
+        XCTAssertFalse(calls.contains("enumerate"), "its names were never asked for: \(calls)")
         // In its parent's listing it is there, marked; so is a file that isn't downloaded.
         let parent = await disk.list(home, limit: 10, idleSeconds: 2)
         XCTAssertEqual(parent.items.filter(\.isDataless).map(\.name), ["B.txt", "Documents"])
@@ -161,6 +172,24 @@ final class FileSystemAgentDiskTests: XCTestCase {
         XCTAssertEqual(found, home + "/Documents/Reports")
         let gone = await memory.canonicalPath(home + "/Gone/Reports")
         XCTAssertNil(gone, "the file system can't see it")
+    }
+
+    func testAStuckCloudFolderHoldsUpNoOtherFolder() async throws {
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        let stuck = home + "/Library/CloudStorage/GoogleDrive-a/Stuck"
+        let disk = FileSystemAgentDisk(fileSystem: try await memoryHome(),
+                                       storage: MemoryStorageFactsReader(home: URL(fileURLWithPath: home)), home: home,
+                                       canonical: { path in
+                                           if path == stuck { _ = gate.wait(timeout: .now() + 6) }
+                                           return path
+                                       })
+        let start = Date()
+        let none = await disk.canonicalPath(stuck)
+        XCTAssertNil(none)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 3.5, "one limit for the whole question")
+        let downloads = await disk.canonicalPath(home + "/Downloads")
+        XCTAssertEqual(downloads, home + "/Downloads", "the rest of the home folder still answers")
     }
 
     func testAChildFolderWithOtherFactsCarriesItsPlace() async throws {
@@ -241,6 +270,14 @@ final class FileSystemAgentDiskTests: XCTestCase {
     }
 }
 
+/// The items the live disk described, each with whether it looked through a link there.
+private final class StorageMetadataReads: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: [String] = []
+    func note(_ path: String, _ resolve: Bool) { lock.lock(); seen.append(path + (resolve ? " resolved" : " unresolved")); lock.unlock() }
+    func take() -> [String] { lock.lock(); defer { seen.removeAll(); lock.unlock() }; return seen }
+}
+
 /// What threads saw, gathered from wherever they ran.
 private final class StorageThreadPolicies: @unchecked Sendable {
     private let lock = NSLock()
@@ -252,7 +289,7 @@ private final class StorageThreadPolicies: @unchecked Sendable {
 /// A file system and a place-facts reader in one, over the in-memory disk, that notes each call and whether the
 /// task making it had downloads off. It can refuse a listing as macOS refuses a folder that isn't loaded, and can
 /// pause between the batches of a listing.
-private final class StorageRecordingFileSystem: FileSystem, StorageFactsReading, @unchecked Sendable {
+private final class StorageRecordingFileSystem: FileSystem, StorageFactsReading, StorageLinkEntryReading, @unchecked Sendable {
     struct Call: Sendable { let call: String, isOff: Bool }
     private let inner: InMemoryFileSystem
     private let facts: MemoryStorageFactsReader
@@ -295,6 +332,10 @@ private final class StorageRecordingFileSystem: FileSystem, StorageFactsReading,
         }
     }
     func entry(at url: URL) async throws -> FileEntry { note("entry"); return try await inner.entry(at: url) }
+    func entry(at url: URL, resolveSymlinkTargets: Bool) async throws -> FileEntry {
+        note(resolveSymlinkTargets ? "entry" : "entry unresolved")
+        return try await inner.entry(at: url, resolveSymlinkTargets: resolveSymlinkTargets)
+    }
     func exists(_ url: URL) async -> Bool { note("exists"); return await inner.exists(url) }
     func copyItem(at source: URL, to destination: URL) async throws { note("copy"); try await inner.copyItem(at: source, to: destination) }
     func moveItem(at source: URL, to destination: URL) async throws { note("move"); try await inner.moveItem(at: source, to: destination) }

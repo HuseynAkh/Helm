@@ -117,7 +117,13 @@ public actor InMemoryFileSystem: FileSystem {
                          cloudAvailability: value.cloud,
                          objectIdentity: FileObjectIdentity(scope: identityScope, object: value.identity.uuidString))
     }
-    public func entry(at url: URL) async throws -> FileEntry { try await delay(for: url); return entry(try node(url)) }
+    public func entry(at url: URL) async throws -> FileEntry { try await entry(at: url, resolveSymlinkTargets: true) }
+    /// Without `resolveSymlinkTargets`, a link is described as itself, a dangling link, as a listing that doesn't
+    /// resolve links describes it.
+    func entry(at url: URL, resolveSymlinkTargets: Bool) async throws -> FileEntry {
+        try await delay(for: url)
+        return entry(try node(url), resolve: resolveSymlinkTargets)
+    }
     // Internal fixture reader enables payload fidelity assertions without expanding FileSystem.
     func storedContents(at url: URL) throws -> Data { try node(url).data }
     public func exists(_ url: URL) async -> Bool { (try? node(url)) != nil }
@@ -299,3 +305,5 @@ public actor InMemoryFileSystem: FileSystem {
         for index in 0..<max(0, count) { try insert(directory.appendingPathComponent("file\(index)"), kind: .regular) }
     }
 }
+
+extension InMemoryFileSystem: StorageLinkEntryReading {}

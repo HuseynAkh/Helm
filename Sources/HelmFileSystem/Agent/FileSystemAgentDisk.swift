@@ -24,12 +24,15 @@ public struct FileSystemAgentDisk: AgentDisk {
 
     public func canonicalPath(_ path: String) async -> String? {
         await DatalessGuard.off {
-            let canonical = self.canonical
-            guard let resolved = try? await lanes.runRead(volume: Self.lane(of: path), { canonical(path) }) else { return nil }
-            // The answer names something the file system can see, and nothing else.
-            let fileSystem = self.fileSystem
-            let seen = await Self.answer(idleSeconds: Self.answerSeconds) { _ in await fileSystem.exists(URL(fileURLWithPath: resolved)) }
-            return seen == true ? resolved : nil
+            let canonical = self.canonical, fileSystem = self.fileSystem, lanes = self.lanes
+            let lane = SystemStorageFactsReader.lane(of: path, home: home)
+            // One limit for the whole question: resolving the path and then seeing what it names.
+            let found = await Self.answer(idleSeconds: Self.answerSeconds) { _ -> String? in
+                guard let resolved = try? await lanes.runRead(volume: lane, { canonical(path) }) else { return nil }
+                // The answer names something the file system can see, and nothing else.
+                return await fileSystem.exists(URL(fileURLWithPath: resolved)) ? resolved : nil
+            }
+            return found ?? nil
         }
     }
 
@@ -142,14 +145,25 @@ public struct FileSystemAgentDisk: AgentDisk {
 
     // MARK: Reading one item
 
+    /// The item itself. Where a link points is never looked at, so a link into a server that stopped answering, or
+    /// into a place macOS mounts on demand, costs nothing.
     private static func entry(at url: URL, in fileSystem: any FileSystem) async -> Result<FileEntry, FileSystemError> {
-        do { return .success(try await fileSystem.entry(at: url)) } catch { return .failure(FileSystemError.mapping(error)) }
+        do {
+            if let unfollowing = fileSystem as? any StorageLinkEntryReading {
+                return .success(try await unfollowing.entry(at: url, resolveSymlinkTargets: false))
+            }
+            return .success(try await fileSystem.entry(at: url))
+        } catch { return .failure(FileSystemError.mapping(error)) }
     }
 
+    /// A link reads as a link whatever it points at, as it does in a listing.
     private static func item(_ entry: FileEntry, path: String, place: StorageFacts? = nil) -> AgentDiskItem {
-        AgentDiskItem(path: path, name: entry.name, kind: entry.kind, identity: entry.objectIdentity, size: entry.size,
-                      modified: entry.modificationDate, created: entry.creationDate, typeIdentifier: entry.contentTypeIdentifier,
-                      isHidden: entry.isHidden, isDataless: entry.cloudAvailability == .evicted, place: place)
+        let isLink = entry.kind == .symlinkToFile || entry.kind == .symlinkToDirectory || entry.kind == .danglingSymlink
+        return AgentDiskItem(path: path, name: entry.name, kind: isLink ? .danglingSymlink : entry.kind,
+                             identity: entry.objectIdentity, size: entry.size,
+                             modified: entry.modificationDate, created: entry.creationDate,
+                             typeIdentifier: entry.contentTypeIdentifier,
+                             isHidden: entry.isHidden, isDataless: entry.cloudAvailability == .evicted, place: place)
     }
 
     private static func state(for error: FileSystemError) -> AgentDiskListState {
@@ -169,12 +183,6 @@ public struct FileSystemAgentDisk: AgentDisk {
         case .orderedDescending: return false
         case .orderedSame: return name < other
         }
-    }
-
-    /// The lane a path's reads wait in: a disk in the Volumes folder has its own.
-    private static func lane(of path: String) -> String {
-        let parts = path.split(separator: "/")
-        return parts.count >= 2 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
     }
 
     // MARK: Waiting
@@ -245,4 +253,9 @@ public struct FileSystemAgentDisk: AgentDisk {
             return Double(DispatchTime.now().uptimeNanoseconds - lastProgress) / 1_000_000_000
         }
     }
+}
+
+/// A file system that can describe the item at a path without looking at where a link there points.
+protocol StorageLinkEntryReading: FileSystem {
+    func entry(at url: URL, resolveSymlinkTargets: Bool) async throws -> FileEntry
 }

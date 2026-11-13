@@ -87,6 +87,32 @@ final class SystemStorageFactsReaderTests: XCTestCase {
         _ = watched.take()
         _ = await reader.mirrors()
         XCTAssertFalse(watched.take().contains { $0.read == "link" }, "an unchanged list isn't read again")
+
+        // A shortcut that appears later in a provider's folder already there is seen too.
+        let later = try folder("Later")
+        try link(provider + "/Later", to: later)
+        let afterShortcut = await reader.mirrors()
+        XCTAssertEqual(afterShortcut[later], "GoogleDrive-me@example.com")
+        XCTAssertEqual(afterShortcut.count, 4)
+        let laterFacts = await reader.facts(for: URL(fileURLWithPath: later))
+        XCTAssertEqual(laterFacts.kind, .cloud)
+    }
+
+    func testAStuckCloudFolderHoldsUpNoOtherFolder() async throws {
+        let gate = DispatchSemaphore(value: 0)
+        defer { gate.signal() }
+        let stuck = try folder("Library/CloudStorage/GoogleDrive-a/Stuck"), downloads = try folder("Downloads")
+        let reader = reader(volume: { url in
+            if url.path.hasSuffix("/Stuck") { _ = gate.wait(timeout: .now() + 6) }
+            return StorageProbe(isLocal: true, isInternal: true)
+        })
+        let silent = await reader.facts(for: URL(fileURLWithPath: stuck))
+        XCTAssertFalse(silent.isResponding)
+        let start = Date()
+        let ordinary = await reader.facts(for: URL(fileURLWithPath: downloads))
+        XCTAssertEqual(ordinary.kind, .thisMac, "a provider that stopped answering holds up only its own folder")
+        XCTAssertTrue(ordinary.isResponding)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.9)
     }
 
     func testASharedAnswerOnAParentFolderMakesTheChildShared() async throws {

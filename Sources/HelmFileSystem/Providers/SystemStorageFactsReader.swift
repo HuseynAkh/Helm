@@ -52,7 +52,7 @@ public struct SystemStorageFactsReader: StorageFactsReading {
         let path = folder.standardizedFileURL.path, home = self.home, reads = self.reads
         do {
             let found = try await DatalessGuard.off {
-                try await executor.runRead(volume: Self.lane(of: path)) {
+                try await executor.runRead(volume: Self.lane(of: path, home: home)) {
                     Self.probe(path, home: home, mirrors: mirrors, reads: reads)
                 }
             }
@@ -66,17 +66,21 @@ public struct SystemStorageFactsReader: StorageFactsReading {
     /// The folders a provider mirrors to: where the links one and two levels inside each folder of the home's
     /// `Library/CloudStorage` point, by canonical path, each with the name of the provider's folder. Google leaves such
     /// a link when My Drive is mirrored to an ordinary folder. Read on first use and again whenever the list of
-    /// providers' folders changes; a folder that isn't loaded is passed over, never loaded.
+    /// providers' folders, or the names in one of them, changes; a folder that isn't loaded is passed over, never
+    /// loaded. The read has a lane of its own, so a provider that stopped answering holds up no folder's facts.
     public func mirrors() async -> [String: String] {
         let home = self.home, reads = self.reads, cache = mirrorCache
         let found = try? await DatalessGuard.off {
-            try await executor.runRead(volume: Self.lane(of: home)) { () -> [String: String] in
+            try await executor.runRead(volume: home + "/Library/CloudStorage") { () -> [String: String] in
                 let realHome = reads.canonical(home) ?? home
                 let storage = realHome + "/Library/CloudStorage"
                 let folders = (reads.names(storage) ?? []).filter { !$0.hasPrefix(".") }.sorted()
-                if let known = cache.mirrors(for: folders) { return known }
-                let mirrors = Self.readMirrors(in: storage, folders: folders, home: realHome, reads: reads)
-                cache.store(mirrors, for: folders)
+                // A shortcut can appear in a provider's folder that was already there, as when Google Drive is
+                // switched from streaming to mirroring, so each folder's own names are part of what was read.
+                let listed = folders.map { [$0] + (reads.names(storage + "/" + $0) ?? []).sorted() }
+                if let known = cache.mirrors(for: listed) { return known }
+                let mirrors = Self.readMirrors(in: storage, listed: listed, home: realHome, reads: reads)
+                cache.store(mirrors, for: listed)
                 return mirrors
             }
         }
@@ -127,7 +131,8 @@ public struct SystemStorageFactsReader: StorageFactsReading {
 
     /// The targets of the links one and two levels inside each provider's folder. A target inside the providers'
     /// folders is already a cloud place, and one at or above the home can't be a mirror, so neither counts.
-    private static func readMirrors(in storage: String, folders: [String], home: String, reads: Reads) -> [String: String] {
+    /// `listed` holds each provider's folder name followed by the names in it.
+    private static func readMirrors(in storage: String, listed: [[String]], home: String, reads: Reads) -> [String: String] {
         var mirrors: [String: String] = [:]
         func follow(_ link: String, from folder: String, provider: String) -> Bool {
             guard let written = reads.linkTarget(link) else { return false }
@@ -137,9 +142,10 @@ public struct SystemStorageFactsReader: StorageFactsReading {
             }
             return true
         }
-        for provider in folders {
+        for names in listed {
+            guard let provider = names.first else { continue }
             let top = storage + "/" + provider
-            for first in reads.names(top) ?? [] {
+            for first in names.dropFirst() {
                 let level = top + "/" + first
                 if follow(level, from: top, provider: provider) { continue }
                 for second in reads.names(level) ?? [] { _ = follow(level + "/" + second, from: level, provider: provider) }
@@ -148,11 +154,19 @@ public struct SystemStorageFactsReader: StorageFactsReading {
         return mirrors
     }
 
-    /// The lane a folder's reads wait in: a disk in the Volumes folder has its own, so one server that stopped
-    /// answering holds up only itself.
-    private static func lane(of path: String) -> String {
-        let parts = path.split(separator: "/")
-        return parts.count >= 2 && parts[0] == "Volumes" ? "/Volumes/" + parts[1] : "/"
+    /// The lane a folder's reads wait in. A disk in the Volumes folder, each provider's folder in the home's
+    /// `Library/CloudStorage` and the home's `Library/Mobile Documents` have one each, so a server or a provider that
+    /// stopped answering holds up only itself; the rest of the startup disk shares one.
+    static func lane(of path: String, home: String) -> String {
+        let parts = path.split(separator: "/").map(String.init)
+        if parts.count >= 2 && parts[0] == "Volumes" { return "/Volumes/" + parts[1] }
+        let homeParts = home.split(separator: "/").map(String.init), library = homeParts.count
+        guard parts.count >= library + 2, Array(parts.prefix(library)) == homeParts, parts[library] == "Library" else { return "/" }
+        if parts[library + 1] == "Mobile Documents" { return "/" + parts.prefix(library + 2).joined(separator: "/") }
+        if parts[library + 1] == "CloudStorage", parts.count >= library + 3 {
+            return "/" + parts.prefix(library + 3).joined(separator: "/")
+        }
+        return "/"
     }
 
     /// Whether `path` is `prefix` or inside it, folder by folder.
@@ -160,16 +174,16 @@ public struct SystemStorageFactsReader: StorageFactsReading {
         prefix == "/" || path == prefix || path.hasPrefix(prefix + "/")
     }
 
-    /// The mirrors last read and the list of providers' folders they were read from.
+    /// The mirrors last read and the providers' folders, with the names in each, they were read from.
     private final class MirrorCache: @unchecked Sendable {
         private let lock = NSLock()
-        private var folders: [String]?
+        private var folders: [[String]]?
         private var known: [String: String]?
-        func mirrors(for folders: [String]) -> [String: String]? {
+        func mirrors(for folders: [[String]]) -> [String: String]? {
             lock.lock(); defer { lock.unlock() }
             return self.folders == folders ? known : nil
         }
-        func store(_ mirrors: [String: String], for folders: [String]) {
+        func store(_ mirrors: [String: String], for folders: [[String]]) {
             lock.lock(); defer { lock.unlock() }
             self.folders = folders; known = mirrors
         }
