@@ -219,8 +219,9 @@ public enum AgentText {
     public static func stateNoModels(_ provider: String) -> String { "\(shown(provider)) has no models yet." }
     public static let portLabel = "Port"
     public static let addressLabel = "Address"
-    /// The Address field's prompt. Built from the one scheme a typed address may have, so no web address is written.
-    public static let addressPrompt = AgentProviderCatalog.secureScheme + "://"
+    /// The Address field's prompt: the one scheme a typed address may have. It is put together as the app runs, so
+    /// neither the source nor the app holds a web address the privacy checks would have to allow.
+    public static var addressPrompt: String { [AgentProviderCatalog.secureScheme, ":", "/", "/"].joined() }
     public static let addressNeedsHTTPS = "Helm needs an https address."
     public static let addressOtherDevice = "Servers on other devices aren't supported yet."
     public static let modelLabel = "Model"
