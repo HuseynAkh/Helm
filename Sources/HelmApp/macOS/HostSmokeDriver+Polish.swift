@@ -72,6 +72,11 @@ extension HostSmokeDriver {
         case "list-rows":
             let shown = window.listRowNamesForTesting.joined(separator: ",")
             check(shown == argument, step, shown)
+        case "list-columns-on-show":
+            // No column of the list is past its edge; with "whole", every row's words fit their column too.
+            let fit = window.listColumnFitForTesting()
+            let whole = argument != "whole" || fit.allSatisfy(\.wordsWhole)
+            check(!fit.isEmpty && fit.allSatisfy(\.isOnShow) && whole, step, fit.map(\.description).joined(separator: ", "))
         case "list-open":
             let open = window.listIsOpenForTesting(argument)
             check(open == true, step, open.map { "open \($0)" } ?? "no such row")

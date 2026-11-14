@@ -128,7 +128,8 @@ import HelmCore
     }
 
     /// A narrower list, as when the AI panel opens beside it, takes its room from Name first, so Size, Modified and
-    /// Kind keep their words; only past Name's narrowest do the others give way. Wider again, Name gets its width back.
+    /// Kind keep their words; past Name's narrowest the others give only the room their words don't use, and Name goes
+    /// on down to its least. Wider again, Name gets its width back.
     func testANarrowerListTakesRoomFromNameFirstAndGivesItBack() {
         let h = harness([file("a.txt"), file("b.txt")])
         func widths() -> [String: CGFloat] { h.list.columnWidthsForTesting }
@@ -145,16 +146,40 @@ import HelmCore
         XCTAssertLessThanOrEqual(h.outline.frame.width, room + 1, "nothing is past the edge")
         h.window.setContentSize(NSSize(width: 440, height: 420))
         h.window.layoutIfNeeded()
-        XCTAssertEqual(widths()["name"] ?? 0, FileListController.narrowest["name"] ?? 0, accuracy: 0.5, "\(widths())")
-        for (column, width) in widths() {
-            XCTAssertGreaterThanOrEqual(width, (FileListController.narrowest[column] ?? 0) - 0.5, "\(column): \(widths())")
-        }
+        let narrow = h.list.columnFitForTesting()
+        XCTAssertTrue(narrow.allSatisfy { $0.isOnShow && $0.wordsWhole }, "every column on show with its words whole: \(narrow)")
+        XCTAssertLessThan(widths()["name"] ?? 0, (FileListController.narrowest["name"] ?? 0) + 0.5, "\(widths())")
+        XCTAssertGreaterThanOrEqual(widths()["name"] ?? 0, FileListController.leastNameWidth - 0.5, "\(widths())")
         h.window.setContentSize(NSSize(width: 1100, height: 420))
         h.window.layoutIfNeeded()
         XCTAssertEqual(widths()["name"] ?? 0, 340, accuracy: 0.5, "Name has its width back: \(widths())")
         XCTAssertEqual(widths()["size"] ?? 0, 90, accuracy: 0.5)
         XCTAssertEqual(widths()["dateModified"] ?? 0, 180, accuracy: 0.5)
         XCTAssertGreaterThanOrEqual(widths()["kind"] ?? 0, 160 - 0.5, "the last column takes what is left over")
+    }
+
+    /// The order the columns give way in, as the room shrinks: Name to its narrowest; then the others, only the room
+    /// their words don't use; then Name to its least; and last the others' words, down to their narrowest. Past that
+    /// the list scrolls sideways.
+    func testTheColumnsGiveWayInOrder() {
+        let chosen: [CGFloat] = [340, 90, 180, 160], words: [CGFloat] = [0, 54, 113, 131]
+        var asked = 0
+        func fit(_ room: CGFloat) -> [CGFloat] {
+            FileListController.fittedWidths(chosen: chosen, nameIndex: 0, narrowest: [180, 64, 120, 90], room: room,
+                                            words: { asked += 1; return words })
+        }
+        XCTAssertEqual(fit(900), chosen)
+        XCTAssertEqual(fit(700), [270, 90, 180, 160])
+        XCTAssertEqual(fit(610), [180, 90, 180, 160])
+        XCTAssertEqual(asked, 0, "the words are measured only once Name can give no more")
+        let some = fit(580)
+        XCTAssertEqual(some[0], 180)
+        XCTAssertEqual(some.reduce(0, +), 580, accuracy: 3, "\(some)")
+        for index in 1..<4 { XCTAssertGreaterThanOrEqual(some[index], words[index], "\(some)") }
+        XCTAssertEqual(fit(478), [180, 54, 113, 131])
+        XCTAssertEqual(fit(448), [150, 54, 113, 131])
+        XCTAssertEqual(fit(430), [150, 54, 113, 113])
+        XCTAssertEqual(fit(300), [150, 54, 113, 90])
     }
 
     // MARK: The column menu

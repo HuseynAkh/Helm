@@ -174,24 +174,26 @@ import HelmCore
         browser.header.setAIPanel(open: isOpen, working: model?.isWorking ?? false, ready: ready)
     }
 
-    /// Room for the files beside the panel: the sidebar goes first, then the window grows by what is still missing.
-    /// What it took is kept, to give back when the panel shuts.
+    /// Room for the files beside the panel, at least `minimumFilesWidth` and as much as the list needs for every column's words:
+    /// the sidebar goes first, then the window grows by what is still missing. What it took is kept, to give back when
+    /// the panel shuts.
     private func makeRoom(in browser: BrowserWindowController) {
         hidSidebar = false
         added = nil
         guard let root = superview else { return }
         root.layoutSubtreeIfNeeded()
         var room = root.bounds.width - Self.width
-        if room < Self.minimumFilesWidth, let sidebar = browser.split.splitViewItems.first, !sidebar.isCollapsed {
+        let needed = max(Self.minimumFilesWidth, browser.filesRoomNeeded)
+        if room < needed, let sidebar = browser.split.splitViewItems.first, !sidebar.isCollapsed {
             sidebar.isCollapsed = true
             browser.sidebarVisibilityChanged(false, animated: false)
             browser.split.view.layoutSubtreeIfNeeded()
             room = root.bounds.width - Self.width
             hidSidebar = true
         }
-        if room < Self.minimumFilesWidth, let window = browser.window {
+        if room < needed, let window = browser.window {
             var frame = window.frame
-            let grow = Self.minimumFilesWidth - room
+            let grow = ceil(needed - room)
             frame.size.width += grow
             window.setFrame(frame, display: window.isVisible)
             browser.split.view.layoutSubtreeIfNeeded()

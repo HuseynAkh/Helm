@@ -436,9 +436,45 @@ import Quartz
                 frame.fill()
             }
             capture.draw(in: root.bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            // Some SDKs leave the sidebar material's scroll views out of a capture, rows and all, though their
+            // documents still draw: there, each document's visible part is drawn where its clip view shows it.
+            for effect in effects where effect.material == .sidebar
+                && isSeeThrough(capture, at: effect.convert(effect.bounds, to: root), in: root) {
+                for scroll in scrollViews(in: effect) {
+                    let clip = scroll.contentView
+                    guard let document = scroll.documentView else { continue }
+                    let shown = clip.documentVisibleRect
+                    guard shown.width > 0, shown.height > 0, let part = document.bitmapImageRepForCachingDisplay(in: shown) else { continue }
+                    document.cacheDisplay(in: shown, to: part)
+                    part.draw(in: clip.convert(clip.bounds, to: root), from: .zero, operation: .sourceOver, fraction: 1,
+                              respectFlipped: true, hints: nil)
+                }
+            }
         }
         NSGraphicsContext.restoreGraphicsState()
         return out
+    }
+
+    private static func scrollViews(in view: NSView) -> [NSScrollView] {
+        view.subviews.filter { !$0.isHidden }.flatMap { child -> [NSScrollView] in
+            if let scroll = child as? NSScrollView { return [scroll] }
+            return scrollViews(in: child)
+        }
+    }
+
+    /// Whether a capture is see-through across a frame of the view it was taken from, as when the material there
+    /// and everything inside it were left out: most of a row of points across its middle has no ink at all.
+    private static func isSeeThrough(_ capture: NSBitmapImageRep, at frame: NSRect, in root: NSView) -> Bool {
+        guard frame.width >= 4, frame.height >= 4, root.bounds.width > 0 else { return false }
+        let scale = CGFloat(capture.pixelsWide) / root.bounds.width
+        let rowY = root.isFlipped ? frame.midY : root.bounds.height - frame.midY
+        let y = Int(rowY * scale)
+        guard y >= 0, y < capture.pixelsHigh else { return false }
+        let xs = stride(from: frame.minX + 2, to: frame.maxX - 2, by: max(1, (frame.width - 4) / 16)).map { Int($0 * scale) }
+            .filter { $0 >= 0 && $0 < capture.pixelsWide }
+        guard !xs.isEmpty else { return false }
+        let clear = xs.filter { (capture.colorAt(x: $0, y: y)?.alphaComponent ?? 1) < 0.02 }.count
+        return clear * 4 >= xs.count * 3
     }
 }
 #endif

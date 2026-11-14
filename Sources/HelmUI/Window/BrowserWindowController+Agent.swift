@@ -23,6 +23,8 @@ extension BrowserWindowController {
     public var isAgentPanelOpen: Bool { agentPanelHost.isOpen }
     /// Each render: the tab, its folder or its selection may have changed.
     func agentWindowDidRender() { agentPanelHost.windowDidRender() }
+    /// The room the files on show need beside the panel: the list's, for every column's words; nothing for the grid.
+    var filesRoomNeeded: CGFloat { (shownContent as? FileListController)?.roomNeeded ?? 0 }
 
     /// Applies an approved plan. The conversation checks its own copy of the plan again first; the plan it hands
     /// back is the one that runs, and only the groups that were ticked. Nil when nothing was allowed to run.

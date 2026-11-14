@@ -238,6 +238,60 @@ import HelmTestKit
         XCTAssertFalse(controller.isSidebarVisibleForTesting, "the person hid it themselves")
     }
 
+    /// Opened at any width, the panel makes room for the whole list beside it: no column is past the list's edge, and
+    /// Size, Modified and Kind show their words whole, Name giving way first. Shut, the columns are as they were.
+    /// Narrowed further by hand, Name goes down to its least before the others cut their words.
+    func testTheListFitsBesideThePanelAtEveryWidth() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        controller.perform(.list)
+        let listed = await until { controller.listRowNamesForTesting.contains("a.txt") }
+        XCTAssertTrue(listed)
+        func resize(_ width: CGFloat) {
+            var frame = window.frame
+            frame.size.width = width
+            window.setFrame(frame, display: false)
+            controller.split.view.layoutSubtreeIfNeeded()
+        }
+        func fits(_ label: String) -> [ListColumnFit] {
+            let fit = controller.listColumnFitForTesting()
+            for column in fit { XCTAssertTrue(column.isOnShow, "\(column.column) is past the edge at \(label): \(fit)") }
+            return fit
+        }
+        for (width, sidebar) in [(1240, true), (1100, true), (1040, true), (951, true), (900, true), (900, false), (760, false), (700, true)]
+            as [(CGFloat, Bool)] {
+            let label = "\(Int(width))\(sidebar ? " with the sidebar" : "")"
+            resize(width)
+            if controller.isSidebarVisibleForTesting != sidebar { controller.toggleSidebar() }
+            resize(width)
+            let shut = fits("\(label), shut")
+            XCTAssertEqual(shut.map(\.column), ["name", "size", "dateModified", "kind"])
+            _ = try await open(controller)
+            let open = fits("\(label), open")
+            let name = open.first?.width ?? 0
+            XCTAssertGreaterThanOrEqual(name, FileListController.leastNameWidth - 0.5, "\(label): \(open)")
+            XCTAssertTrue(open.allSatisfy(\.wordsWhole), "\(label): \(open)")
+            controller.clickSparkForTesting()
+            XCTAssertFalse(controller.isAgentPanelOpen)
+            controller.split.view.layoutSubtreeIfNeeded()
+            XCTAssertEqual(controller.listColumnFitForTesting(), shut, "shut again at \(label), the columns are as they were")
+        }
+        resize(1240)
+        if !controller.isSidebarVisibleForTesting { controller.toggleSidebar() }
+        _ = try await open(controller)
+        // Narrowed by hand with the panel open: Name gives way down to its least, and only then do the others cut words.
+        for width: CGFloat in [1100, 1000, 951, 900, 820, 760] {
+            resize(width)
+            let fit = controller.listColumnFitForTesting()
+            let name = fit.first?.width ?? 0
+            XCTAssertGreaterThanOrEqual(name, FileListController.leastNameWidth - 0.5, "\(Int(width)): \(fit)")
+            if name > FileListController.leastNameWidth + 0.5 {
+                XCTAssertTrue(fit.allSatisfy { $0.wordsWhole && $0.isOnShow }, "Name had room to give at \(Int(width)): \(fit)")
+            }
+        }
+        controller.clickSparkForTesting()
+    }
+
     func testTheMainMenuIsWholeWithThePanelOpenAtEveryWidth() async throws {
         let (controller, _, _) = try await window()
         let window = try XCTUnwrap(controller.window)

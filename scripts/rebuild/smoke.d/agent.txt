@@ -7,6 +7,8 @@ cmd newTab
 wait 0.4
 go @FIX@/home/AgentMess
 wait 0.5
+view list
+wait 0.4
 hunt-width-is 1040
 sidebar-visible-is true
 # 1. AI mode off: the spark asks for the AI mode screen, the panel stays shut and no model client is built
@@ -31,9 +33,10 @@ cmd aiPanel
 agent-is closed
 cmd aiPanel
 agent-is open
-# The window had room for the panel, so the sidebar and the width stay as they were
-sidebar-visible-is true
+# The window had room for the panel and the list's columns once the sidebar made way, so the width stays as it was
+sidebar-visible-is false
 hunt-width-is 1040
+list-columns-on-show whole
 # 3. The path bar is as it was, open or shut
 path-reads Home / AgentMess
 agent-close
@@ -333,21 +336,26 @@ header-buttons-even
 header-menu-whole
 title-bar-fits-header
 window-edges-native
-# Shutting the panel gives back the room opening it took: the sidebar it hid, and the width it added
+# Shutting the panel gives back the room opening it took: the sidebar it hid, and the width it added. In the list,
+# opening makes room for every column, and at 900 every column's words are whole beside the panel
 agent-close
+view list
+wait 0.4
 window-width 900
 sidebar-visible-is true
 agent-open
 agent-is open
 sidebar-visible-is false
 header-menu-whole
+list-columns-on-show whole
 agent-close
 sidebar-visible-is true
 header-leading-is 8
+list-columns-on-show whole
 window-width 700
 agent-open
 sidebar-visible-is false
-hunt-width-is 760
+list-columns-on-show
 header-menu-whole
 agent-close
 hunt-width-is 700
