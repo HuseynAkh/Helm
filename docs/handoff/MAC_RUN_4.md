@@ -2,7 +2,7 @@
 
 **Status: Helm is now an agentic file manager. AI mode is built, checked on fixtures with a scripted model, and off until turned on. No real provider, key, cloud folder or server was used, and no person has tried it yet; the list under "Needs Huseyn's Mac" is all not verified. The version is 0.2. Nothing was pushed, installed or released.**
 
-Run on 2026-11-12 to 14, on the branch `agentic/merge` in a scratch worktree. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-4-2026-11-12-and-13).
+Run on 2026-11-12 to 14, on the branch `agentic/merge`. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-4-2026-11-12-and-13).
 
 ## What Huseyn asked
 
@@ -29,7 +29,7 @@ Run on 2026-11-12 to 14, on the branch `agentic/merge` in a scratch worktree. Hu
 - **Plans:** the model proposes, Helm checks every step, and the card shows each group with a tick and its full list. Trash, and changes that reach a place that syncs or is shared, start unticked. Apply runs through Helm's own operations, so conflicts keep both, removals go to the Trash, and one Undo puts it all back. Stop works between two steps.
 - **Remote and cloud folders:** one classifier names the place on the chip and in the plan's notes. Every agent read and every Apply runs with macOS's downloads switched off, so nothing is fetched.
 - **AI search:** the field's spark turns it on. The model plans up to six searches, Helm runs them on the Mac and asks the model to rank the matches. Each result's tooltip says why it matched.
-- **The AI Mode screen** after setup, and **Settings › AI**, sharing one model. Done is the only way to leave AI mode on.
+- **The AI Mode screen** after setup, and **Settings › AI**, sharing one model. Done is the only way to leave AI mode on, and it opens the panel in the window in front.
 - **One view button** in place of the Grid and List segments.
 - **Privacy checks** for the new promise: network code in one file, four web addresses, and a binary check that allows only the listed URL-loading calls and addresses.
 - **The README**, rewritten agentic first, with 17 pictures retaken from scripted background runs and a banner and spark drawn by `scripts/readme/make_brand.swift` from the unchanged app icon.
@@ -40,21 +40,21 @@ All on this Mac, on fixtures, with Helm's windows invisible and its networking b
 
 | Check | Result |
 |---|---|
-| `swift test`, whole suite, after the last interface fixes (67cba42) | 2,902 tests. One failure under load, `testCutInOneWindowAndPasteInAnotherMoves`, passed twice alone |
-| `HelmAgentTests` alone, after the live wiring | 532 tests, 0 failures; 536 after the review fixes |
+| `swift test`, whole suite, after the last fixes | 2,907 tests. One failure under load, `testRenameAndTrashInsideAnOpenFolderKeepASelection`, passed alone |
+| `HelmAgentTests` alone, after the live wiring | 532 tests, 0 failures; 536 after the security fixes |
 | Gate, `scripts/rebuild/run_all.sh` (da68a5d) | exit 0, every check passes, 2,295 portable tests, `HelmAgent` built and its tests run |
 | `bash scripts/static_checks.sh` | 434 Swift files, 0 errors; privacy check, 439 files, 0 problems |
 | Script tests | 51 in `scripts`, 37 in `scripts/rebuild` |
-| Full smoke, Debug | 1,788 checks passed. Two thumbnail time limits failed under load and passed alone |
+| Full smoke, Debug, after the last fixes | 1,795 checks passed, none failed |
 | Smoke with the shipped wiring and AI mode off (`HELM_SMOKE_AGENT=live`) | 1,544 checks passed; no model client was built |
 | Smoke with the shipped wiring and AI mode on (`HELM_SMOKE_AGENT=denied`) | Passed: the sandbox stopped HelmDev at its first request, to Ollama on 127.0.0.1 |
 | Release build (`make_release.sh`, ad hoc) and `check_binary_privacy.sh` | All nine checks pass: 4 provider addresses, 15 URL session calls, all listed, no build paths |
 | Full smoke on the Release build | 1,788 checks passed; the only failure is the known 14-point band (run 3, Open 6) |
-| Final review: security, privacy and product, each with a second reader | 17 findings kept; the one must and 11 shoulds fixed, the rest below |
-| Interface review on both SDKs | 60 findings, 34 fixes; 31 shown working by a picture or a test. The three dots are whole at every width from 640 to 1,600 points, light and dark |
+| Security, privacy and product | 17 problems found: 12 fixed, the rest under Open |
+| The interface, every AI mode state on both SDKs | 60 problems found and 34 fixed; 31 of the fixes shown working by a picture or a test. The three dots are whole at every width from 640 to 1,600 points, light and dark |
 | README pictures (`make_readme_images.sh`) | All 17 taken in the background with the network blocked, every step passing, and each picture looked at: fixture names only |
 
-The pictures' run also checks AI mode end to end: the AI Mode screen connects with a stand-in key, the panel's three suggestions read "Organize 10 items", the plan reads "9 moves · 3 new folders" with the Trash group off, Apply moves 9 items, Undo puts every file back, and AI search gives Invoice October.pdf the reason "Name has “invoice” · PDF".
+The pictures' run also checks AI mode end to end: the AI Mode screen connects with a stand-in key, the panel's three suggestions read "Organize 10 items", the plan reads "9 moves · 3 new folders" with the Trash group off, Apply moves 9 items, Undo puts every file back, and AI search finds the three fall invoice PDFs, newest first, and gives Invoice October.pdf the reason "Name has “invoice” · PDF".
 
 ## Needs Huseyn's Mac
 

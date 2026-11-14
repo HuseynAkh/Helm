@@ -137,7 +137,7 @@ write("""
 write("Ideas\n\n1. A calmer header\n2. Folders apart from files in Recent\n3. Smooth list animations\n", to: "Documents/Ideas.txt")
 write("Month,Design,Engineering,Research\nJanuary,1200,3400,800\nFebruary,1350,3600,950\nMarch,1500,3550,1020\n", to: "Documents/Budget 2027.csv")
 let invoices = folder("Documents/Invoices")
-for (index, month) in ["August", "September", "October"].enumerated() {
+for (index, month) in ["September", "October", "November"].enumerated() {
     pdf(title: "Invoice \(1042 + index)", subtitle: "\(month) 2026 · Studio Maple", accent: 0x5E5CE6, pages: 1, chart: false,
         to: invoices.appendingPathComponent("Invoice \(month).pdf"))
 }
@@ -215,6 +215,10 @@ let pinnedDates: [String: Date] = [
     "Documents/Product Roadmap.pdf": day(1, 11, 5),
     "Downloads/Concert Poster.jpg": day(2, 19, 30),
     "Downloads/Boarding Pass.pdf": day(3, 7, 55),
+    // The fall's invoices, each dated in step with its name, for AI search's picture.
+    "Documents/Invoices/Invoice November.pdf": day(2, 10, 15),
+    "Documents/Invoices/Invoice October.pdf": day(25, 14, 30),
+    "Documents/Invoices/Invoice September.pdf": day(48, 9, 20),
 ]
 let homePath = home.resolvingSymlinksInPath().path
 if let walker = manager.enumerator(at: home, includingPropertiesForKeys: nil) {

@@ -43,13 +43,12 @@ organize = {"when": "organize", "turns": [
                   {"items": names("Invoices.zip", "Photos Backup.zip"), "all_in": "", "to": "n3"}],
         "copies": [], "renames": [], "trash": names("Read Me.txt")}}]}]}
 anything = {"when": "*", "turns": [{"text": "I can organize, move and copy files in these folders."}]}
-# AI search: PDFs named like an invoice from the last two months, then anything named like one.
+# AI search: PDFs named like an invoice from the last two months, newest first.
 today = datetime.date.today()
 plan = {"sort": "newest", "queries": [
     {"name_any": ["invoice"], "kinds": ["pdf"], "date_field": "modified",
-     "date_from": (today - datetime.timedelta(days=60)).isoformat(), "date_to": today.isoformat()},
-    {"name_any": ["invoice"]}]}
-rank = {"ranked": [{"row": row, "why": ["name", "kind", "date"]} for row in range(1, 9)]}
+     "date_from": (today - datetime.timedelta(days=60)).isoformat(), "date_to": today.isoformat()}]}
+rank = {"ranked": [{"row": row, "why": ["name", "kind", "date"]} for row in range(1, 4)]}
 script = {"rules": [organize, anything], "searchPlan": plan, "searchRank": rank,
           "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]}
 with open(os.path.join(fix, 'agent-script.json'), 'w', encoding='utf-8') as handle:
@@ -81,8 +80,8 @@ swiftc -O scripts/readme/frame_shot.swift -o "$root/frame_shot" || exit 1
 frame() { name=$1; shift; "$root/frame_shot" "$root/shots/$name.png" "docs/images/$name.png" "$@" || exit 1; }
 frame ai-panel-dark 1600
 frame ai-panel-light 1600
-frame ai-plan-light 760 18 crop=900,0,340,500
-frame ai-undo-light 760 18 crop=900,0,340,500
+frame ai-plan-light 760 18 crop=900,52,340,448
+frame ai-undo-light 760 18 crop=900,52,340,448
 frame ai-search-dark 1280
 frame ai-mode-screen 900 16
 frame settings-ai-light 1000 16

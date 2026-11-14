@@ -166,29 +166,29 @@ What was built and checked is in [`MAC_RUN_4.md`](MAC_RUN_4.md).
 
 ### Delegated choices in run 4
 
-Huseyn can overrule any of these. The reasons are in the design notes of the run.
+Huseyn can overrule any of these. Each one's reason is in its last column.
 
 | Topic | Choice | Why |
 |---|---|---|
-| Off by default | **AI mode is off until turned on, and no network client exists while it's off.** | Helm's promise becomes: it connects only to the provider you chose, and only while AI mode is on. |
-| Separate base | **`HelmAgent` can reach the network but can't change or open a file. HelmUI applies plans.** | The module that talks to a model has no way to touch the disk. |
+| Off by default | **AI mode is off until turned on, and no network client exists while it's off.** | Helm then connects only to the provider you chose, and only while AI mode is on. |
+| Separate base | **`HelmAgent` can reach the network but can't change or open a file. HelmUI applies plans.** | The module that talks to a model can't touch the disk. |
 | Keys | **The login keychain, one key per provider and host.** | A changed `ai.json` can't send a saved key to another host. |
 | What is sent | **Names and details only. Reading inside files is not built.** | Contents never leave the Mac. |
-| Folders | **The folder on show plus up to seven added ones, inside the home folder, `/Volumes` or the Shared folder. Added folders aren't saved.** | An allow list can't miss a system place, and nothing becomes standing access. |
+| Folders | **The folder on show plus up to seven added ones, inside the home folder, `/Volumes` or the Shared folder. Added folders aren't saved.** | An allow list can't miss a system place or leave standing access. |
 | Tools | **Three: list a folder, find items, propose changes. Items are named by ids Helm issues, never by path.** | No path parsing and no escapes. |
-| Plans | **Nothing changes until Apply. Trash, and changes that reach a place that syncs or is shared, start unticked. Conflicts keep both. No delete, no shell, no web tool. 1,000 changes at most.** | Nothing is destroyed or overwritten, and every change can be seen first. |
+| Plans | **Nothing changes until Apply. Trash, and changes that reach a place that syncs or is shared, start unticked. Conflicts keep both. No delete, no shell, no web tool. 1,000 changes at most.** | Nothing is destroyed or overwritten unseen. |
 | Undo | **One Apply is one Undo. An undone plan can't be redone.** | A redo would run the plan again without Apply's checks. |
-| Cloud folders | **Never download. Files that aren't downloaded are left out, with a count.** | A wrong guess fails with nothing fetched. See question 1 in `MAC_RUN_4.md`. |
+| Cloud folders | **Never download. Files that aren't downloaded are left out, with a count.** | A wrong guess then fails with nothing fetched (question 1 in `MAC_RUN_4.md`). |
 | Panel | **A column 340 points wide under the header, shut at every launch. Opening it hides the sidebar first, then widens the window if the files need room.** | The header and today's layout stay as they were. |
-| Spark | **Opens the panel when a model is ready, and the AI Mode screen otherwise.** | One door for "not ready". |
-| Commands | **`/add` and `/clear`. A path typed alone adds a folder. A server address gets one Connect line and goes to macOS.** | Two commands cover it; macOS does the sign-in. |
+| Spark | **Opens the panel when a model is ready, and the AI Mode screen otherwise. Done on that screen opens the panel.** | One door for "not ready". |
+| Commands | **`/add` and `/clear`. A path typed alone adds a folder. A server address gets one Connect line and goes to macOS.** | Two commands cover it, and macOS does the sign-in. |
 | Suggestions | **Three, worked out on the Mac with no model: Organize, Move everything to…, Copy everything to…** | Huseyn's three examples, shown whenever the panel opens. |
 | AI search | **Two model calls at most. The model plans searches, Helm runs them, and the reasons are facts Helm writes, shown as each result's tooltip.** | A hostile file name can only reorder results. |
 | Consent line | **"Sends your requests and file names to {destination}, never file contents."** On the AI Mode screen, in Settings and at the top of each thread. | One sentence says what is sent and to whom. |
 | Claude | **No fallback model and no beta header.** | The person picked the model. |
-| OpenAI's first model | **`gpt-6-astra`.** | The vendor's stated starting point. One constant to change. |
+| OpenAI's first model | **`gpt-6-astra`.** | It's the vendor's stated starting point, and one constant to change. |
 | Model menu | **The panel shows the model's name, which opens Settings › AI.** | Choosing a model in the panel would need a new request path. |
-| Version | **0.2.** | Huseyn named no other. The About line still reads "Finder underneath, Nautilus on top." |
+| Version | **0.2.** The About line still reads "Finder underneath, Nautilus on top." | Huseyn named no other. |
 
 ## Ruled but not built yet
 
