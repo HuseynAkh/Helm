@@ -154,7 +154,8 @@ extension BrowserWindowController {
     }
     /// The main menu button as laid out: its size, its gap to the header's trailing edge, and where its drawing
     /// leaves ink, in its own points. The spark's ink, for comparing the two: its sharp tips fade out over a pixel
-    /// or two, so it counts only the pixels at least half covered, as the eye does.
+    /// or two, so it counts only the pixels at least half as opaque as its most opaque one, as the eye does, the same
+    /// way at rest in the label colour as lit in the gradient.
     public var headerMenuMeasureForTesting: (size: NSSize, trailingGap: CGFloat, bounds: NSRect, ink: NSRect?, sparkInk: NSRect?) {
         let menu = header.menuButton
         let frame = menu.convert(menu.bounds, to: header)

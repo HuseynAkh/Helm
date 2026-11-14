@@ -126,12 +126,24 @@ import HelmCore
         outline.columnAutoresizingStyle = .noColumnAutoresizing
         defer { outline.columnAutoresizingStyle = style; fitting = false }
         let margins = columnMargins()
-        let widths = Self.fittedWidths(chosen: columns.map { chosenWidths[$0.identifier] ?? $0.width }, nameIndex: nameIndex,
+        let widths = Self.fittedWidths(chosen: chosenForFitting(columns, nameIndex: nameIndex), nameIndex: nameIndex,
                                        narrowest: columns.map { Self.narrowest[$0.identifier.rawValue] ?? $0.minWidth },
                                        room: room - margins, words: { self.wordsWidths(columns) })
         for (column, width) in zip(columns, widths) where abs(column.width - width) > 0.25 { column.width = width }
         outline.tile()
         if widths.reduce(0, +) + margins < room { outline.sizeLastColumnToFit() }
+    }
+
+    /// The widths the columns are fitted from. The last column stretches to the list's edge rather than keep the width
+    /// it was given, so the width its words need counts as given too: Name gives way for it first, down to its
+    /// narrowest, before its words are cut. Search's Location is the exception: a long path would take the room of
+    /// every other column, so it keeps the width it was given.
+    private func chosenForFitting(_ columns: [NSTableColumn], nameIndex: Int) -> [CGFloat] {
+        var chosen = columns.map { chosenWidths[$0.identifier] ?? $0.width }
+        if let last = chosen.indices.last, last != nameIndex, columns[last].identifier.rawValue != Column.location.rawValue {
+            chosen[last] = max(chosen[last], wordsWidths(columns)[last])
+        }
+        return chosen
     }
 
     /// What the list adds round its columns, from where it lays them out: the spacing between them and the inset
@@ -150,10 +162,11 @@ import HelmCore
         let columns = outline.tableColumns.filter { !$0.isHidden }
         guard columns.contains(where: { $0.identifier.rawValue == Column.name.rawValue }) else { return 0 }
         let words = wordsWidths(columns)
+        let chosen = chosenForFitting(columns, nameIndex: columns.firstIndex { $0.identifier.rawValue == Column.name.rawValue } ?? 0)
         var total = columnMargins()
-        for (column, needed) in zip(columns, words) {
+        for (index, column) in columns.enumerated() {
             if column.identifier.rawValue == Column.name.rawValue { total += Self.leastNameWidth; continue }
-            total += min(chosenWidths[column.identifier] ?? column.width, needed)
+            total += min(chosen[index], words[index])
         }
         // A scroller that takes room from the rows takes it from the columns too.
         total += max(0, scroll.frame.width - scroll.contentView.bounds.width)
@@ -321,7 +334,7 @@ import HelmCore
         applySelection(tab)
         showReasons(tab.search?.assist?.reasons ?? [:])
         // Other rows can need more room for their words, or less.
-        if FittedRows(snapshot: snapshotID, rows: outline.numberOfRows) != fittedRows { refitColumns(force: true) }
+        if textChanged || FittedRows(snapshot: snapshotID, rows: outline.numberOfRows) != fittedRows { refitColumns(force: true) }
     }
 
     /// Puts each result's reason on its row as the tooltip, and takes it off once there's none. The reasons can come

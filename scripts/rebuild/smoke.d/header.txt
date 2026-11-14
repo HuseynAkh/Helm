@@ -14,11 +14,18 @@ header-tooltips
 view-options open
 header-shot @SHOTS@/header-sort-open.png
 view-options close
+# With the panel shut, the main menu is drawn whole, at rest and lit, light and dark, and the resting spark's ink is its size
+agent-is closed
+header-menu-whole
 menu-lit true
 header-shot @SHOTS@/header-menu-lit.png
+header-menu-whole
 menu-lit false
 appearance light
 header-shot @SHOTS@/header-grid-light.png
+header-menu-whole
+appearance dark
+header-menu-whole
 appearance system
 # Search: an empty search closes when you click away, and the path comes back
 search-open

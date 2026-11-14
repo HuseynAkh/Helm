@@ -292,6 +292,38 @@ import HelmTestKit
         controller.clickSparkForTesting()
     }
 
+    /// Opened in a 900-point window, the panel makes room for Kind's words whole, Name giving way first, at the usual
+    /// text size and at a larger one, where Kind's words are wider than the width Kind starts at.
+    func testAt900WithThePanelOpenKindIsCutOnlyAfterName() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        controller.perform(.list)
+        let listed = await until { controller.listRowNamesForTesting.contains("a.txt") }
+        XCTAssertTrue(listed)
+        defer { controller.resetText() }
+        for steps in [0, 4] {
+            if steps > 0 {
+                controller.stepText(by: steps)
+                try await Task.sleep(nanoseconds: 300_000_000)
+            }
+            var frame = window.frame
+            frame.size.width = 900
+            window.setFrame(frame, display: false)
+            controller.split.view.layoutSubtreeIfNeeded()
+            _ = try await open(controller)
+            controller.split.view.layoutSubtreeIfNeeded()
+            let fit = controller.listColumnFitForTesting()
+            let name = fit.first { $0.column == "name" }?.width ?? 0
+            let kind = try XCTUnwrap(fit.first { $0.column == "kind" }, "\(fit)")
+            XCTAssertTrue(fit.allSatisfy(\.isOnShow), "text \(controller.textPercent)%: \(fit)")
+            XCTAssertGreaterThanOrEqual(name, FileListController.leastNameWidth - 0.5, "text \(controller.textPercent)%: \(fit)")
+            XCTAssertTrue(kind.wordsWhole, "Kind is cut, text \(controller.textPercent)%: \(fit)")
+            controller.clickSparkForTesting()
+            XCTAssertFalse(controller.isAgentPanelOpen)
+            controller.split.view.layoutSubtreeIfNeeded()
+        }
+    }
+
     func testTheMainMenuIsWholeWithThePanelOpenAtEveryWidth() async throws {
         let (controller, _, _) = try await window()
         let window = try XCTUnwrap(controller.window)

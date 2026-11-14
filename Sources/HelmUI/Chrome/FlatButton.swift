@@ -77,12 +77,11 @@ import HelmCore
     }
     override var contentTintColor: NSColor? { didSet { needsDisplay = true } }
 
-    /// The symbol in the button's tint, at its own size, for drawing it whole.
-    var tintedSymbol: NSImage? {
+    /// The symbol at its own size, as a template: its shape, for drawing it whole in the button's tint.
+    var templateSymbol: NSImage? {
         guard !symbolName.isEmpty else { return nil }
         return NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .regular)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [contentTintColor ?? .labelColor])))
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .regular))
     }
     /// Where an icon on its own goes: centred, at the symbol's own size, on the backing's pixels.
     func symbolRect(for size: NSSize) -> NSRect {
@@ -90,18 +89,42 @@ import HelmCore
                                   width: size.width, height: size.height), options: .alignAllEdgesNearest)
     }
     override func draw(_ dirtyRect: NSRect) {
-        guard title.isEmpty, let icon = tintedSymbol else { super.draw(dirtyRect); return }
-        icon.draw(in: symbolRect(for: icon.size))
+        guard title.isEmpty, let icon = templateSymbol else { super.draw(dirtyRect); return }
+        drawTinted(icon, in: symbolRect(for: icon.size))
     }
-    /// Where its drawing leaves ink, at rest, in its own points: the box round every pixel it draws. Nil when it
-    /// draws nothing.
+    /// Draws a template's shape in the button's tint, resolved for its appearance, at the tint's own strength, as the
+    /// button cell draws a template image: half as strong while the button is off, as the cell dims it. A palette
+    /// colour lightened it: the label colour's own transparency was applied twice.
+    func drawTinted(_ template: NSImage, in rect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        var tint = NSColor.labelColor.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { tint = (contentTintColor ?? .labelColor).cgColor }
+        if !isEnabled { tint = tint.copy(alpha: tint.alpha * 0.5) ?? tint }
+        context.saveGState()
+        context.beginTransparencyLayer(in: rect, auxiliaryInfo: nil)
+        template.draw(in: rect)
+        context.setBlendMode(.sourceIn)
+        context.setFillColor(tint)
+        context.fill(rect)
+        context.endTransparencyLayer()
+        context.restoreGState()
+    }
+    /// Where its drawing leaves ink, in its own points: the box round every pixel at least `threshold` as opaque as
+    /// its most opaque one. Only the drawing counts, never the fill under the pointer or while lit, and a label colour
+    /// that lets some of the bar through counts the same as an opaque gradient, so it reads the same at rest and lit.
+    /// Nil when it draws nothing.
     func inkRectForTesting(threshold: CGFloat = 0.1) -> NSRect? {
-        guard bounds.width > 0, let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
-        cacheDisplay(in: bounds, to: rep)
+        guard let rep = drawingForTesting() else { return nil }
         let scale = CGFloat(rep.pixelsWide) / bounds.width
+        var alphas = [CGFloat](repeating: 0, count: rep.pixelsWide * rep.pixelsHigh)
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide { alphas[y * rep.pixelsWide + x] = rep.colorAt(x: x, y: y)?.alphaComponent ?? 0 }
+        }
+        let peak = alphas.max() ?? 0
+        guard peak > 0 else { return nil }
         var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
         for y in 0..<rep.pixelsHigh {
-            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > threshold {
+            for x in 0..<rep.pixelsWide where alphas[y * rep.pixelsWide + x] > threshold * peak {
                 minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
             }
         }
@@ -109,6 +132,32 @@ import HelmCore
         // The bitmap's rows run from the top.
         return NSRect(x: CGFloat(minX) / scale, y: bounds.height - CGFloat(maxY + 1) / scale,
                       width: CGFloat(maxX - minX + 1) / scale, height: CGFloat(maxY - minY + 1) / scale)
+    }
+    /// Its drawing alone, at its window's scale (2 off screen), in its appearance, on a clear bitmap: what it draws
+    /// over its fill.
+    func drawingForTesting() -> NSBitmapImageRep? {
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        let scale = window?.backingScaleFactor ?? 2
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int((bounds.width * scale).rounded()),
+                                         pixelsHigh: Int((bounds.height * scale).rounded()), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let bitmap = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        rep.size = bounds.size
+        let cg = bitmap.cgContext
+        cg.clear(CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+        cg.scaleBy(x: scale, y: scale)
+        // A flipped view draws with its rows running down, as it does on screen.
+        if isFlipped {
+            cg.translateBy(x: 0, y: bounds.height)
+            cg.scaleBy(x: 1, y: -1)
+        }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: isFlipped)
+        effectiveAppearance.performAsCurrentDrawingAppearance { draw(bounds) }
+        cg.flush()
+        return rep
     }
 
     /// Moved to a screen with another scale, the drawing is made again at that scale, never stretched from the old one.
@@ -122,6 +171,8 @@ import HelmCore
             guard isEnabled != oldValue else { return }
             alphaValue = isEnabled ? 1 : 0.35
             refresh(animated: false)
+            // The symbol is drawn dimmer while off.
+            needsDisplay = true
         }
     }
     override var mouseDownCanMoveWindow: Bool { false }

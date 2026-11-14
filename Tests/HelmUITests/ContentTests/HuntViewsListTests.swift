@@ -158,6 +158,32 @@ import HelmCore
         XCTAssertGreaterThanOrEqual(widths()["kind"] ?? 0, 160 - 0.5, "the last column takes what is left over")
     }
 
+    /// Kind, the last column, stretches to the list's edge rather than keep its width, so when its words need more than
+    /// that width, as with larger text, Name still gives way for them first: Kind is never cut while Name has room to
+    /// give, at the width the list has beside the panel in a 900-point window and at others.
+    func testTheLastColumnsWordsCountBeforeNameKeepsItsWidth() {
+        func text(_ name: String) -> FileEntry {
+            FileEntry(url: root.appendingPathComponent(name), localizedKindDescription: "Plain Text Document")
+        }
+        let h = harness([text("a.txt"), text("b.txt")])
+        h.host.fileTextSize = 20
+        h.list.render(h.tab, force: true)
+        for width: CGFloat in [1100, 900, 800, 640, 560] {
+            h.window.setContentSize(NSSize(width: width, height: 420))
+            h.window.layoutIfNeeded()
+            let fit = h.list.columnFitForTesting()
+            let name = fit.first { $0.column == "name" }?.width ?? 0
+            let kind = fit.first { $0.column == "kind" }
+            XCTAssertEqual(kind?.isOnShow, true, "\(Int(width)): \(fit)")
+            if name > FileListController.leastNameWidth + 0.5 {
+                XCTAssertEqual(kind?.wordsWhole, true, "Kind is cut while Name has room to give at \(Int(width)): \(fit)")
+            }
+        }
+        h.window.setContentSize(NSSize(width: 1100, height: 420))
+        h.window.layoutIfNeeded()
+        XCTAssertEqual(h.list.columnWidthsForTesting["name"] ?? 0, 340, accuracy: 0.5, "Name has its width back")
+    }
+
     /// The order the columns give way in, as the room shrinks: Name to its narrowest; then the others, only the room
     /// their words don't use; then Name to its least; and last the others' words, down to their narrowest. Past that
     /// the list scrolls sideways.

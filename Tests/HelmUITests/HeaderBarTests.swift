@@ -320,6 +320,99 @@ import HelmCore
         XCTAssertEqual(header.sortButton.layerContentsPlacement, .center, "the sort's words stay centred as it resizes")
     }
 
+    /// An icon on its own is drawn as dark as a plain button draws the same symbol in the label colour, in light and
+    /// dark, at rest, under the pointer and lit, and as dim as one that's off: drawing it whole doesn't change its ink. A palette colour applied the
+    /// label colour's transparency twice, so the darkest light-mode pixel was 72 where the button's is 39.
+    func testIconButtonsDrawTheirSymbolInTheFullLabelColour() throws {
+        let (window, header) = laidOut()
+        let content = try XCTUnwrap(window.contentView)
+        /// The strongest ink on a clear bitmap, laid on white in light and on black in dark, as a 0-255 grey.
+        func strongest(_ rep: NSBitmapImageRep, dark: Bool) -> Double {
+            var best: Double = dark ? 0 : 255
+            for y in 0..<rep.pixelsHigh {
+                for x in 0..<rep.pixelsWide {
+                    guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), color.alphaComponent > 0.01 else { continue }
+                    let grey = (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                    let over = grey * color.alphaComponent + (dark ? 0 : 1) * (1 - color.alphaComponent)
+                    let value = (Double(over) * 255).rounded()
+                    best = dark ? max(best, value) : min(best, value)
+                }
+            }
+            return best
+        }
+        func cached(_ view: NSView) throws -> NSBitmapImageRep {
+            let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: rep)
+            return rep
+        }
+        func plainButton(like button: FlatButton) -> NSButton {
+            let plain = NSButton(frame: button.frame)
+            plain.isBordered = false
+            plain.title = ""
+            plain.image = NSImage(systemSymbolName: button.symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: button.symbolPointSize, weight: .regular))
+            plain.imagePosition = .imageOnly
+            plain.imageScaling = .scaleNone
+            plain.contentTintColor = .labelColor
+            plain.isEnabled = button.isEnabled
+            plain.alphaValue = button.alphaValue
+            content.addSubview(plain)
+            return plain
+        }
+        for button in [header.sidebarButton, header.searchButton, header.viewButton, header.menuButton] as [FlatButton] {
+            XCTAssertTrue(button.isEnabled)
+            let plain = plainButton(like: button)
+            defer { plain.removeFromSuperview() }
+            let name = button.accessibilityLabel() ?? button.symbolName
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                window.appearance = NSAppearance(named: appearance)
+                let dark = appearance == .darkAqua
+                let expected = strongest(try cached(plain), dark: dark)
+                XCTAssertEqual(strongest(try cached(button), dark: dark), expected, accuracy: 3,
+                               "\(name) at rest, \(appearance.rawValue)")
+                for state in ["rest", "hover", "lit"] {
+                    if state == "hover" { enter(button) }
+                    if state == "lit" { button.isOn = true }
+                    let drawn = try XCTUnwrap(button.drawingForTesting())
+                    XCTAssertEqual(strongest(drawn, dark: dark), expected, accuracy: 3,
+                                   "\(name) \(state), \(appearance.rawValue)")
+                }
+                button.isOn = false
+                leave(button)
+            }
+        }
+        // Back and Forward, off with no history, are dimmed as a plain button that's off dims its symbol.
+        for button in [header.backButton, header.forwardButton] as [FlatButton] {
+            XCTAssertFalse(button.isEnabled)
+            let plain = plainButton(like: button)
+            defer { plain.removeFromSuperview() }
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                window.appearance = NSAppearance(named: appearance)
+                let dark = appearance == .darkAqua
+                XCTAssertEqual(strongest(try cached(button), dark: dark), strongest(try cached(plain), dark: dark), accuracy: 3,
+                               "\(button.accessibilityLabel() ?? "") off, \(appearance.rawValue)")
+            }
+        }
+        window.appearance = nil
+    }
+
+    /// The spark's ink is measured the same way at rest, in the label colour, and lit, in the gradient: about 15
+    /// points, the size of the main menu's.
+    func testTheSparksInkIsTheSameSizeAtRestAndLit() throws {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        let rest = try XCTUnwrap(spark.inkRectForTesting(threshold: 0.5))
+        spark.isLit = true
+        let lit = try XCTUnwrap(spark.inkRectForTesting(threshold: 0.5))
+        spark.isLit = false
+        XCTAssertEqual(rest.width, lit.width, accuracy: 0.5, "rest \(rest), lit \(lit)")
+        XCTAssertEqual(rest.height, lit.height, accuracy: 0.5, "rest \(rest), lit \(lit)")
+        for ink in [rest, lit] {
+            XCTAssertGreaterThanOrEqual(ink.width, 13.5, "\(ink)")
+            XCTAssertLessThanOrEqual(ink.width, 16.5, "\(ink)")
+        }
+    }
+
     func testTheFieldsSparkIsAToggleNamedFindWithAI() throws {
         let (_, header) = laidOut()
         header.beginSearch()
