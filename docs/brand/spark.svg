@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFB533"/>
+      <stop offset="0.5" stop-color="#FA7061"/>
+      <stop offset="1" stop-color="#8F5CF5"/>
+    </linearGradient>
+  </defs>
+  <path d="M 128.00 20.48 C 134.45 95.74, 160.26 121.55, 235.52 128.00 C 160.26 134.45, 134.45 160.26, 128.00 235.52 C 121.55 160.26, 95.74 134.45, 20.48 128.00 C 95.74 121.55, 121.55 95.74, 128.00 20.48 Z" fill="url(#spark)"/>
+</svg>

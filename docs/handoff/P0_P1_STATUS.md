@@ -5,6 +5,8 @@ This is an audit of code and scripted checks, not human acceptance. It was done 
 
 Rows that Mac run 3 (2026-11-09 and 10) changed were updated by hand: P-021, P-026, P-064, P-184, P-188, P-189, P-035, P-197, P-225 to P-228, P-268 and P-306, and the evidence for P-002, P-200 and P-295. P-139, P-171 and P-238, built in Mac run 2, were brought up to date at the same time.
 
+Mac run 4 (2026-11-12 and 13) added AI mode, which no row here covers; [`MAC_RUN_4.md`](MAC_RUN_4.md) has what was built and checked. It changed two rows by hand: P-046 and P-243, since the header's Grid and List segments became one view button and the spark joined the header.
+
 ## Summary
 
 | Priority | Verified | Built, unverified | Partial | Missing | Ruled out | Total |
@@ -58,7 +60,7 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-037 | Column management | Partial | Header right-click show/hide plus native resize/reorder; not persisted, no Use as Defaults |
 | P-038 | Header-click sorting | Built, unverified | Header sort indicator wired; smoke 'sort' calls contentSetSort directly, not a header click |
 | P-039 | Disclosure triangles | Verified | Smoke 'Expand in the list' (expand, child); Option-click recursive variants not exercised |
-| P-046 | View switching and defaults | Verified | Smoke 'View modes' and 'Per-folder view memory' (view-is, sorted-by); Cmd-3/4 ruled out |
+| P-046 | View switching and defaults | Verified | Smoke 'View modes' and 'Per-folder view memory' (view-is, sorted-by); one view button in the header since run 4 (smoke.d/header.txt header-view-is, header-switch); Cmd-1/2 kept, Cmd-3/4 ruled out |
 | P-047 | Preserve scroll, selection, expansion | Built, unverified | Scroll kept on same-location render, selection in store; no step for Back or view switch |
 | P-048 | Large folders | Built, unverified | Loader tests at 100k entries (K31LoadingTests, fake FS); no timed run in the window |
 | P-049 | Live updates | Verified | Smoke 'External changes show up by themselves' (watch-external); selection and scroll retention not asserted |
@@ -265,7 +267,7 @@ Missing or Partial P0 rows, most damaging to daily use first.
 | P-234 | AirDrop from Share | Built, unverified | AirDrop appears among system sharing services; needs a person |
 | P-235 | Quick Actions submenu | Missing | No Quick Actions submenu |
 | P-242 | Customize Toolbar | Missing | ToolbarCustomization views unwired; allowsUserCustomization is false |
-| P-243 | Standard item set | Partial | Back/Forward, path, search, view switch, Actions only; no Share, Tags, Quick Look, Get Info, Eject, AirDrop |
+| P-243 | Standard item set | Partial | Back/Forward, path, search, one view button, sort, the AI spark and the main menu only; no Share, Tags, Quick Look, Get Info, Eject, AirDrop |
 | P-245 | Show/hide toolbar | Missing | No toolbar toggle |
 | P-249 | Breadcrumb drop targets | Built, unverified | PathBarView accepts drops on segments (acceptDrop); no step |
 | P-250 | Breadcrumb context menu | Partial | Open in New Tab and Copy Path only; no new window, Reveal, Terminal or Get Info |

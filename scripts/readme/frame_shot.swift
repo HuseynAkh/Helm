@@ -1,8 +1,9 @@
 // Frames a window capture for the README: rounded corners like a macOS 26 window, a hairline edge and a soft
 // shadow on a clear background, scaled to a width that suits a GitHub page.
-// usage: swift scripts/readme/frame_shot.swift <in.png> <out.png> [width-px] [corner-radius-pt] [plain]
+// usage: swift scripts/readme/frame_shot.swift <in.png> <out.png> [width-px] [corner-radius-pt] [plain] [crop=x,y,w,h]
 // The capture is taken at the screen's pixel density (2x on a Retina display), so the radius is given in points.
 // "plain" skips the corners and edge, for pictures that already have their own shape, such as a popover.
+// "crop=x,y,w,h" keeps one part of the capture, in points from its top left, such as the AI panel.
 import AppKit
 import CoreGraphics
 import Foundation
@@ -11,18 +12,28 @@ import UniformTypeIdentifiers
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 3 else {
-    FileHandle.standardError.write(Data("usage: frame_shot.swift <in.png> <out.png> [width-px] [corner-radius-pt] [plain]\n".utf8))
+    FileHandle.standardError.write(Data("usage: frame_shot.swift <in.png> <out.png> [width-px] [corner-radius-pt] [plain] [crop=x,y,w,h]\n".utf8))
     exit(2)
 }
 let input = URL(fileURLWithPath: arguments[1])
 let output = URL(fileURLWithPath: arguments[2])
 let targetWidth = arguments.count > 3 ? Double(arguments[3]) ?? 1600 : 1600
 let radiusPoints = arguments.count > 4 ? Double(arguments[4]) ?? 26 : 26
-let plain = arguments.count > 5 && arguments[5] == "plain"
+let options = arguments.count > 5 ? Array(arguments[5...]) : []
+let plain = options.contains("plain")
 
 guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
-      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+      let whole = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
     FileHandle.standardError.write(Data("can't read \(input.path)\n".utf8)); exit(1)
+}
+// The part to keep: all of it, or the crop given in points, which are two pixels each.
+var image = whole
+if let crop = options.first(where: { $0.hasPrefix("crop=") }) {
+    let parts = crop.dropFirst(5).split(separator: ",").compactMap { Double($0) }
+    guard parts.count == 4, let part = whole.cropping(to: CGRect(x: parts[0] * 2, y: parts[1] * 2, width: parts[2] * 2, height: parts[3] * 2)) else {
+        FileHandle.standardError.write(Data("bad crop \(crop)\n".utf8)); exit(1)
+    }
+    image = part
 }
 // The capture is 2x, so a point is two pixels before scaling.
 let scale = min(1, targetWidth / Double(image.width))
