@@ -127,7 +127,7 @@ Helm is an early preview for macOS 14 Sonoma or later, on Apple silicon or Intel
 3. **Drag Helm to Applications.** Open the disk image and drag Helm onto the Applications folder beside it, then eject the disk image.
 4. **Open it the first time.** Helm isn't notarized yet, so macOS stops it once. On macOS 15 and later, click **Done**, open **System Settings › Privacy & Security**, scroll to **Security**, click **Open Anyway** next to the note about Helm, and confirm with your password. On macOS 14, Control-click Helm in Applications, choose **Open**, then **Open** again. [Why it isn't notarized](docs/RELEASING.md#why-helm-isnt-notarized-yet).
 5. **Set it up.** Helm opens one setup screen. Leave **Use Helm instead of Finder** and **Full Disk Access** checked and click **Set Up**, or click **Not Now** to change nothing. Opened from the disk image, Helm offers to move itself to Applications first. **Help › Set Up Helm…** brings the screen back.
-6. **Turn on AI mode**, if you want it. The AI Mode screen comes next: switch it on, pick a provider, paste your key or start Ollama or LM Studio, and click **Done**. The panel opens. Close the screen any other way and AI mode stays off.
+6. **Turn on AI mode**, if you want it. The AI Mode screen comes next: switch it on, pick a provider, paste your key or start Ollama or LM Studio, and click **Done**. Then press the spark at the top right to open the panel. Close the screen any other way and AI mode stays off.
 
 Helm is signed ad hoc, so macOS treats each new version as a new app. After an update, open it as in step 4 again, and turn Full Disk Access back on: remove Helm from the list with − and add it back with +.
 
