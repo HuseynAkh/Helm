@@ -421,12 +421,54 @@ import HelmPersistence
         await pressDone(screen)
         XCTAssertEqual(opened.count, 1)
 
-        // Shown at launch, with no window asking, Done opens no panel.
+        // Shown at launch, with no window asking, Done opens the panel in the window in front.
         app.showAIModeScreen(from: nil)
         await connect(model)
         await pressDone(screen)
         XCTAssertEqual(screen.modeForTesting, "closed")
-        XCTAssertEqual(opened.count, 1)
+        XCTAssertEqual(opened.count, 2)
+        XCTAssertTrue(opened.last === window, "the only window is the one in front")
+    }
+
+    func testAfterSetupDoneWhileConnectedOpensThePanelInTheFrontWindow() async throws {
+        let app = await composedApp()
+        let settings = try settings(app)
+        app.access.opensAIIntroForTesting = true
+        app.newWindow(nil)
+        XCTAssertEqual(app.allWindows.count, 2)
+        let front = try XCTUnwrap(app.frontmost())
+        let other = try XCTUnwrap(app.allWindows.first { $0 !== front })
+        // The checklist closes and the AI mode screen follows, with no window asking.
+        app.access.showWelcome()
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        app.showAIIntroIfNeeded()
+        XCTAssertTrue(screen.pressForTesting("Not Now"))
+        let followed = await until { screen.modeForTesting == "ai" }
+        XCTAssertTrue(followed)
+        let model = try XCTUnwrap(app.aiSetupModelForTesting)
+        await connect(model)
+        await pressDone(screen)
+        XCTAssertEqual(screen.modeForTesting, "closed")
+        XCTAssertTrue(settings.snapshot.bool(.aiModeEnabled))
+        let open = await until { front.isAgentPanelOpen }
+        XCTAssertTrue(open, "Done opened the panel in the window in front")
+        XCTAssertFalse(other.isAgentPanelOpen, "and only there")
+    }
+
+    func testAfterSetupClosingTheScreenAnyOtherWayOpensNoPanel() async throws {
+        let app = await composedApp()
+        let settings = try settings(app)
+        app.access.opensAIIntroForTesting = true
+        settings.set(.bool(true), for: .onboardingCompleted)
+        let window = try XCTUnwrap(app.allWindows.first)
+        app.showAIIntroIfNeeded()
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(screen.modeForTesting, "ai")
+        let model = try XCTUnwrap(app.aiSetupModelForTesting)
+        await connect(model)
+        screen.window?.performClose(nil)
+        XCTAssertFalse(settings.snapshot.bool(.aiModeEnabled))
+        XCTAssertFalse(window.isAgentPanelOpen)
     }
 
     func testDoneOpensTheRealPanelAndClosingTheScreenLeavesAIModeOff() async throws {

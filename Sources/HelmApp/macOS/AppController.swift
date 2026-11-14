@@ -179,7 +179,7 @@ public struct LaunchOptions: Equatable, Sendable {
                 launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher(),
                 agent: makeAgentServices(environment))
             await access.start(settings: settings, fileViewer: { [weak self] in self?.fileViewerModel() },
-                               windows: { [weak self] in self?.allWindows ?? [] })
+                               windows: { [weak self] in self?.allWindows ?? [] }, front: { [weak self] in self?.frontmost() })
             if options.smokeScript != nil { SmokeBackground.start() }
             await launchWindows(environment)
             environment.followPrivacySettings()

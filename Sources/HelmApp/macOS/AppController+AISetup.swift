@@ -5,7 +5,7 @@ import HelmUI
 /// The AI mode screen and Settings › AI, both drawn from one `AISetupModel`, made the first time either is needed.
 extension AppController {
     /// The spark, or View › Show AI Panel, while no model is ready. Done, once AI mode is connected, opens the panel
-    /// in the window that asked.
+    /// in the window that asked, or in the window in front when none did.
     public func showAIModeScreen(from window: BrowserWindowController?) {
         guard let model = aiSetupModel() else { return }
         access.showAIMode(model, from: window)

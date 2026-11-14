@@ -19,6 +19,8 @@ import HelmUI
     private var settings: SettingsStore?
     private var fileViewer: () -> FileViewerModel? = { nil }
     private var windows: () -> [BrowserWindowController] = { [] }
+    /// The browser window in front, if any. Done opens the panel there when no window's spark asked.
+    private var frontWindow: () -> BrowserWindowController? = { nil }
     private(set) var onboarding: OnboardingWindowController?
     private var activation: NSObjectProtocol?
     private var termination: NSObjectProtocol?
@@ -28,7 +30,8 @@ import HelmUI
     var voiceOverForTesting = false
     /// What Settings › AI and the AI mode screen show, made the first time either is needed.
     var aiSetup: AISetupModel?
-    /// What Done does for the window whose spark opened the AI mode screen, once AI mode ended connected.
+    /// What Done does once AI mode ended connected: for the window whose spark opened the AI mode screen, or else for
+    /// the window in front.
     var openAgentPanel: (BrowserWindowController) -> Void = { $0.openAgentPanel() }
     /// Lets a test's background run open the AI mode screen by itself at launch, as a person's launch would.
     var opensAIIntroForTesting = false
@@ -53,8 +56,10 @@ import HelmUI
 
     /// Checks access before the first window draws, then again whenever Helm comes back to the front, which
     /// is when an answered macOS question or a new permission shows up.
-    func start(settings: SettingsStore, fileViewer: @escaping () -> FileViewerModel?, windows: @escaping () -> [BrowserWindowController]) async {
+    func start(settings: SettingsStore, fileViewer: @escaping () -> FileViewerModel?, windows: @escaping () -> [BrowserWindowController],
+               front: (() -> BrowserWindowController?)? = nil) async {
         self.settings = settings; self.fileViewer = fileViewer; self.windows = windows
+        frontWindow = front ?? { windows().first }
         await permissions.refresh()
         activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.becameActive() }
@@ -143,15 +148,16 @@ import HelmUI
 
     // MARK: The AI mode screen
 
-    /// Shows the AI mode screen in the welcome window. When it ends connected and `window`'s spark opened it, Done
-    /// opens that window's panel.
+    /// Shows the AI mode screen in the welcome window. When it ends connected, Done opens the panel: in `window`, whose
+    /// spark opened it, or else in the window in front, as after setup or at launch.
     func showAIMode(_ model: AISetupModel, from window: BrowserWindowController?) {
         guard settings != nil else { return }
         aiIntroAfterWelcome = nil
         let controller = onboarding ?? makeOnboarding()
         controller.showAIMode(model, activate: isInteractive) { [weak self, weak window] connected in
-            guard connected, let self, let window else { return }
-            self.openAgentPanel(window)
+            guard connected, let self else { return }
+            guard let target = window ?? self.frontWindow() ?? self.windows().first else { return }
+            self.openAgentPanel(target)
         }
     }
 
