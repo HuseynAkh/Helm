@@ -225,20 +225,26 @@ struct AgentSuggestionsRow: View {
     /// button, as Move and Copy are.
     @ViewBuilder private func chip(for suggestion: AgentSuggestion) -> some View {
         if suggestion.kind == .organize, !suggestion.isSelection {
-            // Drawn as the other chips are, the same type and height, with its chevron beside the words.
+            // Drawn as the other chips are, the same type and height. Its chevron is drawn beside the words, the same
+            // on every SDK, since the plain style hides the menu's own; a press runs This Folder, and holding it
+            // offers the depths.
             Menu {
                 ForEach(AgentPanelModel.depths, id: \.title) { depth in
                     Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
                 }
             } label: {
-                Text(verbatim: suggestion.title).font(.system(size: 11)).foregroundStyle(.primary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                HStack(spacing: 4) {
+                    Text(verbatim: suggestion.title).font(.system(size: 11)).foregroundStyle(.primary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                }
             } primaryAction: {
                 model.choose(suggestion, depth: .thisFolder)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
-            .menuIndicator(.visible)
+            .menuIndicator(.hidden)
             .fixedSize()
             .modifier(AgentSuggestionLook())
         } else {
