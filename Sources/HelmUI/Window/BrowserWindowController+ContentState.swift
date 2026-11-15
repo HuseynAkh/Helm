@@ -8,8 +8,9 @@ import HelmCore
 extension BrowserWindowController {
     func renderContentState(_ tab: TabState) {
         let access = dependencies.permissions.fullDiskAccess
+        // The no-results page offers Find with AI whenever AI mode is on; with no model ready, it opens the AI mode screen.
         let state = statePage.preview ?? ContentStatePresentation.state(for: tab, home: dependencies.home, fullDiskAccess: access,
-                                                                        aiSearchReady: isAISearchReady)
+                                                                        aiSearchReady: isAISearchAvailable)
         let isNew = state != statePage.state
         // "Find with AI" on the no-results page says in its tooltip what pressing it sends, and to whom.
         if case .ready(_, let destination, _, _) = dependencies.agent.runtime.state {

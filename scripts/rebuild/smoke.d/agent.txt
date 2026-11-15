@@ -268,8 +268,10 @@ agent-say /clear
 go @FIX@/home/AgentMess
 wait 0.5
 search-ai-is off
+search-mark-is spark
 search-ai on
 search-ai-is on
+search-mark-is spark lit
 search-status-reads Return sends your words
 search memo
 search-return
@@ -444,6 +446,7 @@ setting aiModeEnabled false
 wait 0.5
 setting-is aiModeEnabled false
 agent-is closed
+search-mark-is magnifier
 agent-client-built no
 agent-places-clear
 cmd closeTab

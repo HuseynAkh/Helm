@@ -280,8 +280,8 @@ extension HeaderBarDelegate {
         sparkButton.isWorking = working
         sparkButton.toolTip = ready ? HeaderShortcuts.tip(AgentText.sparkTitle, .aiPanel) : AgentText.sparkSetUp
     }
-    /// Whether searching with a model's help is available, and on. The window owns the state: the field's leading
-    /// mark is the spark while it's available, lit while it's on, and pressing it asks the window to turn it over.
+    /// Whether searching with a model's help is offered (AI mode is on), and on. The window owns the state: the field's
+    /// leading mark is the spark while it's offered, lit while it's on, and pressing it asks the window to turn it over.
     func setAISearch(available: Bool, on: Bool) { searchField.setAI(available: available, on: on) }
 
     // MARK: Search
@@ -605,8 +605,9 @@ extension HeaderBarDelegate {
         field.setAccessibilityLabel(words)
     }
 
-    /// Whether searching with a model's help is available, and on. Available, the spark takes the magnifier's place:
-    /// in the secondary label colour while off, in the gradient while on.
+    /// Whether searching with a model's help is offered, which is whenever AI mode is on, and whether it's on.
+    /// Offered, the spark takes the magnifier's place: in the secondary label colour while off, in the gradient while
+    /// on. The window decides what a press does while no model is ready.
     func setAI(available: Bool, on: Bool) {
         let on = available && on
         guard available != isAIAvailable || on != isAIOn else { return }
@@ -634,8 +635,9 @@ extension HeaderBarDelegate {
         // As after choosing a scope, the caret goes back to the words.
         focus(selectingAll: false)
     }
-    /// For tests: a press on the spark.
+    /// For tests: a press on the spark, and its tooltip.
     func pressAIToggleForTesting() { aiToggle.performClick(nil) }
+    var aiToggleToolTipForTesting: String? { aiToggle.toolTip }
     @objc private func chooseScope() {
         guard let folderName else { return }
         let menu = NSMenu()

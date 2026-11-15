@@ -43,8 +43,9 @@ extension BrowserWindowController {
         updateTitle(of: item, for: command)
         let state = CommandValidation.state(for: command, in: commandContext())
         item.isHidden = state == .hidden
-        // Find with AI waits for a model that is ready, as the search field's spark does.
-        if command == .findWithAI { return state == .enabled && isAISearchReady }
+        // Find with AI is there whenever AI mode is on, as the search field's spark is: with no model ready it opens
+        // the AI mode screen.
+        if command == .findWithAI { return state == .enabled && isAISearchAvailable }
         return state == .enabled
     }
 

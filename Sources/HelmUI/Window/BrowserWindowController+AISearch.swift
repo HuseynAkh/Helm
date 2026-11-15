@@ -5,10 +5,11 @@ import HelmCore
 
 /// The window's side of searching with a model's help.
 ///
-/// The window holds whether the search field's spark is on. It is off at launch, goes off when the search closes
-/// or AI mode stops being ready, and while it is on, typing still searches names at once and only Return asks the
-/// model. The runner it installs does the searching; the window shows how it went in the status bar and each
-/// result's reason as its tooltip.
+/// The window holds whether the search field's spark is on. The field shows the spark whenever AI mode is on, as
+/// the header's spark does; while no model is ready, pressing it opens the AI mode screen and it stays off. It is off
+/// at launch, goes off when the search closes or AI mode stops being ready, and while it is on, typing still searches
+/// names at once and only Return asks the model. The runner it installs does the searching; the window shows how it
+/// went in the status bar and each result's reason as its tooltip.
 extension BrowserWindowController {
     /// Installs the window's AI search runner, and keeps the spark in step with the tab and with AI mode.
     func installAISearch() {
@@ -19,8 +20,8 @@ extension BrowserWindowController {
         watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in self?.followAISearchReadiness() }
         watch.storeToken = store.snapshots.subscribe { [weak self] _ in self?.followAISearchReadiness() }
         runner.watch = watch
-        watch.shown = (isAISearchReady, false)
-        header.setAISearch(available: isAISearchReady, on: false)
+        watch.shown = (isAISearchAvailable, false)
+        header.setAISearch(available: isAISearchAvailable, on: false)
     }
 
     /// Return in the search field. With the spark on and a model ready, the words are sent; otherwise nothing
@@ -33,18 +34,25 @@ extension BrowserWindowController {
     }
 
     /// File › Find with AI (⌥⌘F): the search opens if it isn't open, and the spark turns over, as a press on it does.
+    /// While no model is ready, it opens the AI mode screen instead.
     func toggleAISearchFromMenu() {
-        guard isAISearchReady, let runner = aiSearchRunner else { return }
+        guard isAISearchAvailable, let runner = aiSearchRunner else { return }
+        guard isAISearchReady else { askForAIModeScreen(); return }
         if !header.isSearching { header.beginSearch() }
         headerSearchAIToggled(!runner.isOn)
     }
 
-    /// The search field's spark. It stays off while no model is ready.
+    /// The search field's spark. While no model is ready it stays off, and a press asks for the AI mode screen, as
+    /// the header's spark does.
     func headerSearchAIToggled(_ on: Bool) {
         guard let runner = aiSearchRunner else { return }
+        if on, isAISearchAvailable, !isAISearchReady { askForAIModeScreen() }
         runner.isOn = on && isAISearchReady
         showAISearchState()
     }
+
+    /// The AI mode screen, through the same call the header's spark makes.
+    private func askForAIModeScreen() { host?.showAIModeScreen(from: self) }
 
     /// The status bar's line during and after an AI search, and the hint while the spark is on; nil leaves the
     /// usual words.
@@ -72,9 +80,12 @@ extension BrowserWindowController {
         return AISearchStatus(text: AgentText.searchHint(destination))
     }
 
-    /// "Find with AI" on the no-results page: the spark goes on and the same words are sent at once.
+    /// "Find with AI" on the no-results page: the spark goes on and the same words are sent at once. While no model
+    /// is ready, it opens the AI mode screen instead.
     func findWithAI() {
-        guard isAISearchReady, let text = activeTab?.search?.query.text,
+        guard isAISearchAvailable else { return }
+        guard isAISearchReady else { askForAIModeScreen(); return }
+        guard let text = activeTab?.search?.query.text,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         headerSearchAIToggled(true)
         cancelPendingSearch()
@@ -90,21 +101,22 @@ extension BrowserWindowController {
         if case .ready = dependencies.agent.runtime.state { return true }
         return false
     }
+    /// AI mode is on, ready or not: the search field shows its spark.
+    var isAISearchAvailable: Bool { dependencies.agent.runtime.isOn }
 
     /// Turns the spark off once the search has closed or no model is ready, and shows the field and the status
     /// bar as they now are.
     private func followAISearchReadiness() {
         guard let runner = aiSearchRunner else { return }
-        let ready = isAISearchReady
         let closed = !header.isSearching && activeTab?.search == nil
-        if runner.isOn, closed || !ready { runner.isOn = false }
+        if runner.isOn, closed || !isAISearchReady { runner.isOn = false }
         // Each snapshot renders the status bar already; the field and the bar change here only when the spark does.
-        guard runner.watch?.shown.map({ $0 != (ready, runner.isOn) }) ?? true else { return }
+        guard runner.watch?.shown.map({ $0 != (isAISearchAvailable, runner.isOn) }) ?? true else { return }
         showAISearchState()
     }
 
     private func showAISearchState() {
-        let shown = (available: isAISearchReady, on: aiSearchRunner?.isOn ?? false)
+        let shown = (available: isAISearchAvailable, on: aiSearchRunner?.isOn ?? false)
         aiSearchRunner?.watch?.shown = shown
         header.setAISearch(available: shown.available, on: shown.on)
         if let tab = activeTab { renderStatus(tab) }
@@ -118,6 +130,14 @@ extension BrowserWindowController {
         headerSearchAIToggled(on)
     }
     public var isAISearchOnForTesting: Bool { aiSearchRunner?.isOn ?? false }
+    /// A press on the search field's spark, as a click on it, opening the field first. False while the field shows no
+    /// spark, as with AI mode off.
+    @discardableResult public func pressSearchSparkForTesting() -> Bool {
+        if !header.isSearching { header.beginSearch() }
+        guard header.searchField.leadingMark != "magnifier" else { return false }
+        header.searchField.pressAIToggleForTesting()
+        return true
+    }
     /// Return in the search field, with the words it holds, or the tab's search's words when it holds none.
     public func submitSearchForTesting() {
         let typed = header.searchText

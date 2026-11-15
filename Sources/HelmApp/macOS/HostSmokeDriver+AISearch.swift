@@ -10,7 +10,7 @@ extension HostSmokeDriver {
     static func performAISearchVerb(_ verb: String, _ argument: String, step: String,
                                     window: BrowserWindowController, app: AppController) async -> Bool {
         let verbs: Set<String> = ["search-ai", "search-ai-is", "search-return", "result-reason", "search-status-reads",
-                                  "search-queries-read"]
+                                  "search-queries-read", "search-mark-is"]
         guard verbs.contains(verb) else { return false }
         guard app.options.isIsolated else { check(false, step, "not a fixture run"); return true }
         switch verb {
@@ -18,6 +18,10 @@ extension HostSmokeDriver {
             // "on" or "off": presses the spark in the search field, which opens the field first.
             window.setAISearchForTesting(argument == "on")
             await wait(seconds: 0.3)
+        case "search-mark-is":
+            // search-mark-is magnifier|spark|spark lit: the search field's leading mark. The spark shows whenever AI
+            // mode is on, and lights while AI search is on.
+            check(window.searchFieldMarkForTesting == argument, step, window.searchFieldMarkForTesting)
         case "search-ai-is":
             let shown = window.isAISearchOnForTesting ? "on" : "off"
             check(shown == argument, step, shown)
