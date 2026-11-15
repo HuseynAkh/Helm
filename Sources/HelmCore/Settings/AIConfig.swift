@@ -15,11 +15,15 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var otherAddress: String?
     /// Which build of Helm last saved each key, by the key's keychain account. The key itself is only in the keychain.
     public var keyOwners: [String: String]
+    /// The models each provider listed the last time it was checked and answered, by the same account as `keyOwners`
+    /// (the provider and where it is reached), so a list is only ever offered for the address that gave it. A check
+    /// that fails takes the provider's list away. Model names only.
+    public var modelLists: [String: [String]]
 
     public init(provider: String? = nil, models: [String: String] = [:], ports: [String: Int] = [:],
-                otherAddress: String? = nil, keyOwners: [String: String] = [:]) {
+                otherAddress: String? = nil, keyOwners: [String: String] = [:], modelLists: [String: [String]] = [:]) {
         self.provider = provider; self.models = models; self.ports = ports
-        self.otherAddress = otherAddress; self.keyOwners = keyOwners
+        self.otherAddress = otherAddress; self.keyOwners = keyOwners; self.modelLists = modelLists
     }
 
     /// Every field is optional on disk, so a file written by an older or a newer Helm still loads.
@@ -30,5 +34,6 @@ public struct AIConfig: Codable, Equatable, Sendable {
         ports = try values.decodeIfPresent([String: Int].self, forKey: .ports) ?? [:]
         otherAddress = try values.decodeIfPresent(String.self, forKey: .otherAddress)
         keyOwners = try values.decodeIfPresent([String: String].self, forKey: .keyOwners) ?? [:]
+        modelLists = try values.decodeIfPresent([String: [String]].self, forKey: .modelLists) ?? [:]
     }
 }
