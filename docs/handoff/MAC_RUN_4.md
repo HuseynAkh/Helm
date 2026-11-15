@@ -72,6 +72,8 @@ None of these was verified. Each needs a real account, a real cloud folder or se
 | After a live session, nothing with a file name in `~/Library/Caches`, `~/Library/HTTPStorages` or saved state for Helm's bundle ID | Not verified |
 | Whether a folder a plan made and filled gets macOS's first-open check | Not verified |
 | One request to each real provider: Claude, OpenAI, Gemini, Grok, and Other | Not verified |
+| Continue with ChatGPT against OpenAI: the browser sign-in, the callback, the token signature, renewal, Remove, the plan's model list and a plan request | Not verified |
+| Setup showing before any access prompt after this reinstall, and the Full Disk Access row | Not verified |
 | Spotlight's part of AI search on a real index, and Connect handing a real server address to macOS | Not verified |
 | The panel's top inset, the sparks and Settings › AI in a real window built with the 27 SDK | Not verified |
 | The three dots after dragging a window between a Retina and a standard display, the AI Mode screen's resize animation, and the beep when Done can't close | Not verified |
@@ -100,6 +102,7 @@ Each one has a default, used in this build. Huseyn can change any of them.
 6. **Draft header lines.** Removed on 2026-11-14 at Huseyn's word, in a commit of their own.
 7. **The README's footer** that named the tools the first version was built with was removed on 2026-11-14 at Huseyn's word.
 8. **The icon variants** from run 2 stay in `docs/brand/logo-variants/` as the record of the icon Huseyn chose. No new variant was made.
+9. **Sidebar at narrow widths.** In the invisible-window smoke runs, hiding the sidebar in a window about 760 points wide sometimes does nothing (header.txt, `header-leading-is 84`). It also fails with an older commit when that file runs alone. Not yet seen in a real window.
 
 ## Disclosures
 

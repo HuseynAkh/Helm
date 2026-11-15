@@ -168,6 +168,11 @@ What was built and checked is in [`MAC_RUN_4.md`](MAC_RUN_4.md).
 | About line | "Yes" to "An agentic file manager for your Mac." | 2026-11-14 | The About panel reads "An agentic file manager for your Mac." |
 | Draft markers | "Sure" to removing the "DRAFT: pending … review" header lines | 2026-11-14 | Removed from source, tests, scripts and docs in a commit of their own. Old review reports keep their wording. |
 | Version | "Sure" to 0.2 | 2026-11-14 | This run ships as 0.2. |
+| Subscriptions | "We don't want to be using AI keys, instead subscriptions for OpenAI and Claude if available etc. (also need mini tooltips or guide links to explain how to do this, e.g. docs links + extra info in tooltip)." | 2026-11-14 | OpenAI connects with Continue with ChatGPT, using the plan; a key stays as a quiet second choice. Anthropic doesn't allow apps like Helm to use a Claude subscription, so Claude keeps a key. Gemini, Grok and Other keep keys; LM Studio and Ollama need none. Every provider has an info button with a one-sentence tooltip and a "How to connect" link. |
+| Setup before access | "We should have us go through onboarding before it requesting access to "Downloads, Documents, etc"." | 2026-11-14 | Setup shows before any window when it was never seen or the build changed, and nothing guarded is read until it closes. Its Full Disk Access row explains why in one line. |
+| Panel width and models | "the AI sidebar size should be adjustable and models changeable for LM studio as well as if you connect multiple AI tools." | 2026-11-14 | The panel's edge drags between 300 and 560 points and the width is kept. The model name is a menu of every connected provider's models. |
+| Address field | "if you open the address /url tab and then press on the AI sidebar the url tab stays open (should close after clicking off)." | 2026-11-14 | A press anywhere outside it closes it, as Escape does. `PathBarView.swift` is unchanged. |
+| Search spark | "check if the AI mode actually toggles on and off in search" | 2026-11-14 | The search field shows the spark whenever AI mode is on; with no model ready, pressing it opens the AI Mode screen. A connected local provider always has a model chosen. |
 
 ### Delegated choices in run 4
 
@@ -184,7 +189,7 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Plans | **Nothing changes until Apply. Trash, and changes that reach a place that syncs or is shared, start unticked. Conflicts keep both. No delete, no shell, no web tool. 1,000 changes at most.** | Nothing is destroyed or overwritten unseen. |
 | Undo | **One Apply is one Undo. An undone plan can't be redone.** | A redo would run the plan again without Apply's checks. |
 | Cloud folders | **Never download. Files that aren't downloaded are left out, with a count.** | A wrong guess then fails with nothing fetched (question 1 in `MAC_RUN_4.md`). |
-| Panel | **A column 340 points wide under the header, shut at every launch. Opening it hides the sidebar first, then widens the window if the files need room.** | The header and today's layout stay as they were. |
+| Panel | **A column 340 points wide by default, 300 to 560 when dragged, shut at every launch. Opening it hides the sidebar first, then widens the window if the files need room.** | The header and today's layout stay as they were. |
 | Spark | **Opens the panel when a model is ready, and the AI Mode screen otherwise. Done on that screen opens the panel.** | One door for "not ready". |
 | Commands | **`/add` and `/clear`. A path typed alone adds a folder. A server address gets one Connect line and goes to macOS.** | Two commands cover it, and macOS does the sign-in. |
 | Suggestions | **Three, worked out on the Mac with no model: Organize, Move everything to…, Copy everything to…** | Huseyn's three examples, shown whenever the panel opens. |
@@ -192,7 +197,7 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Consent line | **"Sends your requests and file names to {destination}, never file contents."** On the AI Mode screen, in Settings and at the top of each thread. | One sentence says what is sent and to whom. |
 | Claude | **No fallback model and no beta header.** | The person picked the model. |
 | OpenAI's first model | **`gpt-6-astra`.** | It's the vendor's stated starting point, and one constant to change. |
-| Model menu | **The panel shows the model's name, which opens Settings › AI.** | Choosing a model in the panel would need a new request path. |
+| Model menu | **The model's name opens a menu of every connected provider's models, then AI Settings….** | Huseyn asked for it on 2026-11-14. |
 | Version | **0.2.** The About line reads "An agentic file manager for your Mac." | Huseyn agreed to both on 2026-11-14. |
 
 ## Ruled but not built yet
