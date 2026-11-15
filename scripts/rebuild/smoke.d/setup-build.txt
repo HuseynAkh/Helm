@@ -1,0 +1,40 @@
+# Setup is owed again whenever another build runs, since macOS forgets an ad hoc signed build's folder access and
+# Full Disk Access. The stand-in permission says which build runs; a fixture run never holds its windows back.
+onboarding-is closed
+fda denied
+setting onboardingCompleted true
+setup-build none
+setup-owed no
+setup-built none
+# Another build: the checklist comes back, with one line about folder access under Full Disk Access
+setup-build build-a
+setup-owed yes
+setup-first-launch
+onboarding-is setup
+setup-rows viewer,access
+setup-row access pending
+setup-note access Without it, macOS asks about Desktop, Documents and Downloads.
+setup-note viewer none
+onboarding-shot @SHOTS@/setup-new-build.png
+# Not Now is the person going through it: that build is kept, and it isn't asked again
+onboarding-press Not Now
+onboarding-is closed
+setup-built build-a
+setup-owed no
+setup-first-launch
+onboarding-is closed
+# Once Full Disk Access is on, macOS asks about no folder, so the line goes
+fda granted
+setup-build build-b
+setup-owed yes
+setup-first-launch
+onboarding-is setup
+setup-row access done
+setup-note access none
+onboarding close
+onboarding-is closed
+setup-built build-b
+fda denied
+# Back as the steps before left it
+setup-build none
+setup-owed no

@@ -166,7 +166,10 @@ public struct LaunchOptions: Equatable, Sendable {
             coordinator = operations
             subscription = operations.inFlightChanges.subscribe { [weak self] count in self?.operationsChanged(count) }
             let settings = environment.settings
-            let volumes = VolumeCenter(isLive: !options.isIsolated, home: environment.directories.home) { settings.snapshot.bool(.showAllMountedVolumes) }
+            // Drives and cloud folders are read once the first window is made, after setup (`register`).
+            let volumes = VolumeCenter(isLive: !options.isIsolated, home: environment.directories.home, startsNow: false) {
+                settings.snapshot.bool(.showAllMountedVolumes)
+            }
             dependencies = WindowDependencies(settings: environment.settings, bookmarks: environment.bookmarks, stars: environment.stars,
                 recents: environment.recents, trashOrigins: environment.trashOrigins, viewOptions: environment.viewOptions, fileSystem: environment.fileSystem,
                 operations: operations, home: environment.directories.home, volumes: volumes, icons: IconCache(limit: settings.snapshot.integer(.maxCachedIcons), previewLimit: settings.snapshot.integer(.maxCachedThumbnails)),
@@ -184,13 +187,15 @@ public struct LaunchOptions: Equatable, Sendable {
             await launchWindows(environment)
             environment.followPrivacySettings()
             followAIMode()
-            // Off the launch path: a slow or missing disk mustn't hold up the first window.
-            Task { @MainActor in await environment.forgetItemsGoneFromTrash() }
+            // Off the launch path: a slow or missing disk mustn't hold up the first window. A launch only for Finder
+            // leaves the Trashes alone: setup may still be owed, and one may be on a disk macOS asks about.
+            if !startedForFinder { Task { @MainActor in await environment.forgetItemsGoneFromTrash() } }
             unreportedLoadFailures = environment.loadFailures
             reportLoadFailures()
             // A launch that only passed something on to Finder stays out of the way.
             if !startedForFinder {
-                access.showWelcomeIfNeeded(continuing: options.continueSetup)
+                // A launch that waits for setup has shown the welcome already, before its windows.
+                if !access.launchWaitsForSetup { access.showWelcomeIfNeeded(continuing: options.continueSetup) }
                 showAIIntroIfNeeded()
             }
             if let script = options.smokeScript { HostSmokeDriver.run(script: script, app: self) }
@@ -239,10 +244,6 @@ public struct LaunchOptions: Equatable, Sendable {
         isPlacingWindows = true
         defer { isPlacingWindows = false }
         let home = environment.directories.home
-        let session = environment.session.windows
-        // Launch never waits on a folder macOS is still asking about, or on a slow disk (RestoredFolders).
-        let restored = session.flatMap(\.tabs).compactMap(\.location.mutationTarget)
-        let folders = await RestoredFolders.availability(of: restored, fileSystem: environment.fileSystem, home: home)
         // The command line's paths are Helm's; the rest came as Apple Events before there were windows to take them.
         let queued = launchPaths.map { (request: ViewerRequest.open([$0]), sender: String?.none) } + pending
         launchPaths = []
@@ -271,6 +272,13 @@ public struct LaunchOptions: Equatable, Sendable {
             drainPending()
             return
         }
+        // Setup first, when it's owed: nothing macOS guards is read before the person has been through it, not the
+        // folders asked for, not the tabs to restore. Requests that come meanwhile wait with the rest.
+        await access.setUpBeforeWindows(continuing: options.continueSetup)
+        let session = environment.session.windows
+        // Launch never waits on a folder macOS is still asking about, or on a slow disk (RestoredFolders).
+        let restored = session.flatMap(\.tabs).compactMap(\.location.mutationTarget)
+        let folders = await RestoredFolders.availability(of: restored, fileSystem: environment.fileSystem, home: home)
         let requests = await classify(asked, fileSystem: environment.fileSystem)
         if !requests.isEmpty { _ = router.receive(requests) }
         let result = router.finishLaunch(session: session, restoreSession: environment.settings.snapshot.bool(.restoreSessionOnLaunch),
@@ -331,6 +339,8 @@ public struct LaunchOptions: Equatable, Sendable {
         if !staysInBackground { controller.showWindow(nil) } else { SmokeBackground.hide(controller.window); controller.window?.orderFrontRegardless() }
     }
     private func register(_ controller: BrowserWindowController) {
+        // The sidebar's drives and cloud folders are read from the first window on, never before setup.
+        dependencies?.volumes.start()
         let id = AppWindowID()
         ids[ObjectIdentifier(controller)] = id
         registry.register(id)
@@ -422,6 +432,8 @@ public struct LaunchOptions: Equatable, Sendable {
     private func show(_ urls: [URL], reveal: Bool) {
         guard let environment else { return }
         Task { @MainActor in
+            // After a launch only for Finder, this may be the first window: setup comes first if it's owed.
+            await access.setUpBeforeWindows(continuing: options.continueSetup)
             let requests = await classify(urls.map { ($0, reveal) }, fileSystem: environment.fileSystem)
             var rejected: [ExternalOpenRequest] = []
             var places: [(folder: URL, selecting: [URL])] = []
@@ -466,6 +478,7 @@ public struct LaunchOptions: Equatable, Sendable {
         handoffs.finished(helper: handoff.helper)
         guard let environment else { return }
         Task { @MainActor in
+            await access.setUpBeforeWindows(continuing: options.continueSetup)
             let names = (try? await environment.fileSystem.childNames(of: handoff.folder)) ?? []
             let added = handoff.added(in: names).filter { !$0.hasPrefix(".") }
             let selecting = added.isEmpty ? (names.contains(handoff.item.lastPathComponent) ? [handoff.item] : [])
@@ -575,8 +588,17 @@ public struct LaunchOptions: Equatable, Sendable {
         if let front = frontmost() { openWindow(at: front.newWindowLocation, selecting: []) } else { openStartingWindow() }
     }
     /// A window at the folder Settings › General › New windows open names, when there's no front window to follow.
+    /// While the welcome checklist holds the windows back, it's the checklist's to close first: nothing opens.
     private func openStartingWindow() {
-        guard let environment else { return }
+        guard let environment, !access.windowsWaitForSetup else { return }
+        guard access.windowsMayOpen else {
+            // Setup was never looked at in this run, as after a launch only for Finder.
+            Task { @MainActor in
+                await access.setUpBeforeWindows(continuing: options.continueSetup)
+                openStartingWindow()
+            }
+            return
+        }
         let choice = NewWindowLocation(rawValue: environment.settings.snapshot.string(.newWindowLocation)) ?? .current
         openWindow(at: .directory(choice.folder(current: nil, home: environment.directories.home)), selecting: [])
     }
@@ -588,7 +610,10 @@ public struct LaunchOptions: Equatable, Sendable {
         guard environment != nil else { return }
         makeSettingsWindowIfNeeded()
         fileViewer?.refresh()
-        if let dependencies, settingsWindow?.sidebarModel == nil { settingsWindow?.showSidebarRows(SidebarSettingsModel(dependencies: dependencies)) }
+        // Settings › Sidebar looks at starred items' paths, so it waits until setup is through.
+        if let dependencies, settingsWindow?.sidebarModel == nil, !access.windowsWaitForSetup {
+            settingsWindow?.showSidebarRows(SidebarSettingsModel(dependencies: dependencies))
+        }
         if let settingsWindow { installAISettingsPane(in: settingsWindow) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)

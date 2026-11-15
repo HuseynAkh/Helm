@@ -81,6 +81,7 @@ private struct SetupRowView: View {
         let state = model.state(of: row)
         let box = model.hasCheckbox(row)
         let reason = model.unavailableReason(row)
+        let note = model.folderNote(row)
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 if model.mode == .setup {
@@ -89,7 +90,7 @@ private struct SetupRowView: View {
                             Toggle(row.title, isOn: Binding(get: { model.isChecked(row) }, set: { model.setChecked(row, $0) }))
                                 .toggleStyle(.checkbox).labelsHidden()
                                 .disabled(!model.canChoose || reason != nil)
-                                .accessibilityHint(reason.map { row.detail + " " + $0 } ?? row.detail)
+                                .accessibilityHint([row.detail, note, reason].compactMap { $0 }.joined(separator: " "))
                         }
                     }
                     .frame(width: 18, height: 18)
@@ -100,6 +101,10 @@ private struct SetupRowView: View {
                     }
                     Text(row.detail).font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let note {
+                        Text(note).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let reason {
                         Label(reason, systemImage: "info.circle")
                             .font(.system(size: 12)).foregroundStyle(.secondary)

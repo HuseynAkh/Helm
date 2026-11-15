@@ -55,6 +55,25 @@ extension HostSmokeDriver {
             // A fixture run skips the first launch's welcome, so this only carries on with rows Set Up saved.
             app.access.showWelcomeIfNeeded()
             await wait(seconds: 0.8)
+        case "setup-build":
+            // setup-build <identity>|none: the build the stand-in permission says is running, as its code signature's
+            // designated requirement would. With none, only whether setup was seen counts.
+            guard let privacy = app.privacyForTesting else { check(false, step, "not a fixture run"); return true }
+            privacy.buildIdentity = argument == "none" ? nil : argument
+        case "setup-built":
+            // setup-built <identity>|none: the build kept as the one that last went through setup.
+            let kept = window.dependencies.settings.snapshot.string(.setupBuild)
+            check((kept.isEmpty ? "none" : kept) == argument, step, kept.isEmpty ? "none" : kept)
+        case "setup-owed":
+            // setup-owed yes|no: whether a person's launch would show setup before any window now.
+            let owed = app.access.setupOwed ? "yes" : "no"
+            check(owed == argument, step, owed)
+        case "setup-note":
+            // setup-note <row> <words>|none: the line about folder access under that row of the checklist.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            guard bits.count == 2, let model, let row = SetupRow(rawValue: bits[0]) else { check(false, step, "usage, or no window"); return true }
+            let note = model.folderNote(row) ?? "none"
+            check(note == bits[1], step, note)
         case "setup-carried":
             // setup-carried <rows saved for the copy in Applications>|none
             let saved = window.dependencies.settings.snapshot.string(.setupCarriedRows)
