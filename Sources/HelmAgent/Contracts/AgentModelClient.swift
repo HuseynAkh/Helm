@@ -1,4 +1,5 @@
 import Foundation
+import HelmCore
 
 /// A tool as a model is told about it. The schema is the tool's own; each provider's adapter wraps it the way that
 /// provider wants.
@@ -79,19 +80,32 @@ public struct AgentStructuredAsk: Sendable {
     }
 }
 
-/// A model a provider lists. The menu shows the id itself, never a display name a provider sent.
+/// A model a provider lists. The menu shows the id itself, never a display name a provider sent, but for a ChatGPT
+/// plan's list, whose display names OpenAI asks apps to show; those are kept only when they are short, clean text.
 public struct AgentModelInfo: Hashable, Sendable, Identifiable {
     /// At most 128 characters from A-Z, a-z, 0-9 and `. _ : / -`.
     public let id: String
+    /// The name to show in place of the id: a ChatGPT plan's display name. Nil for every other provider.
+    public let label: String?
     /// Nil for an empty id and for one with any other character or more than 128 of them.
-    public init?(id: String) {
+    public init?(id: String) { self.init(id: id, label: nil) }
+    /// A label that isn't clean text of 1 to 64 characters is dropped, and the id is shown.
+    public init?(id: String, label: String?) {
         guard !id.isEmpty, id.unicodeScalars.count <= Self.idCharacters, id.unicodeScalars.allSatisfy(Self.isAllowed) else { return nil }
         self.id = id
+        self.label = label.flatMap { text in
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, trimmed.unicodeScalars.count <= Self.labelCharacters, AgentTextEscaper.isClean(trimmed) else { return nil }
+            return trimmed
+        }
     }
+    /// What the menu shows: the label when there is one, else the id.
+    public var title: String { label ?? id }
     /// The most models kept from one provider's list.
     public static let listCap = 500
 
     static let idCharacters = 128
+    static let labelCharacters = 64
     private static func isAllowed(_ scalar: Unicode.Scalar) -> Bool {
         ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
             || "._:/-".unicodeScalars.contains(scalar)

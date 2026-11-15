@@ -26,6 +26,21 @@ public enum AgentModelLister {
         return Array(models.prefix(AgentModelInfo.listCap))
     }
 
+    /// The models a ChatGPT plan may use, from OpenAI's list for the signed-in account: those whose visibility is
+    /// "list", in the order OpenAI gave, each shown by its display name. Its slug is what a request names. Throws
+    /// `AgentFailure.unreadable` for a reply that isn't such a list.
+    public static func chatGPTModels(from body: Data) throws -> [AgentModelInfo] {
+        guard let reply = try? AgentJSON(data: body), let entries = reply["models"]?.arrayValue else { throw AgentFailure.unreadable }
+        var seen: Set<String> = [], models: [AgentModelInfo] = []
+        for entry in entries where entry["visibility"]?.stringValue == "list" {
+            guard let slug = entry["slug"]?.stringValue,
+                  let model = AgentModelInfo(id: slug, label: entry["display_name"]?.stringValue),
+                  seen.insert(model.id).inserted else { continue }
+            models.append(model)
+        }
+        return Array(models.prefix(AgentModelInfo.listCap))
+    }
+
     /// The model picked for the person until they pick one: the provider's own preselected model when the list
     /// has it, else the first listed. A typed address preselects nothing.
     public static func preselected(_ models: [AgentModelInfo], provider: AgentProviderID) -> String? {

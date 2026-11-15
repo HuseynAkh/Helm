@@ -88,4 +88,51 @@ final class KeychainSecretStoreShapeTests: XCTestCase {
             XCTAssertEqual(KeychainSecretStore.outcome(of: status), .failed, "\(status)")
         }
     }
+
+    // MARK: The ChatGPT sign-in
+
+    func testASignInIsKeptInTwoItemsOfItsOwnUnderTheSameService() {
+        XCTAssertEqual(KeychainSecretStore.signInLabel, "Helm ChatGPT sign-in")
+        XCTAssertEqual(AgentSignInItem.chatGPTRegistration.account, "chatgpt-registration|auth.openai.com:443")
+        XCTAssertEqual(AgentSignInItem.chatGPTTokens.account, "chatgpt-sign-in|auth.openai.com:443")
+        // No provider's key can have either account: a key's account starts with the provider's identifier.
+        for item in AgentSignInItem.allCases {
+            XCTAssertFalse(AgentProviderID.allCases.contains { item.account.hasPrefix($0.rawValue + "|") }, item.account)
+        }
+        let data = Data("record".utf8)
+        let add = KeychainSecretStore.signInAddQuery(data, note: "person@example.com", for: .chatGPTTokens)
+        XCTAssertEqual(add[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertEqual(add[kSecAttrService as String] as? String, "com.helm.filemanager.ai-key")
+        XCTAssertEqual(add[kSecAttrAccount as String] as? String, "chatgpt-sign-in|auth.openai.com:443")
+        XCTAssertEqual(add[kSecAttrLabel as String] as? String, "Helm ChatGPT sign-in")
+        XCTAssertEqual(add[kSecAttrComment as String] as? String, "person@example.com", "Settings reads who without the data")
+        XCTAssertEqual(add[kSecValueData as String] as? Data, data)
+        XCTAssertNil(KeychainSecretStore.signInAddQuery(data, note: nil, for: .chatGPTRegistration)[kSecAttrComment as String])
+        let forbidden = [kSecUseDataProtectionKeychain, kSecAttrAccessGroup, kSecAttrSynchronizable, kSecAttrAccessible,
+                         kSecAttrAccessControl].map { $0 as String }
+        for key in forbidden { XCTAssertNil(add[key], key) }
+        let presence = KeychainSecretStore.presenceQuery(account: AgentSignInItem.chatGPTTokens.account)
+        XCTAssertEqual(presence[kSecReturnAttributes as String] as? Bool, true)
+        XCTAssertNil(presence[kSecReturnData as String], "whether one is saved, and who, never asks for the tokens")
+    }
+
+    func testTheMemoryStoreKeepsASignInApartFromTheKeys() throws {
+        let store = MemorySecretStore()
+        try store.saveSignIn(Data("tokens".utf8), note: "person@example.com", for: .chatGPTTokens)
+        XCTAssertTrue(store.hasSignIn(.chatGPTTokens))
+        XCTAssertFalse(store.hasSignIn(.chatGPTRegistration))
+        XCTAssertEqual(store.accounts, [], "a sign-in is not a key")
+        XCTAssertEqual(store.signInNote(.chatGPTTokens), "person@example.com")
+        store.denies = true
+        XCTAssertThrowsError(try store.signInData(.chatGPTTokens))
+        XCTAssertTrue(store.hasSignIn(.chatGPTTokens), "asking whether one is saved never asks for it")
+        store.denies = false
+        try store.removeSignIn(.chatGPTTokens)
+        XCTAssertNil(try store.signInData(.chatGPTTokens))
+        XCTAssertNil(store.signInNote(.chatGPTTokens))
+        // A store made for keys alone has no room for a sign-in.
+        let keysOnly = AgentCountingSecretStore()
+        XCTAssertFalse(keysOnly.hasSignIn(.chatGPTTokens))
+        XCTAssertThrowsError(try keysOnly.saveSignIn(Data(), note: nil, for: .chatGPTTokens))
+    }
 }

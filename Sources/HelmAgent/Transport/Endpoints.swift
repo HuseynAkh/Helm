@@ -2,13 +2,18 @@ import Foundation
 import HelmCore
 
 /// What is fixed about each provider: its name, the shapes it speaks, where it is and which paths Helm asks for.
-/// The four addresses below are the only web addresses written anywhere in Helm, and the privacy checks list them
-/// one by one, so a fifth can't arrive unseen.
+/// The five addresses below are the only web addresses Helm connects to: the four providers with a fixed address, and
+/// OpenAI's sign-in host for a ChatGPT sign-in. The privacy checks list them one by one, so another can't arrive
+/// unseen. The help pages a person may open in their browser are listed apart, in `AgentHelpLinks`.
 public enum AgentProviderCatalog {
     static let claudeBase = "https://api.anthropic.com"
     static let openAIBase = "https://api.openai.com/v1"
     static let geminiBase = "https://generativelanguage.googleapis.com/v1beta"
     static let grokBase = "https://api.x.ai/v1"
+    static let openAISignInBase = "https://auth.openai.com"
+
+    /// OpenAI's name for its plan, which Helm uses for OpenAI reached with a ChatGPT sign-in.
+    public static let chatGPTName = "ChatGPT"
 
     /// The only scheme a typed or fixed address may have.
     static let secureScheme = "https"
@@ -77,7 +82,10 @@ public enum AgentProviderCatalog {
         do {
             let endpoint: AgentEndpoint
             switch id {
-            case .claude, .openAI, .gemini, .grok:
+            case .openAI:
+                return .success(AgentProviderProfile(id: id, endpoint: try AgentEndpoint(fixed: id),
+                                                     usesChatGPT: !config.openAIUsesKey))
+            case .claude, .gemini, .grok:
                 endpoint = try AgentEndpoint(fixed: id)
             case .ollama, .lmStudio:
                 guard let port = config.ports[id.rawValue] ?? defaultPort(id) else { return .failure(.badPort) }
@@ -115,6 +123,44 @@ public enum AgentProviderCatalog {
         case (.claude, .modelsAlternate), (.openAI, .modelsAlternate), (.grok, .modelsAlternate), (.gemini, .modelsAlternate),
              (.ollama, .modelsAlternate), (.lmStudio, .modelsAlternate):
             return nil
+        }
+    }
+
+    // MARK: The sign-in host
+
+    /// The paths of a ChatGPT sign-in on OpenAI's sign-in host.
+    static let authorizePath = "/api/accounts/authorize"
+    static let tokenPath = "/api/accounts/oauth/token"
+    static let signingKeysPath = "/.well-known/jwks.json"
+    static let discoveryPath = "/.well-known/openid-configuration"
+    /// The longest revocation path taken from the discovery document.
+    static let longestRevokePath = 256
+
+    /// The profile a sign-in transport is made for: OpenAI, at its sign-in host.
+    public static func signInProfile() throws -> AgentProviderProfile {
+        AgentProviderProfile(id: .openAI, endpoint: try AgentEndpoint.openAISignIn())
+    }
+
+    /// The method and path of a sign-in request. Nil for a revocation path that isn't plain: one that doesn't start
+    /// with a slash, climbs, has an empty part or a character other than letters, digits, `.`, `_` and `-`.
+    static func route(_ route: AgentSignInRoute) -> AgentRouteSpec? {
+        switch route {
+        case .token: return AgentRouteSpec(method: "POST", path: tokenPath, auth: .none)
+        case .keys: return AgentRouteSpec(method: "GET", path: signingKeysPath, auth: .none)
+        case .discovery: return AgentRouteSpec(method: "GET", path: discoveryPath, auth: .none)
+        case .revoke(let path):
+            guard isPlainPath(path) else { return nil }
+            return AgentRouteSpec(method: "POST", path: path, auth: .none)
+        }
+    }
+
+    static func isPlainPath(_ path: String) -> Bool {
+        guard path.hasPrefix("/"), path.utf8.count <= longestRevokePath else { return false }
+        let parts = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy { part in
+            !part.isEmpty && part != "." && part != ".."
+                && part.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0)
+                    || ("0"..."9").contains($0) || "._-".unicodeScalars.contains($0) }
         }
     }
 

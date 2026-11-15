@@ -163,12 +163,27 @@ public enum AgentText {
 
     // MARK: Failures
 
-    public static func failNoKey(_ provider: String) -> String { "Add a key in Settings to use \(shown(provider))." }
+    /// The lines whose provider is "ChatGPT", OpenAI reached with a ChatGPT sign-in, speak of the sign-in and the plan
+    /// in place of a key and an account's credit.
+    public static func failNoKey(_ provider: String) -> String {
+        isChatGPT(provider) ? failSignInAgain : "Add a key in Settings to use \(shown(provider))."
+    }
     public static let failKeyDenied = "Helm needs your keychain to use this key."
     public static let failWrongKey = "That key didn't work."
-    public static func failOutOfCredit(_ provider: String) -> String { "Your \(shown(provider)) account is out of credit." }
+    public static func failOutOfCredit(_ provider: String) -> String {
+        isChatGPT(provider) ? planLimit : "Your \(shown(provider)) account is out of credit."
+    }
     public static func failBusy(_ provider: String) -> String { "\(shown(provider)) is busy, so try again in a moment." }
-    public static func failNoSuchModel(_ provider: String) -> String { "\(shown(provider)) doesn't have that model." }
+    public static func failNoSuchModel(_ provider: String) -> String {
+        isChatGPT(provider) ? failPlanNotCovered : "\(shown(provider)) doesn't have that model."
+    }
+    /// A ChatGPT sign-in that's missing, ended, or that OpenAI couldn't verify.
+    public static let failSignInAgain = "Sign in with ChatGPT in Settings to use it."
+    /// A ChatGPT plan's usage limit was reached: in the panel and in Settings.
+    public static let planLimit = "You've reached your ChatGPT plan's usage limit."
+    /// A request the ChatGPT plan doesn't cover: an account, workspace or policy that can't use it, or a feature it
+    /// doesn't take.
+    public static let failPlanNotCovered = "Your ChatGPT plan doesn't cover this request."
     public static let failNoTools = "This model can't work with files, so try another."
     public static let failUnreadable = "The model sent something Helm couldn't read."
     public static let failTooLarge = "That's a lot for one request, so try a smaller folder."
@@ -226,6 +241,75 @@ public enum AgentText {
     public static let addressOtherDevice = "Servers on other devices aren't supported yet."
     public static let modelLabel = "Model"
     public static let modelPlaceholder = "Model name"
+    /// The button beside the model menu that asks the provider for its models again.
+    public static let refreshModels = "Refresh Models"
+
+    // MARK: ChatGPT sign-in
+
+    /// The button that starts a ChatGPT sign-in, in OpenAI's own words for it.
+    public static let continueWithChatGPT = "Continue with ChatGPT"
+    public static let useKeyInstead = "Use an API key instead"
+    public static let useChatGPTInstead = "Use ChatGPT instead"
+    public static let signInWaiting = "Continue in your browser."
+    public static func signedInAs(_ email: String) -> String { "Signed in as \(shown(email))." }
+    public static let signedIn = "Signed in with ChatGPT."
+    /// Signs out of ChatGPT.
+    public static let removeSignIn = "Remove"
+    /// Opens ChatGPT's usage settings in the browser.
+    public static let manageUsage = "Manage usage"
+    public static let signInDeclined = "ChatGPT plan use wasn't approved, so try again or use a key."
+    public static let signInPlanOff = "This sign-in doesn't allow ChatGPT plan use."
+    public static let signInTimedOut = "Sign-in took too long, so try again."
+    public static let signInFailed = "Sign-in didn't finish, so try again."
+    public static let signInNoBrowser = "Helm couldn't open your browser."
+    public static let signInUnavailable = "Sign-in isn't available here."
+    public static let signInFirst = "Continue with ChatGPT to connect."
+    public static let signOutUnconfirmed = "Disconnect Helm in ChatGPT's settings to finish."
+    public static let statePlanNotCovered = "Your ChatGPT plan can't be used with Helm."
+    /// The page the browser shows once it has handed the sign-in back to Helm.
+    public static let signInPage = "You can close this tab and go back to Helm."
+
+    /// The line for a sign-in that didn't finish. Nil when the person stopped it, which needs no line.
+    public static func signInFailure(_ failure: AgentSignInFailure) -> String? {
+        switch failure {
+        case .cancelled: return nil
+        case .timedOut: return signInTimedOut
+        case .noBrowser: return signInNoBrowser
+        case .declined: return signInDeclined
+        case .planOff: return signInPlanOff
+        case .unreachable: return stateCantReach(AgentProviderCatalog.name(.openAI))
+        case .failed: return signInFailed
+        case .unavailable: return signInUnavailable
+        }
+    }
+
+    // MARK: Help for each provider
+
+    /// The link beside each provider that opens its official page on connecting.
+    public static let howToConnect = "How to connect"
+    /// The info button's VoiceOver label.
+    public static func aboutProvider(_ provider: String) -> String { "About \(shown(provider))" }
+    public static let helpClaude = "Anthropic requires an API key for apps like Helm, billed by use."
+    public static let helpChatGPT = "Uses your ChatGPT plan, with no key to paste."
+    public static let helpOpenAIKey = "Uses an OpenAI API key, billed by use."
+    public static let helpGemini = "Uses a Gemini API key, with a free tier and paid use."
+    public static let helpGrok = "Uses an xAI API key, billed by use."
+    public static let helpOllama = "Free, and runs on this Mac while Ollama is running."
+    public static let helpLMStudio = "Free, and runs on this Mac while LM Studio's server is on."
+    public static let helpOther = "Uses any OpenAI-compatible service at an https address, with its key if it needs one."
+
+    /// The info button's tooltip: what the provider uses and what it costs.
+    public static func providerHelp(_ provider: AgentProviderID, usesChatGPT: Bool) -> String {
+        switch provider {
+        case .claude: return helpClaude
+        case .openAI: return usesChatGPT ? helpChatGPT : helpOpenAIKey
+        case .gemini: return helpGemini
+        case .grok: return helpGrok
+        case .ollama: return helpOllama
+        case .lmStudio: return helpLMStudio
+        case .other: return helpOther
+        }
+    }
 
     // MARK: Elsewhere
 
@@ -245,4 +329,6 @@ public enum AgentText {
 
     /// A name, a place or a host as it may be shown: hidden and control characters are written out as escapes.
     static func shown(_ name: String) -> String { AgentTextEscaper.escape(name) }
+
+    private static func isChatGPT(_ provider: String) -> Bool { provider == AgentProviderCatalog.chatGPTName }
 }

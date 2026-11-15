@@ -166,7 +166,7 @@ import HelmTestKit
         let other = await runtime.check(AIConfig(provider: "ollama", models: ["ollama": "llama"]))
         XCTAssertEqual(other, .off)
         XCTAssertNil(runtime.makeSession())
-        runtime.configure(AIConfig(provider: "openAI"))
+        runtime.configure(AIConfig(provider: "openAI", openAIUsesKey: true))
         runtime.setOn(false)
         await runtime.settle()
         XCTAssertEqual(factory.built.count, 0)
@@ -211,7 +211,7 @@ import HelmTestKit
         runtime.configure(AIConfig(provider: "claude", keyOwners: ["claude|api.anthropic.com:443": "1024-1700000000"]))
         XCTAssertEqual(runtime.state, .ready(provider: "Claude", destination: "Claude", model: "claude-opus-5-5", isLocal: false))
         // A key saved for one provider isn't another's.
-        runtime.configure(AIConfig(provider: "openAI"))
+        runtime.configure(AIConfig(provider: "openAI", openAIUsesKey: true))
         XCTAssertEqual(runtime.state, .notReady)
         expectFailure(runtime.client(), .noKey)
     }
@@ -304,7 +304,7 @@ import HelmTestKit
         runtime.configure(AIConfig(provider: "claude"))
         let gate = Gate()
         factory.gate = gate
-        let checking = Task { await runtime.check(AIConfig(provider: "openAI")) }
+        let checking = Task { await runtime.check(AIConfig(provider: "openAI", openAIUsesKey: true)) }
         while factory.built.isEmpty { await Task.yield() }
         let probe = factory.built[0]
         XCTAssertEqual(probe.profile.id, .openAI)
@@ -343,7 +343,7 @@ import HelmTestKit
         guard case .success = runtime.client() else { return XCTFail("no client") }
 
         // Another provider.
-        runtime.configure(AIConfig(provider: "openAI"))
+        runtime.configure(AIConfig(provider: "openAI", openAIUsesKey: true))
         await runtime.settle()
         XCTAssertEqual(session.asked, ["startOver"])
         XCTAssertEqual(other.asked, ["startOver"])
@@ -500,7 +500,7 @@ import HelmTestKit
         XCTAssertTrue((current as AnyObject) === factory.built[1])
 
         // A draft for another provider gets a client of its own, which is shut down afterwards.
-        answer = await runtime.check(AIConfig(provider: "openAI"))
+        answer = await runtime.check(AIConfig(provider: "openAI", openAIUsesKey: true))
         XCTAssertEqual(answer, .connected([AgentModelInfo(id: "model-a"), AgentModelInfo(id: "model-b")].compactMap { $0 }))
         XCTAssertEqual(factory.built.count, 3)
         XCTAssertEqual(factory.built[2].profile.id, .openAI)
@@ -577,7 +577,7 @@ import HelmTestKit
         XCTAssertNotNil(runtime.makeSession())
 
         // Whatever the config says, the scripted client is the one that answers, and no live client is built.
-        runtime.configure(AIConfig(provider: "openAI"))
+        runtime.configure(AIConfig(provider: "openAI", openAIUsesKey: true))
         XCTAssertEqual(runtime.state, .ready(provider: "Claude", destination: "Claude", model: "gpt-6-astra", isLocal: false))
         runtime.configure(AIConfig(provider: "other", otherAddress: "10.0.0.5"))
         guard case .ready = runtime.state else { return XCTFail("not ready") }
@@ -602,7 +602,7 @@ import HelmTestKit
         XCTAssertEqual(runtime.state, .ready(provider: "Ollama", destination: "Ollama on this Mac", model: "scripted-1", isLocal: true))
         runtime.configure(AIConfig(provider: "claude"))
         let session = try XCTUnwrap(runtime.makeSession() as? CountingConversation)
-        runtime.configure(AIConfig(provider: "openAI"))
+        runtime.configure(AIConfig(provider: "openAI", openAIUsesKey: true))
         await runtime.settle()
         XCTAssertEqual(session.asked, ["startOver"])
     }
