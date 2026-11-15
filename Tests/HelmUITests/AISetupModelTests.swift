@@ -513,12 +513,18 @@ final class AISetupFakeProviders: @unchecked Sendable {
 
     private let lock = NSLock()
     private var table: [String: Answer] = [:]
+    private var names: [String: String] = [:]
     private var askedList: [String] = []
     private var askedPorts: [Int] = []
 
     var answers: [String: Answer] {
         get { lock.lock(); defer { lock.unlock() }; return table }
         set { lock.lock(); defer { lock.unlock() }; table = newValue }
+    }
+    /// The display names a list gives its models, as a ChatGPT plan's does.
+    var labels: [String: String] {
+        get { lock.lock(); defer { lock.unlock() }; return names }
+        set { lock.lock(); defer { lock.unlock() }; names = newValue }
     }
     var asked: [String] { lock.lock(); defer { lock.unlock() }; return askedList }
     var ports: [Int] { lock.lock(); defer { lock.unlock() }; return askedPorts }
@@ -531,7 +537,7 @@ final class AISetupFakeProviders: @unchecked Sendable {
         lock.lock()
         askedList.append(profile.id.rawValue)
         askedPorts.append(profile.endpoint.port)
-        let table = self.table
+        let table = self.table, labels = self.names
         lock.unlock()
         if profile.needsKey || secrets.has(profile.secretID) {
             do {
@@ -549,7 +555,7 @@ final class AISetupFakeProviders: @unchecked Sendable {
             answer = alternate
         }
         switch answer ?? .failure(.unreachable) {
-        case .models(let names): return names.compactMap(AgentModelInfo.init(id:))
+        case .models(let names): return names.compactMap { AgentModelInfo(id: $0, label: labels[$0]) }
         case .failure(let failure): throw failure
         }
     }

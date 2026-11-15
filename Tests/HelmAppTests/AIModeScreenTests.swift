@@ -174,7 +174,9 @@ import HelmPersistence
         XCTAssertEqual(menu.itemTitles, AgentProviderID.allCases.map(AgentProviderCatalog.name))
         XCTAssertEqual(shown.filter { $0 is NSSecureTextField }.count, 1, "the key field")
         XCTAssertEqual(shown.filter { $0 is NSSwitch }.count, 1)
-        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "key"], "and still no other button")
+        // Beside the menu, the provider's help: its info button and its How to connect link. No other button.
+        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "button", "button", "key"],
+                       "and no other button but the provider's help")
         let keyField = try XCTUnwrap(shown.compactMap { $0 as? NSSecureTextField }.first)
         let caretInKeyField = await until { self.hasCaret(keyField) }
         XCTAssertTrue(caretInKeyField, "the caret starts in the key field")
@@ -237,11 +239,11 @@ import HelmPersistence
         try await Task.sleep(nanoseconds: 300_000_000)
         let field = try XCTUnwrap(controls(in: screen).compactMap { $0 as? NSSecureTextField }.first)
         XCTAssertTrue(type(testKey, into: field))
-        model.choose(.openAI)
+        model.choose(.gemini)
         let emptied = await until { field.stringValue.isEmpty }
         XCTAssertTrue(emptied, "a change of provider empties the field")
         try await pressDoneByKeyboard(screen)
-        XCTAssertEqual(store.accounts, [], "nothing was saved for OpenAI")
+        XCTAssertEqual(store.accounts, [], "nothing was saved for Gemini")
         XCTAssertEqual(model.connectionForTesting, "noKey")
         XCTAssertEqual(screen.modeForTesting, "ai")
     }
@@ -275,12 +277,12 @@ import HelmPersistence
 
         // A key typed for one provider is dropped when another is picked, so Return can't save it for that one.
         XCTAssertTrue(type(testKey, into: field))
-        model.choose(.openAI)
+        model.choose(.gemini)
         let dropped = await until { field.stringValue.isEmpty }
         XCTAssertTrue(dropped, "a change of provider empties the field")
         pressReturn(in: field)
         await model.settle()
-        XCTAssertEqual(store.accounts, ["claude|api.anthropic.com:443"], "nothing was saved for OpenAI")
+        XCTAssertEqual(store.accounts, ["claude|api.anthropic.com:443"], "nothing was saved for Gemini")
         XCTAssertEqual(model.connectionForTesting, "noKey")
     }
 

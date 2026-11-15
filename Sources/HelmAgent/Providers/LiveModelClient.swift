@@ -10,6 +10,9 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
     public let isLocal: Bool
 
     private let provider: AgentProviderID
+    /// OpenAI with a ChatGPT sign-in: requests are billed to the plan, its models come from the plan's list, and its
+    /// errors are read with the plan's codes.
+    private let usesChatGPT: Bool
     private let model: String
     private let transport: any AgentTransport
     private let adapter: any AgentWireAdapter
@@ -19,6 +22,7 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         destination = profile.destination
         isLocal = profile.isLocal
         provider = profile.id
+        usesChatGPT = profile.usesChatGPT
         self.model = model
         self.transport = transport
         adapter = Self.adapter(for: profile.wire, profile: profile)
@@ -28,7 +32,7 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
     public static func adapter(for wire: AgentWire, profile: AgentProviderProfile) -> any AgentWireAdapter {
         switch wire {
         case .anthropicMessages: return AnthropicMessagesAdapter()
-        case .openAIResponses: return OpenAIResponsesAdapter()
+        case .openAIResponses: return OpenAIResponsesAdapter(planUsage: profile.usesChatGPT)
         case .chatCompletions: return ChatCompletionsAdapter(sendsMaxTokens: !profile.isLocal)
         }
     }
@@ -39,7 +43,8 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
     /// turn's result. A request that fails throws its `AgentFailure`; an error inside the stream finishes the turn
     /// as `.failed`. Stopping the stream cancels the request.
     public func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> {
-        let adapter = self.adapter, transport = self.transport, model = self.model, provider = self.provider
+        let adapter = self.adapter, transport = self.transport, model = self.model
+        let mapped = failureMap
         return AsyncThrowingStream { continuation in
             let work = Task {
                 do {
@@ -53,7 +58,7 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
                     continuation.yield(.finished(Self.checked(reader.finish())))
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: AgentErrorMapper.failure(of: error, provider: provider))
+                    continuation.finish(throwing: mapped(error))
                 }
             }
             continuation.onTermination = { _ in work.cancel() }
@@ -76,7 +81,7 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
             }
             return try adapter.structuredAnswer(from: Data(lines.joined(separator: "\n").utf8))
         } catch {
-            throw AgentErrorMapper.failure(of: error, provider: provider)
+            throw failureMap(error)
         }
     }
 
@@ -110,12 +115,21 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         do {
             reply = try await transport.fetch(route)
         } catch {
-            throw AgentErrorMapper.failure(of: error, provider: provider)
+            throw failureMap(error)
         }
         guard (200...299).contains(reply.status) else {
-            throw AgentErrorMapper.failure(status: reply.status, body: reply.body, provider: provider)
+            throw usesChatGPT ? AgentErrorMapper.chatGPTFailure(status: reply.status, body: reply.body)
+                : AgentErrorMapper.failure(status: reply.status, body: reply.body, provider: provider)
         }
+        if usesChatGPT { return try AgentModelLister.chatGPTModels(from: reply.body) }
         return try AgentModelLister.models(from: reply.body, provider: provider)
+    }
+
+    /// How anything a request threw becomes one `AgentFailure`, for this provider.
+    private var failureMap: @Sendable (Error) -> AgentFailure {
+        let provider = self.provider
+        if usesChatGPT { return { error in AgentErrorMapper.chatGPTFailure(of: error) } }
+        return { error in AgentErrorMapper.failure(of: error, provider: provider) }
     }
 
     /// A turn as it may be handed on. Calls are kept only when the turn asks for tools. A turn whose call ids

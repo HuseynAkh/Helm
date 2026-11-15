@@ -4,8 +4,8 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, DECLARED, GUARDED, MAY_BE_ABSENT, NETWORK_FILES, ONE_FILE,
-                           check, file_problems, layers, main)
+from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, DECLARED, GUARDED, LISTENER_FILES, MAY_BE_ABSENT, NETWORK_FILES,
+                           ONE_FILE, check, file_problems, layers, main)
 
 DTD = '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
 
@@ -173,6 +173,45 @@ public enum AgentProviderCatalog {
 '''
 
 # The one file with the keychain calls.
+# The loopback listener as it is meant to be written: an IPv4 stream socket bound to 127.0.0.1, one request read and
+# one answer sent on each connection it accepts.
+LISTENER = 'Sources/HelmAgent/Transport/AgentLoopbackListener.swift'
+LISTENER_CODE = '''import Foundation
+
+public final class AgentLoopbackListener {
+    public func start() throws -> Int {
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        guard bound == 0, listen(descriptor, 4) == 0 else { close(descriptor); return 0 }
+        let client = accept(descriptor, nil, nil)
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        _ = recv(client, &buffer, buffer.count, 0)
+        _ = send(client, buffer, 0, 0)
+        close(client)
+        return 0
+    }
+}
+'''
+HELP_LINKS = 'Sources/HelmAgent/Text/AgentHelpLinks.swift'
+HELP_CODE = '''import Foundation
+
+public enum AgentHelpLinks {
+    static let chatGPTPlan = "https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites"
+    static let chatGPTUsage = "https://chatgpt.com/settings/usage"
+    static let openAIKey = "https://developers.openai.com/api/docs/quickstart"
+    static let claudeKey = "https://platform.claude.com/docs/en/manage-claude/authentication#api-keys"
+    static let geminiKey = "https://aistudio.google.com/docs/api-key"
+    static let grokKey = "https://docs.x.ai/docs/quickstart"
+    static let ollamaStart = "https://docs.ollama.com/quickstart"
+    static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"
+}
+'''
+
 KEYCHAIN_CODE = '''import Foundation
 import Security
 import HelmCore
@@ -497,9 +536,21 @@ class PrivacyCheckTests(unittest.TestCase):
             ('web-address', endpoints, 'static let openAIBase = "https://api.openai.com/v1"'),
             ('web-address', endpoints, 'static let geminiBase = "https://generativelanguage.googleapis.com/v1beta"'),
             ('web-address', endpoints, 'static let grokBase = "https://api.x.ai/v1"'),
+            ('web-address', endpoints, 'static let openAISignInBase = "https://auth.openai.com"'),
+            ('web-address', HELP_LINKS, 'static let chatGPTPlan = "https://help.openai.com/en/articles/20001542-using-your-'
+                                        'chatgpt-plan-in-other-apps-and-sites"'),
+            ('web-address', HELP_LINKS, 'static let chatGPTUsage = "https://chatgpt.com/settings/usage"'),
+            ('web-address', HELP_LINKS, 'static let openAIKey = "https://developers.openai.com/api/docs/quickstart"'),
+            ('web-address', HELP_LINKS,
+             'static let claudeKey = "https://platform.claude.com/docs/en/manage-claude/authentication#api-keys"'),
+            ('web-address', HELP_LINKS, 'static let geminiKey = "https://aistudio.google.com/docs/api-key"'),
+            ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
+            ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
+            ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
             ('network-key', 'App/Info.plist', '<key>NSAppTransportSecurity</key>'),
         ])
         self.assertEqual(NETWORK_FILES, {'Sources/HelmAgent/Transport/HTTPTransport.swift'})
+        self.assertEqual(LISTENER_FILES, {'Sources/HelmAgent/Transport/AgentLoopbackListener.swift'})
         self.assertEqual(MAY_BE_ABSENT, {('network-key', 'App/Info.plist', '<key>NSAppTransportSecurity</key>')})
         self.assertEqual(ATS_SHAPE, {'NSAllowsLocalNetworking': True})
         self.assertIs(ATS_SHAPE['NSAllowsLocalNetworking'], True)
@@ -556,7 +607,9 @@ class PrivacyCheckTests(unittest.TestCase):
 
     def test_a_tree_with_ai_mode_in_it_passes(self):
         files = {
-            TRANSPORT: TRANSPORT_CODE, ENDPOINTS: ENDPOINT_CODE, KEYCHAIN: KEYCHAIN_CODE, LOOP: AGENT_CODE, THREAD: PANEL_CODE,
+            TRANSPORT: TRANSPORT_CODE, KEYCHAIN: KEYCHAIN_CODE, LOOP: AGENT_CODE, THREAD: PANEL_CODE,
+            ENDPOINTS: ENDPOINT_CODE + 'static let openAISignInBase = "https://auth.openai.com"\n',
+            LISTENER: LISTENER_CODE, HELP_LINKS: HELP_CODE,
             SECRETS: 'public struct AgentSecret: Sendable { public func revealSecret() -> String { text } }\n',
             LIVE_PARTS: 'let transport = HTTPTransport(liveProfile: profile, secrets: secrets, limits: .cloud)\n',
             PLAN_CARD: 'struct AgentApprovedPlan { fileprivate init(tickedByPerson ticked: Set<Int>, planID: UUID) {} }\n'
@@ -573,7 +626,8 @@ class PrivacyCheckTests(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertFalse([entry for entry in unused if entry[0] in ('web-address', 'network-key')])
         # Each of these files has leave for one thing, and only where it is.
-        for place in (TRANSPORT, ENDPOINTS, KEYCHAIN, SECRETS, LIVE_PARTS, PLAN_CARD, PANEL_MODEL, WINDOW_AGENT):
+        for place in (TRANSPORT, ENDPOINTS, KEYCHAIN, SECRETS, LIVE_PARTS, PLAN_CARD, PANEL_MODEL, WINDOW_AGENT, LISTENER,
+                      HELP_LINKS):
             self.assertTrue(self.planted(CORE, files[place]), place)
             self.assertTrue(self.planted(place.replace('.swift', '+More.swift'), files[place]), place)
 
@@ -676,6 +730,65 @@ class PrivacyCheckTests(unittest.TestCase):
                      'static let ollamaBase = "http://127.0.0.1:11434"', 'static let socketBase = "wss://api.openai.com/v1"',
                      '// See https://docs.anthropic.com/en/api', 'static let claudeBase = "https://api.anthropic.com" // Claude']:
             self.fails('web-address', ENDPOINTS, ENDPOINT_CODE + line)
+
+    # The loopback listener, OpenAI's sign-in host and the help pages.
+
+    def test_listener_file_passes_and_its_socket_fails_anywhere_else(self):
+        self.assertEqual(self.planted(LISTENER, LISTENER_CODE), [])
+        elsewhere = (TRANSPORT, LOOP, ENDPOINTS, 'Sources/HelmAgent/Transport/AgentLoopbackListener+More.swift',
+                     'Sources/HelmAgent/SignIn/AgentChatGPTSignIn.swift', THREAD, HEADER, CORE,
+                     'Sources/HelmUI/Settings/AISetupModel.swift', 'Sources/HelmApp/macOS/AppController+Agent.swift')
+        self.expect('sockets', LISTENER_CODE, fails=elsewhere)
+        self.expect('socket-call', LISTENER_CODE, fails=elsewhere)
+        for code in ['let descriptor = socket(AF_INET, SOCK_STREAM, 0)', 'var address = sockaddr_in()',
+                     'let family = PF_INET', '// An AF_INET socket']:
+            self.expect('sockets' if 'socket(' not in code else 'socket-call', code, fails=(TRANSPORT, LOOP, CORE),
+                        passes=[LISTENER])
+
+    def test_listener_still_fails_for_everything_but_listening_on_this_mac(self):
+        for rule, code in [
+                ('socket-call', 'let result = connect(descriptor, pointer, length)'),
+                ('socket-call', 'let other = Darwin.socket(AF_INET, SOCK_STREAM, 0)'),
+                ('socket-call', '_ = Darwin.bind(descriptor, pointer, length)'),
+                ('sockets', 'var address = sockaddr_in6()'), ('sockets', 'let family = AF_INET6'),
+                ('sockets', 'let datagrams = socket(AF_INET, SOCK_DGRAM, 0)'), ('sockets', 'let sent = sendto(fd, b, n, 0, p, l)'),
+                ('sockets', 'let heard = recvfrom(fd, b, n, 0, p, &l)'), ('sockets', 'getaddrinfo(host, nil, &hints, &found)'),
+                ('sockets', 'address.sin_addr.s_addr = inet_addr("10.0.0.1")'),
+                ('listener-loopback', 'address.sin_addr.s_addr = INADDR_ANY'),
+                ('listener-loopback', 'address.sin_addr.s_addr = INADDR_BROADCAST'),
+                ('listener-loopback', 'let host = "0.0.0.0"'), ('listener-loopback', 'let host = "localhost"'),
+                ('listener-loopback', 'let unix = socket(AF_UNIX, SOCK_STREAM, 0)'),
+                ('listener-loopback', 'setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &on, size)'),
+                ('url-session', 'let session = URLSession(configuration: .ephemeral)'), ('import', 'import Network'),
+                ('network-framework', 'let listener = try NWListener(using: .tcp)'),
+                ('web-address', 'let page = "https://example.invalid/done"'),
+                ('agent-no-read', 'let text = try String(contentsOfFile: path)'),
+                ('agent-no-write', 'try FileManager.default.removeItem(at: url)')]:
+            self.fails(rule, LISTENER, LISTENER_CODE + code)
+        # The listener's own rule holds there alone.
+        self.passes('listener-loopback', TRANSPORT, 'let host = "localhost"')
+
+    def test_sign_in_host_and_help_pages_pass_only_as_written_and_only_in_their_files(self):
+        host = 'static let openAISignInBase = "https://auth.openai.com"'
+        self.assertEqual(self.planted(ENDPOINTS, ENDPOINT_CODE + host), [])
+        self.assertEqual(self.planted(HELP_LINKS, HELP_CODE), [])
+        for relative in (TRANSPORT, LOOP, HELP_LINKS, 'Sources/HelmUI/Settings/AISettings.swift', CORE):
+            self.assertEqual(rules(self.planted(relative, host)), {'web-address'}, relative)
+        for relative in (ENDPOINTS, TRANSPORT, LISTENER, 'Sources/HelmUI/Settings/AISettings.swift',
+                         'Sources/HelmUI/Onboarding/AIModeScreen.swift', CORE):
+            found = self.planted(relative, HELP_CODE)
+            self.assertEqual(rules(found), {'web-address'}, relative)
+            self.assertEqual(len(found), 8, relative)
+        for line in ['static let authorize = "https://auth.openai.com/api/accounts/authorize"',
+                     'static let openAISignInBase = "http://auth.openai.com"',
+                     'static let openAISignInBase = "https://auth.openai.com.example.invalid"']:
+            self.fails('web-address', ENDPOINTS, ENDPOINT_CODE + line)
+        for line in ['static let mistralKeys = "https://console.mistral.ai/api-keys"',
+                     'static let claudeKey = "https://platform.claude.com/settings/keys"',
+                     'static let chatGPTUsage = "https://chatgpt.com/settings/usage?from=helm"',
+                     'static let ollamaStart = "https://docs.ollama.com/quickstart" // Ollama',
+                     '// See https://docs.ollama.com/faq']:
+            self.fails('web-address', HELP_LINKS, HELP_CODE + line)
 
     def test_session_shapes_fail_everywhere(self):
         for code in ['URLSession.shared.data(for: request)', 'URLSession .shared', 'URLSessionConfiguration.default',

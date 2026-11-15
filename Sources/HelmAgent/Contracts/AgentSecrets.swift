@@ -17,10 +17,19 @@ public struct AgentSecret: Sendable {
         self.text = trimmed
     }
 
+    /// A token a sign-in handed Helm for its requests, such as a ChatGPT access token. It is longer than a pasted key
+    /// may be, and is held to the characters a token is made of: printable ASCII with no space. Nil otherwise.
+    public init?(bearerToken text: String) {
+        guard !text.isEmpty, text.utf8.count <= Self.maximumTokenLength,
+              text.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }) else { return nil }
+        self.text = text
+    }
+
     /// The key itself, for the one place that puts it on a request and the one that saves it.
     public func revealSecret() -> String { text }
 
     static let maximumLength = 512
+    static let maximumTokenLength = 16_384
 }
 
 extension AgentSecret: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
@@ -44,6 +53,24 @@ public struct AgentSecretID: Hashable, Sendable {
 /// A key couldn't be had: macOS refused, or the store failed.
 public enum AgentSecretError: Error, Equatable, Sendable { case denied, failed }
 
+/// What a sign-in keeps beside the keys, one keychain item each. Their keychain accounts don't start with a provider's
+/// name, so no key's account can be one of them.
+public enum AgentSignInItem: String, Sendable, CaseIterable {
+    /// This Mac's registration with ChatGPT's sign-in: the host ID and the client OpenAI issued for it. It stays after
+    /// a sign-out, so the next sign-in is the same registration.
+    case chatGPTRegistration
+    /// The tokens of a ChatGPT sign-in, with the client they were issued to. Removed by a sign-out.
+    case chatGPTTokens
+
+    /// The keychain account.
+    public var account: String {
+        switch self {
+        case .chatGPTRegistration: return "chatgpt-registration|auth.openai.com:443"
+        case .chatGPTTokens: return "chatgpt-sign-in|auth.openai.com:443"
+        }
+    }
+}
+
 /// Where keys are kept.
 public protocol AgentSecretStoring: Sendable {
     /// Whether a key is saved. Looks at the item's attributes only, so macOS never asks the person anything.
@@ -55,6 +82,26 @@ public protocol AgentSecretStoring: Sendable {
     func remove(_ id: AgentSecretID) throws
     /// True for a store that lasts only as long as the app runs. A fixture run types a key into no other kind.
     var isMemoryOnly: Bool { get }
+
+    /// Whether a sign-in item is saved, from its attributes alone, so macOS never asks the person anything.
+    func hasSignIn(_ item: AgentSignInItem) -> Bool
+    /// The saved item, or nil when there is none. Throws `.denied` when macOS refused to hand it over.
+    func signInData(_ item: AgentSignInItem) throws -> Data?
+    /// Saves an item in place of any that was there, with a note the person may see beside it: the account's email
+    /// for the tokens, nothing for the registration.
+    func saveSignIn(_ data: Data, note: String?, for item: AgentSignInItem) throws
+    func removeSignIn(_ item: AgentSignInItem) throws
+    /// The note saved with an item, from its attributes alone.
+    func signInNote(_ item: AgentSignInItem) -> String?
+}
+
+/// A store with no room for a sign-in: the stand-ins tests make for keys alone. Nothing is ever saved in it.
+extension AgentSecretStoring {
+    public func hasSignIn(_ item: AgentSignInItem) -> Bool { false }
+    public func signInData(_ item: AgentSignInItem) throws -> Data? { nil }
+    public func saveSignIn(_ data: Data, note: String?, for item: AgentSignInItem) throws { throw AgentSecretError.failed }
+    public func removeSignIn(_ item: AgentSignInItem) throws {}
+    public func signInNote(_ item: AgentSignInItem) -> String? { nil }
 }
 
 /// Tells text that is shaped like a provider's key, so one typed into the wrong place is never sent to a model.

@@ -2,7 +2,11 @@
 """Privacy check. Helm connects only to the model provider the person chose, and only while AI mode is on.
 So one file may name a URL session, and nothing else in the shipped code may use the network, send
 telemetry, read identifiers, write to the unified log, or hand data to iCloud, other devices or other
-apps on its own.
+apps on its own. A ChatGPT sign-in adds OpenAI's sign-in host to the addresses the transport may reach,
+and one file that listens on 127.0.0.1 for the browser's callback and connects to nothing.
+
+Help pages are addresses too, listed one by one. Opening one hands the address to the person's browser
+through macOS; it is not a connection Helm makes, and Helm's transport can't reach those hosts.
 
 It reads every Swift file under Sources/, the app target in App/ (Swift, plist, entitlements and
 yml files) and Package.swift. Comments and strings count too, so a mention anywhere fails until it is
@@ -10,6 +14,8 @@ reworded or reviewed. A reviewed line goes in ALLOW: one rule, one file and the 
 
 Some rules hold in one place only, or everywhere but one place:
 - NETWORK_FILES may name a URL session. Every other rule holds there as it does anywhere else.
+- LISTENER_FILES may make an IPv4 stream socket and listen on it, and must reach no further than 127.0.0.1.
+  Every other socket rule, connect() and the rest, holds there as it does anywhere else.
 - Sources/HelmAgent is the module that reaches a model provider, so it names no way to change, open or
   look up a file, or to start a tool. It learns about the disk through HelmCore's AgentDisk alone.
 - The files that draw a model's text draw it plain: no Markdown, no links, nothing that opens or shares.
@@ -43,6 +49,8 @@ IMPORT = (r'(?:^|;)[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:public|package|internal
 AGENT = 'Sources/HelmAgent/'
 TRANSPORT = AGENT + 'Transport/HTTPTransport.swift'
 ENDPOINTS = AGENT + 'Transport/Endpoints.swift'
+LISTENER = AGENT + 'Transport/AgentLoopbackListener.swift'
+HELP_LINKS = AGENT + 'Text/AgentHelpLinks.swift'
 KEYCHAIN = AGENT + 'Secrets/KeychainSecretStore.swift'
 SECRETS = AGENT + 'Contracts/AgentSecrets.swift'
 LIVE_PARTS = AGENT + 'Runtime/AgentLiveParts.swift'
@@ -54,6 +62,9 @@ INFO_PLIST = 'App/Info.plist'
 # The files that may name a URL session. They are let off `url-session` and nothing else, and each must exist
 # while Sources/HelmAgent does.
 NETWORK_FILES = {TRANSPORT}
+# The files that may listen for a ChatGPT sign-in's callback on 127.0.0.1. They are let off naming an IPv4 stream
+# socket and the call that makes one, and nothing else.
+LISTENER_FILES = {LISTENER}
 # The files that draw text from a model and from the disk: the AI panel and AI search.
 AGENT_UI = ('Sources/HelmUI/Agent/', 'Sources/HelmUI/Host/AISearchRunner.swift',
             'Sources/HelmUI/Host/AISearchPredicates.swift', 'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift')
@@ -228,14 +239,22 @@ RULES = [
      r'|\bnw_\w+', SWIFT),
     ('sockets', 'network: sockets, DNS and streams',
      r'\b(?:CFSocket\w*|CFStreamCreatePairWith\w+|CF(?:Read|Write)StreamCreateWith\w+|CFHost\w*|getStreamsToHost\w*'
-     r'|SCNetworkReachability\w*|AF_INET6?|PF_INET6?|SOCK_STREAM|SOCK_DGRAM|IPPROTO_\w+|sockaddr_in6?|sockaddr_storage'
+     r'|SCNetworkReachability\w*|AF_INET6|PF_INET6|SOCK_DGRAM|IPPROTO_\w+|sockaddr_in6|sockaddr_storage'
      r'|getaddrinfo|getnameinfo|gethostbyname2?|gethostbyaddr|inet_pton|inet_ntop|inet_addr|inet_aton'
      r'|res_query|res_search|sendto|recvfrom|sendmsg|recvmsg)\b', SWIFT),
+    # An IPv4 stream socket, which the loopback listener makes and nothing else may.
+    ('sockets', 'network: sockets, DNS and streams', r'\b(?:AF_INET|PF_INET|SOCK_STREAM|sockaddr_in)\b', SWIFT,
+     outside(*LISTENER_FILES)),
     # A bare `connect(fd, ...)` is the socket call. `x.connect(to:)` and `func connect(to:)` are not.
     ('socket-call', 'network: socket() or connect() call',
      r'\b(?:Darwin|Glibc)\.(?:socket|connect|bind|listen|accept)\s*\('
-     r'|(?<![\w.])socket\s*\('
      r'|(?<![\w.])connect\s*\(\s*&?[A-Za-z_][\w.]*(?:\([^()]*\))?\s*,', SWIFT),
+    ('socket-call', 'network: socket() or connect() call', r'(?<![\w.])socket\s*\(', SWIFT, outside(*LISTENER_FILES)),
+    # The listener binds to 127.0.0.1 alone: no address that reaches past this Mac, no other kind of socket, no name
+    # to look up.
+    ('listener-loopback', 'network: the loopback listener reaching past 127.0.0.1',
+     r'\b(?:INADDR_ANY|INADDR_BROADCAST|INADDR_NONE|in6addr_\w+|AF_UNIX|AF_LOCAL|PF_UNIX|PF_LOCAL|SOCK_RAW|SOCK_SEQPACKET'
+     r'|SO_BROADCAST|IP_ADD_MEMBERSHIP|localhost)\b|0\.0\.0\.0', SWIFT, inside(*LISTENER_FILES), BOTH),
     ('web-view', 'network: web view, Bonjour or peer-to-peer',
      r'\b(?:WKWebView|WKWebsiteDataStore|WebView|SFSafariViewController|ASWebAuthenticationSession|NetService\w*'
      r'|NSNetService\w*|DNSService\w+|MCSession|MCPeerID|MCNearbyService\w*|MCAdvertiserAssistant)\b', SWIFT),
@@ -424,6 +443,21 @@ ALLOW = [
     ('web-address', ENDPOINTS, 'static let openAIBase = "https://api.openai.com/v1"'),
     ('web-address', ENDPOINTS, 'static let geminiBase = "https://generativelanguage.googleapis.com/v1beta"'),
     ('web-address', ENDPOINTS, 'static let grokBase = "https://api.x.ai/v1"'),
+    # OpenAI's sign-in host, for a ChatGPT sign-in: its authorize page opens in the browser, and the transport asks it
+    # for tokens and for the keys that sign them. The callback comes back to 127.0.0.1, put together from parts.
+    ('web-address', ENDPOINTS, 'static let openAISignInBase = "https://auth.openai.com"'),
+    # Help pages the person can open in their browser from the AI Mode screen and Settings › AI. Opening a page hands
+    # its address to macOS; Helm makes no connection to it.
+    ('web-address', HELP_LINKS,
+     'static let chatGPTPlan = "https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites"'),
+    ('web-address', HELP_LINKS, 'static let chatGPTUsage = "https://chatgpt.com/settings/usage"'),
+    ('web-address', HELP_LINKS, 'static let openAIKey = "https://developers.openai.com/api/docs/quickstart"'),
+    ('web-address', HELP_LINKS,
+     'static let claudeKey = "https://platform.claude.com/docs/en/manage-claude/authentication#api-keys"'),
+    ('web-address', HELP_LINKS, 'static let geminiKey = "https://aistudio.google.com/docs/api-key"'),
+    ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
+    ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
+    ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
     # Plain http to a model on this Mac. transport_security() holds what is under the key to ATS_SHAPE.
     ATS_KEY,
 ]

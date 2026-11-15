@@ -34,13 +34,16 @@ public struct AgentRuntimeParts: Sendable {
     public var makeClient: (@Sendable (AgentProviderProfile, String, any AgentSecretStoring) -> any AgentLiveClient)?
     /// Makes a conversation. Nil gives a stand-in that answers without a model.
     public var makeSession: (@Sendable (AgentSessionParts) -> any AgentConversing)?
+    /// Makes a ChatGPT sign-in over the key store. Nil in a fixture run, which never signs in.
+    public var makeSignIn: (@Sendable (any AgentSecretStoring) -> AgentChatGPTSignIn)?
     public init(secrets: any AgentSecretStoring, disk: any AgentDisk, home: String, supportFolder: String,
                 clock: any HelmClock, buildStamp: String, scripted: (any AgentModelClient)? = nil,
                 makeClient: (@Sendable (AgentProviderProfile, String, any AgentSecretStoring) -> any AgentLiveClient)? = nil,
-                makeSession: (@Sendable (AgentSessionParts) -> any AgentConversing)? = nil) {
+                makeSession: (@Sendable (AgentSessionParts) -> any AgentConversing)? = nil,
+                makeSignIn: (@Sendable (any AgentSecretStoring) -> AgentChatGPTSignIn)? = nil) {
         self.secrets = secrets; self.disk = disk; self.home = home; self.supportFolder = supportFolder
         self.clock = clock; self.buildStamp = buildStamp; self.scripted = scripted
-        self.makeClient = makeClient; self.makeSession = makeSession
+        self.makeClient = makeClient; self.makeSession = makeSession; self.makeSignIn = makeSignIn
     }
 }
 
@@ -52,8 +55,11 @@ public enum AgentRuntimeState: Equatable, Sendable {
     case ready(provider: String, destination: String, model: String, isLocal: Bool)
 }
 
-/// What asking a provider for its models came to.
-public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInfo]), noKey, wrongKey, cantReach, notRunning, noModels, keyDenied, off }
+/// What asking a provider for its models came to. `planLimit` and `planNotCovered` come only from OpenAI with a
+/// ChatGPT sign-in: the plan's usage limit was reached, or the plan doesn't cover Helm's requests.
+public enum AgentConnection: Equatable, Sendable {
+    case connected([AgentModelInfo]), noKey, wrongKey, cantReach, notRunning, noModels, keyDenied, off, planLimit, planNotCovered
+}
 
 /// AI mode's switch. It holds whether the mode is on, which provider and model are chosen, and the one client that
 /// talks to that provider. The client is built the first time it is needed and only while the mode is on: while it
@@ -85,8 +91,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
                           model: AgentProviderCatalog.model(for: config) ?? Self.scriptedModel, isLocal: scripted.isLocal)
         }
         guard parts.makeClient != nil, let profile = Self.profile(for: config),
-              let model = AgentProviderCatalog.model(for: config),
-              !profile.needsKey || parts.secrets.has(profile.secretID) else { return .notReady }
+              let model = AgentProviderCatalog.model(for: config), hasCredential(profile) else { return .notReady }
         return .ready(provider: profile.name, destination: profile.destination, model: model, isLocal: profile.isLocal)
     }
 
@@ -146,7 +151,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
         guard let profile = Self.profile(for: config), let model = AgentProviderCatalog.model(for: config) else {
             return .failure(.notReady)
         }
-        if profile.needsKey, !parts.secrets.has(profile.secretID) { return .failure(.noKey) }
+        if !hasCredential(profile) { return .failure(.noKey) }
         guard let makeClient = parts.makeClient else { return .failure(.notReady) }
         let built = makeClient(profile, model, parts.secrets)
         clientBuildCount += 1
@@ -166,7 +171,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             answer = await Self.connection(through: scripted)
         } else {
             guard let profile = Self.profile(for: draft) else { return .cantReach }
-            if profile.needsKey, !parts.secrets.has(profile.secretID) {
+            if !hasCredential(profile) {
                 announce()
                 report(.noKey, for: profile)
                 return .noKey
@@ -175,14 +180,14 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             let inUse = profile == Self.profile(for: config) && model == AgentProviderCatalog.model(for: config)
             if inUse { dropClient() }
             if inUse, case .success(let current) = client() {
-                answer = await Self.connection(through: current)
+                answer = await Self.connection(through: current, chatGPT: profile.usesChatGPT)
             } else {
                 guard let makeClient = parts.makeClient else { return .cantReach }
                 let probe = makeClient(profile, model ?? "", parts.secrets)
                 clientBuildCount += 1
                 let id = UUID()
                 probes[id] = probe
-                answer = await Self.connection(through: probe)
+                answer = await Self.connection(through: probe, chatGPT: profile.usesChatGPT)
                 // Turning AI mode off meanwhile has already shut it down.
                 if probes.removeValue(forKey: id) != nil { await probe.shutdown() }
             }
@@ -233,6 +238,38 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
         return session
     }
 
+    // MARK: ChatGPT sign-in
+
+    /// A ChatGPT sign-in, while AI mode is on in a run that can sign in. Nil otherwise: a fixture run never signs in,
+    /// and nothing reaches OpenAI's sign-in host while AI mode is off.
+    public func chatGPTSignIn() -> AgentChatGPTSignIn? {
+        guard isOn, let makeSignIn = parts.makeSignIn else { return nil }
+        return makeSignIn(parts.secrets)
+    }
+
+    /// The ChatGPT sign-in was made or removed: the client lets go of the tokens it held, and the state is worked out
+    /// again.
+    public func chatGPTSignInChanged() {
+        dropClient()
+        announce()
+    }
+
+    /// Signs out of ChatGPT: the tokens are removed from the keychain, and while AI mode is on in a run that can sign
+    /// in, the refresh token is revoked at OpenAI first. Answers whether OpenAI confirmed the revocation.
+    public func signOutOfChatGPT() async -> Bool {
+        dropClient()
+        let confirmed: Bool
+        if let signIn = chatGPTSignIn() {
+            confirmed = await signIn.signOut()
+        } else {
+            let had = parts.secrets.hasSignIn(.chatGPTTokens)
+            try? parts.secrets.removeSignIn(.chatGPTTokens)
+            confirmed = !had
+        }
+        announce()
+        return confirmed
+    }
+
     /// How many live clients were built since launch. A fixture run stays at 0.
     public private(set) var clientBuildCount = 0
 
@@ -259,11 +296,20 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
         try? AgentProviderCatalog.profile(for: config).get()
     }
 
-    private static func connection(through client: any AgentModelClient) async -> AgentConnection {
+    /// What a profile needs before a request can go: its key, or its ChatGPT sign-in, asked of the store without
+    /// asking for either.
+    private func hasCredential(_ profile: AgentProviderProfile) -> Bool {
+        if profile.usesChatGPT { return parts.secrets.hasSignIn(.chatGPTTokens) }
+        return !profile.needsKey || parts.secrets.has(profile.secretID)
+    }
+
+    private static func connection(through client: any AgentModelClient, chatGPT: Bool = false) async -> AgentConnection {
         do {
             let models = try await client.models()
             return models.isEmpty ? .noModels : .connected(Array(models.prefix(AgentModelInfo.listCap)))
         } catch let failure as AgentFailure {
+            if chatGPT, failure == .outOfCredit { return .planLimit }
+            if chatGPT, failure == .noSuchModel { return .planNotCovered }
             switch failure {
             case .off: return .off
             case .noKey: return .noKey

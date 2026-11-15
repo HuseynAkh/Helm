@@ -2,7 +2,7 @@
 
 AI mode's own module: the model providers, the transport that reaches them, the loop that carries a request to a model and back, the folders a request may see, the change plans it ends in, and the planning side of AI search. It imports `Foundation`, `Security` and `HelmCore`, and nothing else: no AppKit, no SwiftUI and no other Helm module. So the code that can reach a model provider has no way to change or open a file. It learns about the disk only through HelmCore's read-only `AgentDisk`, and turning an approved plan into file changes belongs to HelmUI. `scripts/static_checks.py` fails when the module imports another Helm module, AppKit or SwiftUI.
 
-Helm's promise with AI mode is: it connects only to the model provider the person chose, and only while AI mode is on. Most of what follows is how this module keeps that promise in a way a check can prove.
+Helm's promise with AI mode is: it connects only to the model provider the person chose, and only while AI mode is on. With OpenAI reached by a ChatGPT sign-in, that includes OpenAI's sign-in host, and a listener on 127.0.0.1 that waits for the browser to come back. Most of what follows is how this module keeps that promise in a way a check can prove.
 
 ## Rules the module keeps
 
@@ -11,8 +11,10 @@ Each rule has a check behind it, in `scripts/privacy_check.py` or `scripts/stati
 | Rule | Where it is allowed |
 |---|---|
 | A network connection | `Transport/HTTPTransport.swift`, and nowhere else in Helm |
-| A web address | `Transport/Endpoints.swift`: four lines, one a provider. A model on this Mac is reached by number and a port, with no address written |
-| A keychain call | `Secrets/KeychainSecretStore.swift` |
+| A socket that listens | `Transport/AgentLoopbackListener.swift`: one IPv4 stream socket on 127.0.0.1 for a ChatGPT sign-in's callback. It never connects |
+| A web address Helm connects to | `Transport/Endpoints.swift`: the four providers with a fixed address and OpenAI's sign-in host. A model on this Mac, and the sign-in's callback, are reached by number and a port, with no address written |
+| A help page | `Text/AgentHelpLinks.swift`: eight pages the person can open in their browser. Helm never fetches them |
+| A keychain call, or any other Security call | `Secrets/KeychainSecretStore.swift`, which also checks a sign-in's ID token signature |
 | Turning a key into text (`revealSecret`) | `Contracts/AgentSecrets.swift`, the keychain store and the transport |
 | Any way to change, open or look inside a file, or to start a tool | Nowhere in this module. The word lists are the rules `agent-no-write` and `agent-no-read` |
 | A string literal with a path from the Mac that built Helm | Nowhere. Stand-ins use `/home/helm` |
@@ -33,9 +35,10 @@ Two more values can only be made by initializers that check what they are given.
 | Folder | What it holds |
 |---|---|
 | `Contracts/` | Every public protocol and value: JSON, providers and endpoints, the model client, the transport, the wire adapter, keys, folders and handles, plans, the conversation, and the limits |
-| `Text/` | `AgentText`: every sentence AI mode shows. Windows and panes use these members and never write a sentence themselves |
-| `Transport/` | `HTTPTransport`, `Endpoints` (the provider catalog and the four addresses) and the reader that cuts a stream into lines |
-| `Secrets/` | `MemorySecretStore` for tests and fixture runs, `KeychainSecretStore` for real keys |
+| `Text/` | `AgentText`: every sentence AI mode shows. Windows and panes use these members and never write a sentence themselves. `AgentHelpLinks`: each provider's page on connecting |
+| `Transport/` | `HTTPTransport`, `Endpoints` (the provider catalog and its addresses), the reader that cuts a stream into lines, and `AgentLoopbackListener` |
+| `Secrets/` | `MemorySecretStore` for tests and fixture runs, `KeychainSecretStore` for real keys and the ChatGPT sign-in |
+| `SignIn/` | The ChatGPT sign-in: PKCE, the ID token checks, the tokens and their renewal (`AgentChatGPTBearer`), and `AgentChatGPTSignIn`, which runs one sign-in or sign-out |
 | `Providers/` | One adapter for each wire format, the model lists, the mapping from a provider's errors to `AgentFailure`, and the live client that joins an adapter to a transport |
 | `Runtime/` | `AgentRuntime`: whether AI mode is on, the chosen provider and model, and the one client. `AgentLiveParts` wires the live pieces |
 | `Scope/` | Which folders a request may use, and the handles that stand for items |
@@ -60,7 +63,13 @@ Two more values can only be made by initializers that check what they are given.
 
 A changed provider, local port or typed address drops the client and starts every conversation over, so names listed for one provider are never sent to another. A changed model keeps the threads.
 
-A fixture run gives the runtime a scripted client and no way to make a live one. The state is then ready as soon as AI mode is on, and `clientBuildCount` stays at 0.
+A fixture run gives the runtime a scripted client and no way to make a live one. The state is then ready as soon as AI mode is on, and `clientBuildCount` stays at 0. It has no way to sign in with ChatGPT either.
+
+## ChatGPT sign-in
+
+OpenAI is reached with the person's ChatGPT sign-in unless they chose a key (`AIConfig.openAIUsesKey`). Its profile says `usesChatGPT`, its name is "ChatGPT" so the panel's lines name the plan, and its destination stays "OpenAI". `AgentChatGPTSignIn.run` makes this Mac's host ID once, a fresh state, nonce and PKCE verifier for each sign-in, starts the listener on 127.0.0.1, then hands OpenAI's authorize address to the browser through an opener the app gives it. Only a callback with the sign-in's state ends the wait, within five minutes. The code is exchanged with the verifier and no secret, the ID token is checked against OpenAI's published keys (signature, issuer, audience, times, nonce), and the granted scopes must include `chatgpt.tokens.use.direct`. The issued client and the tokens go to the login keychain, the tokens with the account's email as the item's comment, and nowhere else.
+
+`AgentChatGPTBearer` hands the access token to the transport, renewing it two minutes before it runs out and once when OpenAI turns it away. Renewals are made one at a time, each from the newest saved tokens, and the rotated refresh token is saved before it is used. A refresh token OpenAI won't take again ends the sign-in. Requests billed to the plan stream, store nothing, send no token ceiling and group their tools in one namespace.
 
 ## Seams
 

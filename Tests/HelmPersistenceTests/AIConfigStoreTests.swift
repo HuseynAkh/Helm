@@ -121,14 +121,14 @@ final class AIConfigStoreTests: XCTestCase {
         // The known fields load, and the config has nowhere to hold the rest.
         XCTAssertEqual(store.config, AIConfig(provider: "claude", models: ["claude": "claude-opus-5-5"]))
         XCTAssertEqual(Mirror(reflecting: store.config).children.compactMap(\.label).sorted(),
-                       ["keyOwners", "modelLists", "models", "otherAddress", "ports", "provider"])
-        // The next save writes the six known fields at most, so what was planted is gone from the file.
+                       ["keyOwners", "modelLists", "models", "openAIUsesKey", "otherAddress", "ports", "provider"])
+        // The next save writes the known fields at most, so what was planted is gone from the file.
         store.update { $0.keyOwners["claude|api.anthropic.com:443"] = "1024-1700000000" }
         try await store.flush()
         let saved = try Data(contentsOf: url)
         let document = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
         let items = try XCTUnwrap(document["items"] as? [String: Any])
-        XCTAssertTrue(Set(items.keys).isSubset(of: ["provider", "models", "ports", "otherAddress", "keyOwners", "modelLists"]),
+        XCTAssertTrue(Set(items.keys).isSubset(of: ["provider", "models", "ports", "otherAddress", "keyOwners", "modelLists", "openAIUsesKey"]),
                       "\(items.keys.sorted())")
         XCTAssertFalse(items.keys.contains { name in
             let name = name.lowercased()

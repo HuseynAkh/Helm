@@ -172,14 +172,49 @@ final class AgentTextTests: XCTestCase {
         ("modelPlaceholder", AgentText.modelPlaceholder, "Model name"),
         ("aboutLine", AgentText.aboutLine, "An agentic file manager for your Mac.")
     ]
-    private static let rows: [Row] = rows1 + rows2 + rows3 + rows4
+    /// The ChatGPT sign-in, Refresh Models and each provider's help.
+    private static let rows5: [Row] = [
+        ("refreshModels", AgentText.refreshModels, "Refresh Models"),
+        ("continueWithChatGPT", AgentText.continueWithChatGPT, "Continue with ChatGPT"),
+        ("useKeyInstead", AgentText.useKeyInstead, "Use an API key instead"),
+        ("useChatGPTInstead", AgentText.useChatGPTInstead, "Use ChatGPT instead"),
+        ("signInWaiting", AgentText.signInWaiting, "Continue in your browser."),
+        ("signedInAs", AgentText.signedInAs("person@example.com"), "Signed in as person@example.com."),
+        ("signedIn", AgentText.signedIn, "Signed in with ChatGPT."),
+        ("removeSignIn", AgentText.removeSignIn, "Remove"),
+        ("manageUsage", AgentText.manageUsage, "Manage usage"),
+        ("signInDeclined", AgentText.signInDeclined, "ChatGPT plan use wasn't approved, so try again or use a key."),
+        ("signInPlanOff", AgentText.signInPlanOff, "This sign-in doesn't allow ChatGPT plan use."),
+        ("signInTimedOut", AgentText.signInTimedOut, "Sign-in took too long, so try again."),
+        ("signInFailed", AgentText.signInFailed, "Sign-in didn't finish, so try again."),
+        ("signInNoBrowser", AgentText.signInNoBrowser, "Helm couldn't open your browser."),
+        ("signInUnavailable", AgentText.signInUnavailable, "Sign-in isn't available here."),
+        ("signInFirst", AgentText.signInFirst, "Continue with ChatGPT to connect."),
+        ("signOutUnconfirmed", AgentText.signOutUnconfirmed, "Disconnect Helm in ChatGPT's settings to finish."),
+        ("planLimit", AgentText.planLimit, "You've reached your ChatGPT plan's usage limit."),
+        ("statePlanNotCovered", AgentText.statePlanNotCovered, "Your ChatGPT plan can't be used with Helm."),
+        ("failSignInAgain", AgentText.failSignInAgain, "Sign in with ChatGPT in Settings to use it."),
+        ("failPlanNotCovered", AgentText.failPlanNotCovered, "Your ChatGPT plan doesn't cover this request."),
+        ("signInPage", AgentText.signInPage, "You can close this tab and go back to Helm."),
+        ("howToConnect", AgentText.howToConnect, "How to connect"),
+        ("aboutProvider", AgentText.aboutProvider("Claude"), "About Claude"),
+        ("helpClaude", AgentText.helpClaude, "Anthropic requires an API key for apps like Helm, billed by use."),
+        ("helpChatGPT", AgentText.helpChatGPT, "Uses your ChatGPT plan, with no key to paste."),
+        ("helpOpenAIKey", AgentText.helpOpenAIKey, "Uses an OpenAI API key, billed by use."),
+        ("helpGemini", AgentText.helpGemini, "Uses a Gemini API key, with a free tier and paid use."),
+        ("helpGrok", AgentText.helpGrok, "Uses an xAI API key, billed by use."),
+        ("helpOllama", AgentText.helpOllama, "Free, and runs on this Mac while Ollama is running."),
+        ("helpLMStudio", AgentText.helpLMStudio, "Free, and runs on this Mac while LM Studio's server is on."),
+        ("helpOther", AgentText.helpOther, "Uses any OpenAI-compatible service at an https address, with its key if it needs one.")
+    ]
+    private static let rows: [Row] = rows1 + rows2 + rows3 + rows4 + rows5
 
     func testEverySentenceIsWordForWord() {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 157)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 157, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 189)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 189, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
@@ -301,5 +336,25 @@ final class AgentTextTests: XCTestCase {
                        "Sent 80 names to Ollama on this Mac.")
         XCTAssertEqual(AgentText.searchHint("models.example.com"),
                        "Return sends your words and matching file names to models.example.com.")
+    }
+
+    func testEachSignInFailureHasItsLineButAStoppedOne() {
+        for failure in AgentSignInFailure.allCases {
+            XCTAssertEqual(AgentText.signInFailure(failure) == nil, failure == .cancelled, failure.rawValue)
+        }
+        XCTAssertEqual(AgentText.signInFailure(.unreachable), "Can't reach OpenAI")
+    }
+
+    func testEachProvidersHelpSaysWhatItUsesAndCostsInOneSentence() {
+        for provider in AgentProviderID.allCases {
+            for usesChatGPT in [false, true] {
+                let line = AgentText.providerHelp(provider, usesChatGPT: usesChatGPT)
+                XCTAssertTrue(line.hasSuffix("."), line)
+                XCTAssertFalse([". ", "? ", "! "].contains { line.contains($0) }, line)
+            }
+        }
+        XCTAssertEqual(AgentText.providerHelp(.openAI, usesChatGPT: true), AgentText.helpChatGPT)
+        XCTAssertEqual(AgentText.providerHelp(.openAI, usesChatGPT: false), AgentText.helpOpenAIKey)
+        XCTAssertEqual(AgentText.providerHelp(.claude, usesChatGPT: true), AgentText.helpClaude, "only OpenAI has a sign-in")
     }
 }

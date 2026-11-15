@@ -2,3 +2,12 @@ https://api.anthropic.com
 https://api.openai.com/v1
 https://generativelanguage.googleapis.com/v1beta
 https://api.x.ai/v1
+https://auth.openai.com
+https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites
+https://chatgpt.com/settings/usage
+https://developers.openai.com/api/docs/quickstart
+https://platform.claude.com/docs/en/manage-claude/authentication#api-keys
+https://aistudio.google.com/docs/api-key
+https://docs.x.ai/docs/quickstart
+https://docs.ollama.com/quickstart
+https://lmstudio.ai/docs/developer/core/server

@@ -61,6 +61,51 @@ public enum AgentErrorMapper {
         return .overloaded
     }
 
+    // MARK: A ChatGPT plan
+
+    /// A reply from OpenAI to a request billed to the person's ChatGPT plan. The plan's own codes come first: its
+    /// usage limit is `outOfCredit`, a plan that can't check its usage now is `overloaded`, a request the plan doesn't
+    /// cover (an account, workspace or policy that can't use it, a route or a feature it doesn't take) is
+    /// `noSuchModel`, and a sign-in OpenAI couldn't verify is `noKey`, which asks the person to sign in again. The
+    /// panel names the plan for each, through the provider name "ChatGPT".
+    public static func chatGPTFailure(status: Int, body: Data) -> AgentFailure {
+        let words = AgentErrorWords(body: body)
+        if let failure = chatGPTCode(words) { return failure }
+        switch status {
+        case 401: return .noKey
+        case 403, 404: return .noSuchModel
+        default: return failure(status: status, body: body, provider: .openAI)
+        }
+    }
+
+    /// Anything a request billed to a ChatGPT plan threw, as one case.
+    static func chatGPTFailure(of error: Error) -> AgentFailure {
+        if case .http(let status, let body)? = error as? AgentTransportError { return chatGPTFailure(status: status, body: body) }
+        return failure(of: error, provider: .openAI)
+    }
+
+    /// An error inside the stream of a request billed to a ChatGPT plan, such as a usage limit reached as the answer
+    /// began.
+    static func chatGPTFailure(streamError value: AgentJSON) -> AgentFailure {
+        let error = value["error"].flatMap { $0.objectValue == nil ? nil : $0 } ?? value
+        return chatGPTCode(AgentErrorWords(body: error.data())) ?? failure(streamError: value)
+    }
+
+    /// The plan's codes, from OpenAI's errors-and-recovery guide for ChatGPT plan use.
+    private static func chatGPTCode(_ words: AgentErrorWords) -> AgentFailure? {
+        if words.hasToken("subscription_sharing_usage_limit_exceeded") { return .outOfCredit }
+        if words.hasAny(["subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable"], []) {
+            return .overloaded
+        }
+        if words.hasToken("subscription_sharing_invalid_user") { return .noKey }
+        if words.hasAny(["subscription_sharing_user_not_eligible", "subscription_sharing_route_not_supported",
+                         "subscription_sharing_unsupported_capability", "chatpass_v2_scope_not_authorized",
+                         "chatpass_v2_invalid_authorization_context"], []) {
+            return .noSuchModel
+        }
+        return nil
+    }
+
     // MARK: Statuses
 
     /// The status each error code or type stands for, when an error arrives without one. A code says more than a

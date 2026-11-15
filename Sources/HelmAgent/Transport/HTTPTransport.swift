@@ -3,7 +3,11 @@ import Foundation
 
 /// Sends requests to one provider. Where a request goes is the profile's endpoint and the route's fixed path; a
 /// caller gives a route and a body, and never an address or a header. The key is looked up in `secrets` under the
-/// profile's own account when a request is sent.
+/// profile's own account when a request is sent, or, for OpenAI with a ChatGPT sign-in, asked of the bearer source.
+///
+/// A transport made for OpenAI's sign-in host (`AgentProviderCatalog.signInProfile()`) sends a ChatGPT sign-in's
+/// requests and nothing else: form-encoded POSTs and GETs on that host's fixed paths, with no key. A transport made for
+/// a provider sends none of those.
 ///
 /// The first label of the initializers is `liveProfile`, and the privacy check lets one file write it, so a
 /// transport can't be made anywhere else.
@@ -16,7 +20,8 @@ import Foundation
 /// - A reply is read only when it comes from the endpoint's own host.
 /// - The key is read the first time a request needs it, off the main thread, and kept until `shutdown()`. It is put
 ///   on a request in `sign` alone, in a header, and never on plain http unless it is a local server's own token. A
-///   body that holds the key is never sent.
+///   body that holds the key is never sent. A sign-in's token is asked of the bearer source for each request, and when
+///   the provider turns it away the request is made once more with a renewed one.
 /// - A line may hold `limits.lineBytes`, a streamed reply `limits.responseBytes` and a fetched one
 ///   `limits.listBytes`; past a limit the request is cancelled. A request ends when nothing has arrived for
 ///   `limits.idleSeconds`, and after `limits.totalSeconds` in all.
@@ -27,6 +32,10 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     private let secrets: any AgentSecretStoring
     private let limits: AgentTransportLimits
     private let session: URLSession
+    /// The sign-in that hands out the token, in place of a saved key. Nil for a key.
+    private let bearer: (any AgentBearerSource)?
+    /// The transport was made for OpenAI's sign-in host.
+    private let isSignInHost: Bool
 
     // All of these hold the lock.
     private let lock = NSLock()
@@ -36,15 +45,18 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     private var running: [UInt64: @Sendable () -> Void] = [:]
     private var lastTicket: UInt64 = 0
 
-    public init(liveProfile profile: AgentProviderProfile, secrets: any AgentSecretStoring, limits: AgentTransportLimits) {
-        self.profile = profile; self.secrets = secrets; self.limits = limits
+    public init(liveProfile profile: AgentProviderProfile, secrets: any AgentSecretStoring, limits: AgentTransportLimits,
+                bearer: (any AgentBearerSource)? = nil) {
+        self.profile = profile; self.secrets = secrets; self.limits = limits; self.bearer = bearer
+        self.isSignInHost = (try? AgentEndpoint.openAISignIn()) == profile.endpoint
         self.session = Self.makeSession(profile: profile, limits: limits, testProtocols: [])
     }
 
     /// For tests, which stand loaders of their own in for the network. Nothing else can carry a request then.
     init(liveProfile profile: AgentProviderProfile, secrets: any AgentSecretStoring, limits: AgentTransportLimits,
-         testProtocols: [AnyClass]) {
-        self.profile = profile; self.secrets = secrets; self.limits = limits
+         bearer: (any AgentBearerSource)? = nil, testProtocols: [AnyClass]) {
+        self.profile = profile; self.secrets = secrets; self.limits = limits; self.bearer = bearer
+        self.isSignInHost = (try? AgentEndpoint.openAISignIn()) == profile.endpoint
         self.session = Self.makeSession(profile: profile, limits: limits, testProtocols: testProtocols)
     }
 
@@ -90,6 +102,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         }
         cancels.forEach { $0() }
         if closeNow { session.invalidateAndCancel() }
+        bearer?.forget()
     }
 
     /// The session's settings, for tests.
@@ -152,7 +165,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     // MARK: Requests
 
     private func spec(_ route: AgentRoute) throws -> AgentRouteSpec {
-        guard let spec = AgentProviderCatalog.route(route, for: profile) else { throw AgentTransportError.unreachable }
+        guard !isSignInHost, let spec = AgentProviderCatalog.route(route, for: profile) else { throw AgentTransportError.unreachable }
         return spec
     }
 
@@ -202,7 +215,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
                 let status = response.statusCode
                 let fine = (200..<300).contains(status)
                 let body = try await Self.collect(bytes, cap: limits.listBytes, watch: watch, cutsShort: !fine)
-                if Self.retriedStatuses.contains(status) {
+                if Self.retriedStatuses.contains(status) || (self.bearer != nil && status == Self.unauthorized) {
                     throw Hitch.rejected(status: status, body: body, retryAfter: Self.retryAfter(response))
                 }
                 return AgentHTTPReply(status: status, body: body)
@@ -210,13 +223,52 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         }
     }
 
+    // MARK: Sign-in requests
+
+    /// The form type a sign-in's POST is written in.
+    private static let formType = "application/x-www-form-urlencoded"
+
+    /// Answers a sign-in request whatever its status, since the host says in the body why it refused one.
+    private func signInRequest(_ route: AgentSignInRoute, body: Data?) async throws -> AgentHTTPReply {
+        do {
+            return try await tracked { try await self.signInReply(route, body: body) }
+        } catch let Hitch.rejected(status, body, _) {
+            return AgentHTTPReply(status: status, body: body)
+        } catch {
+            throw Self.transportError(error)
+        }
+    }
+
+    /// Only on the sign-in host, and only its own routes: a POST with a form, or a GET with none. A GET that was turned
+    /// away for a while is tried again; a POST never is, since a code or a refresh token works once.
+    private func signInReply(_ route: AgentSignInRoute, body: Data?) async throws -> AgentHTTPReply {
+        guard isSignInHost, let spec = AgentProviderCatalog.route(route), (spec.method == "POST") == (body != nil) else {
+            throw AgentTransportError.unreachable
+        }
+        let limits = self.limits
+        let deadline = Self.deadline(after: limits.totalSeconds)
+        let retries = body == nil
+        return try await withRetries(until: deadline) { _ in
+            try await self.exchange(spec, body: body, accept: "application/json", contentType: Self.formType,
+                                    deadline: deadline) { bytes, response, watch in
+                let status = response.statusCode
+                let fine = (200..<300).contains(status)
+                let reply = try await Self.collect(bytes, cap: limits.listBytes, watch: watch, cutsShort: !fine)
+                if retries, Self.retriedStatuses.contains(status) {
+                    throw Hitch.rejected(status: status, body: reply, retryAfter: Self.retryAfter(response))
+                }
+                return AgentHTTPReply(status: status, body: reply)
+            }
+        }
+    }
+
     /// One request, with its time limits kept by a watch that runs beside it. The reply is checked before `consume`
     /// sees a byte of its body: a redirect and a reply from another host are errors.
     private func exchange<Value: Sendable>(
-        _ spec: AgentRouteSpec, body: Data?, accept: String, deadline: UInt64,
+        _ spec: AgentRouteSpec, body: Data?, accept: String, contentType: String = "application/json", deadline: UInt64,
         consume: @escaping @Sendable (URLSession.AsyncBytes, HTTPURLResponse, Watch) async throws -> Value
     ) async throws -> Value {
-        let request = try await makeRequest(spec, body: body, accept: accept)
+        let request = try await makeRequest(spec, body: body, accept: accept, contentType: contentType)
         let watch = Watch(limits: limits, deadline: deadline)
         let endpoint = profile.endpoint
         let session = self.session
@@ -248,7 +300,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         }
     }
 
-    private func makeRequest(_ spec: AgentRouteSpec, body: Data?, accept: String) async throws -> URLRequest {
+    private func makeRequest(_ spec: AgentRouteSpec, body: Data?, accept: String, contentType: String) async throws -> URLRequest {
         let endpoint = profile.endpoint
         var parts = URLComponents()
         parts.scheme = endpoint.isSecure ? AgentProviderCatalog.secureScheme : Self.plainScheme
@@ -268,7 +320,7 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         request.setValue(accept, forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
         guard spec.auth != .none else { return request }
         // Checked before the key is looked up, so a key that may not go here is never even read.
@@ -290,7 +342,9 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
 
     /// The profile's key: the one already read, or the store's, read off the main thread since macOS may ask the
     /// person for their keychain password. Nil when none is saved, which is asked first, without asking for the key.
+    /// With a sign-in, its token for this request, which the bearer source renews when it runs out.
     private func key() async throws -> AgentSecret? {
+        if let bearer { return try await bearer.bearerToken() }
         if let cached = locked({ cachedSecret }) { return cached }
         let id = profile.secretID
         let store = secrets
@@ -310,9 +364,11 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         return found
     }
 
-    /// Whether a key may go to this profile's endpoint: https, or this Mac with a local provider's own token.
+    /// Whether a key may go to this profile's endpoint: https, or this Mac with a local provider's own token. Never the
+    /// sign-in host, which is sent no key.
     private static func mayCarryKey(_ profile: AgentProviderProfile) -> Bool {
-        profile.endpoint.isSecure || (profile.endpoint.isLoopback && profile.isLocal)
+        if (try? AgentEndpoint.openAISignIn()) == profile.endpoint { return false }
+        return profile.endpoint.isSecure || (profile.endpoint.isLoopback && profile.isLocal)
     }
 
     /// The one place a key is put on a request, in the header `style` names. A provider that needs a key has none to
@@ -352,6 +408,8 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
 
     /// Turned away for a while: too many requests, the service overloaded or unavailable, or a gateway that gave up.
     private static let retriedStatuses: Set<Int> = [429, 503, 504, 529]
+    /// A token the provider no longer takes. With a sign-in, the request is made once more with a renewed token.
+    private static let unauthorized = 401
     /// Words in a reply that mean a spending or credit limit was reached, which waiting won't fix.
     /// The same words the error mapper reads as out of credit.
     private static let spendingWords = ["spend_limit", "insufficient_quota", "credit_balance", "usage_limit", "billing",
@@ -365,11 +423,18 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
     /// wait that would end past it isn't made, and the hitch stands as the answer.
     private func withRetries<Value>(until deadline: UInt64, _ body: (Flag) async throws -> Value) async throws -> Value {
         var tries = 0
+        var renewed = false
         while true {
             let handedOn = Flag()
             do {
                 return try await body(handedOn)
             } catch {
+                if let bearer, !renewed, !handedOn.isRaised, let hitch = error as? Hitch,
+                   case .rejected(let status, _, _) = hitch, status == Self.unauthorized {
+                    renewed = true
+                    _ = try await bearer.renewedToken()
+                    continue
+                }
                 guard !handedOn.isRaised, tries < limits.retries, let wait = Self.wait(after: error, tries: tries) else {
                     throw error
                 }
@@ -578,5 +643,15 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
             defer { lock.unlock() }
             return body()
         }
+    }
+}
+
+extension HTTPTransport: AgentSignInTransport {
+    public func post(_ route: AgentSignInRoute, form: [(String, String)]) async throws -> AgentHTTPReply {
+        try await signInRequest(route, body: AgentFormBody.encode(form))
+    }
+
+    public func get(_ route: AgentSignInRoute) async throws -> AgentHTTPReply {
+        try await signInRequest(route, body: nil)
     }
 }

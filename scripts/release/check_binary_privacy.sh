@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checks a built Helm.app against the privacy promise. Helm connects only to the model provider the person
-# chose, and only while AI mode is on. It doesn't read the person's name or the Mac's name or serial number (it
+# chose, and to OpenAI's sign-in host for a ChatGPT sign-in, and only while AI mode is on. It listens only on
+# 127.0.0.1, for a sign-in's callback. It doesn't read the person's name or the Mac's name or serial number (it
 # reads a disk's ID only to tell disks apart, and never keeps it), and carries no folder paths from the Mac
 # that built it.
 #
@@ -15,7 +16,9 @@
 #                                symbol a line, or a prefix ending in *. A call that makes a session task, the shared
 #                                session, a background session, and the cache, cookie and credential types fail even
 #                                when listed.
-#   allowed_addresses.txt        The providers' fixed addresses, one a line. The app may hold no other web address.
+#   allowed_addresses.txt        The providers' fixed addresses, OpenAI's sign-in host, and the help pages the person
+#                                can open in their browser, one a line. The app may hold no other web address.
+#                                Opening a help page hands its address to the browser; Helm doesn't connect to it.
 #
 # It only reads the app, and works on copies in a temporary folder. Each problem is printed, and the
 # exit status is 1 if there is any (2 if the check can't run). scripts/privacy_check.py checks the
@@ -127,14 +130,16 @@ else
 fi
 
 # 3. Imported symbols: nothing that opens a connection, looks up a host name, or reads who the person or
-# the Mac is, but the URL session calls on allowed_network_symbols.txt. CoreServices and Foundation bring
+# the Mac is, but the URL session calls on allowed_network_symbols.txt. A ChatGPT sign-in listens on 127.0.0.1 for
+# the browser's callback, so socket, bind, listen and accept may be imported; connect, and every call that sends to
+# or hears from an address of its own choosing, may not. CoreServices and Foundation bring
 # CFNetwork along, so its other names are listed too. URL.lines, URL.resourceBytes and SwiftUI's AsyncImage load
 # web addresses through Foundation and SwiftUI, which are allowed, so they are named here. dlopen isn't,
 # because dlsym, which macOS's own availability check uses, finds the same things. scripts/privacy_check.py
 # reviews every dynamic lookup in the source.
 count=$(printf '%s\n' "$imports" | grep -c external)
 denied=$(printf '%s\n' "$imports" | grep -E \
-    -e 'external _(socket|connect|connectx|bind|listen|accept|sendto|sendmsg|recvfrom|recvmsg)( |$)' \
+    -e 'external _(connect|connectx|sendto|sendmsg|recvfrom|recvmsg)( |$)' \
     -e 'external _(getaddrinfo|getnameinfo|gethostbyname2?|gethostbyaddr|getifaddrs|res_query|res_search)( |$)' \
     -e 'external _(gethostuuid|gethostname|getlogin(_r)?|getpwuid(_r)?|getpwnam(_r)?|NSUserName|NSFullUserName|CSCopyUserName|CSCopyMachineName)( |$)' \
     -e 'external _(DNSService|nw_|CFSocket|CFStreamCreatePair|CFHost|CFHTTP|CFFTP|CFNetService|CFNetDiagnostic|CFNetwork|CFURLConnection)' \
@@ -226,7 +231,7 @@ other_urls=$(printf '%s\n' "$urls" | awk -v list="$address_list" '
 if [ -z "$urls" ]; then
     pass "web addresses: none"
 elif [ -z "$other_urls" ]; then
-    pass "web addresses: only the providers' on allowed_addresses.txt ($(printf '%s\n' "$urls" | wc -l | tr -d ' ') found)"
+    pass "web addresses: only those on allowed_addresses.txt ($(printf '%s\n' "$urls" | wc -l | tr -d ' ') found)"
 else
     fail "web addresses that aren't on allowed_addresses.txt:"
     printf '%s\n' "$other_urls" | head -n 20 | sed 's/^/       /'

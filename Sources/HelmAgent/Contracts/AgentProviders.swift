@@ -53,6 +53,12 @@ public struct AgentEndpoint: Hashable, Sendable {
         self = try AgentEndpoint(secureAddress: base)
     }
 
+    /// OpenAI's sign-in host, where a ChatGPT sign-in is authorized and its tokens are issued. It is never a model
+    /// provider's address: a transport made for it sends sign-in requests and nothing else.
+    public static func openAISignIn() throws -> AgentEndpoint {
+        try AgentEndpoint(secureAddress: AgentProviderCatalog.openAISignInBase)
+    }
+
     /// A model server on this Mac: plain http to the loopback address, on a port from 1024 to 65535.
     public init(localPort port: Int) throws {
         guard Self.localPorts.contains(port) else { throw AgentEndpointRefusal.badPort }
@@ -166,17 +172,21 @@ public struct AgentEndpoint: Hashable, Sendable {
 public struct AgentProviderProfile: Hashable, Sendable {
     public let id: AgentProviderID
     public let endpoint: AgentEndpoint
-    public init(id: AgentProviderID, endpoint: AgentEndpoint) {
-        self.id = id; self.endpoint = endpoint
+    /// OpenAI, reached with the person's ChatGPT sign-in and billed to their ChatGPT plan, in place of a key. Always
+    /// false for any other provider.
+    public let usesChatGPT: Bool
+    public init(id: AgentProviderID, endpoint: AgentEndpoint, usesChatGPT: Bool = false) {
+        self.id = id; self.endpoint = endpoint; self.usesChatGPT = usesChatGPT && id == .openAI
     }
 
-    /// "Claude", "OpenAI", "Gemini", "Grok", "Ollama", "LM Studio" or "Other".
-    public var name: String { AgentProviderCatalog.name(id) }
-    /// Where requests go, as the person is told: the provider's name; "Ollama on this Mac" for a local one; the
-    /// host for one that isn't on the list.
+    /// "Claude", "OpenAI", "Gemini", "Grok", "Ollama", "LM Studio" or "Other"; "ChatGPT" for OpenAI reached with a
+    /// ChatGPT sign-in, so the lines about a plan name the plan.
+    public var name: String { usesChatGPT ? AgentProviderCatalog.chatGPTName : AgentProviderCatalog.name(id) }
+    /// Where requests go, as the person is told: the provider's name, OpenAI's with a ChatGPT sign-in too; "Ollama on
+    /// this Mac" for a local one; the host for one that isn't on the list.
     public var destination: String {
         switch id {
-        case .claude, .openAI, .gemini, .grok: return name
+        case .claude, .openAI, .gemini, .grok: return AgentProviderCatalog.name(id)
         case .ollama, .lmStudio: return AgentText.destinationOnThisMac(name)
         case .other: return endpoint.hostLabel
         }
@@ -184,10 +194,12 @@ public struct AgentProviderProfile: Hashable, Sendable {
     public var wire: AgentWire { AgentProviderCatalog.wire(id) }
     /// Ollama and LM Studio: the model runs on this Mac.
     public var isLocal: Bool { id == .ollama || id == .lmStudio }
-    /// The four cloud providers take nothing without a key. A local server and a typed address may have none.
+    /// The four cloud providers take nothing without a key, but OpenAI with a ChatGPT sign-in, which needs the sign-in
+    /// in its place. A local server and a typed address may have none.
     public var needsKey: Bool {
         switch id {
-        case .claude, .openAI, .gemini, .grok: return true
+        case .claude, .gemini, .grok: return true
+        case .openAI: return !usesChatGPT
         case .ollama, .lmStudio, .other: return false
         }
     }

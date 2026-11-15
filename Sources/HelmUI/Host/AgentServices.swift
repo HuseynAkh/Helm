@@ -7,7 +7,7 @@ import HelmPersistence
 
 /// What AI mode needs from the app, shared by every window, Settings › AI and the AI mode screen: the runtime that
 /// owns the model client, the saved choices, the key store, the read-only disk, the facts about where a folder is,
-/// and the way a server address reaches macOS.
+/// the way a server address reaches macOS, and the way a page reaches the person's browser.
 @MainActor public struct AgentServices {
     public let runtime: AgentRuntime
     public let config: AIConfigStore
@@ -15,11 +15,16 @@ import HelmPersistence
     public let disk: any AgentDisk
     public let storage: any StorageFactsReading
     public let connector: any ServerConnecting
+    /// Hands an address to the person's default browser, and says whether it went: a help page, ChatGPT's usage page,
+    /// or the ChatGPT sign-in. Helm makes no connection itself. The stand-in opens nothing, so a fixture run never
+    /// takes the screen.
+    public let openInBrowser: @MainActor @Sendable (URL) -> Bool
 
     public init(runtime: AgentRuntime, config: AIConfigStore, secrets: any AgentSecretStoring, disk: any AgentDisk,
-                storage: any StorageFactsReading, connector: any ServerConnecting) {
+                storage: any StorageFactsReading, connector: any ServerConnecting,
+                openInBrowser: @escaping @MainActor @Sendable (URL) -> Bool = { _ in false }) {
         self.runtime = runtime; self.config = config; self.secrets = secrets; self.disk = disk
-        self.storage = storage; self.connector = connector
+        self.storage = storage; self.connector = connector; self.openInBrowser = openInBrowser
         // Each check's list of models is kept in ai.json under the provider and where it was asked, for the panel's
         // model menu; a check that fails takes that list away.
         runtime.checked = { [config] profile, models in

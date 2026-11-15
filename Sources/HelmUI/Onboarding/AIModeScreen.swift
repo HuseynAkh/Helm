@@ -4,8 +4,8 @@ import HelmAgent
 import SwiftUI
 
 /// The AI mode screen: the welcome window's third mode, always dark. The spark sits over one soft glow, the title row
-/// is the switch, and Done is the only button. Once the switch is on it shows the provider menu, the key field (or a
-/// local provider's state), and the line saying what is sent and to whom.
+/// is the switch, and Done is the only button. Once the switch is on it shows the provider menu with its help, the
+/// key field (or OpenAI's ChatGPT sign-in, or a local provider's state), and the line saying what is sent and to whom.
 struct AIModeScreen: View {
     @ObservedObject var model: AISetupModel
     /// A key being typed. It is handed to the model on Return or Done and the field is emptied; a saved key is never
@@ -18,7 +18,7 @@ struct AIModeScreen: View {
 
     /// What the screen shows, top to bottom. The title row, with the switch, always comes first and Done always last.
     enum Part: Hashable {
-        case titleRow, sentence, provider, address, key, state, port, modelName, consent, done
+        case titleRow, sentence, provider, address, chatGPT, key, useChatGPT, state, port, modelName, consent, done
     }
 
     /// The parts on show for how `model` stands now. The screen is drawn from this list.
@@ -27,7 +27,9 @@ struct AIModeScreen: View {
         if model.isOn {
             parts.append(.provider)
             if model.provider == .other { parts.append(.address) }
+            if model.usesChatGPT { parts.append(.chatGPT) }
             if model.showsKeyField { parts.append(.key) }
+            if model.showsKeyField, model.provider == .openAI { parts.append(.useChatGPT) }
             parts.append(.state)
             if model.showsPort { parts.append(.port) }
             if model.showsModelField { parts.append(.modelName) }
@@ -43,7 +45,7 @@ struct AIModeScreen: View {
             switch part {
             case .done: return [AgentText.done]
             case .state: return model.offersTryAgain ? [AgentText.tryAgain] : []
-            case .titleRow, .sentence, .provider, .address, .key, .port, .modelName, .consent: return []
+            case .titleRow, .sentence, .provider, .address, .chatGPT, .key, .useChatGPT, .port, .modelName, .consent: return []
             }
         }
     }
@@ -96,13 +98,22 @@ struct AIModeScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 40).padding(.top, 6).padding(.bottom, 8)
         case .provider:
-            Picker(AgentText.providerLabel, selection: Binding(get: { model.provider }, set: { model.choose($0) })) {
-                ForEach(AgentProviderID.allCases, id: \.self) { id in
-                    Text(verbatim: AgentProviderCatalog.name(id)).tag(id)
+            HStack(spacing: 10) {
+                Picker(AgentText.providerLabel, selection: Binding(get: { model.provider }, set: { model.choose($0) })) {
+                    ForEach(AgentProviderID.allCases, id: \.self) { id in
+                        Text(verbatim: AgentProviderCatalog.name(id)).tag(id)
+                    }
                 }
+                .pickerStyle(.menu)
+                AIProviderHelp(model: model)
             }
-            .pickerStyle(.menu)
             .padding(.horizontal, 40).padding(.top, 12)
+        case .chatGPT:
+            AIChatGPTSection(model: model)
+                .padding(.horizontal, 40).padding(.top, 12)
+        case .useChatGPT:
+            AIUseChatGPTLink(model: model)
+                .padding(.horizontal, 40).padding(.top, 4)
         case .address:
             VStack(alignment: .leading, spacing: 6) {
                 TextField(AgentText.addressLabel, text: $draftAddress)
