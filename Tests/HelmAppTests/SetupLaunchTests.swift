@@ -195,6 +195,97 @@ final class SetupLaunchTests: XCTestCase {
         let opened = await until { app.allWindows.count == 1 }
         XCTAssertTrue(opened)
     }
+
+    /// Setup owed at launch opens the checklist on the Space the person is on, as the window in front, and ⌘W closes it,
+    /// which lets the windows it held back open.
+    func testSetupOwedAtLaunchOpensOnThePersonsSpaceInFrontAndCommandWClosesIt() async throws {
+        let app = makeApp()
+        let launch = Task { @MainActor in await app.compose() }
+        let shown = await until { app.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(shown)
+        let window = try XCTUnwrap(app.onboardingForTesting?.window)
+        XCTAssertTrue(window.collectionBehavior.contains(.moveToActiveSpace),
+                      "the checklist stays on the Space where it was shown last, out of sight")
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(NSApp.orderedWindows.first(where: \.isVisible) === window, "the checklist isn't the window in front")
+        let close = try WelcomeWindowFrontTests.commandW(app)
+        XCTAssertTrue(app.validateMenuItem(close), "⌘W is off with the checklist in front")
+        app.helmCommand(close)
+        XCTAssertFalse(window.isVisible, "⌘W left the checklist open")
+        await launch.value
+        XCTAssertEqual(app.allWindows.count, 1)
+    }
+}
+
+/// Help › Set Up Helm… shows the welcome window as Settings is shown: the key window, in front of Helm's other windows,
+/// on the Space the person is on now. The same window shows the AI mode screen, and before, the checklist shown in a
+/// background run stayed on the Space where that screen had been. Once the person had moved to another Space, it opened
+/// out of sight behind the browser windows, so ⌘W went past it. Everything is a stand-in on a throwaway home.
+@MainActor final class WelcomeWindowFrontTests: XCTestCase {
+    private var root: URL!
+    private var app: AppController?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        _ = NSApplication.shared
+        HeaderMotion.isDisabledForTesting = true
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("welcome-front-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("home/Documents", isDirectory: true),
+                                                withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws {
+        app?.onboardingForTesting?.close()
+        for window in app?.allWindows ?? [] { window.window?.close() }
+        app = nil
+        HeaderMotion.isDisabledForTesting = false
+        try? FileManager.default.removeItem(at: root)
+        try super.tearDownWithError()
+    }
+
+    /// File › Close Tab, ⌘W, as the menu bar builds it. Its action has no target of its own, so with no browser window
+    /// key it comes to the app, as AppKit sends it while Helm isn't in front.
+    static func commandW(_ app: AppController) throws -> NSMenuItem {
+        let file = MenuModel.menuBar.first { $0.title == "File" }
+        let row = try XCTUnwrap(file?.sections.flatMap { $0 }.first { $0.command == .closeTab })
+        let item = MainMenuBuilder.item(for: row, target: app)
+        XCTAssertEqual(item.keyEquivalent, "w")
+        XCTAssertEqual(item.keyEquivalentModifierMask, .command)
+        XCTAssertNil(item.target)
+        return item
+    }
+
+    func testHelpSetUpHelmOpensTheWelcomeOnThePersonsSpaceInFrontAndCommandWClosesIt() async throws {
+        var options = LaunchOptions()
+        options.home = root.appendingPathComponent("home", isDirectory: true)
+        options.support = root.appendingPathComponent("support", isDirectory: true)
+        let app = AppController(options: options)
+        app.staysInBackground = true
+        self.app = app
+        await app.compose()
+        let browser = try XCTUnwrap(app.frontmost()?.window)
+        XCTAssertTrue(browser.isVisible)
+        // The AI mode screen in the same window first, closed again, as in the scripted run before the checklist.
+        app.showAIModeScreen(from: app.frontmost())
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(screen.modeForTesting, "ai")
+        screen.window?.performClose(nil)
+        XCTAssertEqual(screen.modeForTesting, "closed")
+
+        app.showSetup(nil)
+        XCTAssertEqual(screen.modeForTesting, "setup")
+        let window = try XCTUnwrap(screen.window)
+        XCTAssertTrue(window.collectionBehavior.contains(.moveToActiveSpace),
+                      "the welcome opens on the Space where the AI mode screen was, not the person's")
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(NSApp.orderedWindows.first(where: \.isVisible) === window, "the welcome opened behind the browser window")
+        let close = try Self.commandW(app)
+        XCTAssertTrue(app.validateMenuItem(close), "⌘W is off with the welcome in front")
+        app.helmCommand(close)
+        XCTAssertEqual(screen.modeForTesting, "closed", "⌘W left the welcome open")
+        XCTAssertFalse(window.isVisible)
+        XCTAssertTrue(browser.isVisible, "⌘W closed the browser window instead")
+    }
 }
 
 /// Whether setup is owed, as the access coordinator works it out from what Settings kept and which build runs.

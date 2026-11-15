@@ -52,6 +52,9 @@ import SwiftUI
         // Nothing about this window is worth saving between launches.
         window.isRestorable = false
         window.isMovableByWindowBackground = true
+        // Shown again, it comes to the Space the person is on now, rather than the one where it was shown last (as the AI
+        // mode screen, say), where it would open out of sight behind Helm's other windows.
+        window.collectionBehavior.insert(.moveToActiveSpace)
         super.init(window: window)
         window.delegate = self
         model.close = { [weak self] in self?.close() }
@@ -175,13 +178,12 @@ import SwiftUI
         // Live status: the file viewer and the Dock are read again, in case they changed while the window was away.
         model.refresh()
         fit()
-        if activate {
-            showWindow(nil)
-            window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            window?.orderFrontRegardless()
-        }
+        // Always the key window, in front of Helm's other windows, as Settings is, so ⌘W and Close act on it. Only ordered
+        // in front of every app, it stayed on the Space where it was last shown. Only a person's run brings Helm forward;
+        // a scripted one leaves whatever is in front there.
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        if activate { NSApp.activate(ignoringOtherApps: true) }
         update()
         // So is Full Disk Access, quietly.
         Task { @MainActor [weak self] in await self?.model.permissions.refresh() }
