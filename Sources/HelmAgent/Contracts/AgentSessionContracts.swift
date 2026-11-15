@@ -7,8 +7,11 @@ public struct AgentPersonInput: Sendable {
     public let text: String
     /// The tab's selection. It marks items as selected in listings and is never sent as paths.
     public let selectedPaths: [String]
-    public init(typedByPerson text: String, selectedPaths: [String]) {
-        self.text = text; self.selectedPaths = selectedPaths
+    /// The message came from a suggestion that changes things, such as Organize, so it is answered with a plan. A
+    /// typed message is read for this by `AgentChangeAsk`.
+    public let asksForChanges: Bool
+    public init(typedByPerson text: String, selectedPaths: [String], asksForChanges: Bool = false) {
+        self.text = text; self.selectedPaths = selectedPaths; self.asksForChanges = asksForChanges
     }
 }
 

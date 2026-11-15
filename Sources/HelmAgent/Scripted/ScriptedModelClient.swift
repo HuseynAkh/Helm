@@ -138,9 +138,12 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     }
 
     /// The next model turn for a history: the rule is the first that the person's last message matches, and the
-    /// turn is the rule's next one after the model turns already taken since that message.
+    /// turn is the rule's next one after the model turns already taken since that message. Helm's ask for a plan
+    /// (`AgentPrompt.planNow`) is not a message, so the rule goes on to its next turn after it.
     private static func answer(to history: [AgentJSON], script: AgentScript) -> Result<ScriptedTurn, AgentFailure> {
-        let lastMessage = history.lastIndex { $0[Keys.role]?.stringValue == Keys.user && $0[Keys.text] != nil }
+        let lastMessage = history.lastIndex {
+            $0[Keys.role]?.stringValue == Keys.user && $0[Keys.text] != nil && $0[Keys.text]?.stringValue != AgentPrompt.planNow
+        }
         let said = lastMessage.flatMap { history[$0][Keys.text]?.stringValue } ?? ""
         let taken = history[(lastMessage ?? history.startIndex)...].filter { $0[Keys.role]?.stringValue == Keys.model }.count
         let words = message(in: said).lowercased()

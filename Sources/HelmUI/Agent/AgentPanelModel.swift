@@ -282,7 +282,7 @@ import HelmCore
         guard !requestOpen, !applying, suggestions.contains(suggestion), let root = tabRoot else { return }
         if suggestion.runsAtOnce {
             let message = AgentSuggestions.message(for: suggestion, depth: depth, root: root.alias)
-            begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths), shown: suggestion.title)
+            begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths, asksForChanges: true), shown: suggestion.title)
         } else {
             type(AgentSuggestions.composerText(for: suggestion))
             actions.focusComposer()

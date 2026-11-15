@@ -46,9 +46,9 @@ public enum AgentSuggestions {
     }
 
     /// What a model is sent when Organize is pressed: a fixed sentence that holds an id and numbers and never a
-    /// name from the disk. `root` is the alias of the folder on show, such as "r1". With a selection the depth isn't
-    /// said, since the items are already chosen. Move and Copy send nothing by themselves, so theirs is the
-    /// sentence the composer is filled with.
+    /// name from the disk, and says the answer is a plan. `root` is the alias of the folder on show, such as "r1".
+    /// With a selection the depth isn't said, since the items are already chosen. Move and Copy send nothing by
+    /// themselves, so theirs is the sentence the composer is filled with.
     public static func message(for suggestion: AgentSuggestion, depth: AgentOrganizeDepth, root: String) -> String {
         switch suggestion.kind {
         case .moveAll, .copyAll:
@@ -56,11 +56,14 @@ public enum AgentSuggestions {
         case .organize:
             if suggestion.isSelection {
                 let items = suggestion.count == 1 ? "item" : "items"
-                return "Organize the \(suggestion.count) selected \(items) in \(root) into folders by kind."
+                return "Organize the \(suggestion.count) selected \(items) in \(root) into folders by kind. \(answerWithPlan)"
             }
-            return "Organize the items in \(root) into folders by kind. Depth: \(words(for: depth))."
+            return "Organize the items in \(root) into folders by kind. Depth: \(words(for: depth)). \(answerWithPlan)"
         }
     }
+
+    /// The end of every sentence a suggestion sends: what a model answers it with.
+    static let answerWithPlan = "List them, then call propose_changes."
 
     /// What Move and Copy type into the composer: a sentence that ends where the person names a folder. Organize
     /// types nothing.

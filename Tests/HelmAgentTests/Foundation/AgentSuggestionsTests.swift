@@ -73,31 +73,33 @@ final class AgentSuggestionsTests: XCTestCase {
     func testTheSentencesAModelIsSentAreFixed() {
         let organize = AgentSuggestion(kind: .organize, count: 214, isSelection: false)
         XCTAssertEqual(AgentSuggestions.message(for: organize, depth: .thisFolder, root: "r1"),
-                       "Organize the items in r1 into folders by kind. Depth: this folder.")
+                       "Organize the items in r1 into folders by kind. Depth: this folder. List them, then call propose_changes.")
         XCTAssertEqual(AgentSuggestions.message(for: organize, depth: .twoLevels, root: "r1"),
-                       "Organize the items in r1 into folders by kind. Depth: 2 levels.")
+                       "Organize the items in r1 into folders by kind. Depth: 2 levels. List them, then call propose_changes.")
         XCTAssertEqual(AgentSuggestions.message(for: organize, depth: .allLevels, root: "r1"),
-                       "Organize the items in r1 into folders by kind. Depth: all levels.")
+                       "Organize the items in r1 into folders by kind. Depth: all levels. List them, then call propose_changes.")
         XCTAssertEqual(AgentSuggestions.message(for: organize, depth: .thisFolder, root: "r27"),
-                       "Organize the items in r27 into folders by kind. Depth: this folder.")
+                       "Organize the items in r27 into folders by kind. Depth: this folder. List them, then call propose_changes.")
 
         let selected = AgentSuggestion(kind: .organize, count: 12, isSelection: true)
         for depth in AgentOrganizeDepth.allCases {
             XCTAssertEqual(AgentSuggestions.message(for: selected, depth: depth, root: "r1"),
-                           "Organize the 12 selected items in r1 into folders by kind.")
+                           "Organize the 12 selected items in r1 into folders by kind. List them, then call propose_changes.")
         }
         XCTAssertEqual(AgentSuggestions.message(for: AgentSuggestion(kind: .organize, count: 1, isSelection: true), depth: .thisFolder, root: "r3"),
-                       "Organize the 1 selected item in r3 into folders by kind.")
+                       "Organize the 1 selected item in r3 into folders by kind. List them, then call propose_changes.")
         // A number in a sentence for a model is plain digits, whatever the Mac's region.
         XCTAssertEqual(AgentSuggestions.message(for: AgentSuggestion(kind: .organize, count: 1_240, isSelection: true), depth: .thisFolder, root: "r1"),
-                       "Organize the 1240 selected items in r1 into folders by kind.")
+                       "Organize the 1240 selected items in r1 into folders by kind. List them, then call propose_changes.")
     }
 
     func testASentenceHoldsNoNameFromTheDisk() {
         // The sentence is made from the kind, the count and the alias alone: there is nowhere for a name to come in.
         // Apart from the alias, the only things that vary are digits.
         let fixedWords: Set<String> = ["Organize", "the", "items", "item", "selected", "in", "into", "folders", "by", "kind.",
-                                       "Depth:", "this", "folder.", "levels.", "all"]
+                                       "Depth:", "this", "folder.", "levels.", "all",
+                                       // What every sentence ends with: the answer is a plan.
+                                       "List", "them,", "then", "call", "propose_changes."]
         for selection in [false, true] {
             for count in [1, 12, 5_000] {
                 for depth in AgentOrganizeDepth.allCases {

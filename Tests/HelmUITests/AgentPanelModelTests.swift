@@ -217,14 +217,15 @@ import HelmCore
         let model = await model(conversation)
         model.press(organize)
         await settle(model)
-        XCTAssertEqual(conversation.inner.sent.map(\.text), ["Organize the items in r1 into folders by kind. Depth: this folder."])
+        XCTAssertEqual(conversation.inner.sent.map(\.text), ["Organize the items in r1 into folders by kind. Depth: this folder. List them, then call propose_changes."])
         XCTAssertTrue(model.threadTextForTesting.contains(organize), "the chip's title is the request in the thread")
+        XCTAssertEqual(conversation.inner.sent.map(\.asksForChanges), [true], "a suggestion is answered with a plan")
         model.press(AgentText.depthTwoLevels)
         await settle(model)
-        XCTAssertEqual(conversation.inner.sent.last?.text, "Organize the items in r1 into folders by kind. Depth: 2 levels.")
+        XCTAssertEqual(conversation.inner.sent.last?.text, "Organize the items in r1 into folders by kind. Depth: 2 levels. List them, then call propose_changes.")
         model.press(AgentText.depthAllLevels)
         await settle(model)
-        XCTAssertEqual(conversation.inner.sent.last?.text, "Organize the items in r1 into folders by kind. Depth: all levels.")
+        XCTAssertEqual(conversation.inner.sent.last?.text, "Organize the items in r1 into folders by kind. Depth: all levels. List them, then call propose_changes.")
     }
 
     func testMoveAndCopyFillTheComposerAndSendNothing() async {

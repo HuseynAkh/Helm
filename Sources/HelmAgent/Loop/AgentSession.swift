@@ -9,6 +9,11 @@ import HelmCore
 /// held back until the person decides, so the model is never told something that didn't happen. The held results
 /// are the first thing in the next request, with the plan's outcome, or "pending" while its card is still open.
 ///
+/// A request that asks for changes, a suggestion's or a typed one that `AgentChangeAsk` reads as one, ends in a plan
+/// when it can: when the model ends its turn with words and no plan, Helm sends `AgentPrompt.planNow` once, inside
+/// the request's own turns and time, and the words wait. They are shown only if the next turn brings neither words
+/// nor a plan.
+///
 /// Every limit of a request is Helm's: turns, calls, entries, plans, bad arguments and time. Text Helm builds, the
 /// context note and each tool result, is checked for the home folder's path before it is sent; one that holds it
 /// ends the request and is never sent. A thread starts over after 30 requests or 8 MB of history.
@@ -183,7 +188,9 @@ public actor AgentSession: AgentConversing {
         requests += 1
 
         let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits).usingListSeconds(listSeconds)
-        let sent = await turns(client: client, runner: runner, limits: limits, selected: Set(input.selectedPaths), emit: emit)
+        let asksForChanges = input.asksForChanges || AgentChangeAsk.asksForChanges(input.text)
+        let sent = await turns(client: client, runner: runner, limits: limits, selected: Set(input.selectedPaths),
+                               asksForChanges: asksForChanges, emit: emit)
         if runner.notLoaded > 0 { emit(.notice(.foldersNotLoaded(runner.notLoaded))) }
         if sent > 0 { emit(.trace(.sent(names: sent, destination: client.destination))) }
     }
@@ -191,15 +198,25 @@ public actor AgentSession: AgentConversing {
     /// The model turns of one request, until the model ends its turn, a plan arrives, or something ends the request.
     /// Answers how many names went into the thread: those of a turn that was dropped never leave the app.
     private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, selected: Set<String>,
-                       emit: (AgentSessionEvent) -> Void) async -> Int {
+                       asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> Int {
         let started = parts.clock.now()
         var counts = RequestCounts()
+        /// The words of the turn that ended without a plan, while the model is asked for one.
+        var waitingReply: String?
+        var askedForPlan = false
+        func show(_ reply: String) {
+            waitingReply = nil
+            if !reply.isEmpty { emit(.reply(reply)) }
+        }
         func ended(_ event: AgentSessionEvent) -> Int {
+            if case .plan = event { waitingReply = nil }
+            if let waiting = waitingReply { show(waiting) }
             emit(event)
             return counts.names
         }
         func secondsLeft() -> Double { limits.requestSeconds - parts.clock.now().timeIntervalSince(started) }
-        for _ in 0..<max(0, limits.turns) {
+        let turnCount = max(0, limits.turns)
+        for turn in 0..<turnCount {
             if secondsLeft() < 0 { return ended(.notice(.limitReached)) }
             emit(.status(.thinking))
             let streamed: StreamedTurn
@@ -225,11 +242,19 @@ public actor AgentSession: AgentConversing {
             }
             guard Self.callIDsAreReadable(result.calls) else { return ended(.failed(.unreadable)) }
             let reply = AgentReplyText.clean(text, limit: limits.replyCharacters)
-            if !reply.isEmpty { emit(.reply(reply)) }
             if result.calls.isEmpty {
                 commit(result.rawItems)
+                // Words where a plan was asked for: ask once for the plan, while a turn and time are left.
+                if asksForChanges, !askedForPlan, turn + 1 < turnCount, secondsLeft() > 0 {
+                    askedForPlan = true
+                    waitingReply = reply
+                    commit(client.userItems(text: AgentPrompt.planNow, toolResults: []))
+                    continue
+                }
+                show(reply.isEmpty ? waitingReply ?? "" : reply)
                 return counts.names
             }
+            if !reply.isEmpty { show(reply) }
 
             var results: [AgentToolResult] = []
             var plan: (plan: AgentChangePlan, index: Int)?
