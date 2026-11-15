@@ -139,6 +139,23 @@ extension HostSmokeDriver {
         case "agent-edge-double-click":
             window.doubleClickAgentPanelEdgeForTesting()
             await wait(seconds: 0.3)
+        case "agent-models":
+            // agent-models <menu as words>|none: what the model's name under the composer offers, as
+            // "Claude: *claude-opus-5-5,scripted-1 | LM Studio: scripted-1", the ticked one starred.
+            let reached = await until { model?.modelMenuForTesting == argument }
+            check(reached, step, model?.modelMenuForTesting ?? "no panel")
+        case "agent-model-name":
+            // agent-model-name <name> menu|plain: the name under the composer, and whether a press on it shows the menu.
+            let reached = await until { window.agentModelNameForTesting == argument }
+            check(reached, step, window.agentModelNameForTesting)
+        case "agent-model":
+            // agent-model <provider>/<model>: a pick from the menu under the composer, by its row's title.
+            let bits = argument.split(separator: "/", maxSplits: 1).map(String.init)
+            guard bits.count == 2, model?.modelMenuForTesting.contains(bits[0] + ":") == true else {
+                check(false, step, model?.modelMenuForTesting ?? "no panel"); return true
+            }
+            check(window.pickAgentModelMenuRowForTesting(bits[1], under: bits[0]), step, "no such row")
+            await wait(seconds: 0.5)
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.

@@ -5,7 +5,9 @@ import HelmAgent
 import HelmCore
 
 /// The panel's composer, pinned to its bottom: a plain text view of one to five lines, the model's name in quiet
-/// secondary text, which opens Settings › AI, and Send, which becomes Stop while a request or an Apply runs. Return sends; Shift-Return or Option-Return starts a new line;
+/// secondary text, and Send, which becomes Stop while a request or an Apply runs. With more than one model to choose
+/// from, the name is a compact menu of every connected provider's models, the current one ticked, then AI Settings…;
+/// with one, a press on the name opens Settings › AI. Return sends; Shift-Return or Option-Return starts a new line;
 /// Command-Return presses Apply on the card that waits; Escape stops a request or gives the keys back to the files.
 @MainActor final class AgentComposerView: NSView, NSTextViewDelegate {
     let textView = AgentComposerTextView()
@@ -17,6 +19,7 @@ import HelmCore
     private var watch: AnyCancellable?
     private weak var model: AgentPanelModel?
     private var shownModel: String?
+    private var shownAsMenu = false
 
     static let lineHeight: CGFloat = 17, maximumLines: CGFloat = 5, textInset: CGFloat = 6
 
@@ -79,7 +82,9 @@ import HelmCore
         modelButton.lineBreakMode = .byTruncatingMiddle
         modelButton.toolTip = AgentText.modelMenuSettings
         modelButton.target = self
-        modelButton.action = #selector(openSettings)
+        modelButton.action = #selector(pressModelName)
+        modelButton.imagePosition = .noImage
+        modelButton.imageHugsTitle = true
         sendButton.bezelStyle = .rounded
         sendButton.controlSize = .small
         sendButton.target = self
@@ -138,12 +143,76 @@ import HelmCore
         textView.needsDisplay = true
         // The model's id, or the provider's name when it has none, as the disk's and the model's words are: escaped.
         let name = AgentTextEscaper.escape(model.provider.model.isEmpty ? model.provider.name : model.provider.model)
-        guard name != shownModel else { return }
+        let asMenu = model.modelMenu.isMenu
+        guard name != shownModel || asMenu != shownAsMenu else { return }
         shownModel = name
+        shownAsMenu = asMenu
         modelButton.attributedTitle = NSAttributedString(string: name, attributes: [
             .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         modelButton.setAccessibilityLabel(name)
-        modelButton.setAccessibilityHelp(AgentText.modelMenuSettings)
+        if asMenu {
+            // A small up-and-down chevron after the name, as a pop-up button shows, says it's a menu.
+            modelButton.image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: 8, weight: .semibold))
+            modelButton.imagePosition = .imageTrailing
+            modelButton.contentTintColor = .secondaryLabelColor
+            modelButton.toolTip = AgentText.modelLabel
+            modelButton.setAccessibilityRole(.popUpButton)
+            modelButton.setAccessibilityHelp(AgentText.modelLabel)
+        } else {
+            modelButton.image = nil
+            modelButton.imagePosition = .noImage
+            modelButton.toolTip = AgentText.modelMenuSettings
+            modelButton.setAccessibilityRole(.button)
+            modelButton.setAccessibilityHelp(AgentText.modelMenuSettings)
+        }
+    }
+
+    /// The name under the composer: the menu when there's a choice to make, Settings › AI otherwise.
+    @objc private func pressModelName() {
+        guard let menu = makeModelMenu() else { openSettings(); return }
+        let ticked = menu.items.first { $0.state == .on }
+        let below = NSPoint(x: 0, y: modelButton.isFlipped ? modelButton.bounds.maxY : modelButton.bounds.minY)
+        menu.popUp(positioning: ticked, at: below, in: modelButton)
+    }
+
+    /// The menu under the composer: each connected provider's name over its models, the one in use ticked, then
+    /// AI Settings…. Nil when there's no choice to make. Model names are drawn as the disk's and the model's words
+    /// are: escaped, and only ever as plain titles.
+    func makeModelMenu() -> NSMenu? {
+        guard let model, model.modelMenu.isMenu else { return nil }
+        let offered = model.modelMenu
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for group in offered.providers {
+            if !menu.items.isEmpty { menu.addItem(.separator()) }
+            menu.addItem(NSMenuItem.sectionHeader(title: AgentTextEscaper.escape(group.name)))
+            for id in group.models {
+                let choice = AgentModelMenu.Choice(provider: group.provider, model: id)
+                let item = NSMenuItem(title: AgentTextEscaper.escape(id), action: #selector(chooseModelItem(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = ModelChoiceBox(choice)
+                item.state = offered.current == choice ? .on : .off
+                menu.addItem(item)
+            }
+        }
+        menu.addItem(.separator())
+        let settings = NSMenuItem(title: AgentText.modelMenuSettings, action: #selector(openSettingsItem(_:)), keyEquivalent: "")
+        settings.target = self
+        menu.addItem(settings)
+        return menu
+    }
+
+    @objc private func chooseModelItem(_ sender: NSMenuItem) {
+        guard let box = sender.representedObject as? ModelChoiceBox else { return }
+        model?.chooseModel(box.choice)
+    }
+    @objc private func openSettingsItem(_ sender: NSMenuItem) { openSettings() }
+
+    /// Carries a menu row's choice, since a menu item holds an object.
+    private final class ModelChoiceBox: NSObject {
+        let choice: AgentModelMenu.Choice
+        init(_ choice: AgentModelMenu.Choice) { self.choice = choice }
     }
 
     @objc private func pressSend() {
@@ -151,12 +220,25 @@ import HelmCore
         if model.showsStop { model.press(AgentText.stop) } else { model.send() }
     }
 
-    /// For tests: the name under the composer, and a press on it.
+    /// For tests: the name under the composer, whether it shows as a menu, and a press on it.
     var modelNameForTesting: String { modelButton.attributedTitle.string }
+    var modelNameIsMenuForTesting: Bool { shownAsMenu && modelButton.image != nil }
     var sendTitleForTesting: (title: String, enabled: Bool) { (sendButton.title, sendButton.isEnabled) }
     func pressModelNameForTesting() { modelButton.performClick(nil) }
+    /// Picks a row of the menu under the composer by its title, as a click on it would: the first such row, or the
+    /// first under the section named `section`. False when there's no such row.
+    @discardableResult func pickModelMenuRowForTesting(_ title: String, under section: String? = nil) -> Bool {
+        guard let menu = makeModelMenu() else { return false }
+        var inSection = section == nil
+        for item in menu.items {
+            if item.isSectionHeader { inSection = section == nil || item.title == section; continue }
+            guard inSection, item.title == title, let action = item.action else { continue }
+            return NSApp.sendAction(action, to: item.target, from: item)
+        }
+        return false
+    }
 
-    @objc private func openSettings() { model?.press(AgentText.modelMenuSettings) }
+    private func openSettings() { model?.press(AgentText.modelMenuSettings) }
 
     private func show(_ text: String, caret: Int) {
         if textView.string != text { textView.string = text }

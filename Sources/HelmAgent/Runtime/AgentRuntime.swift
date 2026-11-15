@@ -93,6 +93,11 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
     /// Sent whenever the state changes, and never for a change that leaves it the same.
     public let changes = Broadcast<AgentRuntimeState>()
 
+    /// Told how every check of a provider came out: the provider and where it was asked, and the models it listed,
+    /// or nil when it answered with none or not at all. The app keeps the lists, so the panel's model menu can offer
+    /// them without asking again. Never told anything while AI mode is off, and never anything but model names.
+    public var checked: (@MainActor (AgentProviderProfile, [AgentModelInfo]?) -> Void)?
+
     /// Turns AI mode on or off. Off shuts the client down, and any client out for a check, which forgets the key
     /// they had cached, and stops and clears every conversation the runtime made. Those conversations stay on the
     /// runtime's list while something holds them, so a later change of provider or a later off still reaches them.
@@ -163,6 +168,7 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             guard let profile = Self.profile(for: draft) else { return .cantReach }
             if profile.needsKey, !parts.secrets.has(profile.secretID) {
                 announce()
+                report(.noKey, for: profile)
                 return .noKey
             }
             let model = AgentProviderCatalog.model(for: draft)
@@ -183,7 +189,33 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
         }
         // A key may have been saved since the state was last worked out.
         announce()
-        return isOn ? answer : .off
+        guard isOn else { return .off }
+        if let profile = Self.profile(for: draft) { report(answer, for: profile) }
+        return answer
+    }
+
+    /// Asks Ollama or LM Studio, as a draft config names it, for its models again, through a client of its own that
+    /// is shut down once it has answered, so the client in use and any request under way are left alone. Only a
+    /// provider on this Mac is asked this way; a cloud provider is asked only when the person checks it. The answer
+    /// goes to `checked` as a check's does. While AI mode is off, or for any other provider, nothing is asked.
+    @discardableResult public func relistLocal(_ draft: AIConfig) async -> AgentConnection {
+        guard isOn, let profile = Self.profile(for: draft), profile.isLocal else { return .off }
+        let answer: AgentConnection
+        if let scripted = parts.scripted {
+            answer = await Self.connection(through: scripted)
+        } else {
+            guard let makeClient = parts.makeClient else { return .cantReach }
+            let probe = makeClient(profile, AgentProviderCatalog.model(for: draft) ?? "", parts.secrets)
+            clientBuildCount += 1
+            let id = UUID()
+            probes[id] = probe
+            answer = await Self.connection(through: probe)
+            // Turning AI mode off meanwhile has already shut it down.
+            if probes.removeValue(forKey: id) != nil { await probe.shutdown() }
+        }
+        guard isOn else { return .off }
+        report(answer, for: profile)
+        return answer
     }
 
     /// A new conversation. Nil unless the state is `.ready`. The runtime keeps hold of what it made only weakly, to
@@ -244,6 +276,15 @@ public enum AgentConnection: Equatable, Sendable { case connected([AgentModelInf
             }
         } catch {
             return .cantReach
+        }
+    }
+
+    /// Tells `checked` how a check of `profile` came out. AI mode turning off meanwhile says nothing about it.
+    private func report(_ answer: AgentConnection, for profile: AgentProviderProfile) {
+        switch answer {
+        case .connected(let models): checked?(profile, models)
+        case .off: break
+        default: checked?(profile, nil)
         }
     }
 

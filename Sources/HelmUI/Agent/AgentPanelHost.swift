@@ -52,6 +52,7 @@ import HelmCore
     private var hosting: NSHostingView<AgentPanelView>?
     private let composer = AgentComposerView()
     private var runtimeToken: Broadcast<AgentRuntimeState>.Token?
+    private var configToken: Broadcast<AIConfig>.Token?
     private var closeObserver: NSObjectProtocol?
     /// The files' own minimum, put back when the panel shuts.
     private var filesMinimum: CGFloat?
@@ -87,6 +88,8 @@ import HelmCore
         installEdge()
         registerForDraggedTypes([.fileURL])
         runtimeToken = window.dependencies.agent.runtime.changes.subscribe { [weak self] state in self?.runtimeChanged(state) }
+        // A check that answered, a key that went or a model chosen anywhere changes what the model menu offers.
+        configToken = window.dependencies.agent.config.changes.subscribe { [weak self] _ in self?.refreshModelMenu() }
         if let shown = window.window {
             closeObserver = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: shown,
                                                                    queue: .main) { [weak self] _ in
@@ -125,7 +128,9 @@ import HelmCore
             }
             superview?.layoutSubtreeIfNeeded()
             windowDidRender()
+            refreshModelMenu()
             focusComposer()
+            browser.refreshLocalModelLists()
         } else {
             let hadKeys = holdsKeys
             dragStart = nil
@@ -155,6 +160,14 @@ import HelmCore
 
     /// The composer's text view, for tests that press keys in it.
     var composerTextViewForTesting: NSTextView { composer.textView }
+    /// The name under the composer, and whether it shows as a menu.
+    var modelNameForTesting: (name: String, isMenu: Bool) { (composer.modelNameForTesting, composer.modelNameIsMenuForTesting) }
+    /// The rows of the menu under the composer, by title: section names, models and AI Settings…. Empty with no menu.
+    var modelMenuTitlesForTesting: [String] { composer.makeModelMenu()?.items.filter { !$0.isSeparatorItem }.map(\.title) ?? [] }
+    /// Picks a row of the menu under the composer by its title, as a click on it would, under one section if named.
+    @discardableResult func pickModelMenuRowForTesting(_ title: String, under section: String? = nil) -> Bool {
+        composer.pickModelMenuRowForTesting(title, under: section)
+    }
 
     // MARK: The model
 
@@ -179,6 +192,13 @@ import HelmCore
             self.hosting = hosting
         }
         composer.attach(model, dropTarget: self)
+        refreshModelMenu()
+    }
+
+    /// What the model's name under the composer offers, worked out again.
+    private func refreshModelMenu() {
+        guard let browser, let model else { return }
+        model.modelMenuChanged(browser.agentModelMenu)
     }
 
     /// AI mode turned off or lost its model: the panel shuts and its conversation goes. A provider or model that
@@ -186,6 +206,7 @@ import HelmCore
     private func runtimeChanged(_ state: AgentRuntimeState) {
         if case .ready = state, let browser, let provider = browser.agentProvider {
             model?.providerChanged(provider)
+            refreshModelMenu()
         } else {
             if isOpen { setOpen(false, animated: false) }
             model?.close()
@@ -197,7 +218,9 @@ import HelmCore
     private func windowWillClose() {
         model?.close()
         if let runtimeToken, let browser { browser.dependencies.agent.runtime.changes.cancel(runtimeToken) }
+        if let configToken, let browser { browser.dependencies.agent.config.changes.cancel(configToken) }
         runtimeToken = nil
+        configToken = nil
         for observer in [closeObserver, resizeObserver].compactMap({ $0 }) { NotificationCenter.default.removeObserver(observer) }
         closeObserver = nil
         resizeObserver = nil

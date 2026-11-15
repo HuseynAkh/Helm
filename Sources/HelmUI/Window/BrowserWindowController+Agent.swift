@@ -56,6 +56,17 @@ extension BrowserWindowController {
     public func dragAgentPanelEdgeForTesting(by distance: CGFloat) { agentPanelHost.dragEdgeForTesting(by: distance) }
     /// A double click on the AI panel's leading edge.
     public func doubleClickAgentPanelEdgeForTesting() { agentPanelHost.doubleClickEdgeForTesting() }
+    /// The model's name under the composer, and "menu" or "plain" for whether a press on it shows the model menu.
+    public var agentModelNameForTesting: String {
+        let shown = agentPanelHost.modelNameForTesting
+        return "\(shown.name) \(shown.isMenu ? "menu" : "plain")"
+    }
+    /// Picks a row of the menu under the composer by its title, as a click on it would, under one provider if named.
+    @discardableResult public func pickAgentModelMenuRowForTesting(_ title: String, under provider: String? = nil) -> Bool {
+        agentPanelHost.pickModelMenuRowForTesting(title, under: provider)
+    }
+    /// The rows of the menu under the composer, by title. Empty while the name is a plain name.
+    public var agentModelMenuTitlesForTesting: [String] { agentPanelHost.modelMenuTitlesForTesting }
 
     // MARK: For the panel
 
@@ -68,10 +79,44 @@ extension BrowserWindowController {
         actions.show = { [weak self] urls in self?.showAgentChanges(urls) }
         actions.connect = { [weak self] location in self?.connectAgentServer(location) ?? false }
         actions.openSettings = { [weak self] in self?.host?.showSettings(pane: .ai) }
+        actions.chooseModel = { [weak self] choice in self?.chooseAgentModel(choice) }
         actions.giveKeysBack = { [weak self] in self?.focusContent() }
         actions.focusComposer = { [weak self] in self?.agentPanelHost.focusComposer() }
         actions.phaseChanged = { [weak self] _ in self?.agentPanelHost.updateSpark() }
         return AgentPanelModel(session: session, home: dependencies.home.path, provider: provider, actions: actions)
+    }
+
+    /// What the model's name under the composer offers, from what ai.json keeps and which keys are saved. Nothing is
+    /// asked of any provider to work it out.
+    var agentModelMenu: AgentModelMenu {
+        let agent = dependencies.agent
+        return AgentModelMenu.make(config: agent.config.config, hasKey: { agent.secrets.has($0) })
+    }
+
+    /// A model chosen under the composer: the provider and its model are saved, as Settings › AI saves them, and the
+    /// next request goes there. The runtime starts every thread over when the provider changes.
+    func chooseAgentModel(_ choice: AgentModelMenu.Choice) {
+        guard let model = AgentModelInfo(id: choice.model) else { return }
+        dependencies.agent.config.update { saved in
+            saved.provider = choice.provider.rawValue
+            saved.models[choice.provider.rawValue] = model.id
+        }
+    }
+
+    /// Ollama and LM Studio, when their last check answered, are asked for their models again as the panel opens, so
+    /// the menu lists what their servers have now. Cloud providers keep the list of their last check, and nothing at
+    /// all is asked while no model is ready.
+    func refreshLocalModelLists() {
+        let agent = dependencies.agent
+        guard case .ready = agent.runtime.state else { return }
+        let config = agent.config.config
+        for id in AgentProviderID.allCases {
+            var draft = config
+            draft.provider = id.rawValue
+            guard let profile = try? AgentProviderCatalog.profile(for: draft).get(), profile.isLocal,
+                  config.modelLists[profile.secretID.account]?.isEmpty == false else { continue }
+            Task { [runtime = agent.runtime, draft] in await runtime.relistLocal(draft) }
+        }
     }
 
     /// The model requests go to, while one is ready.
