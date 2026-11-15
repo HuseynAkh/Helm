@@ -101,6 +101,8 @@ public enum AgentText {
     public static let tagRenamed = "Renamed"
     public static let tagTrash = "Trash"
     public static let tagKeepsBoth = "Keeps both"
+    /// After a group's path, when the plan makes the folder it goes to.
+    public static let pathNewFolder = "new folder"
     public static func groupRenames(_ count: Int) -> String { "Rename \(counted(count, "item", "items"))" }
     public static func groupMoves(_ count: Int, folder: String) -> String {
         "Move \(counted(count, "item", "items")) to “\(shown(folder))”"

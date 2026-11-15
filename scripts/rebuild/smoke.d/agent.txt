@@ -67,6 +67,9 @@ agent-reads Organize “AgentMess”
 agent-plan-reads 4 moves · 2 new folders
 agent-group Move 2 items to “Images” on
 agent-group Move 2 items to “Notes” on
+# Under each group, the folder it goes to, from the home folder, and that the plan makes it
+agent-group-path Move 2 items to “Images”=~/AgentMess/Images new folder
+agent-group-path Move 2 items to “Notes”=~/AgentMess/Notes new folder
 agent-suggests none
 exists @FIX@/home/AgentMess/photo-1.png
 missing @FIX@/home/AgentMess/Images
@@ -195,6 +198,7 @@ agent-say gather the pages
 agent-phase plan
 agent-plan-reads 30 moves · 1 new folder
 agent-group Move 30 items to “Pages” on
+agent-group-path Move 30 items to “Pages”=~/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/Pages new folder
 agent-reads Changes sync to your devices and to anyone this is shared with.
 agent-press Cancel
 agent-reads Plan dismissed.
@@ -219,6 +223,7 @@ agent-say file the report
 agent-phase plan
 agent-group Move 1 item to “Documents” off
 agent-group-mark Move 1 item to “Documents”=Leaves iCloud Drive
+agent-group-path Move 1 item to “Documents”=~/Documents
 agent-press Cancel
 exists @FIX@/home/Documents/Reports/q1.txt
 missing @FIX@/home/Documents/q1.txt

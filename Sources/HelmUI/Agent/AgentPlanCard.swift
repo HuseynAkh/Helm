@@ -41,10 +41,13 @@ struct AgentPlanCard: Equatable {
     private(set) var holdsKeyedApply = false
     /// The folders of the conversation when the plan arrived, to say where each item is now.
     let roots: [AgentScopeRoot]
+    /// The home folder as given and as macOS spells it under /private, so a path in it reads from "~".
+    private let homes: [String]
 
-    init(plan: AgentChangePlan, roots: [AgentScopeRoot]) {
+    init(plan: AgentChangePlan, roots: [AgentScopeRoot], home: String = "") {
         self.plan = plan
         self.roots = roots
+        homes = AgentPlanPath.homes(home)
         ticked = plan.defaultTicked
         opened = Self.startsOpen(plan)
     }
@@ -108,6 +111,8 @@ struct AgentPlanCard: Equatable {
         /// Why the group starts unticked: "Goes to Google Drive", "Leaves iCloud Drive", "Shared". The Trash group's
         /// title says it already.
         let mark: String?
+        /// Where a group of moves or copies goes, under its title.
+        var destination: AgentPlanPath? = nil
         let rows: [ItemRow]
     }
 
@@ -115,15 +120,52 @@ struct AgentPlanCard: Equatable {
         let id: Int
         /// The item's name, or "old name → new name" for a rename.
         let name: String
-        /// Where the item is now, in words.
+        /// Where the item is now, in words. Empty on a row that shows where it goes.
         let detail: String
+        /// The folder a moved or copied item lands in.
+        var destination: AgentPlanPath? = nil
         let tags: [String]
     }
 
     var groupRows: [GroupRow] {
         plan.groups.map { group in
             GroupRow(id: group.id, title: Self.title(of: group, in: plan), isOn: ticked.contains(group.id),
-                     isOpen: opened.contains(group.id), mark: Self.mark(of: group), rows: rows(of: group))
+                     isOpen: opened.contains(group.id), mark: Self.mark(of: group), destination: destination(of: group),
+                     rows: rows(of: group))
+        }
+    }
+
+    /// The folder a group of moves or copies goes to, with "new folder" when the plan makes it.
+    private func destination(of group: AgentPlanGroup) -> AgentPlanPath? {
+        let isNew: Bool
+        switch group.kind {
+        case .moves(_, let new), .copies(_, let new): isNew = new
+        case .newFolders, .renames, .trash: return nil
+        }
+        for index in group.steps where plan.steps.indices.contains(index) {
+            switch plan.steps[index] {
+            case .move(_, let target), .copy(_, let target):
+                return path(of: target).map { AgentPlanPath(path: $0, homes: homes, isNew: isNew) }
+            case .newFolder, .rename, .trash:
+                continue
+            }
+        }
+        return nil
+    }
+
+    /// The path of a folder a step goes to: an existing folder's own, or a new folder's under its parent's.
+    private func path(of target: AgentPlanTarget, depth: Int = 0) -> String? {
+        switch target {
+        case .existing(let item):
+            return item.path
+        case .new(let key):
+            // A new folder is at most a few levels below an existing one; the bound only stops a loop.
+            guard depth < 16 else { return nil }
+            for step in plan.steps {
+                guard case .newFolder(let declared, let parent, let name) = step, declared == key else { continue }
+                return path(of: parent, depth: depth + 1).map { ($0.hasSuffix("/") ? $0 : $0 + "/") + name.value }
+            }
+            return nil
         }
     }
 
@@ -141,7 +183,8 @@ struct AgentPlanCard: Equatable {
         let labels = Set(roots.map { AgentTextEscaper.escape($0.label) })
         let sameFolder = all.count > 1 && Set(all.map(\.detail)).count == 1 && labels.contains(all.first?.detail ?? "")
         return all.map { row in
-            ItemRow(id: row.id, name: row.name, detail: sameFolder ? "" : row.detail, tags: row.tags.filter { $0 != ownTag })
+            ItemRow(id: row.id, name: row.name, detail: sameFolder ? "" : row.detail, destination: row.destination,
+                    tags: row.tags.filter { $0 != ownTag })
         }
     }
 
@@ -169,17 +212,26 @@ struct AgentPlanCard: Equatable {
     private func row(_ index: Int) -> ItemRow {
         var tags: [String] = []
         let name: String, detail: String
+        var destination: AgentPlanPath?
         switch plan.steps[index] {
         case .newFolder(_, let parent, let folder):
             name = AgentTextEscaper.escape(folder.value)
-            switch parent {
-            case .existing(let item): detail = place(of: item.path, including: true)
-            case .new(let key): detail = newFolderName(key) ?? ""
+            // Where it is made, in the same form as where a move goes.
+            destination = path(of: parent).map { AgentPlanPath(path: $0, homes: homes, isNew: false) }
+            if destination != nil {
+                detail = ""
+            } else {
+                switch parent {
+                case .existing(let item): detail = place(of: item.path, including: true)
+                case .new(let key): detail = newFolderName(key) ?? ""
+                }
             }
             tags.append(AgentText.tagNew)
-        case .move(let item, _), .copy(let item, _):
+        case .move(let item, let target), .copy(let item, let target):
             name = AgentTextEscaper.escape(item.name)
-            detail = place(of: item.path, including: false)
+            // Where it goes, which the person needs more than where it is now.
+            destination = path(of: target).map { AgentPlanPath(path: $0, homes: homes, isNew: false) }
+            detail = destination == nil ? place(of: item.path, including: false) : ""
             if let holds = item.holds { tags.append(AgentText.rowHolds(holds)) }
         case .rename(let item, let new):
             name = "\(AgentTextEscaper.escape(item.name)) → \(AgentTextEscaper.escape(new.value))"
@@ -192,7 +244,7 @@ struct AgentPlanCard: Equatable {
             tags.append(AgentText.tagTrash)
         }
         if plan.keepsBoth.contains(index) { tags.append(AgentText.tagKeepsBoth) }
-        return ItemRow(id: index, name: name, detail: detail, tags: tags)
+        return ItemRow(id: index, name: name, detail: detail, destination: destination, tags: tags)
     }
 
     private func newFolderName(_ key: String) -> String? {
@@ -336,6 +388,7 @@ struct AgentPlanGroupView: View {
                     // The title keeps its own line; the mark that says why it starts unticked sits under it.
                     VStack(alignment: .leading, spacing: 3) {
                         Text(verbatim: group.title).font(.system(size: 12)).lineLimit(2)
+                        if let destination = group.destination { AgentPlanPathView(path: destination) }
                         if let mark = group.mark {
                             Text(verbatim: mark)
                                 .font(.system(size: 10, weight: .medium))
@@ -363,14 +416,16 @@ struct AgentPlanGroupView: View {
     }
 }
 
-/// One item of a group: its name, where it is now, and its tags.
+/// One item of a group: its name, where it goes or where it is now, and its tags.
 struct AgentPlanRowView: View {
     let row: AgentPlanCard.ItemRow
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(verbatim: row.name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
-            if !row.detail.isEmpty {
+            if let destination = row.destination {
+                AgentPlanPathView(path: destination)
+            } else if !row.detail.isEmpty {
                 Text(verbatim: row.detail).font(.system(size: 11)).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.head)
             }
@@ -379,6 +434,86 @@ struct AgentPlanRowView: View {
                 Text(verbatim: tag).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }
+    }
+}
+#endif
+
+#if os(macOS)
+/// A folder's path as a plan card shows it, drawn on this Mac only and never sent to a model: the home folder as
+/// "~", the whole path as the tooltip, and shorter forms that keep the folder it ends in, for a narrow panel.
+struct AgentPlanPath: Equatable {
+    /// The whole path, such as "~/Documents/Screenshots".
+    let whole: String
+    /// The forms to try, longest first: the whole path, then with folders in the middle left out, such as
+    /// "~/Documents/…/Screenshots" and "~/…/Screenshots". The last is cut in the middle when even it doesn't fit.
+    let forms: [String]
+    /// The plan makes this folder.
+    let isNew: Bool
+
+    init(path: String, homes: [String], isNew: Bool) {
+        whole = Self.compact(path, homes: homes)
+        forms = Self.forms(of: whole)
+        self.isNew = isNew
+    }
+
+    /// A home folder as given, and as macOS spells it under /private or without it, for /tmp and /var.
+    static func homes(_ home: String) -> [String] {
+        var trimmed = home
+        while trimmed.count > 1, trimmed.hasSuffix("/") { trimmed.removeLast() }
+        guard trimmed.count > 1 else { return [] }
+        let other = trimmed.hasPrefix("/private/") ? String(trimmed.dropFirst("/private".count)) : "/private" + trimmed
+        return [trimmed, other]
+    }
+
+    /// The path with the home folder as "~" and every name escaped, as the card draws names from the disk.
+    static func compact(_ path: String, homes: [String]) -> String {
+        var head = "", rest = Substring(path)
+        if let home = homes.first(where: { path == $0 || path.hasPrefix($0 + "/") }) {
+            head = "~"
+            rest = path.dropFirst(home.count)
+        }
+        let names = rest.split(separator: "/", omittingEmptySubsequences: true).map { AgentTextEscaper.escape(String($0)) }
+        if head.isEmpty { return "/" + names.joined(separator: "/") }
+        return names.isEmpty ? head : head + "/" + names.joined(separator: "/")
+    }
+
+    /// The whole path, then each form with one more folder before the last left out.
+    static func forms(of whole: String) -> [String] {
+        let isHome = whole == "~" || whole.hasPrefix("~/")
+        let head = isHome ? "~" : ""
+        let names = whole.dropFirst(isHome ? 1 : 0).split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard names.count >= 2, let last = names.last else { return [whole] }
+        var forms = [whole]
+        for kept in stride(from: names.count - 2, through: 0, by: -1) {
+            forms.append(([head] + names.prefix(kept) + [ellipsis, last]).joined(separator: "/"))
+        }
+        return forms
+    }
+
+    static let ellipsis = "\u{2026}"
+}
+
+/// A folder's path on one compact line in small secondary text: the longest form that fits the card's width, cut in
+/// the middle when none does, with "new folder" after it when the plan makes the folder. The tooltip is the whole
+/// path.
+struct AgentPlanPathView: View {
+    let path: AgentPlanPath
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            ViewThatFits(in: .horizontal) {
+                ForEach(Array(path.forms.dropLast().enumerated()), id: \.offset) { _, form in
+                    Text(verbatim: form).lineLimit(1).fixedSize()
+                }
+                Text(verbatim: path.forms.last ?? path.whole).lineLimit(1).truncationMode(.middle)
+            }
+            if path.isNew {
+                Text(verbatim: AgentText.pathNewFolder).lineLimit(1).fixedSize().layoutPriority(1)
+            }
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .help(path.whole)
     }
 }
 #endif

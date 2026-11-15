@@ -214,6 +214,14 @@ import HelmCore
         lines[index].kind = .plan(card)
     }
 
+    /// Opens or shuts a group of the card that waits, by its title, as its chevron does.
+    public func toggleOpen(_ groupTitle: String) {
+        guard let index = openCardIndex, case .plan(var card) = lines[index].kind,
+              let group = card.groupRows.first(where: { $0.title == groupTitle }) else { return }
+        card.toggleOpen(group.id)
+        lines[index].kind = .plan(card)
+    }
+
     func tick(group id: Int, card lineID: Int) {
         guard let index = lines.firstIndex(where: { $0.id == lineID }), case .plan(var card) = lines[index].kind else { return }
         card.toggle(id)
@@ -414,6 +422,13 @@ import HelmCore
             "\(group.title):\(group.isOn ? "on" : "off")" + (group.mark.map { ":\($0)" } ?? "")
         } ?? []
     }
+    /// Where each group of moves or copies goes, as its title, "=", the whole path and " new folder" when the plan
+    /// makes it: "Move 2 items to “Images”=~/AgentMess/Images new folder".
+    public var groupPathsForTesting: [String] {
+        (openCard ?? latestCard)?.groupRows.compactMap { group in
+            group.destination.map { "\(group.title)=\($0.whole)" + ($0.isNew ? " " + AgentText.pathNewFolder : "") }
+        } ?? []
+    }
     /// Whether a request, an Apply or an Undo is still running, or the panel is still asking about a folder.
     public var isWaitingForTesting: Bool { requestOpen || applying || undoing || pendingWork > 0 }
 
@@ -584,7 +599,7 @@ import HelmCore
                     self.append(.reply(Self.shownReply(text)))
                 case .plan(let plan):
                     let roots = await self.session.roots()
-                    let card = AgentPlanCard(plan: plan, roots: roots)
+                    let card = AgentPlanCard(plan: plan, roots: roots, home: self.home)
                     for index in self.lines.indices {
                         if case .plan(var older) = self.lines[index].kind, older.stage == .open {
                             older.stage = plan.isEmpty ? .dismissed : .replaced

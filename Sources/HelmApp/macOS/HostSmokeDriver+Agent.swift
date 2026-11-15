@@ -83,6 +83,15 @@ extension HostSmokeDriver {
             let groups = model?.groupsForTesting ?? []
             let found = groups.contains { $0 == "\(bits[0]):on:\(bits[1])" || $0 == "\(bits[0]):off:\(bits[1])" }
             check(found, step, groups.joined(separator: " | "))
+        case "agent-group-path":
+            // agent-group-path <title>=<path>, with " new folder" at the end when the plan makes the folder
+            let paths = model?.groupPathsForTesting ?? []
+            check(paths.contains(argument), step, paths.joined(separator: " | "))
+        case "agent-open-group":
+            // The chevron of the group with this title.
+            guard let model else { check(false, step, "no panel"); return true }
+            model.toggleOpen(argument)
+            await wait(seconds: 0.1)
         case "agent-tick":
             guard let model else { check(false, step, "no panel"); return true }
             model.tick(argument)
