@@ -362,6 +362,34 @@ hunt-width-is 700
 sidebar-visible-is true
 window-width 1040
 agent-open
+# 15b. While the location bar is typed in, a click on the panel, the files or the header closes it as Escape does,
+# and goes nowhere
+location @FIX@/home/AgentMess
+cmd location
+location-typing true
+type @FIX@/home/Documents
+location-press path
+location-typing true
+location-press panel
+location-typing false
+location @FIX@/home/AgentMess
+focus-is files
+cmd location
+location-typing true
+location-press files
+location-typing false
+cmd location
+location-press header
+location-typing false
+location @FIX@/home/AgentMess
+agent-close
+sidebar-visible-is true
+cmd location
+location-typing true
+location-press sidebar
+location-typing false
+location @FIX@/home/AgentMess
+agent-open
 # 16. Closing: the panel shut, AI mode off, the stand-ins put back, the tab closed and the width as it was
 agent-close
 agent-is closed

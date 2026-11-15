@@ -195,6 +195,30 @@ import HelmTestKit
         XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 420, "the files' own minimum is back once shut")
     }
 
+    // MARK: The location bar
+
+    func testAPressAnywhereOutsideTheLocationBarClosesItAndGoesNowhere() async throws {
+        let (controller, _, _) = try await window()
+        _ = try await open(controller)
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+        XCTAssertFalse(controller.watchesLocationPressesForTesting, "nothing is watched while the bar isn't typed in")
+        for part in ["panel", "files", "sidebar", "header"] {
+            controller.perform(.location)
+            controller.store.send(.tab(controller.activeTabID, .addressBar(.textChanged(home.path))))
+            XCTAssertEqual(controller.activeTab?.addressBar.isEditing, true)
+            XCTAssertTrue(controller.watchesLocationPressesForTesting)
+            // A press inside the bar is the bar's own.
+            XCTAssertTrue(controller.pressForTesting(in: "path"))
+            XCTAssertEqual(controller.activeTab?.addressBar.isEditing, true, part)
+            XCTAssertTrue(controller.pressForTesting(in: part), part)
+            XCTAssertEqual(controller.activeTab?.addressBar.isEditing, false, "a press on the \(part) closes the bar")
+            XCTAssertFalse(controller.watchesLocationPressesForTesting, part)
+            XCTAssertEqual(controller.activeTab?.location, .directory(documents), "and goes nowhere")
+            XCTAssertEqual(controller.focusOwnerForTesting, "files", "the keys go back as Escape gives them")
+        }
+        XCTAssertTrue(controller.isAgentPanelOpen)
+    }
+
     func testShuttingThePanelGivesBackTheRoomItTook() async throws {
         let (controller, _, _) = try await window()
         let window = try XCTUnwrap(controller.window)

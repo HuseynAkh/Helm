@@ -90,6 +90,8 @@ struct WindowTints: Equatable {
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
     /// The AI panel's column, beside the files and under the header. Zero wide while shut.
     let agentPanelHost = AgentPanelHost()
+    /// Watches for a press elsewhere in the window while the location is being typed (BrowserWindowController+Location).
+    var locationPressWatch: Any?
     /// Scripted runs hold each command of an Apply after the first back this long, so Stop can be pressed midway.
     public var agentApplyPauseForTesting: TimeInterval = 0
     private var operationsHeight: NSLayoutConstraint?
@@ -353,6 +355,7 @@ struct WindowTints: Equatable {
         window?.title = TabStripView.title(tab)
         if case .directory(let url) = place, tab.search == nil { window?.representedURL = url } else { window?.representedURL = nil }
         pathBar.render(location: place, home: dependencies.home, editor: tab.addressBar)
+        followLocationEditing(tab.addressBar.isEditing)
         let many = snapshot.window.tabs.count > 1
         tabStripHeight?.constant = many ? 36 : 0
         tabStrip.isHidden = !many
@@ -543,6 +546,7 @@ struct WindowTints: Equatable {
         Task { await refreshHistory() }
     }
     public func windowWillClose(_ notification: Notification) {
+        followLocationEditing(false)
         store.send(.shutdown)
         host?.windowDidClose(self)
     }
