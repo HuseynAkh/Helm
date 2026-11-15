@@ -10,11 +10,20 @@ import Security
     var appURL: URL? { get }
     /// An ad hoc signature changes with every build, and macOS forgets a permission given to the old one.
     var isAdHocSigned: Bool { get }
+    /// What tells this build apart to macOS: its code signature's designated requirement, as text. For an ad hoc
+    /// signed build that's its code hash, new with every build; for a properly signed one it stays the same across
+    /// updates. Nil when Helm isn't signed at all.
+    var buildIdentity: String? { get }
     func probeFullDiskAccess() async -> PrivacyAccessStatus
     /// Opens System Settings at the pane's row. False when nothing could be opened.
     @discardableResult func open(_ pane: PrivacyPane) -> Bool
     /// Shows the Trash in Finder, which can always read it.
     @discardableResult func openTrashInFinder() -> Bool
+}
+
+public extension PrivacyAccessProviding {
+    /// A stand-in that doesn't say: every build counts as the same one.
+    var buildIdentity: String? { nil }
 }
 
 /// Tells whether Helm has Full Disk Access without asking macOS anything and without reading a single file:
@@ -49,6 +58,7 @@ public enum FullDiskAccessProbe {
     private let bundle: Bundle
     private let home: URL
     private var signature: Bool?
+    private var requirement: String??
     public init(bundle: Bundle = .main, home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)) {
         self.bundle = bundle; self.home = home
     }
@@ -59,6 +69,13 @@ public enum FullDiskAccessProbe {
         if let signature { return signature }
         let value = Self.readAdHocSignature()
         signature = value
+        return value
+    }
+
+    public var buildIdentity: String? {
+        if let requirement { return requirement }
+        let value = Self.readDesignatedRequirement()
+        requirement = .some(value)
         return value
     }
 
@@ -99,6 +116,21 @@ public enum FullDiskAccessProbe {
         return true
     }
 
+    /// The running code's designated requirement in its text form, such as `cdhash H"…"` for an ad hoc build. It reads
+    /// the signature Helm already carries; nothing is asked of the person and no file is opened.
+    private static func readDesignatedRequirement() -> String? {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+        var requirement: SecRequirement?
+        guard SecCodeCopyDesignatedRequirement(staticCode, [], &requirement) == errSecSuccess, let requirement else { return nil }
+        var text: CFString?
+        guard SecRequirementCopyString(requirement, [], &text) == errSecSuccess, let text else { return nil }
+        let value = text as String
+        return value.isEmpty ? nil : value
+    }
+
     private static func readAdHocSignature() -> Bool {
         var code: SecCode?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return false }
@@ -130,6 +162,8 @@ final class ResumeOnce: @unchecked Sendable {
     public var status: PrivacyAccessStatus
     public var appURL: URL?
     public var isAdHocSigned: Bool
+    /// The build this stand-in says is running. Nil, as at first, says nothing, so only whether setup was seen counts.
+    public var buildIdentity: String?
     public private(set) var openedPanes: [PrivacyPane] = []
     public private(set) var trashOpenedInFinder = 0
     public init(status: PrivacyAccessStatus = .denied, appURL: URL? = URL(fileURLWithPath: "/Applications/Helm.app"),
@@ -158,6 +192,7 @@ final class ResumeOnce: @unchecked Sendable {
 
     public var appURL: URL? { provider.appURL }
     public var isAdHocSigned: Bool { provider.isAdHocSigned }
+    public var buildIdentity: String? { provider.buildIdentity }
 
     /// Probes again and says so only if the answer changed. When probes overlap, the newest one decides.
     public func refresh() async {

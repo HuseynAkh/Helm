@@ -268,8 +268,10 @@ agent-say /clear
 go @FIX@/home/AgentMess
 wait 0.5
 search-ai-is off
+search-mark-is spark
 search-ai on
 search-ai-is on
+search-mark-is spark lit
 search-status-reads Return sends your words
 search memo
 search-return
@@ -362,6 +364,81 @@ hunt-width-is 700
 sidebar-visible-is true
 window-width 1040
 agent-open
+# 15b. The panel's leading edge: a drag takes it from 300 to 560 points, or 45% of the window when that is less, a
+# double click puts back 340, and the width is kept for the next opening
+agent-close
+window-width 1400
+agent-open
+agent-is open
+agent-width 340
+agent-drag-edge 100
+agent-width 440
+agent-drag-edge 400
+agent-width 560
+agent-drag-edge -500
+agent-width 300
+agent-edge-double-click
+agent-width 340
+agent-drag-edge 60
+agent-width 400
+agent-close
+agent-width 0
+agent-open
+agent-width 400
+hunt-width-is 1400
+agent-edge-double-click
+agent-width 340
+# 15c. The model's name under the composer becomes a menu of every connected provider's models, the one in use
+# ticked. Choosing another provider's model sends the next request there and starts a new thread, and the panel stays
+agent-models Claude: *claude-opus-5-5,scripted-1
+agent-model-name claude-opus-5-5 menu
+ai-provider lmStudio
+ai-state-is connected
+ai-provider claude
+ai-state-is connected
+agent-models Claude: *claude-opus-5-5,scripted-1 | LM Studio: scripted-1
+agent-model LM Studio/scripted-1
+agent-models Claude: claude-opus-5-5,scripted-1 | LM Studio: *scripted-1
+agent-model-name scripted-1 menu
+agent-reads Started over.
+agent-is open
+hunt-settings-open ai
+hunt-settings-reads Text: LM Studio
+hunt-settings-close
+agent-model Claude/claude-opus-5-5
+agent-models Claude: *claude-opus-5-5,scripted-1 | LM Studio: scripted-1
+agent-model-name claude-opus-5-5 menu
+agent-is open
+# 15d. While the location bar is typed in, a click on the panel, the files or the header closes it as Escape does,
+# and goes nowhere
+location @FIX@/home/AgentMess
+cmd location
+location-typing true
+type @FIX@/home/Documents
+location-press path
+location-typing true
+location-press panel
+location-typing false
+location @FIX@/home/AgentMess
+focus-is files
+cmd location
+location-typing true
+location-press files
+location-typing false
+cmd location
+location-press header
+location-typing false
+location @FIX@/home/AgentMess
+agent-close
+sidebar-visible-is true
+cmd location
+location-typing true
+location-press sidebar
+location-typing false
+location @FIX@/home/AgentMess
+hunt-width-is 1400
+window-width 1040
+agent-open
 # 16. Closing: the panel shut, AI mode off, the stand-ins put back, the tab closed and the width as it was
 agent-close
 agent-is closed
@@ -369,6 +446,7 @@ setting aiModeEnabled false
 wait 0.5
 setting-is aiModeEnabled false
 agent-is closed
+search-mark-is magnifier
 agent-client-built no
 agent-places-clear
 cmd closeTab

@@ -35,6 +35,8 @@ import HelmCore
         var show: @MainActor ([URL]) -> Void = { _ in }
         var connect: @MainActor (ServerLocation) -> Bool = { _ in false }
         var openSettings: @MainActor () -> Void = {}
+        /// A model chosen from the menu under the composer: requests go to it from the next one on.
+        var chooseModel: @MainActor (AgentModelMenu.Choice) -> Void = { _ in }
         /// Escape with nothing running: the files take the keys.
         var giveKeysBack: @MainActor () -> Void = {}
         /// The caret goes to the composer, as after a suggestion fills it.
@@ -106,6 +108,8 @@ import HelmCore
     @Published private(set) var status: String?
     @Published private(set) var composerText = ""
     @Published private(set) var provider: Provider
+    /// What the model's name under the composer offers, as the window last worked it out.
+    @Published private(set) var modelMenu = AgentModelMenu.empty
 
     let session: any AgentConversing
     var actions: Actions
@@ -318,6 +322,17 @@ import HelmCore
 
     func providerChanged(_ next: Provider) { provider = next }
 
+    /// The providers and models on offer changed: a check answered, a key went, or another model was chosen.
+    func modelMenuChanged(_ next: AgentModelMenu) {
+        if next != modelMenu { modelMenu = next }
+    }
+
+    /// A model from the menu under the composer. Another provider starts a new thread, as any change of provider does.
+    func chooseModel(_ choice: AgentModelMenu.Choice) {
+        guard choice != modelMenu.current else { return }
+        actions.chooseModel(choice)
+    }
+
     /// What the conversation answered when Apply asked to go ahead, when it wasn't a go.
     func applyAnswered(planID: UUID, _ ticket: AgentApplyTicket) {
         guard let index = cardIndex(of: planID), case .plan(var card) = lines[index].kind else { return }
@@ -365,6 +380,18 @@ import HelmCore
         Dictionary(chips.map { ($0.label, $0.placeLine) }, uniquingKeysWith: { first, _ in first })
     }
     public var suggestionsForTesting: [String] { suggestions.map(\.title) }
+    /// The menu under the composer as words: "Claude: *claude-opus-5-5,claude-haiku-5 | LM Studio: qwen-9b", or
+    /// "none" when the name is a plain name that opens Settings.
+    public var modelMenuForTesting: String { modelMenu.isMenu ? modelMenu.summaryForTesting : "none" }
+    /// Chooses a model from the menu under the composer by its provider's name and its own: "LM Studio/qwen-9b".
+    /// False when the menu has no such row.
+    @discardableResult public func chooseModelForTesting(_ row: String) -> Bool {
+        let bits = row.split(separator: "/", maxSplits: 1).map(String.init)
+        guard bits.count == 2, let group = modelMenu.providers.first(where: { $0.name == bits[0] }),
+              group.models.contains(bits[1]) else { return false }
+        chooseModel(AgentModelMenu.Choice(provider: group.provider, model: bits[1]))
+        return true
+    }
     /// Every line of the thread, and what a running request is doing, one per line.
     public var threadTextForTesting: String {
         var text: [String] = []

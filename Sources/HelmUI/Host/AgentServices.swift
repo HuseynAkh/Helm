@@ -20,6 +20,14 @@ import HelmPersistence
                 storage: any StorageFactsReading, connector: any ServerConnecting) {
         self.runtime = runtime; self.config = config; self.secrets = secrets; self.disk = disk
         self.storage = storage; self.connector = connector
+        // Each check's list of models is kept in ai.json under the provider and where it was asked, for the panel's
+        // model menu; a check that fails takes that list away.
+        runtime.checked = { [config] profile, models in
+            config.update { saved in
+                let names = models?.map(\.id) ?? []
+                saved.modelLists[profile.secretID.account] = names.isEmpty ? nil : names
+            }
+        }
     }
 
     /// Nothing outside the app: a scripted model, keys and choices in memory, an empty disk, every folder on this

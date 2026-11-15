@@ -26,6 +26,10 @@ public enum SetupRow: String, CaseIterable, Sendable {
         case .moveToApplications: return "Reopens Helm from there."
         }
     }
+    /// The one line about folder access, under Full Disk Access while it's off. Nil for the other rows.
+    public var folderNote: String? {
+        self == .fullDiskAccess ? "Without it, macOS asks about Desktop, Documents and Downloads." : nil
+    }
     /// What VoiceOver hears when the row turns done.
     var doneAnnouncement: String {
         switch self {
@@ -188,6 +192,13 @@ public enum SetupRowState: Equatable, Sendable {
         return "Only with Move to Applications."
     }
     public func isAvailable(_ row: SetupRow) -> Bool { unavailableReason(row) == nil }
+
+    /// The line about folder access under a row, in the checklist and only while that row isn't done: once Full Disk
+    /// Access is on, macOS asks about no folder.
+    public func folderNote(_ row: SetupRow) -> String? {
+        guard mode == .setup, !isDone(row) else { return nil }
+        return row.folderNote
+    }
 
     /// Every row on show is done already, so there's nothing to set up.
     public var nothingToDo: Bool { rows.allSatisfy(isDone) }

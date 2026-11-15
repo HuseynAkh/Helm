@@ -560,6 +560,82 @@ import HelmTestKit
         XCTAssertEqual(seen.last, .ready(provider: "Claude", destination: "Claude", model: "claude-opus-5-5", isLocal: false))
     }
 
+    // MARK: What checks found, for the model menu
+
+    func testEveryCheckTellsWhatTheProviderListedOrThatItDidNot() async throws {
+        let runtime = makeRuntime()
+        var heard: [(account: String, models: [String]?)] = []
+        runtime.checked = { profile, models in heard.append((profile.secretID.account, models?.map(\.id))) }
+        // While AI mode is off nothing is asked, so nothing is told.
+        _ = await runtime.check(AIConfig(provider: "lmStudio"))
+        XCTAssertTrue(heard.isEmpty)
+        runtime.setOn(true)
+        _ = await runtime.check(AIConfig(provider: "lmStudio"))
+        XCTAssertEqual(heard.last?.account, "lmStudio|127.0.0.1:1234")
+        XCTAssertEqual(heard.last?.models, ["model-a", "model-b"])
+        // A cloud provider with no key is told as having no list, without anything being built.
+        _ = await runtime.check(AIConfig(provider: "gemini"))
+        XCTAssertEqual(heard.last?.account, "gemini|generativelanguage.googleapis.com:443")
+        XCTAssertNil(heard.last?.models)
+        // A provider that fails, or lists nothing, has no list either.
+        factory.listed = .failure(.notRunning)
+        _ = await runtime.check(AIConfig(provider: "ollama", ports: ["ollama": 11500]))
+        XCTAssertEqual(heard.last?.account, "ollama|127.0.0.1:11500")
+        XCTAssertNil(heard.last?.models)
+        factory.listed = .success([])
+        _ = await runtime.check(AIConfig(provider: "lmStudio"))
+        XCTAssertNil(heard.last?.models)
+        // A config with no address says nothing about any provider.
+        let count = heard.count
+        _ = await runtime.check(AIConfig(provider: "other"))
+        XCTAssertEqual(heard.count, count)
+    }
+
+    func testAProviderOnThisMacIsListedAgainWithoutTouchingTheClientInUse() async throws {
+        let runtime = makeRuntime()
+        var heard: [String: [String]?] = [:]
+        runtime.checked = { profile, models in heard.updateValue(models?.map(\.id), forKey: profile.secretID.account) }
+        runtime.setOn(true)
+        runtime.configure(AIConfig(provider: "lmStudio", models: ["lmStudio": "model-a"]))
+        guard case .success(let inUse) = runtime.client() else { return XCTFail("no client") }
+        // The provider in use, asked again: a client of its own, shut down afterwards, and the one in use stays.
+        factory.listed = .success([AgentModelInfo(id: "model-c")].compactMap { $0 })
+        let answer = await runtime.relistLocal(AIConfig(provider: "lmStudio", models: ["lmStudio": "model-a"]))
+        XCTAssertEqual(answer, .connected([AgentModelInfo(id: "model-c")].compactMap { $0 }))
+        XCTAssertEqual(heard["lmStudio|127.0.0.1:1234"], ["model-c"])
+        await runtime.settle()
+        XCTAssertEqual(factory.built.count, 2)
+        XCTAssertEqual(factory.built[1].shutdowns, 1)
+        XCTAssertEqual(factory.built[0].shutdowns, 0, "the client in use is left alone")
+        guard case .success(let still) = runtime.client() else { return XCTFail("no client") }
+        XCTAssertTrue((still as AnyObject) === (inUse as AnyObject))
+        // Ollama, not running: told as having no list.
+        factory.listed = .failure(.notRunning)
+        _ = await runtime.relistLocal(AIConfig(provider: "ollama"))
+        XCTAssertEqual(heard["ollama|127.0.0.1:11434"], .some(nil))
+        // A cloud provider is never asked this way, even with its key saved, and neither is anything while AI mode is off.
+        try saveKey(for: .claude)
+        let built = factory.built.count
+        let cloud = await runtime.relistLocal(AIConfig(provider: "claude"))
+        XCTAssertEqual(cloud, .off)
+        runtime.setOn(false)
+        let off = await runtime.relistLocal(AIConfig(provider: "lmStudio"))
+        XCTAssertEqual(off, .off)
+        XCTAssertEqual(factory.built.count, built, "nothing more was built")
+        XCTAssertFalse(heard.keys.contains("claude|api.anthropic.com:443"))
+    }
+
+    func testAScriptedRuntimeListsAgainFromItsScript() async throws {
+        let runtime = makeRuntime(scripted: ScriptedModelClient(), countsSessions: false)
+        var heard: [String: [String]] = [:]
+        runtime.checked = { profile, models in heard[profile.secretID.account] = models?.map(\.id) }
+        runtime.setOn(true)
+        let answer = await runtime.relistLocal(AIConfig(provider: "lmStudio"))
+        XCTAssertEqual(answer, .connected([AgentModelInfo(id: "scripted-1")].compactMap { $0 }))
+        XCTAssertEqual(heard["lmStudio|127.0.0.1:1234"], ["scripted-1"])
+        XCTAssertEqual(runtime.clientBuildCount, 0)
+    }
+
     // MARK: Scripted
 
     func testAScriptedRuntimeIsReadyAsSoonAsAIModeIsOn() async {

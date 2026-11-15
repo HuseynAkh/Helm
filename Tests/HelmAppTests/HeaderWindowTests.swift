@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import XCTest
+import HelmAgent
 import HelmCore
 import HelmApp
 import HelmFileSystem
@@ -37,7 +38,7 @@ import HelmPersistence
 
     /// A window that's never shown, over a home with Documents (holding q2.txt), Downloads and deeper folders,
     /// already in Documents.
-    private func documentsWindow() async throws -> BrowserWindowController {
+    private func documentsWindow(agent: AgentServices? = nil) async throws -> BrowserWindowController {
         let env = try await AppEnvironment.test(home: home)
         for folder in ["Documents", "Downloads", "Documents/Reports", "Documents/Reports/Quarterly",
                        "Documents/\(longName.lastPathComponent)"] {
@@ -51,7 +52,7 @@ import HelmPersistence
             recents: env.recents, trashOrigins: env.trashOrigins, viewOptions: env.viewOptions, fileSystem: env.fileSystem,
             operations: operations, home: env.directories.home, volumes: volumes, icons: IconCache(limit: 50, previewLimit: 10),
             clock: env.clock, pasteboard: NSPasteboard(name: .init("helm.header-tests.\(UUID().uuidString)")),
-            persistsWindowFrames: false, openWith: env.openWith)
+            persistsWindowFrames: false, openWith: env.openWith, agent: agent)
         let host = QuietHost()
         self.host = host
         let controller = BrowserWindowController(dependencies: dependencies, host: host, frameName: "header-tests",
@@ -342,6 +343,53 @@ import HelmPersistence
         XCTAssertEqual(host?.aiScreens, 1, "AI mode is off, so the spark opens the AI mode screen.")
         XCTAssertFalse(controller.isAgentPanelOpen)
         XCTAssertFalse(controller.headerSparkForTesting.lit)
+    }
+
+    /// AI mode on with no model connected yet: the search field shows its spark as the header does, and a press on
+    /// it, File › Find with AI or the no-results button opens the AI mode screen, and the spark never turns on.
+    func testWithAIModeOnAndNoModelReadyTheSearchSparkAsksForTheAIScreen() async throws {
+        let secrets = MemorySecretStore()
+        let disk = MemoryAgentDisk(home: home.path)
+        // No scripted model and no way to make a live one: on, it's never ready.
+        let runtime = AgentRuntime(parts: AgentRuntimeParts(secrets: secrets, disk: disk, home: home.path,
+                                                            supportFolder: home.appendingPathComponent(".support").path,
+                                                            clock: SystemHelmClock(), buildStamp: ""))
+        let agent = AgentServices(runtime: runtime, config: AIConfigStore(), secrets: secrets, disk: disk,
+                                  storage: MemoryStorageFactsReader(home: home), connector: MemoryServerConnector())
+        let controller = try await documentsWindow(agent: agent)
+        controller.beginSearch()
+        // AI mode off: the magnifier, nothing to press, and Find with AI is off.
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        XCTAssertFalse(controller.pressSearchSparkForTesting())
+        XCTAssertFalse(controller.title(of: .findWithAI).1)
+        XCTAssertEqual(host?.aiScreens, 0)
+
+        runtime.setOn(true)
+        XCTAssertEqual(runtime.state, .notReady)
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark", "AI mode is on, so the field shows its spark")
+        XCTAssertTrue(controller.pressSearchSparkForTesting())
+        XCTAssertEqual(host?.aiScreens, 1, "with no model ready, the spark opens the AI mode screen")
+        XCTAssertFalse(controller.isAISearchOnForTesting, "and never turns on")
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark")
+        XCTAssertNil(controller.aiSearchStatusForTesting)
+        XCTAssertTrue(controller.title(of: .findWithAI).1, "File › Find with AI is there whenever AI mode is on")
+        controller.perform(.findWithAI)
+        XCTAssertEqual(host?.aiScreens, 2)
+        XCTAssertFalse(controller.isAISearchOnForTesting)
+
+        // Typing still searches names, and the no-results page's Find with AI asks for the screen too.
+        controller.typeIntoSearchForTesting("zzz-nothing")
+        let offered = await until { controller.contentStateForTesting?.buttons.contains { $0.action == .findWithAI } == true }
+        XCTAssertTrue(offered, "the no-results page offers Find with AI")
+        XCTAssertTrue(controller.pressContentButtonForTesting(AgentText.searchToggle))
+        XCTAssertEqual(host?.aiScreens, 3)
+        XCTAssertFalse(controller.isAISearchOnForTesting)
+        XCTAssertEqual(controller.activeTab?.search?.query.usesAI, false)
+
+        // AI mode off again: the magnifier is back.
+        runtime.setOn(false)
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        XCTAssertEqual(controller.header.searchField.aiToggleToolTipForTesting, AgentText.searchToggle)
     }
 
     func testTheSearchFieldShowsTheMagnifierUntilTheWindowSaysAISearchIsAvailable() async throws {

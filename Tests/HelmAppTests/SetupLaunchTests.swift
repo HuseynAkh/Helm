@@ -4,7 +4,7 @@ import Foundation
 import XCTest
 import HelmCore
 import HelmPersistence
-import HelmUI
+@testable import HelmUI
 @testable import HelmApp
 
 /// The copy that Set Up moved into Applications opens with --continue-setup, naming the rows to carry on with.
@@ -64,6 +64,217 @@ final class SetupLaunchTests: XCTestCase {
         window.close()
         access.showWelcomeIfNeeded()
         XCTAssertEqual(window.modeForTesting, "closed")
+    }
+}
+#endif
+
+#if os(macOS)
+/// Setup comes before anything macOS guards: while it's owed, launch shows the welcome checklist and holds every window
+/// back until it closes. It's owed until seen, and again whenever another build runs. Everything is a stand-in: in-memory
+/// settings, permission, file viewer and mover, and a throwaway home.
+@MainActor final class SetupBeforeWindowsTests: XCTestCase {
+    private var root: URL!
+    private var app: AppController?
+    private var home: URL { root.appendingPathComponent("home", isDirectory: true) }
+    private var documents: URL { home.appendingPathComponent("Documents", isDirectory: true) }
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        _ = NSApplication.shared
+        HeaderMotion.isDisabledForTesting = true
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("setup-first-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        try Data("r".utf8).write(to: documents.appendingPathComponent("report.txt"))
+    }
+    override func tearDownWithError() throws {
+        app?.onboardingForTesting?.close()
+        for window in app?.allWindows ?? [] { window.window?.close() }
+        app = nil
+        HeaderMotion.isDisabledForTesting = false
+        try? FileManager.default.removeItem(at: root)
+        try super.tearDownWithError()
+    }
+
+    /// An app whose launch holds its windows back for setup, as a person's launch does.
+    private func makeApp(build: String? = "cdhash H\"0a1b\"", continuing rows: [SetupRow]? = nil) -> AppController {
+        var options = LaunchOptions()
+        options.home = home
+        options.support = root.appendingPathComponent("support", isDirectory: true)
+        options.continueSetup = rows
+        let app = AppController(options: options)
+        app.staysInBackground = true
+        app.access.gatesLaunchForTesting = true
+        app.privacyForTesting?.buildIdentity = build
+        self.app = app
+        return app
+    }
+
+    private func until(_ timeout: TimeInterval = 15, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline { return false }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return true
+    }
+
+    func testAFirstLaunchShowsSetupBeforeAnyWindowAndReadsNothingUntilItCloses() async throws {
+        let app = makeApp()
+        // A folder asked for as Helm starts waits for setup too.
+        app.receive(.open([documents]), from: nil)
+        let launch = Task { @MainActor in await app.compose() }
+        let shown = await until { app.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(shown, "the checklist came first")
+        XCTAssertTrue(app.allWindows.isEmpty, "no window before setup")
+        XCTAssertEqual(app.dependencies?.volumes.isStarted, false, "no drive or cloud folder read")
+        XCTAssertTrue(app.access.windowsWaitForSetup)
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(screen.model.folderNote(.fullDiskAccess), SetupRow.fullDiskAccess.folderNote)
+        XCTAssertNil(screen.model.folderNote(.fileViewer))
+        // A new window asked for meanwhile waits for the checklist too.
+        app.newWindow(nil)
+        XCTAssertTrue(app.allWindows.isEmpty)
+
+        XCTAssertTrue(screen.pressForTesting("Not Now"))
+        await launch.value
+        XCTAssertEqual(app.allWindows.count, 1, "the window opens as today once setup has closed")
+        XCTAssertEqual(app.dependencies?.volumes.isStarted, true)
+        let tab = try XCTUnwrap(app.frontmost()?.activeTab)
+        XCTAssertEqual(tab.location.mutationTarget.map(PathSpelling.standardPath), PathSpelling.standardPath(documents))
+        let settings = try XCTUnwrap(app.environment?.settings)
+        XCTAssertTrue(settings.snapshot.bool(.onboardingCompleted))
+        XCTAssertEqual(settings.snapshot.string(.setupBuild), "cdhash H\"0a1b\"", "the build that went through it is kept")
+        XCTAssertFalse(app.access.setupOwed)
+        XCTAssertFalse(app.access.windowsWaitForSetup)
+        app.newWindow(nil)
+        XCTAssertEqual(app.allWindows.count, 2)
+    }
+
+    func testAFixtureRunOpensItsWindowsAtOnce() async throws {
+        var options = LaunchOptions()
+        options.home = home
+        options.support = root.appendingPathComponent("support", isDirectory: true)
+        let app = AppController(options: options)
+        app.staysInBackground = true
+        self.app = app
+        await app.compose()
+        XCTAssertNil(app.onboardingForTesting, "a fixture run never shows setup by itself")
+        XCTAssertEqual(app.allWindows.count, 1)
+        XCTAssertFalse(app.access.launchWaitsForSetup)
+        XCTAssertTrue(app.access.windowsMayOpen)
+    }
+
+    func testAMovedCopyCarriesOnBeforeItsWindows() async throws {
+        let app = makeApp(continuing: [.fullDiskAccess, .moveToApplications])
+        let launch = Task { @MainActor in await app.compose() }
+        let shown = await until { app.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(shown)
+        XCTAssertTrue(app.allWindows.isEmpty)
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        await screen.model.work?.value
+        XCTAssertEqual(screen.model.state(of: .fullDiskAccess), .waiting)
+        screen.close()
+        await launch.value
+        XCTAssertEqual(app.allWindows.count, 1)
+        XCTAssertNotEqual(app.onboardingForTesting?.modeForTesting, "setup", "the checklist isn't shown twice")
+    }
+
+    func testALaunchOnlyForFinderShowsNothingUntilHelmIsAskedFor() async throws {
+        let app = makeApp()
+        app.receive(.open([documents.appendingPathComponent("Photos", isDirectory: true)]), from: "com.apple.archiveutility")
+        await app.compose()
+        XCTAssertTrue(app.startedForFinder)
+        XCTAssertNil(app.onboardingForTesting, "nothing comes up over Finder")
+        XCTAssertEqual(app.dependencies?.volumes.isStarted, false)
+        // A click on the Dock icon is the launch that was put off: setup first, then the window.
+        XCTAssertFalse(app.reopen(from: "com.apple.dock", hasVisibleWindows: false))
+        let shown = await until { app.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(shown)
+        XCTAssertTrue(app.allWindows.isEmpty)
+        try XCTUnwrap(app.onboardingForTesting).close()
+        let opened = await until { app.allWindows.count == 1 }
+        XCTAssertTrue(opened)
+    }
+}
+
+/// Whether setup is owed, as the access coordinator works it out from what Settings kept and which build runs.
+@MainActor final class SetupOwedTests: XCTestCase {
+    private func until(_ timeout: TimeInterval = 15, _ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline { return false }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return true
+    }
+
+    private func coordinator(_ settings: SettingsStore) async -> AccessCoordinator {
+        _ = NSApplication.shared
+        let viewer = FileViewerModel(role: MemoryFileViewerRole())
+        let access = AccessCoordinator(isolated: true, interactive: false)
+        access.gatesLaunchForTesting = true
+        await access.start(settings: settings, fileViewer: { viewer }, windows: { [] })
+        return access
+    }
+
+    func testSetupIsOwedUntilSeenAndAgainWhenAnotherBuildRuns() async throws {
+        let settings = SettingsStore(storage: IsolatedSettings())
+        let access = await coordinator(settings)
+        defer { access.onboarding?.close() }
+        let privacy = try XCTUnwrap(access.privacy as? MemoryPrivacyAccess)
+        privacy.buildIdentity = "cdhash H\"aaaa\""
+        XCTAssertTrue(access.setupOwed, "never seen")
+
+        let first = Task { @MainActor in await access.setUpBeforeWindows() }
+        let shown = await until { access.onboarding?.modeForTesting == "setup" }
+        XCTAssertTrue(shown)
+        XCTAssertTrue(access.windowsWaitForSetup)
+        XCTAssertFalse(access.windowsMayOpen)
+        // A second way to a window waits for the same checklist.
+        var second = false
+        let other = Task { @MainActor in await access.setUpBeforeWindows(); second = true }
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(second)
+        XCTAssertTrue(try XCTUnwrap(access.onboarding).pressForTesting("Not Now"))
+        await first.value
+        await other.value
+        XCTAssertTrue(second)
+        XCTAssertTrue(access.windowsMayOpen)
+        XCTAssertEqual(settings.snapshot.string(.setupBuild), "cdhash H\"aaaa\"")
+        XCTAssertFalse(access.setupOwed)
+
+        // Another ad hoc build has another code hash, so macOS has forgotten its access: setup is owed again.
+        privacy.buildIdentity = "cdhash H\"bbbb\""
+        XCTAssertTrue(access.setupOwed)
+        // A properly signed build keeps its requirement across updates, and one that can't say counts as the same.
+        privacy.buildIdentity = "cdhash H\"aaaa\""
+        XCTAssertFalse(access.setupOwed)
+        privacy.buildIdentity = nil
+        XCTAssertFalse(access.setupOwed)
+    }
+
+    func testTheBuildThatWentThroughSetupGoesStraightToItsWindows() async throws {
+        let settings = SettingsStore(storage: IsolatedSettings())
+        settings.set(.bool(true), for: .onboardingCompleted)
+        settings.set(.string("identifier \"com.helm.filemanager\" and anchor apple generic"), for: .setupBuild)
+        let access = await coordinator(settings)
+        defer { access.onboarding?.close() }
+        let privacy = try XCTUnwrap(access.privacy as? MemoryPrivacyAccess)
+        privacy.buildIdentity = "identifier \"com.helm.filemanager\" and anchor apple generic"
+        await access.setUpBeforeWindows()
+        XCTAssertNil(access.onboarding, "nothing was shown")
+        XCTAssertTrue(access.windowsMayOpen)
+
+        // Seen long ago by a build before this one, as after an update from 0.1: the checklist comes back.
+        let again = await coordinator(settings)
+        defer { again.onboarding?.close() }
+        (again.privacy as? MemoryPrivacyAccess)?.buildIdentity = "cdhash H\"cccc\""
+        let gate = Task { @MainActor in await again.setUpBeforeWindows() }
+        let shown = await until { again.onboarding?.modeForTesting == "setup" }
+        XCTAssertTrue(shown)
+        again.onboarding?.close()
+        await gate.value
+        XCTAssertEqual(settings.snapshot.string(.setupBuild), "cdhash H\"cccc\"")
     }
 }
 #endif

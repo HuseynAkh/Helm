@@ -41,6 +41,16 @@ extension HostSmokeDriver {
             }
             await wait(seconds: 0.4)
             check(window.activeTab?.addressBar.isEditing == false, step, "still editing")
+        case "location-press":
+            // location-press path|panel|files|sidebar|header: a click in the middle of that part of the window, as a
+            // person's click there, while the location bar may be typed in. It fails when that part isn't on show.
+            check(window.pressForTesting(in: argument), step, "\(argument) isn't on show")
+            await wait(seconds: 0.3)
+        case "location-typing":
+            // location-typing true|false: whether the location bar is being typed in, and so watches for presses.
+            let typing = window.activeTab?.addressBar.isEditing == true
+            let watched = window.watchesLocationPressesForTesting
+            check(typing == (argument == "true") && watched == typing, step, "typing \(typing), watching \(watched)")
         case "escape-files":
             window.pressEscapeInFilesForTesting()
             await wait(seconds: 0.4)

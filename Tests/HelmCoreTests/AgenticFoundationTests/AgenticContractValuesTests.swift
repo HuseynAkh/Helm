@@ -13,12 +13,14 @@ final class AgenticContractValuesTests: XCTestCase {
         XCTAssertEqual(config.ports, [:])
         XCTAssertNil(config.otherAddress)
         XCTAssertEqual(config.keyOwners, [:])
+        XCTAssertEqual(config.modelLists, [:])
     }
 
     func testAIConfigRoundTrips() throws {
         let config = AIConfig(provider: "claude", models: ["claude": "claude-opus-5-5", "ollama": "llama"],
                               ports: ["ollama": 11434, "lmStudio": 1234], otherAddress: "models.example.com/v1",
-                              keyOwners: ["claude|api.anthropic.com:443": "1024-1700000000"])
+                              keyOwners: ["claude|api.anthropic.com:443": "1024-1700000000"],
+                              modelLists: ["lmStudio|127.0.0.1:1234": ["qwen-9b", "llama-5-8b"]])
         let data = try JSONEncoder().encode(config)
         XCTAssertEqual(try JSONDecoder().decode(AIConfig.self, from: data), config)
         XCTAssertEqual(try JSONDecoder().decode(AIConfig.self, from: JSONEncoder().encode(AIConfig())), AIConfig())
@@ -41,7 +43,7 @@ final class AgenticContractValuesTests: XCTestCase {
         let config = AIConfig(provider: "claude", models: ["claude": "m"], ports: ["ollama": 11434], otherAddress: "a.example.com",
                               keyOwners: ["claude|api.anthropic.com:443": "stamp"])
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any])
-        XCTAssertEqual(Set(object.keys), ["provider", "models", "ports", "otherAddress", "keyOwners"])
+        XCTAssertEqual(Set(object.keys), ["provider", "models", "ports", "otherAddress", "keyOwners", "modelLists"])
         XCTAssertFalse(object.keys.contains { $0.lowercased().contains("secret") || $0.lowercased().contains("token") || $0.lowercased() == "key" })
     }
 

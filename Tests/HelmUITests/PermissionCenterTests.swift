@@ -40,6 +40,21 @@ import HelmTestKit
         XCTAssertEqual(SystemPrivacyAccess.probedFolders, [".Trash", "Library/Safari", "Library/Mail"])
     }
 
+    /// What tells one build from another is the code signature's designated requirement, read from the signature the
+    /// process already carries: the same every time it's read, one line of text Settings keeps as it is.
+    func testTheBuildIsToldApartByItsDesignatedRequirement() throws {
+        let running = SystemPrivacyAccess()
+        let identity = try XCTUnwrap(running.buildIdentity, "the test runner is signed")
+        XCTAssertEqual(running.buildIdentity, identity)
+        XCTAssertEqual(SystemPrivacyAccess().buildIdentity, identity, "every read of the same build agrees")
+        XCTAssertEqual(SettingsSchema.validated(.string(identity), for: .setupBuild), .string(identity))
+        // The stand-in says nothing until a test sets it, and the shared permission passes on what it says.
+        let stand = MemoryPrivacyAccess()
+        XCTAssertNil(stand.buildIdentity)
+        stand.buildIdentity = "cdhash H\"0a1b\""
+        XCTAssertEqual(PermissionCenter(provider: stand).buildIdentity, "cdhash H\"0a1b\"")
+    }
+
     func testChangesAreSentOncePerChange() async {
         let stand = MemoryPrivacyAccess(status: .denied)
         let center = PermissionCenter(provider: stand)
