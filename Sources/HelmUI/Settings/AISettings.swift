@@ -5,9 +5,9 @@ import HelmAgent
 import SwiftUI
 
 /// Settings › AI: the switch with the consent line as its footer, as General's switches have theirs, and once it is
-/// on the provider, its key (or a local provider's state) and its model. Drawn from the same model as the AI mode
-/// screen. Settings has no Done, so what is typed is entered on Return, as the caret leaves a field, or as the pane
-/// goes away.
+/// on the provider with its help, its key (or OpenAI's ChatGPT sign-in, or a local provider's state) and its model.
+/// Drawn from the same model as the AI mode screen. Settings has no Done, so what is typed is entered on Return, as
+/// the caret leaves a field, or as the pane goes away.
 struct AISettingsView: View {
     @ObservedObject var model: AISetupModel
     @State private var draftKey = ""
@@ -34,13 +34,25 @@ struct AISettingsView: View {
             }
             if model.isOn {
                 Section {
-                    Picker(AgentText.providerLabel, selection: Binding(get: { model.provider }, set: { model.choose($0) })) {
-                        ForEach(AgentProviderID.allCases, id: \.self) { id in
-                            Text(verbatim: AgentProviderCatalog.name(id)).tag(id)
+                    HStack(spacing: 10) {
+                        Picker(AgentText.providerLabel, selection: Binding(get: { model.provider }, set: { model.choose($0) })) {
+                            ForEach(AgentProviderID.allCases, id: \.self) { id in
+                                Text(verbatim: AgentProviderCatalog.name(id)).tag(id)
+                            }
                         }
+                        AIProviderHelp(model: model)
                     }
                     if model.provider == .other { address }
-                    if model.showsKeyField { key } else if !model.takesKey { localState }
+                    if model.usesChatGPT {
+                        VStack(alignment: .leading, spacing: 4) {
+                            AIChatGPTSection(model: model)
+                            AIModeStateRow(model: model)
+                        }
+                    } else if model.showsKeyField {
+                        key
+                    } else if !model.takesKey {
+                        localState
+                    }
                     // Other has no models to offer until an address has been taken.
                     if model.provider != .other || model.hasProfile { modelRow }
                 }
@@ -92,6 +104,7 @@ struct AISettingsView: View {
                 if model.hasSavedKey { Button(AgentText.removeKey) { model.removeKey() } }
             }
             AIModeStateRow(model: model)
+            if model.provider == .openAI { AIUseChatGPTLink(model: model) }
         }
     }
 
@@ -137,11 +150,14 @@ struct AISettingsView: View {
                 .focused($focused, equals: .model)
                 .onSubmit { model.typeModel(draftModel) }
         } else {
-            Picker(AgentText.modelLabel, selection: Binding(get: { model.model ?? "" }, set: { model.chooseModel($0) })) {
-                if model.model == nil { Text(verbatim: "").tag("") }
-                ForEach(model.modelChoices, id: \.self) { id in Text(verbatim: id).tag(id) }
+            HStack(spacing: 10) {
+                Picker(AgentText.modelLabel, selection: Binding(get: { model.model ?? "" }, set: { model.chooseModel($0) })) {
+                    if model.model == nil { Text(verbatim: "").tag("") }
+                    ForEach(model.modelChoices, id: \.self) { id in Text(verbatim: model.modelTitle(id)).tag(id) }
+                }
+                .disabled(model.modelChoices.isEmpty)
+                AIRefreshModelsButton(model: model)
             }
-            .disabled(model.modelChoices.isEmpty)
         }
     }
 

@@ -15,7 +15,8 @@ extension AppController {
     /// - `--live-agent` is the same, but with no scripted model: the client is the one a real launch builds, so a
     ///   request goes to the transport that ships, which the smoke run's sandbox then stops.
     /// - Any other launch keeps keys in the login keychain, reads the home folder through the real agent disk with
-    ///   macOS's own place facts, and hands a server address to macOS.
+    ///   macOS's own place facts, and hands a server address to macOS. It alone can sign in with ChatGPT, and it alone
+    ///   hands a help page or the sign-in to the default browser; a fixture run opens nothing.
     /// In every run the client is built only while AI mode is on, the first time a request needs it.
     func makeAgentServices(_ environment: AppEnvironment) -> AgentServices {
         let home = environment.directories.home
@@ -47,9 +48,14 @@ extension AppController {
                                       supportFolder: environment.directories.applicationSupport.path,
                                       clock: environment.clock, buildStamp: Self.buildStamp(), scripted: scripted,
                                       makeClient: scripted == nil ? AgentLiveParts.makeClient : nil,
-                                      makeSession: AgentLiveParts.makeSession)
+                                      makeSession: AgentLiveParts.makeSession,
+                                      makeSignIn: options.isIsolated ? nil : AgentLiveParts.makeSignIn)
+        let isolated = options.isIsolated
+        let openInBrowser: @MainActor @Sendable (URL) -> Bool = { @MainActor url in
+            isolated ? false : NSWorkspace.shared.open(url)
+        }
         return AgentServices(runtime: AgentRuntime(parts: parts), config: environment.aiConfig, secrets: secrets, disk: disk,
-                             storage: storage, connector: connector)
+                             storage: storage, connector: connector, openInBrowser: openInBrowser)
     }
 
     /// The scripted model of a fixture run. It takes its answers from `agent-script.json` beside the fixture home when

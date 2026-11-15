@@ -4,15 +4,21 @@ import HelmAgent
 import HelmCore
 import HelmPersistence
 
-/// What Settings › AI and the AI mode screen show and change: whether AI mode is on, the provider, its key and its
-/// model. Both are drawn from one model, so they always agree.
+/// What Settings › AI and the AI mode screen show and change: whether AI mode is on, the provider, its key or its
+/// ChatGPT sign-in, and its model, with a line and a page on how to connect each provider. Both are drawn from one
+/// model, so they always agree.
 ///
-/// Nothing here asks a provider anything until the person does something that needs an answer: enters a key, picks
-/// a provider that runs on this Mac or has a saved key, sets an address, or presses Try Again. Opening either screen
-/// asks nothing. A saved key is never read back: the store is asked only whether one is there.
+/// Nothing here asks a provider anything until the person does something that needs an answer: enters a key, signs
+/// in, picks a provider that runs on this Mac or has a saved key or sign-in, sets an address, or presses Try Again or
+/// Refresh Models. Opening either screen asks nothing. A saved key or sign-in is never read back: the store is asked
+/// only whether one is there, and for the email saved beside a sign-in.
 @MainActor public final class AISetupModel: ObservableObject {
     /// Where the chosen provider stands, as the state line beside its key or local app says.
-    public enum Connection: Equatable { case none, checking, connected(Int), noKey, wrongKey, cantReach, notRunning, noModels, keyDenied }
+    public enum Connection: Equatable {
+        case none, checking, connected(Int), noKey, wrongKey, cantReach, notRunning, noModels, keyDenied, planLimit, planNotCovered
+    }
+    /// Where a ChatGPT sign-in stands: none under way, waiting for the browser, or ended with a line to show.
+    public enum SignIn: Equatable { case idle, waiting, failed(String) }
 
     private let settings: SettingsStore
     private let services: AgentServices
@@ -29,6 +35,13 @@ import HelmPersistence
     /// How many times Done was pressed and the screen couldn't close, since the provider was last shown. The screen
     /// marks a missing key as the problem and puts the caret back in its field each time.
     @Published private(set) var refusedDone = 0
+    @Published public private(set) var signIn: SignIn = .idle
+    /// Said after Remove when OpenAI didn't confirm that it revoked the sign-in.
+    @Published private(set) var signOutLine: String?
+    /// The sign-in under way, for Cancel and tests.
+    private(set) var signInTask: Task<Void, Never>?
+    /// The last sign-in was declined or didn't allow plan use, so the next one asks the person to agree again.
+    private var signInAsksConsent = false
 
     /// What pressing Done does on the AI mode screen, with the key typed into its field and not yet entered. The
     /// window showing the screen sets it.
@@ -60,8 +73,41 @@ import HelmPersistence
         return AgentText.consent(provider == .other ? AgentText.destinationNotSet : providerName)
     }
 
-    /// Whether a key is saved for the provider at its address. The key itself is never read.
-    public var hasSavedKey: Bool { profile.map { services.secrets.has($0.secretID) } ?? false }
+    /// Whether a key is saved for the provider at its address. The key itself is never read. Never for OpenAI while it
+    /// is reached with a ChatGPT sign-in.
+    public var hasSavedKey: Bool { !usesChatGPT && (profile.map { services.secrets.has($0.secretID) } ?? false) }
+
+    /// OpenAI, reached with the person's ChatGPT sign-in: the usual way, unless they chose to use a key instead.
+    public var usesChatGPT: Bool { provider == .openAI && !services.config.config.openAIUsesKey }
+    /// Signed in with ChatGPT, from the keychain item's attributes alone.
+    public var isSignedIn: Bool { services.secrets.hasSignIn(.chatGPTTokens) }
+    /// What the provider needs before it can be asked: a saved key, or the ChatGPT sign-in.
+    var hasCredential: Bool { usesChatGPT ? isSignedIn : hasSavedKey }
+    /// Who is signed in with ChatGPT, by the email saved beside the sign-in. Nil unless signed in.
+    var accountLine: String? {
+        guard usesChatGPT, isSignedIn else { return nil }
+        return services.secrets.signInNote(.chatGPTTokens).map(AgentText.signedInAs) ?? AgentText.signedIn
+    }
+    /// The line a sign-in under way or one that ended shows.
+    var signInLine: String? {
+        switch signIn {
+        case .idle: return nil
+        case .waiting: return AgentText.signInWaiting
+        case .failed(let line): return line
+        }
+    }
+
+    /// The info button's tooltip: what the provider uses and what it costs.
+    var helpLine: String { AgentText.providerHelp(provider, usesChatGPT: usesChatGPT) }
+    /// The provider's page on connecting. Nil for Other.
+    var helpPage: URL? { AgentHelpLinks.howToConnect(provider, usesChatGPT: usesChatGPT) }
+    /// The providers whose model must be one their list names: what runs on this Mac, a typed address and a ChatGPT
+    /// plan offer only what they list.
+    var picksFromList: Bool { isLocal || provider == .other || usesChatGPT }
+    /// Refresh Models can ask now: the provider has an address, and what it needs to be asked.
+    var canRefreshModels: Bool {
+        isOn && profile != nil && connection != .checking && (isLocal || provider == .other || hasCredential)
+    }
 
     /// A local provider whose server isn't answering, or can't be reached: its port may be the reason.
     public var showsPort: Bool { isLocal && (connection == .notRunning || connection == .cantReach) }
@@ -83,8 +129,9 @@ import HelmPersistence
     /// The providers that take a key: the four cloud ones and a typed address.
     var takesKey: Bool { provider != .ollama && provider != .lmStudio }
     /// The key field shows for a provider that takes a key, and for Other only once its address has been taken, so a
-    /// key is always saved under the address it is for.
-    var showsKeyField: Bool { takesKey && profile != nil }
+    /// key is always saved under the address it is for. OpenAI shows it only when the person chose a key over their
+    /// ChatGPT sign-in.
+    var showsKeyField: Bool { takesKey && profile != nil && !usesChatGPT }
     /// The port a local provider is asked on.
     var port: Int? { services.config.config.ports[provider.rawValue] ?? AgentProviderCatalog.defaultPort(provider) }
     /// The address saved for Other, as it was taken.
@@ -98,19 +145,23 @@ import HelmPersistence
         case .none: return nil
         case .checking: return AgentText.stateChecking
         case .connected: return AgentText.stateConnected
+        // With ChatGPT the button is the call to act; Done pressed without it says what is missing.
+        case .noKey where usesChatGPT: return refusedDone > 0 ? AgentText.signInFirst : nil
         case .noKey: return AgentText.stateNoKey
         case .wrongKey: return AgentText.stateWrongKey
         case .cantReach: return AgentText.stateCantReach(destinationName)
         case .notRunning: return provider == .lmStudio ? AgentText.failLMStudioNotRunning : AgentText.failOllamaNotRunning
         case .noModels: return AgentText.stateNoModels(destinationName)
         case .keyDenied: return AgentText.failKeyDenied
+        case .planLimit: return AgentText.planLimit
+        case .planNotCovered: return AgentText.statePlanNotCovered
         }
     }
-    /// The state line has Try Again beside it.
+    /// The state line has Try Again beside it. A provider with no models yet is asked again once one is loaded.
     var offersTryAgain: Bool {
         switch connection {
-        case .cantReach, .notRunning, .keyDenied: return true
-        case .none, .checking, .connected, .noKey, .wrongKey, .noModels: return false
+        case .cantReach, .notRunning, .keyDenied, .noModels: return true
+        case .none, .checking, .connected, .noKey, .wrongKey, .planLimit, .planNotCovered: return false
         }
     }
     var isConnected: Bool { if case .connected = connection { return true } else { return false } }
@@ -120,6 +171,8 @@ import HelmPersistence
         guard let model, !listed.contains(model) else { return listed }
         return [model] + listed
     }
+    /// What the menu shows for a model: its name from a ChatGPT plan's list, else its id.
+    func modelTitle(_ id: String) -> String { models.first { $0.id == id }?.title ?? id }
 
     // MARK: What the person does
 
@@ -129,11 +182,103 @@ import HelmPersistence
         settings.set(.bool(on), for: .aiModeEnabled)
     }
 
-    /// A local provider, or one with a saved key, is checked at once.
+    /// A local provider, or one with a saved key or sign-in, is checked at once.
     public func choose(_ provider: AgentProviderID) {
         services.config.update { $0.provider = provider.rawValue }
         if self.provider != provider { show(provider) }
-        if isLocal || (takesKey && hasSavedKey) { check() } else { stopChecking() }
+        if isLocal || (takesKey && hasCredential) { check() } else { stopChecking() }
+    }
+
+    /// Asks the provider for its models again, as Try Again does: Refresh Models beside the model menu.
+    public func refreshModels() {
+        guard canRefreshModels else { return }
+        check(triesV1: false)
+    }
+
+    // MARK: ChatGPT
+
+    /// Continue with ChatGPT: signs in through the browser, and checks the connection once signed in. While AI mode is
+    /// off, in a fixture run, or with a sign-in already under way, nothing starts.
+    public func continueWithChatGPT() {
+        guard isOn, usesChatGPT, signIn != .waiting else { return }
+        keepProvider()
+        signOutLine = nil
+        guard let session = services.runtime.chatGPTSignIn() else {
+            signIn = .failed(AgentText.signInUnavailable)
+            return
+        }
+        signIn = .waiting
+        let open = services.openInBrowser
+        let asksConsent = signInAsksConsent
+        signInTask = Task { [weak self] in
+            var failure: AgentSignInFailure?
+            do {
+                _ = try await session.run(asksConsent: asksConsent) { address in await MainActor.run { open(address) } }
+            } catch {
+                failure = error as? AgentSignInFailure ?? .failed
+            }
+            guard let self else { return }
+            self.finishSignIn(failure)
+        }
+    }
+
+    /// Stops a sign-in under way. The browser may stay open on OpenAI's page; nothing comes back from it.
+    public func cancelSignIn() { signInTask?.cancel() }
+
+    /// Remove: signs out of ChatGPT. The tokens leave the keychain, and OpenAI is asked to revoke the sign-in; when it
+    /// doesn't confirm, a line says where to disconnect Helm by hand.
+    public func removeSignIn() {
+        guard usesChatGPT, isSignedIn else { return }
+        stopChecking()
+        models = []
+        let runtime = services.runtime
+        signOutTask = Task { [weak self] in
+            let confirmed = await runtime.signOutOfChatGPT()
+            guard let self else { return }
+            self.signOutLine = confirmed ? nil : AgentText.signOutUnconfirmed
+            self.objectWillChange.send()
+            self.connection = self.restingConnection
+            self.signOutTask = nil
+        }
+    }
+    /// The sign-out under way, for tests to wait on.
+    private(set) var signOutTask: Task<Void, Never>?
+
+    /// "Use an API key instead", or back to the ChatGPT sign-in. Either is checked at once when it is ready.
+    public func useKey(_ key: Bool) {
+        guard provider == .openAI, services.config.config.openAIUsesKey != key else { return }
+        cancelSignIn()
+        keepProvider()
+        services.config.update { $0.openAIUsesKey = key }
+        show(provider)
+        if hasCredential { check() }
+    }
+
+    /// Opens the provider's page on connecting in the browser.
+    public func openHowToConnect() {
+        guard let page = helpPage else { return }
+        _ = services.openInBrowser(page)
+    }
+
+    /// Opens ChatGPT's usage settings in the browser.
+    public func openManageUsage() {
+        guard let page = AgentHelpLinks.manageUsage else { return }
+        _ = services.openInBrowser(page)
+    }
+
+    private func finishSignIn(_ failure: AgentSignInFailure?) {
+        signInTask = nil
+        services.runtime.chatGPTSignInChanged()
+        objectWillChange.send()
+        guard let failure else {
+            signInAsksConsent = false
+            signIn = .idle
+            if usesChatGPT { check() }
+            return
+        }
+        if failure == .declined || failure == .planOff { signInAsksConsent = true }
+        signIn = AgentText.signInFailure(failure).map(SignIn.failed) ?? .idle
+        if usesChatGPT, connection != .checking { connection = restingConnection }
     }
 
     /// Takes a pasted key, saves it under the provider and the address it is for, clears the field and checks it.
@@ -242,7 +387,7 @@ import HelmPersistence
             enterKey(pendingKey)
         }
         await settle()
-        if isOn, connection == .none, isLocal || hasSavedKey || provider == .other {
+        if isOn, connection == .none, isLocal || hasCredential || provider == .other {
             check()
             await settle()
         }
@@ -285,6 +430,13 @@ import HelmPersistence
         case AgentText.aiTitle, AgentText.settingsAIMode: setOn(!isOn)
         case AgentText.tryAgain where offersTryAgain: tryAgain()
         case AgentText.removeKey where hasSavedKey: removeKey()
+        case AgentText.continueWithChatGPT where isOn && usesChatGPT && !isSignedIn && signIn != .waiting: continueWithChatGPT()
+        case AgentText.cancel where signIn == .waiting: cancelSignIn()
+        case AgentText.removeSignIn where isOn && usesChatGPT && isSignedIn: removeSignIn()
+        case AgentText.useKeyInstead where isOn && usesChatGPT: useKey(true)
+        case AgentText.useChatGPTInstead where isOn && provider == .openAI && !usesChatGPT: useKey(false)
+        case AgentText.howToConnect where isOn && helpPage != nil: openHowToConnect()
+        case AgentText.refreshModels where canRefreshModels: refreshModels()
         case AgentText.done:
             guard let donePressed else { return false }
             donePressed(nil)
@@ -295,7 +447,8 @@ import HelmPersistence
         return true
     }
 
-    /// "none", "checking", "connected", "noKey", "wrongKey", "cantReach", "notRunning", "noModels" or "keyDenied".
+    /// "none", "checking", "connected", "noKey", "wrongKey", "cantReach", "notRunning", "noModels", "keyDenied",
+    /// "planLimit" or "planNotCovered".
     public var connectionForTesting: String {
         switch connection {
         case .none: return "none"
@@ -307,6 +460,8 @@ import HelmPersistence
         case .notRunning: return "notRunning"
         case .noModels: return "noModels"
         case .keyDenied: return "keyDenied"
+        case .planLimit: return "planLimit"
+        case .planNotCovered: return "planNotCovered"
         }
     }
 
@@ -316,6 +471,9 @@ import HelmPersistence
         guard isOn else { return lines }
         lines.append(consentLine)
         if let addressProblem { lines.append(addressProblem) }
+        if let accountLine { lines.append(accountLine) }
+        if let signInLine { lines.append(signInLine) }
+        if let signOutLine { lines.append(signOutLine) }
         if let stateLine { lines.append(stateLine) }
         if hasSavedKey { lines.append(AgentText.keySaved) }
         return lines
@@ -338,10 +496,11 @@ import HelmPersistence
         return try? AgentProviderCatalog.profile(for: config).get()
     }
 
-    /// How the provider stands before anything has been asked: a cloud provider with no key has none, which needs
-    /// no question to know.
+    /// How the provider stands before anything has been asked: a cloud provider with no key has none, and OpenAI
+    /// with no ChatGPT sign-in has none either, which needs no question to know.
     private var restingConnection: Connection {
         guard isOn else { return .none }
+        if usesChatGPT { return isSignedIn ? .none : .noKey }
         if let profile, profile.needsKey, !services.secrets.has(profile.secretID) { return .noKey }
         return .none
     }
@@ -379,17 +538,29 @@ import HelmPersistence
 
     private func apply(_ answer: AgentConnection) {
         switch answer {
+        case .connected(let listed) where listed.isEmpty:
+            // Connected means a model can run, so a provider that lists none says so instead.
+            models = []
+            connection = .noModels
         case .connected(let listed):
             models = listed
             connection = .connected(listed.count)
-            // A provider with no first choice of its own runs the first model it lists until another is picked.
-            if model == nil, let first = listed.first { chooseModel(first.id) }
+            // A Connected provider is always ready to run. One with no first choice of its own runs the first model it
+            // lists until another is picked. LM Studio, Ollama, Other and a ChatGPT plan also leave a model the list no
+            // longer has, or a first choice the plan doesn't offer, for the plan's own first choice or the first listed.
+            let listedIDs = Set(listed.map(\.id))
+            let unlisted = model.map { !listedIDs.contains($0) } ?? true
+            if model == nil || (picksFromList && unlisted), let first = listed.first {
+                chooseModel(AgentModelLister.preselected(listed, provider: provider) ?? first.id)
+            }
         case .noKey: models = []; connection = .noKey
         case .wrongKey: models = []; connection = .wrongKey
         case .cantReach: models = []; connection = .cantReach
         case .notRunning: models = []; connection = .notRunning
         case .noModels: models = []; connection = .noModels
         case .keyDenied: models = []; connection = .keyDenied
+        case .planLimit: models = []; connection = .planLimit
+        case .planNotCovered: models = []; connection = .planNotCovered
         case .off: models = []; connection = .none
         }
     }
@@ -414,6 +585,7 @@ import HelmPersistence
         guard on != isOn else { return }
         isOn = on
         refusedDone = 0
+        cancelSignIn()
         stopChecking()
         models = []
         connection = restingConnection
@@ -421,6 +593,7 @@ import HelmPersistence
 
     private func configChanged(_ config: AIConfig) {
         if let saved = config.provider.flatMap(AgentProviderID.init(rawValue:)), saved != provider { show(saved) }
+        objectWillChange.send()
         let chosen = Self.model(for: provider, in: config)
         if chosen != model { model = chosen }
     }
@@ -428,10 +601,13 @@ import HelmPersistence
     /// Shows another provider, with nothing asked yet.
     private func show(_ next: AgentProviderID) {
         stopChecking()
+        if next != provider || signIn != .waiting { cancelSignIn() }
         provider = next
         refusedDone = 0
         models = []
         addressProblem = nil
+        signOutLine = nil
+        if signIn != .waiting { signIn = .idle }
         model = Self.model(for: next, in: services.config.config)
         connection = restingConnection
     }
