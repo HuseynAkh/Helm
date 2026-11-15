@@ -125,6 +125,9 @@ public final class AgentLoopbackListener: AgentCallbackListening, @unchecked Sen
     /// Reads one request from `client`, answers it and closes it. The query, when this was the callback.
     private func answer(_ client: Int32, path: String, accepts: @Sendable ([String: String]) -> Bool) -> [String: String]? {
         defer { close(client) }
+        // On macOS an accepted connection inherits the listening socket's O_NONBLOCK. A browser can connect a moment
+        // before it sends the request, so the connection reads blocking, bounded by the time limit below.
+        _ = fcntl(client, F_SETFL, fcntl(client, F_GETFL) & ~O_NONBLOCK)
         var on: Int32 = 1
         setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         var limit = timeval(tv_sec: Self.connectionSeconds, tv_usec: 0)
