@@ -85,10 +85,10 @@ Each one has a default, used in this build. Huseyn can change any of them.
 | 1. Download cloud files on request? | No. Version 0.2 never downloads. A step that needs a file that isn't downloaded is left out, with a count. A ticked "Download N files" line could come later. |
 | 2. Read inside files? | No. Only names and details are sent. A fourth tool and a Settings row are the first follow-up. |
 | 3. OpenAI's preselected model | `gpt-6-astra`, the vendor's stated starting point. One constant to change. |
-| 4. The About line | Unchanged: "Finder underneath, Nautilus on top." The proposed alternative is "An agentic file manager for your Mac." |
+| 4. The About line | Settled on 2026-11-14: it reads "An agentic file manager for your Mac." |
 | 5. A separate model for search | No. AI search uses the model picked in Settings › AI. |
 | 6. Did "your current URL" mean `~ / Documents / Reports` or the literal path? | Settled by the path bar ruling of 2026-11-13: the path bar is unchanged, and the panel's chip shows the folder and its place. |
-| 7. The version number | 0.2, the default used, since Huseyn named no other. `App/Info.plist` reads 0.2 (build 2), and the notes are in `docs/releases/0.2.md`. |
+| 7. The version number | Settled on 2026-11-14: 0.2. `App/Info.plist` reads 0.2 (build 2), and the notes are in `docs/releases/0.2.md`. |
 
 ## Open
 
@@ -97,8 +97,8 @@ Each one has a default, used in this build. Huseyn can change any of them.
 3. **Small local models** can miss files in big folders; a native Ollama adapter with a larger context is the first fix if testing shows that.
 4. **Opening the panel in the list** hides the sidebar at the default width so the columns keep their words, and gives it back on close. Keeping the sidebar with a narrower list is a one-line change.
 5. **Light-mode header icons** draw in the full label colour since the last fix; their contrast was not looked at again in a real window.
-6. **Draft header lines.** 472 files still start with a "DRAFT: pending … review" line from before this run.
-7. **The README's footer** still names the tools the first version was built with. It was left as Huseyn wrote it.
+6. **Draft header lines.** Removed on 2026-11-14 at Huseyn's word, in a commit of their own.
+7. **The README's footer** that named the tools the first version was built with was removed on 2026-11-14 at Huseyn's word.
 8. **The icon variants** from run 2 stay in `docs/brand/logo-variants/` as the record of the icon Huseyn chose. No new variant was made.
 
 ## Disclosures

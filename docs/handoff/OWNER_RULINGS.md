@@ -147,7 +147,7 @@ Huseyn can overrule any of these.
 | Dead settings | **"Remember folder contents briefly" and "Remember for" are hidden.** Their keys stay, so stored settings still read. | No window load used them. |
 | Release | **Draft releases only, built on a pushed tag or by hand.** | A person publishes each release, and no workflow runs on ordinary pushes or pull requests. |
 
-## AI mode, Mac run 4 (2026-11-12 and 13)
+## AI mode, Mac run 4 (2026-11-12 to 14)
 
 What was built and checked is in [`MAC_RUN_4.md`](MAC_RUN_4.md).
 
@@ -163,6 +163,11 @@ What was built and checked is in [`MAC_RUN_4.md`](MAC_RUN_4.md).
 | README | "Make sure you design an effective README at the end. You don't have to fully remove mentions of Nautilus, as I believe it still keeps parts of its DNA, but definitely the defining feature now becomes this being an agentic system. So make sure that the designs, the first pictures and so forth reflect that. I would not personally change the Helm logo, however." | 2026-11-13 | The README leads with AI mode: the title line, the banner, then the panel, a plan and AI search. "Nautilus on top, Finder underneath" stays, lower down, as Helm's DNA. |
 | Logo | "Decide on a good logo." Then, on 2026-11-13: "I would not personally change the Helm logo, however." | 2026-11-12 and 13 | The app icon is unchanged. Helm's four-point spark, in amber, coral and violet, is the mark of AI mode. The banner is the icon with the spark beside it, drawn by `scripts/readme/make_brand.swift`. No variant icon was made. |
 | Interface review | "Make sure you check the UI and UX elements comprehensively and that they are in their best placement and functionality that we would need." He also asked to review the three dots, whose circle "would sometimes get shrunk and compressed". | 2026-11-13 | A review of every AI mode state on both SDKs, and 34 fixes. Icon-only header buttons now draw their symbol whole at every width. |
+| Reinstall | "You're good to do a full reinstall." | 2026-11-14 | `/Applications/Helm.app` is the 0.2 build of this run. |
+| README footer | "You can remove the tools Helm was built with." | 2026-11-14 | The footer that named them is gone. |
+| About line | "Yes" to "An agentic file manager for your Mac." | 2026-11-14 | The About panel reads "An agentic file manager for your Mac." |
+| Draft markers | "Sure" to removing the "DRAFT: pending … review" header lines | 2026-11-14 | Removed from source, tests, scripts and docs in a commit of their own. Old review reports keep their wording. |
+| Version | "Sure" to 0.2 | 2026-11-14 | This run ships as 0.2. |
 
 ### Delegated choices in run 4
 
@@ -188,7 +193,7 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Claude | **No fallback model and no beta header.** | The person picked the model. |
 | OpenAI's first model | **`gpt-6-astra`.** | It's the vendor's stated starting point, and one constant to change. |
 | Model menu | **The panel shows the model's name, which opens Settings › AI.** | Choosing a model in the panel would need a new request path. |
-| Version | **0.2.** The About line still reads "Finder underneath, Nautilus on top." | Huseyn named no other. |
+| Version | **0.2.** The About line reads "An agentic file manager for your Mac." | Huseyn agreed to both on 2026-11-14. |
 
 ## Ruled but not built yet
 

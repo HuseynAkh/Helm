@@ -582,7 +582,7 @@ public struct LaunchOptions: Equatable, Sendable {
     }
     @objc func quit(_ sender: Any?) { NSApp.terminate(sender) }
     @objc func orderFrontAbout(_ sender: Any?) {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Helm", .credits: NSAttributedString(string: "Finder underneath, Nautilus on top.")])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Helm", .credits: NSAttributedString(string: "An agentic file manager for your Mac.")])
     }
     @objc func showSettingsWindow(_ sender: Any?) {
         guard environment != nil else { return }

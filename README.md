@@ -320,9 +320,3 @@ Issues and pull requests are welcome. Before sending a change, run the tests, th
 ## License
 
 No license has been chosen yet.
-
----
-
-<p align="center">
-  Engineered with <a href="https://claude.ai/code">Claude Code</a> (Opus 4.6) and <a href="https://chatgpt.com">Codex</a> (5.3)
-</p>
