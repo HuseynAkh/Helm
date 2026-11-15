@@ -36,7 +36,10 @@ struct AgentModelMenu: Equatable {
     /// leads with the model chosen for it when its list lacks that one, so there's always a way back to it, and the
     /// provider in use is offered with its model even when it has no list, so the tick always has a row. Names that
     /// no provider could have listed are left out, and each provider gives at most `AgentModelInfo.listCap` models.
-    static func make(config: AIConfig, hasKey: (AgentSecretID) -> Bool) -> AgentModelMenu {
+    /// `hasChatGPTSignIn` says whether OpenAI is signed in with ChatGPT, which is how it is reached unless a key
+    /// was chosen instead; without a sign-in, OpenAI is left out as a provider without its key is.
+    static func make(config: AIConfig, hasKey: (AgentSecretID) -> Bool,
+                     hasChatGPTSignIn: () -> Bool = { false }) -> AgentModelMenu {
         let inUse = config.provider.flatMap(AgentProviderID.init(rawValue:))
         var providers: [ProviderModels] = []
         for id in AgentProviderID.allCases {
@@ -48,6 +51,7 @@ struct AgentModelMenu: Equatable {
                 .compactMap { AgentModelInfo(id: $0)?.id }
                 .filter { seen.insert($0).inserted }
             if profile.needsKey && !hasKey(profile.secretID) { models = [] }
+            if profile.usesChatGPT && !hasChatGPTSignIn() { models = [] }
             models = Array(models.prefix(AgentModelInfo.listCap))
             if let chosen = AgentProviderCatalog.model(for: draft), id == inUse || !models.isEmpty, !models.contains(chosen) {
                 models.insert(chosen, at: 0)

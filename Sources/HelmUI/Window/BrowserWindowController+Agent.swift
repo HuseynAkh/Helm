@@ -90,7 +90,8 @@ extension BrowserWindowController {
     /// asked of any provider to work it out.
     var agentModelMenu: AgentModelMenu {
         let agent = dependencies.agent
-        return AgentModelMenu.make(config: agent.config.config, hasKey: { agent.secrets.has($0) })
+        return AgentModelMenu.make(config: agent.config.config, hasKey: { agent.secrets.has($0) },
+                                   hasChatGPTSignIn: { agent.secrets.hasSignIn(.chatGPTTokens) })
     }
 
     /// A model chosen under the composer: the provider and its model are saved, as Settings › AI saves them, and the

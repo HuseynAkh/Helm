@@ -16,8 +16,8 @@ import HelmCore
         _ = NSApplication.shared
     }
 
-    private func menu(_ config: AIConfig, keys: Set<AgentProviderID> = [.claude]) -> AgentModelMenu {
-        AgentModelMenu.make(config: config, hasKey: { keys.contains($0.provider) })
+    private func menu(_ config: AIConfig, keys: Set<AgentProviderID> = [.claude], chatGPT: Bool = false) -> AgentModelMenu {
+        AgentModelMenu.make(config: config, hasKey: { keys.contains($0.provider) }, hasChatGPTSignIn: { chatGPT })
     }
 
     func testEveryConnectedProviderIsOfferedInTheCatalogsOrderWithTheCurrentModelTicked() {
@@ -33,10 +33,15 @@ import HelmCore
     }
 
     func testACloudProviderWhoseKeyWentIsLeftOut() {
-        let config = AIConfig(provider: "lmStudio", models: ["lmStudio": "qwen-9b"],
+        var config = AIConfig(provider: "lmStudio", models: ["lmStudio": "qwen-9b"],
                               modelLists: [lmStudio: ["qwen-9b"], claude: ["claude-opus-5-5"], "openAI|api.openai.com:443": ["gpt-6-astra"]])
+        // OpenAI is reached by a ChatGPT sign-in unless a key was chosen: with neither, it isn't offered.
         XCTAssertEqual(menu(config, keys: []).summaryForTesting, "LM Studio: *qwen-9b")
         XCTAssertFalse(menu(config, keys: []).isMenu, "one model alone stays a plain name")
+        XCTAssertEqual(menu(config, keys: [], chatGPT: true).summaryForTesting, "ChatGPT: gpt-6-astra | LM Studio: *qwen-9b")
+        config.openAIUsesKey = true
+        XCTAssertEqual(menu(config, keys: [], chatGPT: true).summaryForTesting, "LM Studio: *qwen-9b",
+                       "with a key chosen instead, the sign-in doesn't count")
         XCTAssertEqual(menu(config, keys: [.openAI]).summaryForTesting, "OpenAI: gpt-6-astra | LM Studio: *qwen-9b")
     }
 
