@@ -344,20 +344,50 @@ class ShellTests(unittest.TestCase):
                 if result.returncode == 2:
                     self.skipTest(result.stderr.strip())
                 if passes:
-                    self.assertIn("ok   web addresses: only the providers' on allowed_addresses.txt", result.stdout)
+                    self.assertIn('ok   web addresses: only those on allowed_addresses.txt', result.stdout)
                     self.assertNotIn('FAIL web addresses', result.stdout)
                 else:
                     self.assertIn("FAIL web addresses that aren't on allowed_addresses.txt:", result.stdout)
                     self.assertIn(f'Contents/Resources/addresses.txt: {text}', result.stdout)
 
-    def test_allowed_addresses_are_the_four_provider_addresses(self):
-        # The same four addresses as the source check's web-address ALLOW lines for Endpoints.swift, in that order.
+    def test_allowed_addresses_are_the_source_checks_addresses(self):
+        # The same addresses as the source check's web-address ALLOW lines, in that order: the four providers and
+        # OpenAI's sign-in host in Endpoints.swift, then the help pages a person opens in their browser.
         privacy = load_privacy_check()
         allowed = [re.search(r'"(https://[^"]+)"', line).group(1)
                    for rule, rel, line in privacy.ALLOW if rule == 'web-address']
         self.assertEqual(ADDRESS_LIST.read_text(), ''.join(f'{address}\n' for address in allowed))
-        self.assertEqual(allowed, ['https://api.anthropic.com', 'https://api.openai.com/v1',
-                                   'https://generativelanguage.googleapis.com/v1beta', 'https://api.x.ai/v1'])
+        self.assertEqual(allowed, [
+            'https://api.anthropic.com', 'https://api.openai.com/v1', 'https://generativelanguage.googleapis.com/v1beta',
+            'https://api.x.ai/v1', 'https://auth.openai.com',
+            'https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites',
+            'https://chatgpt.com/settings/usage', 'https://developers.openai.com/api/docs/quickstart',
+            'https://platform.claude.com/docs/en/manage-claude/authentication#api-keys',
+            'https://aistudio.google.com/docs/api-key', 'https://docs.x.ai/docs/quickstart',
+            'https://docs.ollama.com/quickstart', 'https://lmstudio.ai/docs/developer/core/server'])
+        # The sign-in host and the providers are in Endpoints.swift, and the help pages in their own file.
+        homes = {rel for rule, rel, line in privacy.ALLOW if rule == 'web-address'}
+        self.assertEqual(homes, {'Sources/HelmAgent/Transport/Endpoints.swift', 'Sources/HelmAgent/Text/AgentHelpLinks.swift'})
+
+    @unittest.skipUnless(*NEEDS_MAC)
+    def test_binary_check_lets_a_listener_in_and_keeps_connect_out(self):
+        # A ChatGPT sign-in listens on 127.0.0.1, so socket, bind, listen and accept pass. Connecting, and sending to
+        # or hearing from an address of the caller's choosing, still fail, and so does a name lookup.
+        listening = ['_socket', '_bind', '_listen', '_accept', '_recv', '_send', '_getsockname', '_setsockopt']
+        with tempfile.TemporaryDirectory() as directory:
+            result = binary_check(stand_in_app(directory), tool_stand_ins(directory, ORDINARY_SYMBOLS + listening))
+            if result.returncode == 2:
+                self.skipTest(result.stderr.strip())
+            self.assertIn(f'ok   imported symbols: {len(ORDINARY_SYMBOLS) + len(listening)}, none for the network or '
+                          'identifiers', result.stdout)
+        for symbol in ('_connect', '_connectx', '_sendto', '_sendmsg', '_recvfrom', '_recvmsg', '_getaddrinfo'):
+            with self.subTest(symbol), tempfile.TemporaryDirectory() as directory:
+                result = binary_check(stand_in_app(directory), tool_stand_ins(directory, ORDINARY_SYMBOLS + listening + [symbol]))
+                found = [block for block in failures(result.stdout)
+                         if any(f'external {symbol} ' in line for line in block.splitlines()[1:])]
+                self.assertEqual(len(found), 1, result.stdout)
+                self.assertTrue(found[0].startswith('FAIL imported symbols for the network or identifiers:'), found[0])
+                self.assertEqual(result.returncode, 1)
 
     def test_allowed_network_symbols_name_only_the_designed_members(self):
         entries = SYMBOL_LIST.read_text().splitlines()
