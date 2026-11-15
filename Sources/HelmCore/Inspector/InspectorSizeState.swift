@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-050 exact-byte totals distinguish incomplete work from zero (B-066, audit C-22).

@@ -35,6 +35,9 @@ import HelmPersistence
     public let cut: CutClipboard
     /// Archives and disk images handed to Archive Utility or DiskImageMounter lately, so what they show comes back here.
     public let handoffs: HelperHandoffs
+    /// AI mode: its runtime, saved choices, key store and the rest. Unless the app passes its own, stand-ins with
+    /// AI mode off, so a window built without the app reaches nothing outside it.
+    public let agent: AgentServices
     public init(settings: SettingsStore, bookmarks: any AppBookmarkStoring, stars: any AppStarStoring,
                 recents: any AppRecentStoring, trashOrigins: any AppTrashOriginStoring, viewOptions: any AppViewOptionsStoring, fileSystem: any FileSystem,
                 operations: OperationCoordinator, home: URL, volumes: VolumeCenter, icons: IconCache,
@@ -42,7 +45,8 @@ import HelmPersistence
                 clock: any HelmClock, pasteboard: NSPasteboard = .general, persistsWindowFrames: Bool = true,
                 openWith: OpenWithStore? = nil, permissions: PermissionCenter? = nil, cut: CutClipboard? = nil,
                 handoffs: HelperHandoffs? = nil,
-                launcher: (any AppLaunching)? = nil) {
+                launcher: (any AppLaunching)? = nil, agent: AgentServices? = nil) {
+        self.agent = agent ?? AgentServices.standIn(home: home, clock: clock)
         self.cut = cut ?? CutClipboard()
         self.handoffs = handoffs ?? HelperHandoffs(clock: clock)
         self.launcher = launcher ?? MemoryAppLauncher()
@@ -91,5 +95,12 @@ import HelmPersistence
     /// Opens Settings at one pane, as the sidebar's “Sidebar Settings…” does.
     func showSettings(pane: SettingsPane)
     func requestQuitAnyway()
+    /// The AI mode screen, where AI mode is turned on and a model chosen. `window` is the one whose spark opened it.
+    func showAIModeScreen(from window: BrowserWindowController?)
+}
+
+public extension BrowserWindowHost {
+    /// A host without AI mode's screen shows nothing.
+    func showAIModeScreen(from window: BrowserWindowController?) {}
 }
 #endif

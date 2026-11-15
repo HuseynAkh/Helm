@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Validated system-delegation target extends F-031 with P-206; never stores credentials.

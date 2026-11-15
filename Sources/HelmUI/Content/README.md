@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 # K28 content leaves
 
 Draft for Opus compile-correctness and behaviour-preservation review after 22:00

@@ -103,6 +103,8 @@ import Quartz
             await wait(seconds: 0.3)
         case "search":
             window.search(argument)
+            // An open, empty field shows the words too, as typing them would have.
+            window.showSearchWordsForTesting(argument)
             await wait(seconds: 0.8)
         case "setting":
             let bits = argument.split(separator: " ").map(String.init)
@@ -283,8 +285,13 @@ import Quartz
                 check(false, step, "usage"); return
             }
             app.showSettingsWindow(nil)
+            // The window settles at its first size before the pane is chosen, and again after, before the capture.
+            await wait(seconds: 0.4)
             app.settingsControllerForTesting?.select(pane)
             await wait(seconds: 0.8)
+            app.settingsWindowForTesting?.contentView?.layoutSubtreeIfNeeded()
+            app.settingsWindowForTesting?.displayIfNeeded()
+            await wait(seconds: 0.3)
             guard let view = app.settingsWindowForTesting?.contentView?.superview,
                   let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, step, "no window"); return }
             view.cacheDisplay(in: view.bounds, to: image)
@@ -396,13 +403,78 @@ import Quartz
                 check(false, step, "no view"); return
             }
             content.cacheDisplay(in: content.bounds, to: image)
-            let data = image.representation(using: .png, properties: [:])
+            let data = withMaterials(image, of: content).representation(using: .png, properties: [:])
             try? data?.write(to: URL(fileURLWithPath: argument))
             check(data != nil, step)
         default:
             if await performTrackVerb(verb, argument, step: step, window: window, app: app) { return }
             check(false, step, "unknown step")
         }
+    }
+
+    /// A capture drawn from the views leaves out what a material shows from behind the window, which some SDKs
+    /// leave see-through. Each material's frame is filled first with the colour it shows over a plain desktop, and
+    /// the capture is drawn on top, so the sidebar reads as it does on screen.
+    static func withMaterials(_ capture: NSBitmapImageRep, of root: NSView) -> NSBitmapImageRep {
+        guard let out = root.bitmapImageRepForCachingDisplay(in: root.bounds),
+              let context = NSGraphicsContext(bitmapImageRep: out) else { return capture }
+        var effects: [NSVisualEffectView] = []
+        func walk(_ view: NSView) {
+            if let effect = view as? NSVisualEffectView, !effect.isHiddenOrHasHiddenAncestor { effects.append(effect) }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        root.effectiveAppearance.performAsCurrentDrawingAppearance {
+            NSColor.windowBackgroundColor.setFill()
+            root.bounds.fill()
+            for effect in effects {
+                let frame = effect.convert(effect.bounds, to: root)
+                let color: NSColor = effect.material == .sidebar ? .underPageBackgroundColor : .windowBackgroundColor
+                color.setFill()
+                frame.fill()
+            }
+            capture.draw(in: root.bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            // Some SDKs leave the sidebar material's scroll views out of a capture, rows and all, though their
+            // documents still draw: there, each document's visible part is drawn where its clip view shows it.
+            for effect in effects where effect.material == .sidebar
+                && isSeeThrough(capture, at: effect.convert(effect.bounds, to: root), in: root) {
+                for scroll in scrollViews(in: effect) {
+                    let clip = scroll.contentView
+                    guard let document = scroll.documentView else { continue }
+                    let shown = clip.documentVisibleRect
+                    guard shown.width > 0, shown.height > 0, let part = document.bitmapImageRepForCachingDisplay(in: shown) else { continue }
+                    document.cacheDisplay(in: shown, to: part)
+                    part.draw(in: clip.convert(clip.bounds, to: root), from: .zero, operation: .sourceOver, fraction: 1,
+                              respectFlipped: true, hints: nil)
+                }
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return out
+    }
+
+    private static func scrollViews(in view: NSView) -> [NSScrollView] {
+        view.subviews.filter { !$0.isHidden }.flatMap { child -> [NSScrollView] in
+            if let scroll = child as? NSScrollView { return [scroll] }
+            return scrollViews(in: child)
+        }
+    }
+
+    /// Whether a capture is see-through across a frame of the view it was taken from, as when the material there
+    /// and everything inside it were left out: most of a row of points across its middle has no ink at all.
+    private static func isSeeThrough(_ capture: NSBitmapImageRep, at frame: NSRect, in root: NSView) -> Bool {
+        guard frame.width >= 4, frame.height >= 4, root.bounds.width > 0 else { return false }
+        let scale = CGFloat(capture.pixelsWide) / root.bounds.width
+        let rowY = root.isFlipped ? frame.midY : root.bounds.height - frame.midY
+        let y = Int(rowY * scale)
+        guard y >= 0, y < capture.pixelsHigh else { return false }
+        let xs = stride(from: frame.minX + 2, to: frame.maxX - 2, by: max(1, (frame.width - 4) / 16)).map { Int($0 * scale) }
+            .filter { $0 >= 0 && $0 < capture.pixelsWide }
+        guard !xs.isEmpty else { return false }
+        let clear = xs.filter { (capture.colorAt(x: $0, y: y)?.alphaComponent ?? 1) < 0.02 }.count
+        return clear * 4 >= xs.count * 3
     }
 }
 #endif

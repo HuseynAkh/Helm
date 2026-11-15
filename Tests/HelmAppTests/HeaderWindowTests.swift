@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import XCTest
+import HelmAgent
 import HelmCore
 import HelmApp
 import HelmFileSystem
@@ -16,6 +17,8 @@ import HelmPersistence
     private var downloads: URL { home.appendingPathComponent("Downloads", isDirectory: true) }
     private var controllers: [BrowserWindowController] = []
     private var keep: [AnyObject] = []
+    /// The host of the last window made, which records what the window asks of the app.
+    private var host: QuietHost?
 
     override func setUp() {
         super.setUp()
@@ -35,7 +38,7 @@ import HelmPersistence
 
     /// A window that's never shown, over a home with Documents (holding q2.txt), Downloads and deeper folders,
     /// already in Documents.
-    private func documentsWindow() async throws -> BrowserWindowController {
+    private func documentsWindow(agent: AgentServices? = nil) async throws -> BrowserWindowController {
         let env = try await AppEnvironment.test(home: home)
         for folder in ["Documents", "Downloads", "Documents/Reports", "Documents/Reports/Quarterly",
                        "Documents/\(longName.lastPathComponent)"] {
@@ -49,8 +52,9 @@ import HelmPersistence
             recents: env.recents, trashOrigins: env.trashOrigins, viewOptions: env.viewOptions, fileSystem: env.fileSystem,
             operations: operations, home: env.directories.home, volumes: volumes, icons: IconCache(limit: 50, previewLimit: 10),
             clock: env.clock, pasteboard: NSPasteboard(name: .init("helm.header-tests.\(UUID().uuidString)")),
-            persistsWindowFrames: false, openWith: env.openWith)
+            persistsWindowFrames: false, openWith: env.openWith, agent: agent)
         let host = QuietHost()
+        self.host = host
         let controller = BrowserWindowController(dependencies: dependencies, host: host, frameName: "header-tests",
                                                  seeds: [], activeIndex: 0)
         keep += [host, operations, volumes]
@@ -147,6 +151,73 @@ import HelmPersistence
         XCTAssertEqual(controller.sidebarWidthForTesting, sidebar, accuracy: 0.5)
     }
 
+    // MARK: The main menu, whole
+
+    /// The main menu's dots in a circle keep their 34-by-32 button 8 points from the trailing edge, and their ink stays
+    /// inside it, whatever the width, with the sidebar shown or hidden, with the search open, and after the window
+    /// is made narrow and wide again.
+    func testTheMainMenuIsDrawnWholeAtEveryWidth() async throws {
+        let controller = try await documentsWindow()
+        func check(_ label: String) {
+            let measure = controller.headerMenuMeasureForTesting
+            XCTAssertEqual(measure.size.width, 34, accuracy: 0.5, label)
+            XCTAssertEqual(measure.size.height, 32, accuracy: 0.5, label)
+            XCTAssertEqual(measure.trailingGap, 8, accuracy: 0.5, label)
+            guard let ink = measure.ink else { return XCTFail("no ink: \(label)") }
+            XCTAssertTrue(measure.bounds.insetBy(dx: 1, dy: 1).contains(ink), "\(ink) in \(measure.bounds): \(label)")
+            XCTAssertEqual(ink.width, 15, accuracy: 1.5, label)
+            XCTAssertEqual(ink.height, 15, accuracy: 1.5, label)
+            if let spark = measure.sparkInk { XCTAssertEqual(spark.width, 15, accuracy: 1.5, "the spark's ink: \(label)") }
+        }
+        let widths: [CGFloat] = [560, 620, 700, 760, 900, 1040, 1240, 1600]
+        for sidebar in [true, false] {
+            if controller.isSidebarVisibleForTesting != sidebar { controller.toggleSidebar(); await settle(0.3) }
+            for searching in [false, true] {
+                if searching { controller.beginSearch() } else if controller.isSearchingForTesting {
+                    _ = controller.searchFieldKeyForTesting("escape")
+                }
+                for width in widths {
+                    await resize(controller, to: width)
+                    check("\(Int(width)), sidebar \(sidebar), search \(searching)")
+                }
+            }
+        }
+        await resize(controller, to: 620)
+        await resize(controller, to: 1600)
+        check("narrowed and widened")
+    }
+
+    // MARK: Showing and hiding the sidebar
+
+    func testHidingTheSidebarNeverWidensTheWindowAndShowingAddsOnlyWhatItNeeds() async throws {
+        let controller = try await documentsWindow()
+        await resize(controller, to: 700)
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+        let sidebar = controller.sidebarWidthForTesting
+        controller.toggleSidebar()
+        await settle(0.4)
+        XCTAssertFalse(controller.isSidebarVisibleForTesting)
+        XCTAssertEqual(controller.headerLeadingForTesting, 84)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 700, accuracy: 0.5, "hiding the sidebar widened the window")
+        await resize(controller, to: 640)
+        controller.toggleSidebar()
+        await settle(0.4)
+        XCTAssertTrue(controller.isSidebarVisibleForTesting)
+        XCTAssertEqual(controller.headerLeadingForTesting, 8)
+        let width = controller.window?.frame.width ?? 0
+        // As wide as the sidebar at its narrowest and the header without the sort's words need: no wider.
+        let needed = 190 + 1 + controller.header.compactWidth(sidebarVisible: true)
+        XCTAssertLessThanOrEqual(width, ceil(needed) + 1, "showing the sidebar added more than it needed: \(width) for \(needed)")
+        XCTAssertLessThan(width, 640 + sidebar, "it added the whole sidebar on top")
+        XCTAssertGreaterThanOrEqual(controller.sidebarWidthForTesting, min(sidebar, 190) - 0.5)
+        // In a wide window nothing changes size.
+        await resize(controller, to: 1040)
+        controller.toggleSidebar(); await settle(0.4)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 1040, accuracy: 0.5)
+        controller.toggleSidebar(); await settle(0.4)
+        XCTAssertEqual(controller.window?.frame.width ?? 0, 1040, accuracy: 0.5)
+    }
+
     // MARK: Where the keys go
 
     func testANavigationWhileTypingGivesTheFilesTheKeys() async throws {
@@ -234,6 +305,106 @@ import HelmPersistence
         XCTAssertEqual(controller.focusOwnerForTesting, "files")
     }
 
+    // MARK: The view button and the spark
+
+    func testTheViewButtonOffersTheOtherViewAndAClickForTheShownOneDoesNothing() async throws {
+        let controller = try await documentsWindow()
+        controller.perform(.grid)
+        await settle()
+        XCTAssertEqual(controller.headerViewModeForTesting, .grid)
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .list)
+        XCTAssertTrue(controller.headerToolTipsForTesting.contains("List (⌘2)"))
+        XCTAssertFalse(controller.headerToolTipsForTesting.contains { $0.contains("⌘1") })
+        // Asking for the view on show is not what the button offers, so nothing changes.
+        controller.clickHeaderViewForTesting(.grid)
+        await settle()
+        XCTAssertEqual(controller.activeTab?.viewMode, .grid)
+        controller.clickHeaderViewForTesting(.list)
+        await settle()
+        XCTAssertEqual(controller.activeTab?.viewMode, .list)
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .grid)
+        XCTAssertTrue(controller.headerToolTipsForTesting.contains("Grid (⌘1)"))
+        // ⌘1 and the menu still pick the view, and the button follows.
+        controller.perform(.grid)
+        await settle()
+        XCTAssertEqual(controller.headerViewOfferedForTesting, .list)
+    }
+
+    func testTheSparkSitsBesideTheMainMenuAndAsksForTheAIScreenUntilAModelIsReady() async throws {
+        let controller = try await documentsWindow()
+        let spark = controller.headerSparkForTesting
+        XCTAssertFalse(spark.lit)
+        XCTAssertFalse(spark.working)
+        XCTAssertEqual(spark.toolTip, "Set Up AI Mode")
+        let tips = controller.headerToolTipsForTesting
+        XCTAssertEqual(Array(tips.suffix(2)), ["Set Up AI Mode", "Main Menu"], "The spark comes just before the main menu.")
+        XCTAssertEqual(host?.aiScreens, 0)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(host?.aiScreens, 1, "AI mode is off, so the spark opens the AI mode screen.")
+        XCTAssertFalse(controller.isAgentPanelOpen)
+        XCTAssertFalse(controller.headerSparkForTesting.lit)
+    }
+
+    /// AI mode on with no model connected yet: the search field shows its spark as the header does, and a press on
+    /// it, File › Find with AI or the no-results button opens the AI mode screen, and the spark never turns on.
+    func testWithAIModeOnAndNoModelReadyTheSearchSparkAsksForTheAIScreen() async throws {
+        let secrets = MemorySecretStore()
+        let disk = MemoryAgentDisk(home: home.path)
+        // No scripted model and no way to make a live one: on, it's never ready.
+        let runtime = AgentRuntime(parts: AgentRuntimeParts(secrets: secrets, disk: disk, home: home.path,
+                                                            supportFolder: home.appendingPathComponent(".support").path,
+                                                            clock: SystemHelmClock(), buildStamp: ""))
+        let agent = AgentServices(runtime: runtime, config: AIConfigStore(), secrets: secrets, disk: disk,
+                                  storage: MemoryStorageFactsReader(home: home), connector: MemoryServerConnector())
+        let controller = try await documentsWindow(agent: agent)
+        controller.beginSearch()
+        // AI mode off: the magnifier, nothing to press, and Find with AI is off.
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        XCTAssertFalse(controller.pressSearchSparkForTesting())
+        XCTAssertFalse(controller.title(of: .findWithAI).1)
+        XCTAssertEqual(host?.aiScreens, 0)
+
+        runtime.setOn(true)
+        XCTAssertEqual(runtime.state, .notReady)
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark", "AI mode is on, so the field shows its spark")
+        XCTAssertTrue(controller.pressSearchSparkForTesting())
+        XCTAssertEqual(host?.aiScreens, 1, "with no model ready, the spark opens the AI mode screen")
+        XCTAssertFalse(controller.isAISearchOnForTesting, "and never turns on")
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark")
+        XCTAssertNil(controller.aiSearchStatusForTesting)
+        XCTAssertTrue(controller.title(of: .findWithAI).1, "File › Find with AI is there whenever AI mode is on")
+        controller.perform(.findWithAI)
+        XCTAssertEqual(host?.aiScreens, 2)
+        XCTAssertFalse(controller.isAISearchOnForTesting)
+
+        // Typing still searches names, and the no-results page's Find with AI asks for the screen too.
+        controller.typeIntoSearchForTesting("zzz-nothing")
+        let offered = await until { controller.contentStateForTesting?.buttons.contains { $0.action == .findWithAI } == true }
+        XCTAssertTrue(offered, "the no-results page offers Find with AI")
+        XCTAssertTrue(controller.pressContentButtonForTesting(AgentText.searchToggle))
+        XCTAssertEqual(host?.aiScreens, 3)
+        XCTAssertFalse(controller.isAISearchOnForTesting)
+        XCTAssertEqual(controller.activeTab?.search?.query.usesAI, false)
+
+        // AI mode off again: the magnifier is back.
+        runtime.setOn(false)
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        XCTAssertEqual(controller.header.searchField.aiToggleToolTipForTesting, AgentText.searchToggle)
+    }
+
+    func testTheSearchFieldShowsTheMagnifierUntilTheWindowSaysAISearchIsAvailable() async throws {
+        let controller = try await documentsWindow()
+        controller.beginSearch()
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "magnifier")
+        let room = controller.searchTextRoomForTesting
+        controller.header.setAISearch(available: true, on: true)
+        controller.window?.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.searchFieldMarkForTesting, "spark lit")
+        XCTAssertEqual(controller.searchTextRoomForTesting, room, accuracy: 0.5, "The spark takes no room from the words.")
+        XCTAssertEqual(controller.focusOwnerForTesting, "search")
+    }
+
     func testAHiddenListingDoesntGetTheKeysBack() async throws {
         let controller = try await documentsWindow()
         // A page saying a place couldn't open hides the listing, and the keys leave it.
@@ -263,6 +434,8 @@ import HelmPersistence
 
 /// A host for a window on its own: nothing to open, close or show.
 @MainActor private final class QuietHost: BrowserWindowHost {
+    /// How many times a window asked for the AI mode screen.
+    private(set) var aiScreens = 0
     func openWindow(at location: Location, selecting: [URL]) {}
     func windowDidClose(_ controller: BrowserWindowController) {}
     func windowDidBecomeKey(_ controller: BrowserWindowController) {}
@@ -270,5 +443,6 @@ import HelmPersistence
     /// Not asked for yet; a host that opens Settings at one pane will need it.
     func showSettings(pane: SettingsPane) {}
     func requestQuitAnyway() {}
+    func showAIModeScreen(from window: BrowserWindowController?) { aiScreens += 1 }
 }
 #endif

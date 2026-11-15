@@ -10,6 +10,8 @@ extension BrowserWindowController {
     public var listRowNamesForTesting: [String] { shownList?.rowNamesForTesting ?? [] }
     /// The rows the list itself shows selected.
     public var listSelectedNamesForTesting: [String] { shownList?.selectedRowNamesForTesting ?? [] }
+    /// The list's columns on show, left to right, with what each shows; empty while the grid is on show.
+    public func listColumnFitForTesting() -> [ListColumnFit] { shownList?.columnFitForTesting() ?? [] }
     /// How many times the list was rebuilt whole. Opening and closing folders never adds to it.
     public var listReloadsForTesting: Int { shownList?.fullReloads ?? 0 }
     /// Whether the list shows the folder with this name open, or nil if no row has that name.

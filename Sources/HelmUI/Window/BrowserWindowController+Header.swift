@@ -80,11 +80,18 @@ extension BrowserWindowController {
     // MARK: Header test support
 
     public func focusFilesForTesting() { focusContent() }
+    /// Presses the header's spark, as a person would.
+    public func clickSparkForTesting() {
+        let spark = header.sparkButton
+        guard !spark.isHiddenOrHasHiddenAncestor, spark.isEnabled else { return }
+        spark.performClick(nil)
+    }
     /// Who has the keys: files, search, path, sidebar, window or other.
     public var focusOwnerForTesting: String {
         guard let window else { return "none" }
         let responder = window.firstResponder
         if responder === window { return "window" }
+        if agentPanelHost.holdsKeys { return "assistant" }
         if let files = contentKeyResponder, responder === files { return "files" }
         if header.isSearchFieldEditing { return "search" }
         if pathBar.isEditingLocation, responder is NSTextView { return "path" }
@@ -124,10 +131,36 @@ extension BrowserWindowController {
                                            charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53) else { return }
         files.keyDown(with: event)
     }
-    public var headerViewModeForTesting: ViewMode { header.viewSwitch.mode }
-    /// A click on one half of the header's Grid | List switch.
-    public func clickHeaderViewForTesting(_ mode: ViewMode) { header.viewSwitch.clickForTesting(mode) }
+    /// The view the header's view button says the tab is in.
+    public var headerViewModeForTesting: ViewMode { header.viewButton.mode }
+    /// The view a press of the header's view button switches to.
+    public var headerViewOfferedForTesting: ViewMode { header.viewButton.offered }
+    /// A click on the header's view button when it offers `mode`. When it offers the other view, nothing happens.
+    public func clickHeaderViewForTesting(_ mode: ViewMode) {
+        guard header.viewButton.offered == mode else { return }
+        header.viewButton.clickForTesting()
+    }
+    /// The header's spark as it shows now: lit, turning, and its tooltip.
+    public var headerSparkForTesting: (lit: Bool, working: Bool, toolTip: String) {
+        (header.sparkButton.isLit, header.sparkButton.isWorking, header.sparkButton.toolTip ?? "")
+    }
+    /// The search field's leading mark: magnifier, spark, or spark lit.
+    public var searchFieldMarkForTesting: String { header.searchField.leadingMark }
     public var headerLeadingForTesting: CGFloat { header.leadingInset }
+    /// Puts a search's words in a search field that is already open, as typing them would have.
+    public func showSearchWordsForTesting(_ text: String) {
+        guard header.isSearching, header.searchText != text else { return }
+        header.searchField.stringValue = text
+    }
+    /// The main menu button as laid out: its size, its gap to the header's trailing edge, and where its drawing
+    /// leaves ink, in its own points. The spark's ink, for comparing the two: its sharp tips fade out over a pixel
+    /// or two, so it counts only the pixels at least half as opaque as its most opaque one, as the eye does, the same
+    /// way at rest in the label colour as lit in the gradient.
+    public var headerMenuMeasureForTesting: (size: NSSize, trailingGap: CGFloat, bounds: NSRect, ink: NSRect?, sparkInk: NSRect?) {
+        let menu = header.menuButton
+        let frame = menu.convert(menu.bounds, to: header)
+        return (menu.frame.size, header.bounds.maxX - frame.maxX, menu.bounds, menu.inkRectForTesting(), header.sparkButton.inkRectForTesting(threshold: 0.5))
+    }
     /// How wide the sidebar is as laid out; 0 while it's collapsed.
     public var sidebarWidthForTesting: CGFloat {
         guard let item = split.splitViewItems.first, !item.isCollapsed else { return 0 }
@@ -142,9 +175,8 @@ extension BrowserWindowController {
     }
     /// Every header tooltip, left to right.
     public var headerToolTipsForTesting: [String] {
-        [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton]
-            .map { $0.toolTip ?? "" } + header.viewSwitch.segments.map { $0.toolTip ?? "" }
-            + [header.sortButton.toolTip ?? "", header.menuButton.toolTip ?? ""]
+        [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.viewButton,
+         header.sortButton, header.sparkButton, header.menuButton].map { $0.toolTip ?? "" }
     }
     /// Collapses or opens the sidebar the way dragging the divider does, without the header's button.
     public func setSidebarCollapsedForTesting(_ collapsed: Bool) { split.splitViewItems.first?.isCollapsed = collapsed }

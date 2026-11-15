@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import HelmCore
 
 /// B-009/B-014: accepted snapshot identity is distinct from the request generation.

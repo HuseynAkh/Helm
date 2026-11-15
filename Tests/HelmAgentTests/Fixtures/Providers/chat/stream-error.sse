@@ -1,0 +1,7 @@
+data: {"id":"cmpl-abc123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Look"},"finish_reason":null}]}
+
+data: {"id":"cmpl-abc123","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_e","type":"function","function":{"name":"list_folder","arguments":"{\"folder\":\"r1\",\"depth\":1,\"after\":\"\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"cmpl-abc123","object":"chat.completion.chunk","created":1762900000,"error":{"code":502,"message":"Provider disconnected unexpectedly"},"choices":[{"index":0,"delta":{"content":""},"finish_reason":"error"}]}
+
+data: [DONE]

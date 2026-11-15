@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Portable F-048 fan-out, cancellation and bounded LRU caching fix B-055/B-056.

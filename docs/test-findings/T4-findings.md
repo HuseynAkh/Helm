@@ -1,7 +1,5 @@
 # T4 flaky-test hunt
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 ## Scope and changes
 
 Only Tests/ and this report are authored. No Sources/, manifest, scripts, legacy

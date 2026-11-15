@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K40 regression tests
 
 XCTest value-only fixtures cover F-050 presentation, confirmation, owner lifetime,

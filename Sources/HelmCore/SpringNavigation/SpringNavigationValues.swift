@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Restorable per-tab context preserves F-038 selection during temporary F-067 navigation.

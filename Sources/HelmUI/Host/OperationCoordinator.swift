@@ -40,12 +40,18 @@ import HelmPersistence
     }
 
     /// Plans against the disk as it is now, asks about conflicts, runs, and records the result in `history`.
+    /// Under a `group` the history entry carries it, so the group's operations are undone as one. With
+    /// `downloadsOff` nothing is fetched from a cloud while it plans and runs: an item kept there in name only fails
+    /// instead.
     @discardableResult
     public func run(_ command: Command, sources: [URL], destinations: [URL], history: WindowOperationHistory,
-                    resolver: ConflictResolver?, onFailure: FailureResolver? = nil) async -> Result<OperationResult, Failure> {
-        guard let request = await history.beginForward(command) else { return .failure(.busy) }
-        return await runReserved(request: request, command: command, sources: sources, destinations: destinations,
-                                 history: history, resolver: resolver, onFailure: onFailure)
+                    resolver: ConflictResolver?, onFailure: FailureResolver? = nil,
+                    group: HistoryGroup? = nil, downloadsOff: Bool = false) async -> Result<OperationResult, Failure> {
+        guard let request = await history.beginForward(command, group: group) else { return .failure(.busy) }
+        return await DatalessGuard.off(if: downloadsOff) {
+            await runReserved(request: request, command: command, sources: sources, destinations: destinations,
+                              history: history, resolver: resolver, onFailure: onFailure)
+        }
     }
 
     private func runReserved(request: HistoryRequestID, command: Command, sources: [URL], destinations: [URL],
@@ -91,13 +97,18 @@ import HelmPersistence
         let result = await execute(plan, title: OperationText.title(for: command), replacing: row, admission: { id, plan in
             await history.bindExecution(request: request, operation: id, plan: plan)
         }, onFailure: onFailure)
+        await noteStall(in: history)
         await followTrashRecords(after: result, undoing: false)
         let entry = await executor.journal.entry(result.id)
         if let entry { await history.completeForward(request: request, entry: entry) }
         return .success(result)
     }
 
-    public func undo(history: WindowOperationHistory) async -> Result<OperationResult, Failure> {
+    /// Undoes the latest entry in `history`, one step. With `downloadsOff` nothing is fetched from a cloud meanwhile.
+    public func undo(history: WindowOperationHistory, downloadsOff: Bool = false) async -> Result<OperationResult, Failure> {
+        await DatalessGuard.off(if: downloadsOff) { await undoTop(history: history) }
+    }
+    private func undoTop(history: WindowOperationHistory) async -> Result<OperationResult, Failure> {
         let state = await history.snapshot()
         guard let top = state.undoEntries.last else { return .failure(.message("Nothing to undo.")) }
         var recorded: [URL: URL] = [:]
@@ -116,6 +127,7 @@ import HelmPersistence
         let result = await execute(request.plan, title: "Undo \(top.name)", admission: { id, plan in
             await history.bindExecution(request: request.request, operation: id, plan: plan)
         })
+        await noteStall(in: history)
         await followTrashRecords(after: result, undoing: true)
         await history.complete(request: request.request, outcome: result)
         return .success(result)
@@ -142,6 +154,43 @@ import HelmPersistence
         }
         if !left.isEmpty { origins.removeOrigins(for: left) }
         if !back.isEmpty { await origins.record(back) }
+    }
+
+    /// Called once the person has acknowledged a change that ended unsure, which may be one that stalled and so kept
+    /// every later change from starting. Changes run again once every stalled call has returned. A call that is still
+    /// out keeps them refused for now, and the next change asks again before it starts, so no relaunch is needed.
+    public func clearStallIfSettled() async {
+        // Another window acknowledging its own unsure change doesn't acknowledge the stall: that is the stalled
+        // window's to do, so the latch waits while that window still has the change to settle.
+        if let stalled = stalledHistory, await stalled.snapshot().reconciliation != nil { return }
+        let reopened = await executor.clearQuarantine()
+        stallAcknowledged = !reopened
+        if reopened { stalledHistory = nil }
+    }
+    /// The history whose change stalled and shut later changes out, until the latch reopens. Weak, so a window that
+    /// closes with the change unsettled doesn't keep every other window shut out.
+    private weak var stalledHistory: WindowOperationHistory?
+    /// After a change in `history`: remembers it when that change left the latch shut and no earlier one holds it.
+    private func noteStall(in history: WindowOperationHistory) async {
+        guard stalledHistory == nil, await executor.isQuarantined else { return }
+        stalledHistory = history
+    }
+    /// A stall was let go of while one of its calls was still out, so the next change asks again before it starts.
+    private var stallAcknowledged = false
+    /// Before a change starts: lets it run if an acknowledged stall has settled since.
+    private func reopenIfAcknowledgedStallSettled() async {
+        guard stallAcknowledged else { return }
+        await clearStallIfSettled()
+    }
+    /// A step that stalled on a read before it changed anything leaves nothing unsure, so nobody is asked to
+    /// acknowledge it, yet the executor still refuses later changes. Its result already tells the person; let them go on.
+    private func releaseStallThatChangedNothing(_ result: OperationResult) async {
+        let stalled = result.outcomes.contains {
+            if case .failure(.timedOut) = $0.result { return true }
+            return false
+        }
+        guard stalled, !result.outcomes.contains(where: \.requiresReconciliation) else { return }
+        await clearStallIfSettled()
     }
 
     public func redo(history: WindowOperationHistory, resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
@@ -194,7 +243,8 @@ import HelmPersistence
         let items = PlanItems(plan.steps)
         let task = Task { [weak self] () -> OperationResult in
             await previous?.value
-            return await executor.execute(plan, progress: { progress in
+            await self?.reopenIfAcknowledgedStallSettled()
+            let result = await executor.execute(plan, progress: { progress in
                 await MainActor.run { self?.update(Self.itemProgress(progress, items: items), title: title) }
             }, admission: { id, plan in
                 await MainActor.run { self?.register(id, title: title, box: box, replacing: replacing) }
@@ -204,6 +254,9 @@ import HelmPersistence
                 guard let onFailure, failure.remaining > 0 || failure.canRetry else { return .stop }
                 return await onFailure(failure)
             })
+            // In turn, before the next change starts, so it isn't refused for a stall that left nothing to settle.
+            await self?.releaseStallThatChangedNothing(result)
+            return result
         }
         box.cancel = { task.cancel() }
         // Waiting behind another window's work, the preparing row's cancel button stops this one.

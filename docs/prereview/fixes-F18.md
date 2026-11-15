@@ -1,7 +1,5 @@
 # F18 — Properties contents size and test sensitivity
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 No network, external actions, commits, pushes, manifest/script changes or legacy-app
 edits. GitHub shared memory was not fetched under the no-network instruction.
 Read K1 handoff, contract integration, P14/P15, overriding architecture fixes and

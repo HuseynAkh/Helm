@@ -1,6 +1,9 @@
 (version 1)
 ; The sandbox for smoke runs: everything is allowed except the network.
 ; Any try at the network kills the process at once, so the run fails with exit 137.
+; Helm connects only to the model provider the person chose, and only while AI mode is on. Smoke runs need no
+; network: a scripted stand-in answers for the provider. A run that reaches the shipped transport is killed here,
+; which is what host_smoke.sh's denied run shows.
 ; scripts/rebuild/host_smoke.sh runs HelmDev with: sandbox-exec -f scripts/rebuild/deny-network.sb HelmDev ...
 (allow default)
 

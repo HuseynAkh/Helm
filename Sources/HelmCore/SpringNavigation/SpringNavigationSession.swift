@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pure F-067 spring unwind transaction; deadlines and source validation use existing models.

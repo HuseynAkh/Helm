@@ -1,0 +1,7 @@
+{"role": "assistant", "content": null, "tool_calls": [
+  {"id": "function-call-1", "type": "function",
+   "function": {"name": "list_folder", "arguments": "{\"folder\":\"r1\",\"depth\":1,\"after\":\"\"}"},
+   "extra_content": {"google": {"thought_signature": "CiIBexampleThoughtSignature"}}},
+  {"id": "function-call-2", "type": "function",
+   "function": {"name": "find_items", "arguments": "{\"folder\":\"r1\"}"}}
+]}

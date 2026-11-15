@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K34 contract integration
 
 BatchRenamePlanner retains both nonthrowing entry points. The overloads with

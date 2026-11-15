@@ -5,15 +5,24 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The welcome window: Helm's icon, one line about it, a short checklist and two buttons. The guide is the same window
-/// with only the Full Disk Access row, under a header that already names it.
+/// with only the Full Disk Access row, under a header that already names it. In AI mode the window shows the AI mode
+/// screen instead.
 struct OnboardingView: View {
     @ObservedObject var model: OnboardingModel
 
     static let width: CGFloat = 540
 
     var body: some View {
+        if model.mode == .ai, let ai = model.aiSetup {
+            AIModeScreen(model: ai)
+        } else {
+            checklist
+        }
+    }
+
+    private var checklist: some View {
         VStack(spacing: 0) {
-            SetupHeader(mode: model.mode)
+            SetupHeader(mode: model.mode, line: model.headerLine)
             VStack(spacing: 0) {
                 if model.rows.isEmpty {
                     Text("Nothing to set up.")
@@ -40,6 +49,7 @@ struct OnboardingView: View {
 
 private struct SetupHeader: View {
     let mode: OnboardingModel.Mode
+    let line: String?
     var body: some View {
         VStack(spacing: 0) {
             Image(nsImage: helmIcon).resizable().interpolation(.high).frame(width: 72, height: 72)
@@ -49,8 +59,8 @@ private struct SetupHeader: View {
                 .font(.system(size: 24, weight: .bold)).padding(.top, 10)
                 .accessibilityAddTraits(.isHeader)
             // The one promise worth reading before Full Disk Access. The guide's row says what access gives.
-            if mode == .setup {
-                Text("Nothing leaves your Mac.")
+            if let line {
+                Text(line)
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 4)
@@ -71,6 +81,7 @@ private struct SetupRowView: View {
         let state = model.state(of: row)
         let box = model.hasCheckbox(row)
         let reason = model.unavailableReason(row)
+        let note = model.folderNote(row)
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 if model.mode == .setup {
@@ -79,7 +90,7 @@ private struct SetupRowView: View {
                             Toggle(row.title, isOn: Binding(get: { model.isChecked(row) }, set: { model.setChecked(row, $0) }))
                                 .toggleStyle(.checkbox).labelsHidden()
                                 .disabled(!model.canChoose || reason != nil)
-                                .accessibilityHint(reason.map { row.detail + " " + $0 } ?? row.detail)
+                                .accessibilityHint([row.detail, note, reason].compactMap { $0 }.joined(separator: " "))
                         }
                     }
                     .frame(width: 18, height: 18)
@@ -90,6 +101,10 @@ private struct SetupRowView: View {
                     }
                     Text(row.detail).font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let note {
+                        Text(note).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if let reason {
                         Label(reason, systemImage: "info.circle")
                             .font(.system(size: 12)).foregroundStyle(.secondary)

@@ -1,12 +1,14 @@
 #if os(macOS)
 import AppKit
 import Combine
+import HelmAgent
 import HelmCore
 import SwiftUI
 
 /// The welcome window, shown once on first launch and again from Help or Settings. As the guide it holds only the
 /// Full Disk Access row. While that row waits, Full Disk Access is checked every moment, and while System Settings is in
-/// front the window stays above it, so Helm's icon can be dragged across.
+/// front the window stays above it, so Helm's icon can be dragged across. In AI mode it shows the AI mode screen, dark,
+/// whose Done is the only way to leave AI mode on.
 @MainActor public final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     public let model: OnboardingModel
     /// Called once the checklist (not the guide on its own) has been seen: Set Up, Not Now, closing it, or Helm
@@ -14,6 +16,9 @@ import SwiftUI
     public var onSeen: (() -> Void)?
     /// Saves (or, with nil, clears) the rows the copy in Applications carries on with. The app keeps them in its settings.
     public var onCarry: (([SetupRow]?) -> Void)?
+    /// Called after the window closes, with the mode it was in. The app shows the AI mode screen once the first
+    /// launch's checklist has gone.
+    public var onClosed: ((OnboardingModel.Mode) -> Void)?
     private let host: NSHostingController<OnboardingView>
     private var counted = false
     private var isWatching = false
@@ -28,6 +33,12 @@ import SwiftUI
     private var activation: NSObjectProtocol?
     private var helmActivation: NSObjectProtocol?
     private var redraw: AnyCancellable?
+    /// What Done on the AI mode screen tells the app: whether AI mode ended connected.
+    private var aiDone: ((Bool) -> Void)?
+    /// Done is closing the window, so the close isn't a way out that turns AI mode off.
+    private var closingByDone = false
+    /// Done was pressed and is waiting on the model.
+    private(set) var aiDoneWork: Task<Void, Never>?
 
     public init(permissions: PermissionCenter, fileViewer: FileViewerModel?, mover: (any AppMoving)? = nil) {
         model = OnboardingModel(permissions: permissions, fileViewer: fileViewer, mover: mover)
@@ -41,6 +52,9 @@ import SwiftUI
         // Nothing about this window is worth saving between launches.
         window.isRestorable = false
         window.isMovableByWindowBackground = true
+        // Shown again, it comes to the Space the person is on now, rather than the one where it was shown last (as the AI
+        // mode screen, say), where it would open out of sight behind Helm's other windows.
+        window.collectionBehavior.insert(.moveToActiveSpace)
         super.init(window: window)
         window.delegate = self
         model.close = { [weak self] in self?.close() }
@@ -76,6 +90,14 @@ import SwiftUI
     /// it keeps what it's doing: the guide turns into the checklist still waiting for Full Disk Access, and the checklist
     /// asked for the guide shows its Full Disk Access row's icon and button. Either way it no longer closes by itself.
     public func show(_ mode: OnboardingModel.Mode, activate: Bool) {
+        // The AI mode screen gives way to the checklist or the guide. Leaving it so isn't Done.
+        if isOpen && model.mode == .ai {
+            leaveAIMode()
+            counted = false
+            model.begin(mode)
+            present(activate: activate)
+            return
+        }
         if !isOpen {
             start { $0.begin(mode) }
         } else {
@@ -83,6 +105,52 @@ import SwiftUI
             if mode == .setup { model.switchToSetup() } else { model.requestAccessHelp() }
         }
         present(activate: activate)
+    }
+
+    /// The AI mode screen, drawn from `ai`. Done closes it when the switch is off or the provider is connected, and then
+    /// calls `onDone` with whether it ended connected. Closing it any other way turns AI mode off. Asked for while the
+    /// checklist is open, it takes the checklist's place, which then counts as seen.
+    public func showAIMode(_ ai: AISetupModel, activate: Bool, onDone: @escaping (Bool) -> Void) {
+        if isOpen && model.mode == .ai && model.aiSetup === ai {
+            aiDone = onDone
+            present(activate: activate)
+            return
+        }
+        if isOpen && model.mode == .ai { leaveAIMode() }
+        if isOpen { markSeen() }
+        aiDone = onDone
+        ai.donePressed = { [weak self] key in self?.pressDone(pendingKey: key) }
+        start { $0.beginAI(ai) }
+        present(activate: activate)
+    }
+
+    /// Done: commits a typed key, then closes if the model says the screen may.
+    private func pressDone(pendingKey: String?) {
+        guard aiDoneWork == nil, let ai = model.aiSetup else { return }
+        aiDoneWork = Task { @MainActor [weak self] in
+            let leaves = await ai.done(pendingKey: pendingKey)
+            guard let self else { return }
+            self.aiDoneWork = nil
+            // The standard refusal, so Done never seems to do nothing. Scripted runs stay quiet.
+            if !leaves, self.interactive { NSSound.beep() }
+            guard leaves, self.isOpen, self.model.mode == .ai, self.model.aiSetup === ai else { return }
+            let connected = ai.isOn && ai.isConnected
+            let done = self.aiDone
+            self.aiDone = nil
+            self.closingByDone = true
+            self.close()
+            self.closingByDone = false
+            done?(connected)
+        }
+    }
+
+    /// The AI mode screen is left some way other than Done: AI mode goes off.
+    private func leaveAIMode() {
+        guard model.mode == .ai else { return }
+        aiDone = nil
+        aiDoneWork?.cancel(); aiDoneWork = nil
+        model.aiSetup?.donePressed = nil
+        model.aiSetup?.closedWithoutDone()
     }
 
     /// The copy that was just moved into Applications reopens the checklist and carries on with what was chosen.
@@ -100,17 +168,22 @@ import SwiftUI
         isOpen = true
         interactive = activate
         frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        window?.title = model.mode == .guide ? "Full Disk Access" : "Welcome to Helm"
+        switch model.mode {
+        case .setup: window?.title = "Welcome to Helm"
+        case .guide: window?.title = "Full Disk Access"
+        case .ai: window?.title = AgentText.aiTitle
+        }
+        // The AI mode screen is always dark; the checklist follows the Mac.
+        window?.appearance = model.mode == .ai ? NSAppearance(named: .darkAqua) : nil
         // Live status: the file viewer and the Dock are read again, in case they changed while the window was away.
         model.refresh()
         fit()
-        if activate {
-            showWindow(nil)
-            window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        } else {
-            window?.orderFrontRegardless()
-        }
+        // Always the key window, in front of Helm's other windows, as Settings is, so ⌘W and Close act on it. Only ordered
+        // in front of every app, it stayed on the Space where it was last shown. Only a person's run brings Helm forward;
+        // a scripted one leaves whatever is in front there.
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        if activate { NSApp.activate(ignoringOtherApps: true) }
         update()
         // So is Full Disk Access, quietly.
         Task { @MainActor [weak self] in await self?.model.permissions.refresh() }
@@ -124,6 +197,7 @@ import SwiftUI
     /// Helm is quitting. The checklist counts as seen if it's open, so it doesn't open again on the next launch.
     public func quitting() {
         if isSetupShown { markSeen() }
+        if isOpen && model.mode == .ai { leaveAIMode() }
     }
 
     private func markSeen() {
@@ -155,12 +229,13 @@ import SwiftUI
         guard let window, let content = window.contentView else { return }
         let height = ceil(host.sizeThatFits(in: NSSize(width: OnboardingView.width, height: 4000)).height)
         guard height > 0, abs(content.frame.height - height) > 0.5 || abs(content.frame.width - OnboardingView.width) > 0.5 else { return }
-        let top = window.frame.maxY
-        window.setContentSize(NSSize(width: OnboardingView.width, height: height))
-        var origin = NSPoint(x: window.frame.minX, y: top - window.frame.height)
+        // The top edge stays where it is and the bottom slides, rather than the window snapping to its new size.
+        var frame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: OnboardingView.width, height: height))
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
         // Growing downwards mustn't take the buttons off the bottom of the screen.
-        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame { origin.y = max(origin.y, screen.minY) }
-        window.setFrameOrigin(origin)
+        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame { frame.origin.y = max(frame.origin.y, screen.minY) }
+        let animates = interactive && window.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        window.setFrame(frame, display: true, animate: animates)
     }
 
     static let systemSettings = "com.apple.systempreferences"
@@ -171,16 +246,19 @@ import SwiftUI
     }
 
     public func windowWillClose(_ notification: Notification) {
+        let mode = model.mode
+        if mode == .ai && !closingByDone { leaveAIMode() }
         isOpen = false
         if isWatching { isWatching = false; model.permissions.watch(false) }
         model.closed()
         window?.level = .normal
         markSeen()
+        if let onClosed { DispatchQueue.main.async { MainActor.assumeIsolated { onClosed(mode) } } }
     }
 
     // MARK: Test support
 
-    /// "setup", "guide" or "closed".
+    /// "setup", "guide", "ai" or "closed".
     public var modeForTesting: String { isShown ? model.mode.rawValue : "closed" }
     public var levelForTesting: NSWindow.Level { window?.level ?? .normal }
     public func pressForTesting(_ title: String) -> Bool { model.press(title) }

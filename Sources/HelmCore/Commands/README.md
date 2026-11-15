@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 K14 command and menu tables
 
 All values are pure, Sendable HelmCore data. No command executes any action.

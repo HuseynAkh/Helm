@@ -365,7 +365,7 @@ extension NSPasteboard.PasteboardType {
 
 private extension Place {
     /// Removable and network drives. The startup disk and cloud folders have nothing to eject.
-    var isEjectable: Bool { kind == .device && iconName == "externaldrive" }
+    var isEjectable: Bool { kind == .device && ["externaldrive", "network"].contains(iconName) }
 }
 
 @MainActor final class SidebarOutlineView: NSOutlineView {
@@ -452,7 +452,7 @@ private extension Place {
         icon.image = NSImage(systemSymbolName: place.iconName.replacingOccurrences(of: ".fill", with: ""), accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
         icon.contentTintColor = .secondaryLabelColor
-        eject.isHidden = !(place.kind == .device && place.iconName == "externaldrive")
+        eject.isHidden = !place.isEjectable
         eject.setAccessibilityLabel("Eject \(place.name)")
         self.onEject = onEject
         setAccessibilityLabel(place.name)

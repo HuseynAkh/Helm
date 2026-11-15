@@ -1,0 +1,22 @@
+_OBJC_CLASS_$_NSURLSession
+_OBJC_CLASS_$_NSURLSessionConfiguration
+type metadata accessor for Foundation.URLRequest
+nominal type descriptor for Foundation.URLRequest
+Foundation.URLRequest.init(url: Foundation.URL, cachePolicy: __C.NSURLRequestCachePolicy, timeoutInterval: Swift.Double) -> Foundation.URLRequest
+Foundation.URLRequest.httpMethod.setter : Swift.String?
+Foundation.URLRequest.httpBody.setter : Foundation.Data?
+Foundation.URLRequest.setValue(_: Swift.String?, forHTTPHeaderField: Swift.String) -> ()
+Foundation.URLRequest.timeoutInterval.setter : Swift.Double
+static Foundation.URLRequest._unconditionallyBridgeFromObjectiveC(__C.NSURLRequest?) -> Foundation.URLRequest
+(extension in Foundation):__C.NSURLSession.data(for: Foundation.URLRequest, delegate: __C.NSURLSessionTaskDelegate?) async throws -> (Foundation.Data, __C.NSURLResponse)
+async function pointer to (extension in Foundation):__C.NSURLSession.data(for: Foundation.URLRequest, delegate: __C.NSURLSessionTaskDelegate?) async throws -> (Foundation.Data, __C.NSURLResponse)
+(extension in Foundation):__C.NSURLSession.bytes(for: Foundation.URLRequest, delegate: __C.NSURLSessionTaskDelegate?) async throws -> ((extension in Foundation):__C.NSURLSession.AsyncBytes, __C.NSURLResponse)
+async function pointer to (extension in Foundation):__C.NSURLSession.bytes(for: Foundation.URLRequest, delegate: __C.NSURLSessionTaskDelegate?) async throws -> ((extension in Foundation):__C.NSURLSession.AsyncBytes, __C.NSURLResponse)
+type metadata accessor for (extension in Foundation):__C.NSURLSession.AsyncBytes
+nominal type descriptor for (extension in Foundation):__C.NSURLSession.AsyncBytes
+protocol conformance descriptor for (extension in Foundation):__C.NSURLSession.AsyncBytes : Swift.AsyncSequence in Foundation
+(extension in Foundation):__C.NSURLSession.AsyncBytes.*
+async function pointer to (extension in Foundation):__C.NSURLSession.AsyncBytes.*
+nominal type descriptor for (extension in Foundation):__C.NSURLSession.AsyncBytes.*
+type metadata accessor for (extension in Foundation):__C.NSURLSession.AsyncBytes.*
+protocol conformance descriptor for (extension in Foundation):__C.NSURLSession.AsyncBytes.*

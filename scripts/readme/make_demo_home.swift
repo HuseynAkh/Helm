@@ -137,7 +137,7 @@ write("""
 write("Ideas\n\n1. A calmer header\n2. Folders apart from files in Recent\n3. Smooth list animations\n", to: "Documents/Ideas.txt")
 write("Month,Design,Engineering,Research\nJanuary,1200,3400,800\nFebruary,1350,3600,950\nMarch,1500,3550,1020\n", to: "Documents/Budget 2027.csv")
 let invoices = folder("Documents/Invoices")
-for (index, month) in ["August", "September", "October"].enumerated() {
+for (index, month) in ["September", "October", "November"].enumerated() {
     pdf(title: "Invoice \(1042 + index)", subtitle: "\(month) 2026 · Studio Maple", accent: 0x5E5CE6, pages: 1, chart: false,
         to: invoices.appendingPathComponent("Invoice \(month).pdf"))
 }
@@ -167,11 +167,24 @@ pdf(title: "Boarding Pass", subtitle: "Flight HL 204 · Seat 12A", accent: 0xFF3
 let poster = Palette(sky: [0x14082E, 0x7A1FA2, 0xFF5E8A], sun: 0xFFD166, hills: [0x2E1A6B, 0x1C1147, 0x0D0826])
 writeJPEG(landscape(poster, seed: 21), to: downloads.appendingPathComponent("Concert Poster.jpg"))
 write("Thanks for downloading!\n", to: "Downloads/Read Me.txt")
+// A Downloads folder that has piled up, for the pictures of AI mode organizing it.
+pdf(title: "Lease Agreement", subtitle: "Flat 3B · 12 months", accent: 0x64D2FF, pages: 2, chart: false,
+    to: downloads.appendingPathComponent("Lease Agreement.pdf"))
+pdf(title: "Trail Map", subtitle: "Lakeside loop · 9 km", accent: 0x30D158, pages: 1, chart: false,
+    to: downloads.appendingPathComponent("Trail Map.pdf"))
+writeJPEG(landscape(palettes[2].1, seed: 23), to: downloads.appendingPathComponent("Beach Day.jpg"))
+writePNG(landscape(palettes[5].1, seed: 29, width: 1200, height: 1200), to: downloads.appendingPathComponent("Studio Portrait.png"))
+write("Packing list\n\n- Rain jacket\n- Camera\n- Trail map\n", to: "Downloads/Packing List.txt")
 let zip = Process()
 zip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
 zip.arguments = ["-c", "-k", "--keepParent", home.appendingPathComponent("Documents/Invoices").path,
                  downloads.appendingPathComponent("Invoices.zip").path]
 try? zip.run(); zip.waitUntilExit()
+let backup = Process()
+backup.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+backup.arguments = ["-c", "-k", "--keepParent", desktop.appendingPathComponent("Moodboard").path,
+                    downloads.appendingPathComponent("Photos Backup.zip").path]
+try? backup.run(); backup.waitUntilExit()
 
 for name in ["Music", "Movies", "Library", "Templates"] { _ = folder(name) }
 
@@ -202,6 +215,10 @@ let pinnedDates: [String: Date] = [
     "Documents/Product Roadmap.pdf": day(1, 11, 5),
     "Downloads/Concert Poster.jpg": day(2, 19, 30),
     "Downloads/Boarding Pass.pdf": day(3, 7, 55),
+    // The fall's invoices, each dated in step with its name, for AI search's picture.
+    "Documents/Invoices/Invoice November.pdf": day(2, 10, 15),
+    "Documents/Invoices/Invoice October.pdf": day(25, 14, 30),
+    "Documents/Invoices/Invoice September.pdf": day(48, 9, 20),
 ]
 let homePath = home.resolvingSymlinksInPath().path
 if let walker = manager.enumerator(at: home, includingPropertiesForKeys: nil) {

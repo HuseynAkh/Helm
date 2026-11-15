@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Deterministic F-067 preflight with P-118 defaults and B-040 same-parent protection.

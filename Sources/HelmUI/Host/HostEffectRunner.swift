@@ -11,6 +11,10 @@ import HelmSearch
     private let dependencies: WindowDependencies
     weak var window: BrowserWindowController?
 
+    /// Searches with a model's help. While set, a search asked for with `usesAI` goes to it, with today's search as
+    /// its baseline; nil runs every search as today.
+    var aiSearch: (any AISearchRunning)?
+
     init(dependencies: WindowDependencies) { self.dependencies = dependencies }
 
     func run(_ effect: StoreEffect, send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation? {
@@ -32,6 +36,12 @@ import HelmSearch
         case .loadChildren(let url, let id, let generation, let options):
             return loadChildren(url, id: id, generation: generation, options: options, tab: tab, send: send)
         case .startSearch(let query, let generation):
+            if query.usesAI, let aiSearch {
+                // The runner is the only one that sends results for this search: today's search hands it its lists.
+                return aiSearch.run(query, generation: generation, tab: tab, baseline: { [weak self] deliver in
+                    self?.search(query, generation: generation, tab: tab, send: send, deliver: deliver) ?? StoreEffectCancellation {}
+                }, send: send)
+            }
             return search(query, generation: generation, tab: tab, send: send)
         case .recordRecent(let url):
             if dependencies.remembersRecentItems {
@@ -124,8 +134,13 @@ import HelmSearch
     /// Tests stand in for Spotlight here with answers of their own; nil asks Spotlight.
     static var spotlightAnswersForTesting: ((SearchQuery) -> AsyncStream<[URL]>)?
 
+    /// Today's search. With `deliver`, every ranked list goes to it and none to the store.
     private func search(_ query: SearchQuery, generation: Generation, tab: TabID,
-                        send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
+                        send: @escaping @Sendable (WindowStoreAction) -> Void,
+                        deliver: (@Sendable ([SearchResult]) -> Void)? = nil) -> StoreEffectCancellation {
+        let results: @Sendable ([SearchResult]) -> Void = { ranked in
+            if let deliver { deliver(ranked) } else { send(.tab(tab, .searchResults(generation, ranked))) }
+        }
         let fileSystem = dependencies.fileSystem
         let clock = dependencies.clock
         let home = dependencies.home
@@ -150,7 +165,7 @@ import HelmSearch
             // answer can say there are no results, and the search keeps saying Searching… until it comes.
             var answered = false
             if case .currentFolder = query.scope {
-                send(.tab(tab, .searchResults(generation, rank(walked, context: context, clock: clock))))
+                results(rank(walked, context: context, clock: clock))
                 answered = true
             }
             let answers: AsyncStream<[URL]>
@@ -163,11 +178,11 @@ import HelmSearch
                     guard let entry = try? await fileSystem.entry(at: url), seen.insert(entry.id).inserted else { continue }
                     merged.append(SearchCandidate(entry: entry))
                 }
-                send(.tab(tab, .searchResults(generation, rank(merged, context: context, clock: clock))))
+                results(rank(merged, context: context, clock: clock))
                 answered = true
             }
             // Spotlight couldn't start, so what was found is all there is.
-            if !answered, !Task.isCancelled { send(.tab(tab, .searchResults(generation, rank(walked, context: context, clock: clock)))) }
+            if !answered, !Task.isCancelled { results(rank(walked, context: context, clock: clock)) }
         }
         return StoreEffectCancellation {
             walk.cancel(); task.cancel()
@@ -230,23 +245,6 @@ import HelmSearch
         case .cancelled, .cancelCompletions, .navigate:
             return nil
         }
-    }
-}
-
-/// The path as the file system spells it. Finder also lands on the real folder, so paths never run through a link.
-public enum CanonicalPath {
-    public static func resolve(_ url: URL) -> URL {
-        let directory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-        guard let real = realpath(url.path, nil) else { return url }
-        defer { free(real) }
-        return URL(fileURLWithPath: String(cString: real), isDirectory: directory)
-    }
-    /// An item as the file system spells it: every folder on the way to it as the disk has it, through any link, and
-    /// its own name in the disk's case. Unlike `resolve`, a link stays a link, so showing one selects the link itself,
-    /// as Finder's reveal does.
-    public static func spelling(of url: URL) -> URL {
-        guard let path = try? url.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath else { return url }
-        return URL(fileURLWithPath: path, isDirectory: url.hasDirectoryPath)
     }
 }
 

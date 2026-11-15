@@ -1,5 +1,3 @@
-DRAFT: pending review, 2026-11-05
-
 # OP1fix: Linux verification and minimal test repairs
 
 All changes remain pending Opus spot-check. This lane changes three existing test files and creates this report; it changes no production code, package manifest, scripts, or legacy app files. No tests were deleted, skipped, or added. No network, commits, pushes, or external actions were used.

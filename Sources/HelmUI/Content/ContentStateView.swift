@@ -9,11 +9,13 @@ import SwiftUI
 struct ContentStateView: View {
     let state: ContentState?
     let perform: (ContentStateAction) -> Void
+    /// The tooltip of "Find with AI": what pressing it sends, and to whom.
+    var findWithAIHint: String?
 
     var body: some View {
         if let state {
             switch state.style {
-            case .empty: ContentStateEmptyPage(state: state)
+            case .empty: ContentStateEmptyPage(state: state, perform: perform, findWithAIHint: findWithAIHint)
             case .problem, .waiting: ContentStateCard(state: state, perform: perform)
             }
         }
@@ -22,19 +24,45 @@ struct ContentStateView: View {
 
 private struct ContentStateEmptyPage: View {
     let state: ContentState
+    let perform: (ContentStateAction) -> Void
+    let findWithAIHint: String?
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: state.symbol)
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-            Text(state.title)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                Image(systemName: state.symbol)
+                    .font(.system(size: 40, weight: .light))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                Text(state.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .accessibilityElement(children: .combine)
+            // An empty page's way forward, such as "Find with AI" when a search found nothing: quiet, as the page is.
+            if !state.buttons.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(state.buttons, id: \.self) { button in
+                        if button.action == .findWithAI {
+                            // AI's own button carries the spark, as the search field's toggle does.
+                            Button { perform(button.action) } label: {
+                                Label {
+                                    Text(button.title)
+                                } icon: {
+                                    Image(nsImage: SparkMark.image(size: 12, lit: false)).renderingMode(.template)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .help(findWithAIHint ?? "")
+                        } else {
+                            Button(button.title) { perform(button.action) }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .padding(.top, 6)
+            }
         }
         .padding(16)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -113,8 +141,8 @@ private struct ContentStateCard: View {
     }
 }
 
-/// Holds the status page over the content area. An empty state lets clicks and drops through to the listing
-/// underneath, so you can still drop into an empty folder or right-click it for New Folder.
+/// Holds the status page over the content area. An empty state with no button lets clicks and drops through to the
+/// listing underneath, so you can still drop into an empty folder or right-click it for New Folder.
 @MainActor final class ContentStateHostingView: NSHostingView<ContentStateView> {
     var passesThrough = true
     required init(rootView: ContentStateView) { super.init(rootView: rootView) }
@@ -128,6 +156,9 @@ private struct ContentStateCard: View {
     private(set) var state: ContentState?
     /// A state shown for a screenshot in place of the tab's own; nil shows the tab's.
     var preview: ContentState?
+    /// The tooltip "Find with AI" carries while a model is ready.
+    var findWithAIHint: String?
+    private var shownHint: String?
     private var retry: Task<Void, Never>?
     /// While the waiting card shows, the place is tried again after this long, then twice as long each time up to
     /// `longestRetryInterval`, and no more than `retryLimit` times. Helm also tries again whenever it comes back to
@@ -142,11 +173,13 @@ private struct ContentStateCard: View {
     /// `retryWaiting` runs after each interval while a waiting card stays up, until the limit.
     func show(_ next: ContentState?, perform: @escaping (ContentStateAction) -> Void, retryWaiting: @escaping () -> Void) {
         let changed = next != state
-        if changed || view.isHidden != (next == nil) {
+        if changed || view.isHidden != (next == nil) || shownHint != findWithAIHint {
             state = next
-            view.rootView = ContentStateView(state: next, perform: perform)
+            shownHint = findWithAIHint
+            view.rootView = ContentStateView(state: next, perform: perform, findWithAIHint: findWithAIHint)
             view.isHidden = next == nil
-            view.passesThrough = next?.style == .empty
+            // An empty page with a button takes clicks, so the button can be pressed.
+            view.passesThrough = next?.style == .empty && next?.buttons.isEmpty != false
         }
         if changed {
             retries = 0

@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K36 accessibility values
 
 Pure Foundation/HelmCore logic for M24 and P-292/P-293/P-299/P-300. Preserves

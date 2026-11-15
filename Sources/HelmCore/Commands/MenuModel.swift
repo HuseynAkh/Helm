@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// Declarative menu item preserves legacy labels and routing (F-066); children are dynamic adapter slots.
 public struct CommandMenuItem: Equatable, Sendable {
     public let title: String
@@ -57,6 +55,8 @@ public struct MenuModel: Equatable, Sendable {
         var sections = menu.sections
         switch menu.title {
         case "File":
+            // Beside Find, as its other half. The title is HelmAgent's own words, which a HelmUI test keeps equal.
+            sections[3] += [item("Find with AI", .findWithAI, "f", [.command, .option], isNew: true)]
             sections.insert([
                 item("Open", .open, "o", isNew: true), item("Open With", .openWith, isNew: true),
                 item("Open in New Tab", .openInNewTab, isNew: true), item("Open in New Window", .openInNewWindow, isNew: true),
@@ -74,6 +74,9 @@ public struct MenuModel: Equatable, Sendable {
             sections.append([item("Copy as Pathname", .copyAsPathname, "c", [.command, .option], isNew: true), item("Move Items Here", .moveItemsHere, "v", [.command, .option], isNew: true)])
         case "View":
             sections[0] += [item("as Columns", .columns, isNew: true), item("as Gallery", .gallery, isNew: true)]
+            // Beside Toggle Sidebar, since it shows and hides the window's other side panel. The title is the same
+            // words as HelmAgent's own, which HelmCore can't see; a HelmUI test keeps the two equal.
+            sections[1] += [item("Show AI Panel", .aiPanel, "i", [.command, .control], isNew: true)]
             sections.append([item("Show Preview", .previewPane, isNew: true), item("Show View Options", .viewOptions, "j", isNew: true)])
         case "Go":
             sections.append([item("Recents", .recents, "F", isNew: true), item("Desktop", .desktop, "D", isNew: true), item("Documents", .documents, "O", isNew: true),

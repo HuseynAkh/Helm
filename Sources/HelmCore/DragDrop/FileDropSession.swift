@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Session-scoped source validation preserves F-067 order without repeating overlap sorting.

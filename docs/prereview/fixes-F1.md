@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 # F1 prereview fixes
 
 All five findings in P1.md were re-verified by XCTest before fixes. No finding was

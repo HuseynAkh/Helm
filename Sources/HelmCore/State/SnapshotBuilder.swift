@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Build once off the UI actor; datasource reads never sort (F-040, B-010/B-101).

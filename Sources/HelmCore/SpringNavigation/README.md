@@ -1,5 +1,3 @@
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 K41 / P15 N6: value-only F-067 spring unwind transaction. The host retains one
 session per drag/tab and polls the existing SpringLoadingModel through this API.
 Load callbacks must return the exact request and fresh target metadata. Only a
@@ -20,7 +18,7 @@ hover loads retain the current transient location; cancel unwinds the transactio
 Host load cancellation, per-level live scroll capture, native drag lifecycle and
 commit routing remain integration work. No existing navigation/store is changed.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

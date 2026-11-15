@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Stable app-owned window identity is independent of controller lifetime (F-001, F-068).

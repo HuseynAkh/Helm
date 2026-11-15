@@ -1,6 +1,4 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 /// Portable filesystem services preserve listings, templates and monitor refresh (F-035, F-057, B-073).
-/// DRAFT: pending Opus compile-correctness and behaviour review after 22:00 Toronto, 2026-11-04.
 ///
 /// Integration notes:
 /// - DirectoryLoader.snapshot returns sorted FileEntry values; SnapshotStamp.loadAction wraps them

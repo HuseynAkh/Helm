@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F3 persistence integration
 
 Load before editing; share one store per document. Only a definite missing-file
@@ -34,3 +33,11 @@ slider stays 48–128. K33PreferenceDocumentTests, K33TagCatalogTests,
 K33LocationViewOptionsTests and K34ViewDefaultsTests exercise persistence, recovery,
 revision ordering and defaults. Native catalogue/options bindings, recovery UI,
 shared-store composition and explicit quit flush still require integration.
+
+## ai.json
+
+AIConfigStore follows SidebarLayoutStore: one shared MainActor owner over
+`JSONFileStore<AIConfig>`, in ai.json (`StoreLocation.ai`), with the same corruption
+backup and the same refusal of a newer schema. It holds the chosen provider, a model for
+each provider, local ports and a typed address. A key is never written here: the payload
+has no field for one, and unknown fields in a file are dropped on the next save.

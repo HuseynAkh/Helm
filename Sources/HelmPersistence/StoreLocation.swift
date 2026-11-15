@@ -13,4 +13,5 @@ public struct StoreLocation: Sendable, Equatable {
     public var trashOrigins: URL { directory.appendingPathComponent("trash-origins.json") }
     public var openWith: URL { directory.appendingPathComponent("open-with.json") }
     public var sidebar: URL { directory.appendingPathComponent("sidebar.json") }
+    public var ai: URL { directory.appendingPathComponent("ai.json") }
 }

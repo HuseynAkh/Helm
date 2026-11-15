@@ -21,7 +21,9 @@ import SwiftUI
             host.title = pane.rawValue
             let item = NSTabViewItem(viewController: host)
             item.label = pane.rawValue
-            item.image = NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.rawValue)
+            // AI's tab draws Helm's own spark, the mark AI mode has wherever it shows.
+            item.image = pane == .ai ? SparkMark.image(size: 18, lit: false)
+                : NSImage(systemSymbolName: pane.symbol, accessibilityDescription: pane.rawValue)
             tabs.addTabViewItem(item)
         }
         let window = NSWindow(contentViewController: tabs)

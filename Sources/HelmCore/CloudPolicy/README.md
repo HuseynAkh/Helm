@@ -1,7 +1,5 @@
 # Cloud admission policy — K37 / P15 N4
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 Foundation-only values supplement F-035 metadata listing and F-007/F-049 explicit
 activation. Listing always stays metadata-only. Only known-local items admit
 passive content demand; evicted, downloading and unknown suppress thumbnails.
@@ -35,7 +33,7 @@ The first full run saw eight failures in two concurrently authored F16 cancellat
 cases outside this lane; their four-test retry and the final full run passed.
 macOS SDK compilation/native behavior and Opus review remain unverified.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

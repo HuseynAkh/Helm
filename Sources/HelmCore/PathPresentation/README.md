@@ -1,7 +1,5 @@
 # Selected-result path presentation — K37 / P15 N7
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 Adds the selected-result path projection requested by P15 while preserving F-012
 root ancestry, F-030 virtual locations and F-050 reveal identity. It does not
 change the existing top address bar's F-014 click-to-edit behavior or F-025 copy
@@ -37,7 +35,7 @@ The first full run saw eight failures in two concurrently authored F16 cancellat
 cases outside this lane; their four-test retry and the final full run passed.
 macOS SDK compilation/native behavior and Opus review remain unverified.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-047 generic caching avoids the per-visible-cell file icon lookup cost of B-058.

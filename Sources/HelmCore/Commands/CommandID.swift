@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// Stable action identities preserve F-049–F-066 and the menu map in main.swift:19–142.
 /// Planned cases describe data only; they do not authorize or execute operations.
 public enum CommandID: String, CaseIterable, Codable, Sendable {
@@ -20,6 +18,10 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case applications, utilities, computer, network, compress, decompress, tags
     /// Go › Trash, so the Trash and Put Back stay in reach when its sidebar row is hidden.
     case goToTrash
+    /// View › Show AI Panel: the panel beside the files where requests to a model are typed.
+    case aiPanel
+    /// File › Find with AI: the search field's spark from the keyboard.
+    case findWithAI
 
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {

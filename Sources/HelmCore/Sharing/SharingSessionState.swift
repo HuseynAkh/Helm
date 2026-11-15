@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Host presentation intents only; no sending or recipient discovery lives in Core (F-063).

@@ -18,6 +18,10 @@
 # It builds the folder as it is. On a Mac, uncommitted changes are built too, and the notes say so.
 # On GitHub Actions it stops instead, because the attestation names the commit.
 #
+# A release keeps Helm's privacy promise: it connects only to the model provider the person chose, and only
+# while AI mode is on. scripts/privacy_check.py checks the source before the build, and
+# scripts/release/check_binary_privacy.sh checks the app after it, against the calls and addresses it lists.
+#
 # Needs Xcode and XcodeGen, and nothing else: no network, no signing identity and no installs.
 # The app is signed ad hoc, as the project is. docs/RELEASING.md says why it isn't notarized yet.
 # Written for the bash 3.2 that comes with macOS.
@@ -165,7 +169,8 @@ done
 printf 'Helm %s (%s) for macOS %s or later, built for %s\n' "$built_version" "$built_number" "$min_os" "$archs"
 
 step "Checking the app for privacy"
-# No network or identifier code, no web addresses, no paths from this Mac, no entitlements.
+# No network code but the listed URL session calls, no web addresses but the providers', no identifier code,
+# no paths from this Mac, no entitlements.
 bash "$root/scripts/release/check_binary_privacy.sh" "$app" || die "The app failed the privacy check above."
 # Each slice's code directory hash, for the notes. A copy that passes codesign --verify with these hashes as its
 # requirement is this build, unchanged: --verify checks every slice. The hashes alone, as codesign -d shows them,
@@ -305,7 +310,9 @@ EOF
 
 ## Privacy
 
-Helm makes no network connections of its own: no accounts, analytics, telemetry or update checks. What Helm keeps, such as your settings, tabs and bookmarks, stays on your Mac.
+Helm connects only to the model provider you choose, and only while AI mode is on. AI mode is off until you turn it on. It sends your requests and the names and details of files, never what's inside them; with Ollama or LM Studio they stay on your Mac. Your provider's key is kept in your Mac's keychain.
+
+There are no accounts, analytics, telemetry or update checks. What Helm keeps, such as your settings, tabs and bookmarks, stays on your Mac.
 
 ---
 

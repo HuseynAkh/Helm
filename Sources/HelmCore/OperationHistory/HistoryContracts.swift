@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Single-use history reservation, independent of executor journal IDs (F-059/B-043).
@@ -7,12 +6,22 @@ public struct HistoryRequestID: Hashable, Sendable {
     public init(rawValue: UUID = UUID()) { self.rawValue = rawValue }
 }
 
+/// Several operations that the person undoes as one, such as the commands of one applied plan.
+/// Edit shows "Undo " and the name, so the name reads as one change: "Organize “Downloads”".
+public struct HistoryGroup: Hashable, Sendable {
+    public let id: UUID
+    public let name: String
+    public init(id: UUID = UUID(), name: String) { self.id = id; self.name = name }
+}
+
 /// Named original user operation; inverse attempts never create these entries (F-059).
 public struct HistoryEntry: Equatable, Sendable {
     public let operationID: OperationID
     public let name: String
-    public init(operationID: OperationID, name: String) {
-        self.operationID = operationID; self.name = name
+    /// The group this operation ran under, or nil for an operation of its own. An entry in a group is named after it.
+    public let group: HistoryGroup?
+    public init(operationID: OperationID, name: String, group: HistoryGroup? = nil) {
+        self.operationID = operationID; self.name = name; self.group = group
     }
 }
 
@@ -51,6 +60,10 @@ public enum HistoryReservation: Equatable, Sendable {
 /// Pure history inputs; hosts must route text editing before file undo (F-059/B-041).
 public enum HistoryAction: Sendable {
     case beginForward(HistoryRequestID, name: String)
+    /// As `beginForward` under the group's name, and the entry this forward makes carries the group. Once such an
+    /// entry is undone it is gone: it never reaches the redo stack, and the entries already there, which were made
+    /// after it, are let go with it. One retired by `acknowledgeReconciliation` takes them with it as well.
+    case beginGroupedForward(HistoryRequestID, HistoryGroup)
     case startForward(HistoryRequestID, operation: OperationID)
     case abortForward(HistoryRequestID, failure: HistoryPreparationFailure)
     case finishForward(HistoryRequestID, operation: OperationID, outcome: HistoryOutcome)

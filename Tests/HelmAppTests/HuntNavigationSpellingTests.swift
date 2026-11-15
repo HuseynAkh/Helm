@@ -2,6 +2,7 @@
 import Foundation
 import XCTest
 import HelmCore
+import HelmFileSystem
 import HelmTestKit
 @testable import HelmUI
 

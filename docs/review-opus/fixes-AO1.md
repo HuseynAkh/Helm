@@ -1,7 +1,5 @@
 # AO1 operation-history fixes
 
-DRAFT: pending review, 2026-11-04
-
 ## O1-2 — FIXED
 
 Verified the proposal against `HistoryResultMapping.outcome`: it checks every

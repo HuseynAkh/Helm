@@ -15,25 +15,39 @@ import HelmFileSystem
     private let isLive: Bool
 
     private let home: URL
+    /// Reading has begun. Until then nothing is read, and `volumes` is empty.
+    public private(set) var isStarted = false
 
-    public init(isLive: Bool, home: URL, showAll: @escaping () -> Bool) {
+    /// With `startsNow` false, nothing is read until `start()`: the app waits for setup, since iCloud Drive, cloud
+    /// folders and other disks are places macOS may ask about.
+    public init(isLive: Bool, home: URL, startsNow: Bool = true, showAll: @escaping () -> Bool) {
         self.isLive = isLive; self.home = home; self.showAll = showAll
-        guard isLive else { reload(); return }
-        let center = NSWorkspace.shared.notificationCenter
-        for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reload() }
-            }) 
+        if startsNow { start() }
+    }
+
+    /// Reads the drives now, and again whenever a disk comes, goes or is renamed. Calling it again does nothing.
+    public func start() {
+        guard !isStarted else { return }
+        isStarted = true
+        if isLive {
+            let center = NSWorkspace.shared.notificationCenter
+            for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
+                observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.reload() }
+                })
+            }
         }
         reload()
     }
 
     public func reload() {
+        guard isStarted else { return }
         let reader = reader, showAll = showAll(), isLive = isLive, home = home
         Task { [weak self] in
             // A fixture run has its own home folder, and never looks at real mounts.
             let mounted = isLive ? ((try? await reader.volumes(showAll: showAll)) ?? []) : []
-            let cloud = await Task.detached { Self.cloudDrives(home: home) }.value
+            // With downloads off, so a provider's folder is never loaded just to show it in the sidebar.
+            let cloud = await Task.detached { DatalessGuard.withDownloadsOff { Self.cloudDrives(home: home) } }.value
             guard let self else { return }
             self.volumes = mounted + cloud
             self.changes.send(self.volumes)

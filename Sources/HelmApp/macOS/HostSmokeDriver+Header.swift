@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 import HelmUI
 
@@ -40,14 +41,28 @@ extension HostSmokeDriver {
             }
             await wait(seconds: 0.4)
             check(window.activeTab?.addressBar.isEditing == false, step, "still editing")
+        case "location-press":
+            // location-press path|panel|files|sidebar|header: a click in the middle of that part of the window, as a
+            // person's click there, while the location bar may be typed in. It fails when that part isn't on show.
+            check(window.pressForTesting(in: argument), step, "\(argument) isn't on show")
+            await wait(seconds: 0.3)
+        case "location-typing":
+            // location-typing true|false: whether the location bar is being typed in, and so watches for presses.
+            let typing = window.activeTab?.addressBar.isEditing == true
+            let watched = window.watchesLocationPressesForTesting
+            check(typing == (argument == "true") && watched == typing, step, "typing \(typing), watching \(watched)")
         case "escape-files":
             window.pressEscapeInFilesForTesting()
             await wait(seconds: 0.4)
         case "header-view-is":
+            // The view the header's view button says the tab is in.
             check(window.headerViewModeForTesting.rawValue == argument, step, window.headerViewModeForTesting.rawValue)
         case "header-switch":
-            // grid or list: a click on that half of the header's switch, wherever the keys are.
+            // grid or list: a click on the header's view button that chooses that view, wherever the keys are. It
+            // fails when the button offers the other view.
             guard let mode = ViewMode(rawValue: argument) else { check(false, step, "grid or list"); return true }
+            let offered = window.headerViewOfferedForTesting
+            check(offered == mode, step, "the button offers \(offered.rawValue)")
             window.clickHeaderViewForTesting(mode)
             await wait(seconds: 0.4)
         case "sidebar-width-save":
@@ -77,10 +92,15 @@ extension HostSmokeDriver {
             await wait(seconds: 0.4)
             check(window.activeTab?.sort == savedSort, step)
         case "header-tooltips":
-            // Each control's tooltip names its shortcut.
+            // Each control's tooltip names its shortcut. The view button names the view it switches to, so only
+            // that view's key; the spark names its key once a model is ready, and otherwise says it sets AI mode up.
             let tips = window.headerToolTipsForTesting
-            let missing = ["⌃⌘S", "⌘[", "⌘]", "⌘F", "⌘1", "⌘2", "⌘J"].filter { key in !tips.contains { $0.contains(key) } }
-            check(missing.isEmpty, step, "missing \(missing) in \(tips)")
+            let grid = window.headerViewModeForTesting == .grid
+            let offeredKey = grid ? "⌘2" : "⌘1", shownKey = grid ? "⌘1" : "⌘2"
+            var missing = ["⌃⌘S", "⌘[", "⌘]", "⌘F", offeredKey, "⌘J"].filter { key in !tips.contains { $0.contains(key) } }
+            if !tips.contains(where: { $0 == AgentText.sparkSetUp || $0.contains("⌃⌘I") }) { missing.append("the spark") }
+            let extra = tips.filter { $0.contains(shownKey) }
+            check(missing.isEmpty && extra.isEmpty, step, "missing \(missing), extra \(extra) in \(tips)")
         case "window-width":
             guard let frameWindow = window.window, let width = Double(argument) else { check(false, step, "usage"); return true }
             var frame = frameWindow.frame
@@ -136,10 +156,20 @@ extension HostSmokeDriver {
             await wait(seconds: 0.5)
         case "title-bar-fits-header":
             check(titleBarProblems(window).isEmpty, step, titleBarProblems(window).joined(separator: "; "))
+        case "header-menu-whole":
+            // The main menu's dots in a circle are drawn whole: the button is 34 by 32, 8 points from the header's
+            // trailing edge, and its ink, about 15 points square, lies inside it with room to spare. The spark's
+            // ink is about the same size.
+            check(menuProblems(window).isEmpty, step, menuProblems(window).joined(separator: "; "))
         case "header-buttons-even":
-            // Every header button's fill is the same height: 32 points, or 26 for the ⋯ inside the path.
-            let uneven = headerButtons(window).filter { $0.height != ($0.inPath ? 26 : 32) }
-            check(uneven.isEmpty, step, uneven.map { "\($0.name) \($0.height)" }.joined(separator: ", "))
+            // Every header button's fill is the same height: 32 points, or 26 for the ⋯ inside the path. The view
+            // button and the spark are among them.
+            let buttons = headerButtons(window)
+            let uneven = buttons.filter { $0.height != ($0.inPath ? 26 : 32) }
+            let kinds = Set(buttons.map(\.kind))
+            let absent = ["ViewModeButton", "SparkButton"].filter { !kinds.contains($0) }
+            check(uneven.isEmpty && absent.isEmpty, step,
+                  (uneven.map { "\($0.name) \($0.height)" } + absent.map { "no \($0)" }).joined(separator: ", "))
         default: return false
         }
         return true
@@ -156,7 +186,7 @@ extension HostSmokeDriver {
               let image = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return false }
         frameView.cacheDisplay(in: frameView.bounds, to: image)
         let scale = CGFloat(image.pixelsHigh) / max(1, frameView.bounds.height)
-        guard let whole = image.cgImage,
+        guard let whole = withMaterials(image, of: frameView).cgImage,
               let band = whole.cropping(to: CGRect(x: 0, y: 0, width: CGFloat(whole.width), height: min(CGFloat(whole.height), points * scale))),
               let data = NSBitmapImageRep(cgImage: band).representation(using: .png, properties: [:]) else { return false }
         return (try? data.write(to: URL(fileURLWithPath: path))) != nil
@@ -207,14 +237,30 @@ extension HostSmokeDriver {
         return problems
     }
 
-    /// The header's buttons as laid out: name, height, and whether it sits inside the path field.
-    private static func headerButtons(_ window: BrowserWindowController) -> [(name: String, height: CGFloat, inPath: Bool)] {
-        var found: [(name: String, height: CGFloat, inPath: Bool)] = []
+    /// What keeps the main menu button from being drawn whole, if anything.
+    private static func menuProblems(_ window: BrowserWindowController) -> [String] {
+        let measure = window.headerMenuMeasureForTesting
+        var problems: [String] = []
+        if abs(measure.size.width - 34) > 0.5 || abs(measure.size.height - 32) > 0.5 { problems.append("size \(measure.size)") }
+        if abs(measure.trailingGap - 8) > 0.5 { problems.append("\(measure.trailingGap) from the trailing edge") }
+        guard let ink = measure.ink else { return problems + ["no ink"] }
+        if !measure.bounds.insetBy(dx: 1, dy: 1).contains(ink) { problems.append("ink \(ink) reaches the edge of \(measure.bounds)") }
+        if ink.width < 13.5 || ink.width > 16.5 || ink.height < 13.5 || ink.height > 16.5 { problems.append("ink \(ink.size)") }
+        if let spark = measure.sparkInk, spark.width < 13.5 || spark.width > 16.5 { problems.append("spark ink \(spark.size)") }
+        return problems
+    }
+
+    /// The header's flat buttons, of every kind.
+    private static let flatButtonKinds: Set<String> = ["FlatButton", "FlatMenuButton", "ViewModeButton", "SparkButton"]
+    /// The window's buttons as laid out: name, kind, height, and whether it sits inside the path field.
+    private static func headerButtons(_ window: BrowserWindowController)
+        -> [(name: String, kind: String, height: CGFloat, inPath: Bool)] {
+        var found: [(name: String, kind: String, height: CGFloat, inPath: Bool)] = []
         func walk(_ view: NSView, inPath: Bool) {
             let kind = String(describing: type(of: view))
             let path = inPath || kind == "PathBarView"
-            if kind == "FlatButton" || kind == "FlatMenuButton", !view.isHiddenOrHasHiddenAncestor {
-                found.append((view.accessibilityLabel() ?? kind, view.frame.height, path))
+            if flatButtonKinds.contains(kind), !view.isHiddenOrHasHiddenAncestor {
+                found.append((view.accessibilityLabel() ?? kind, kind, view.frame.height, path))
             }
             view.subviews.forEach { walk($0, inPath: path) }
         }

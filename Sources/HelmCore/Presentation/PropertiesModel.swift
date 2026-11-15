@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Aggregate Get Info metadata (F-050, B-066); directory sizes are not recursive totals.

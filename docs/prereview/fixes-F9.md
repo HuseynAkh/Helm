@@ -1,7 +1,5 @@
 # F9 — P8 finding dispositions
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 Both findings are real and require the public-contract integration explicitly
 excluded from this lane. No production contract or source is changed. The failing
 XCTest probes below assert the desired safe behavior, rather than asserting the
@@ -56,7 +54,6 @@ user files. The cancellation copier cancels its own task immediately before the
 fake actor admission call, forwarding the original evidence unchanged.
 
 ```swift
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import XCTest
 import Foundation
 import HelmCore
@@ -129,7 +126,6 @@ Recreate the isolated probe package with the source above under
 
 ```swift
 // swift-tools-version: 5.9
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import PackageDescription
 let package = Package(name: "F9Probes", dependencies: [.package(path: "/workspace/forge/helm-build")], targets: [.testTarget(name: "F9Probes", dependencies: [.product(name: "HelmOperations", package: "helm-build"), .product(name: "HelmFileSystem", package: "helm-build"), .product(name: "HelmCore", package: "helm-build")])])
 ```

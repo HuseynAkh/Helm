@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 
 /// The content area's status page: what replaces the listing when a place is empty or couldn't open,
@@ -7,8 +8,16 @@ import HelmCore
 extension BrowserWindowController {
     func renderContentState(_ tab: TabState) {
         let access = dependencies.permissions.fullDiskAccess
-        let state = statePage.preview ?? ContentStatePresentation.state(for: tab, home: dependencies.home, fullDiskAccess: access)
+        // The no-results page offers Find with AI whenever AI mode is on; with no model ready, it opens the AI mode screen.
+        let state = statePage.preview ?? ContentStatePresentation.state(for: tab, home: dependencies.home, fullDiskAccess: access,
+                                                                        aiSearchReady: isAISearchAvailable)
         let isNew = state != statePage.state
+        // "Find with AI" on the no-results page says in its tooltip what pressing it sends, and to whom.
+        if case .ready(_, let destination, _, _) = dependencies.agent.runtime.state {
+            statePage.findWithAIHint = AgentText.searchHint(destination)
+        } else {
+            statePage.findWithAIHint = nil
+        }
         statePage.show(state, perform: { [weak self] in self?.performContentAction($0) },
                        retryWaiting: { [weak self] in self?.retryWaitingLoad() })
         // A failure replaces the old listing rather than sitting on top of it, so nothing on show belongs elsewhere.
@@ -34,6 +43,8 @@ extension BrowserWindowController {
         case .grantAccess(let pane): dependencies.permissions.showGuide(pane)
         case .openTrashInFinder: dependencies.permissions.openTrashInFinder()
         case .goHome: perform(.home)
+        // The no-results page's button: the search field's spark goes on and the same words are sent at once.
+        case .findWithAI: findWithAI()
         }
     }
 

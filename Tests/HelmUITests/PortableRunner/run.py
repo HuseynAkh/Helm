@@ -1,4 +1,3 @@
-# DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 # Run from the worktree root after sourcing /workspace/toolchains/env.sh.
 import pathlib, subprocess, re, os
 root = pathlib.Path.cwd()

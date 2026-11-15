@@ -13,6 +13,8 @@ public enum ContentStateAction: Hashable, Sendable {
     /// Finder can always read the Trash, so it's the way in until Helm has Full Disk Access.
     case openTrashInFinder
     case goHome
+    /// Runs the search on show again with a model's help.
+    case findWithAI
 }
 
 public struct ContentStateButton: Hashable, Sendable {
@@ -42,7 +44,9 @@ public struct ContentState: Hashable, Sendable {
 /// privacy from ordinary permissions. Evidence about the refused folder itself only ever narrows that down.
 public enum ContentStatePresentation {
     /// The state for a tab, or nil while the listing itself is what to show.
-    public static func state(for tab: TabState, home: URL, fullDiskAccess: PrivacyAccessStatus) -> ContentState? {
+    /// `aiSearchReady` says a model is ready to help with a search, which adds a button to the no-results page.
+    public static func state(for tab: TabState, home: URL, fullDiskAccess: PrivacyAccessStatus,
+                             aiSearchReady: Bool = false) -> ContentState? {
         let snapshot = tab.snapshot
         if let shown = failureOnShow(tab) {
             return failure(shown.error, attempted: shown.attempted, home: home, fullDiskAccess: fullDiskAccess,
@@ -56,7 +60,11 @@ public enum ContentStatePresentation {
         case .failed(let error, let attempted): listed = keepsListing(plain(error), attempted: attempted, tab: tab)
         }
         guard listed, snapshot.rootCount == 0 else { return nil }
-        if let search = tab.search { return search.isGathering ? nil : empty(.noResults) }
+        if let search = tab.search {
+            // While a model is still thinking the page waits, so "No results" never shows and then fills in.
+            if search.isGathering || search.assist?.phase == .thinking { return nil }
+            return noResults(offersAI: aiSearchReady && !search.query.usesAI)
+        }
         switch tab.location {
         case .trash: return empty(.trash)
         case .recent: return empty(.recent)
@@ -226,6 +234,16 @@ public enum ContentStatePresentation {
         case .recent: return ContentState(style: .empty, symbol: "clock", title: "No recent items")
         case .noResults: return ContentState(style: .empty, symbol: "magnifyingglass", title: "No results")
         }
+    }
+
+    /// The no-results page. It offers a model's help only when one is ready and this search hasn't had it already.
+    /// The button's title is the same words as HelmAgent's own for the search field's toggle, which HelmCore can't
+    /// see; a HelmUI test keeps the two equal.
+    static func noResults(offersAI: Bool) -> ContentState {
+        let page = empty(.noResults)
+        guard offersAI else { return page }
+        return ContentState(style: page.style, symbol: page.symbol, title: page.title, message: page.message,
+                            buttons: [ContentStateButton(title: "Find with AI", action: .findWithAI)])
     }
 
     public static func failure(_ raw: LoadError, attempted: Location, home: URL, fullDiskAccess: PrivacyAccessStatus,

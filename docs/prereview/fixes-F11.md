@@ -1,7 +1,5 @@
 # F11 — P10 fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 All three findings reproduced with failing XCTest assertions before production edits:
 `/tmp/F11-red.log` records 31 tests and 25 assertion failures. Existing tests were
 retained; the circular size expectation was replaced with an independent kind table.

@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F2 mutation-safety fixes
 
 All work is local draft Swift 5 code, pending Opus compile-correctness and behavior review after 22:00 Toronto on 2026-11-04. No commits, pushes, network, external messages, publication, paid actions or sharing changes. Other lanes' files, including Tags, were not edited. No public signatures changed.

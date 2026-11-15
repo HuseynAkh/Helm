@@ -9,6 +9,8 @@ public enum SettingsSchema {
         case .crossVolumeDragDefault: return .string("copy")
         case .newWindowLocation: return .string("current") // Where the front window is, as before.
         case .setupCarriedRows: return .string("") // Nothing to carry on with.
+        case .setupBuild: return .string("") // No build has been through setup.
+        case .agentPanelWidth: return .double(340) // Points, as the panel opens the first time.
         case .gridIconSize: return .double(96)
         case .fileTextSize: return .double(14)
         case .windowTransparency: return .double(50) // Percent. 50 is Helm's own look.
@@ -47,6 +49,10 @@ public enum SettingsSchema {
         case (.string, .string(let text)):
             // Row names in lower case, separated by commas.
             if key == .setupCarriedRows { return text.allSatisfy { $0 == "," || ("a"..."z").contains($0) } ? value : fallback }
+            // A code requirement in its text form: printable ASCII on one line, and never very long.
+            if key == .setupBuild {
+                return text.utf8.count <= 2_048 && text.unicodeScalars.allSatisfy({ (32...126).contains($0.value) }) ? value : fallback
+            }
             let allowed: [String]
             switch key {
             case .defaultViewMode: allowed = ["grid", "list"]
@@ -70,6 +76,7 @@ public enum SettingsSchema {
             case .gridIconSize: return .double(min(128, max(48, number)))
             case .fileTextSize: return .double(min(24, max(11, number)))
             case .windowTransparency: return .double(min(100, max(0, number)))
+            case .agentPanelWidth: return .double(min(560, max(300, number)))
             default: return .double(min(5, max(0.1, number)))
             }
         default: return fallback

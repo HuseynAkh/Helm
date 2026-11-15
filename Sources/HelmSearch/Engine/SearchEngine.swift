@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 import HelmFileSystem
@@ -12,9 +11,12 @@ public struct SearchWalkOptions: Sendable {
     public let maxDepth: Int
     public let visitLimit: Int
     public let includePackageContents: Bool
-    public init(maxDepth: Int = 16, visitLimit: Int = 10000, includePackageContents: Bool = false) {
+    /// Never goes into a folder whose names aren't on this Mac (a cloud folder that isn't loaded), and counts one
+    /// that answers as not downloaded as unreadable rather than failing the walk. Nothing is fetched to search it.
+    public let skipsNotLoaded: Bool
+    public init(maxDepth: Int = 16, visitLimit: Int = 10000, includePackageContents: Bool = false, skipsNotLoaded: Bool = false) {
         self.maxDepth = max(0, maxDepth); self.visitLimit = max(0, visitLimit)
-        self.includePackageContents = includePackageContents
+        self.includePackageContents = includePackageContents; self.skipsNotLoaded = skipsNotLoaded
     }
 }
 /// Stable ranked snapshots preserve F-045 weights and expose incomplete walks (B-026).
@@ -112,13 +114,20 @@ public struct SearchEngine: Sendable {
                     if specification.matches(entry) { values.append(SearchCandidate(entry: entry)) }
                     if entry.kind == .directory || (entry.kind == .package && options.includePackageContents) {
                         if !entry.isReadable { diagnostic(.unreadable(entry.url)); truncated = true }
+                        else if options.skipsNotLoaded, entry.cloudAvailability == .evicted {
+                            diagnostic(.unreadable(entry.url)); truncated = true
+                        }
                         else if depth < options.maxDepth { pending.append((keyed.url, depth + 1)) }
                         else { truncated = true }
                     }
                 }
             } catch {
                 try Task.checkCancellation()
-                switch FileSystemError.mapping(error) {
+                let mapped = FileSystemError.mapping(error)
+                if options.skipsNotLoaded, mapped == .notDownloaded {
+                    diagnostic(.unreadable(directory)); truncated = true; continue
+                }
+                switch mapped {
                 case .permissionDenied:
                     diagnostic(.unreadable(directory)); truncated = true
                 case .notFound where depth > 0 || uniqueRoots.count > 1:

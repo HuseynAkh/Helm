@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-062 default-association intent only; a platform adapter must validate types and obtain approval.

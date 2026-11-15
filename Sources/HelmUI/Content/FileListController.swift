@@ -35,8 +35,6 @@ import HelmCore
     /// as its parent's rows arrive, and how many more folders that request may open.
     private var openingInside: Set<ItemID> = []
     private var openInsideLeft = 0
-    /// The columns' widths before a search made room for the Location column, to put back when it ends.
-    private var widthsBeforeSearch: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
     /// Recent's Folders and Files headings, when it has both kinds.
     private var sections = ContentSections(rootCount: 0)
     private let folderHeading = SectionBox(.folders)
@@ -45,6 +43,8 @@ import HelmCore
     private(set) var fullReloads = 0
     /// How many folders closed on the list's own curve, rather than AppKit's.
     private(set) var conceals = 0
+    /// Why each result matched, while a search a model helped with has reasons. Each is its row's tooltip.
+    private var reasons: [ItemID: SearchReason] = [:]
 
     private enum Column: String { case name, size, dateModified, kind, location }
 
@@ -65,7 +65,7 @@ import HelmCore
             if column == .name { outline.outlineTableColumn = value }
         }
         let location = NSTableColumn(identifier: .init(Column.location.rawValue))
-        location.title = "Location"; location.width = 240; location.isHidden = true
+        location.title = "Location"; location.width = Self.locationWidth; location.isHidden = true
         location.headerCell = FileHeaderCell(textCell: "Location")
         outline.addTableColumn(location)
         locationColumn = location
@@ -91,6 +91,211 @@ import HelmCore
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true; scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         view = scroll
+        chosenWidths = Dictionary(uniqueKeysWithValues: outline.tableColumns.map { ($0.identifier, $0.width) })
+        // A narrower or wider list fits its columns again, Name first.
+        scroll.contentView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(roomChanged(_:)), name: NSView.frameDidChangeNotification,
+                                               object: scroll.contentView)
+    }
+
+    // MARK: Fitting the columns
+
+    /// The widths the columns start at, or the ones the person dragged them to: what a narrower list takes from and
+    /// what a wider one gives back.
+    private var chosenWidths: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
+    /// The room the columns were last fitted to.
+    private var fittedRoom: CGFloat = 0
+    private var fitting = false
+
+    @objc private func roomChanged(_ notification: Notification) { refitColumns() }
+
+    /// When the list's room changes, as the panel opens, the window narrows or a search adds Location, the columns are
+    /// fitted to it again. Name gives way first, down to its narrowest; then the others give the room their words don't
+    /// use, so Size, Modified and Kind stay whole; then Name gives a little more, down to its least; and only then do
+    /// the others cut their words, down to their narrowest. As the room comes back, the widths come back the same way,
+    /// up to the ones the person gave them, and the last column takes what is left over.
+    func refitColumns(force: Bool = false) {
+        let room = scroll.contentView.bounds.width
+        guard !fitting, room > 0, force || abs(room - fittedRoom) > 0.5 else { return }
+        let columns = outline.tableColumns.filter { !$0.isHidden }
+        guard let nameIndex = columns.firstIndex(where: { $0.identifier.rawValue == Column.name.rawValue }) else { return }
+        fittedRoom = room
+        fittedRows = FittedRows(snapshot: snapshotID, rows: outline.numberOfRows)
+        fitting = true
+        let style = outline.columnAutoresizingStyle
+        outline.columnAutoresizingStyle = .noColumnAutoresizing
+        defer { outline.columnAutoresizingStyle = style; fitting = false }
+        let margins = columnMargins()
+        let widths = Self.fittedWidths(chosen: chosenForFitting(columns, nameIndex: nameIndex), nameIndex: nameIndex,
+                                       narrowest: columns.map { Self.narrowest[$0.identifier.rawValue] ?? $0.minWidth },
+                                       room: room - margins, words: { self.wordsWidths(columns) })
+        for (column, width) in zip(columns, widths) where abs(column.width - width) > 0.25 { column.width = width }
+        outline.tile()
+        if widths.reduce(0, +) + margins < room { outline.sizeLastColumnToFit() }
+    }
+
+    /// The widths the columns are fitted from. The last column stretches to the list's edge rather than keep the width
+    /// it was given, so the width its words need counts as given too: Name gives way for it first, down to its
+    /// narrowest, before its words are cut. Search's Location is the exception: a long path would take the room of
+    /// every other column, so it keeps the width it was given.
+    private func chosenForFitting(_ columns: [NSTableColumn], nameIndex: Int) -> [CGFloat] {
+        var chosen = columns.map { chosenWidths[$0.identifier] ?? $0.width }
+        if let last = chosen.indices.last, last != nameIndex, columns[last].identifier.rawValue != Column.location.rawValue {
+            chosen[last] = max(chosen[last], wordsWidths(columns)[last])
+        }
+        return chosen
+    }
+
+    /// What the list adds round its columns, from where it lays them out: the spacing between them and the inset
+    /// style's margin at each end.
+    private func columnMargins() -> CGFloat {
+        guard let first = outline.tableColumns.firstIndex(where: { !$0.isHidden }),
+              let last = outline.tableColumns.lastIndex(where: { !$0.isHidden }) else { return 0 }
+        outline.tile()
+        let widths = outline.tableColumns.filter { !$0.isHidden }.reduce(0) { $0 + $1.width }
+        return max(0, outline.rect(ofColumn: last).maxX + outline.rect(ofColumn: first).minX - widths)
+    }
+
+    /// The room in which every column is on show with its words whole, Name at its least: what opening the AI panel
+    /// makes room for.
+    var roomNeeded: CGFloat {
+        let columns = outline.tableColumns.filter { !$0.isHidden }
+        guard columns.contains(where: { $0.identifier.rawValue == Column.name.rawValue }) else { return 0 }
+        let words = wordsWidths(columns)
+        let chosen = chosenForFitting(columns, nameIndex: columns.firstIndex { $0.identifier.rawValue == Column.name.rawValue } ?? 0)
+        var total = columnMargins()
+        for (index, column) in columns.enumerated() {
+            if column.identifier.rawValue == Column.name.rawValue { total += Self.leastNameWidth; continue }
+            total += min(chosen[index], words[index])
+        }
+        // A scroller that takes room from the rows takes it from the columns too.
+        total += max(0, scroll.frame.width - scroll.contentView.bounds.width)
+        return ceil(total)
+    }
+
+    /// The columns' widths for this much room, from the widths they were given. `words` answers how wide each column
+    /// must be to show its words whole; it is asked only when Name alone can't make the room.
+    static func fittedWidths(chosen: [CGFloat], nameIndex: Int, narrowest: [CGFloat], room: CGFloat,
+                             words: () -> [CGFloat]) -> [CGFloat] {
+        var widths = chosen
+        var excess = widths.reduce(0, +) - room
+        let others = widths.indices.filter { $0 != nameIndex }
+        excess = give(excess, from: [nameIndex], downTo: narrowest, &widths)
+        if excess > 0 {
+            let needed = words()
+            let whole = widths.indices.map { min(widths[$0], needed.indices.contains($0) ? needed[$0] : 0) }
+            excess = give(excess, from: others, downTo: whole, &widths)
+        }
+        var least = narrowest
+        least[nameIndex] = min(narrowest[nameIndex], leastNameWidth)
+        excess = give(excess, from: [nameIndex], downTo: least, &widths)
+        _ = give(excess, from: others, downTo: narrowest, &widths)
+        return widths
+    }
+
+    /// Takes up to `excess` from these columns, each in proportion to its width above its floor, and answers what is
+    /// still missing.
+    private static func give(_ excess: CGFloat, from indices: [Int], downTo floors: [CGFloat], _ widths: inout [CGFloat]) -> CGFloat {
+        guard excess > 0 else { return excess }
+        let spare = indices.map { max(0, widths[$0] - floors[$0]) }
+        let total = spare.reduce(0, +)
+        guard total > 0 else { return excess }
+        let share = min(1, excess / total)
+        var given: CGFloat = 0
+        for (index, spare) in zip(indices, spare) {
+            let cut = min(spare, (spare * share).rounded(.up))
+            widths[index] -= cut
+            given += cut
+        }
+        return excess - given
+    }
+
+    /// How narrow Name gets to keep the other columns' words whole, still showing most names.
+    static let leastNameWidth: CGFloat = 150
+
+    /// The rows the columns were last fitted to, so a new folder or more rows on show fit them again.
+    private struct FittedRows: Equatable { var snapshot: Generation?; var rows: Int }
+    private var fittedRows = FittedRows(snapshot: nil, rows: 0)
+    private var wordsCache: (key: String, widths: [String: CGFloat])?
+    private let wordsProbe: NSTextFieldCell = {
+        let cell = NSTextFieldCell(textCell: "")
+        cell.isBordered = false; cell.isBezeled = false; cell.lineBreakMode = .byClipping
+        return cell
+    }()
+    /// How many rows are read for the widths their words need: the first ones and those on show.
+    private static let wordsRows = 400
+
+    /// How wide each column must be for its heading and the words in its rows to show whole, as its cells draw them.
+    private func wordsWidths(_ columns: [NSTableColumn]) -> [CGFloat] {
+        let textSize = (host?.fileTextSize ?? 14) - 1
+        let ids = columns.map(\.identifier.rawValue)
+        let key = "\(snapshotID.map { "\($0)" } ?? "-") \(outline.numberOfRows) \(textSize) \(ids.joined(separator: ","))"
+        if let cache = wordsCache, cache.key == key { return ids.map { cache.widths[$0] ?? 0 } }
+        var rows = IndexSet(integersIn: 0..<min(outline.numberOfRows, Self.wordsRows))
+        let visible = outline.rows(in: outline.visibleRect)
+        if visible.length > 0 { rows.insert(integersIn: visible.location..<(visible.location + visible.length)) }
+        var words: [String: Set<String>] = [:]
+        for row in rows {
+            guard let entry = entry(atRow: row) else { continue }
+            for id in ids {
+                switch Column(rawValue: id) {
+                case .size: words[id, default: []].insert(entry.sizeText)
+                case .dateModified: words[id, default: []].insert(entry.dateText)
+                case .kind: words[id, default: []].insert(entry.kindText)
+                case .location: words[id, default: []].insert(entry.url.deletingLastPathComponent().path)
+                case .name, nil: break
+                }
+            }
+        }
+        wordsProbe.font = .systemFont(ofSize: textSize)
+        var widths: [String: CGFloat] = [:]
+        for column in columns {
+            let id = column.identifier.rawValue
+            var widest = ceil(column.headerCell.cellSize.width)
+            for text in words[id] ?? [] {
+                wordsProbe.stringValue = text
+                widest = max(widest, ceil(wordsProbe.cellSize.width) + Self.textCellInset * 2 + 1)
+            }
+            widths[id] = widest
+        }
+        wordsCache = (key, widths)
+        return ids.map { widths[$0] ?? 0 }
+    }
+    /// The space a text cell leaves at each side of its words.
+    private static let textCellInset: CGFloat = 2
+
+    /// A column the person drags keeps the width they gave it.
+    func outlineViewColumnDidResize(_ notification: Notification) {
+        guard !fitting, let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn,
+              let dragged = outline.headerView?.resizedColumn, dragged >= 0, outline.tableColumns.indices.contains(dragged),
+              outline.tableColumns[dragged] === column else { return }
+        chosenWidths[column.identifier] = column.width
+    }
+
+    /// The columns on show, left to right: each one's width, whether the list shows all of it, and whether every row's
+    /// words fit in it whole.
+    func columnFitForTesting() -> [ListColumnFit] {
+        outline.layoutSubtreeIfNeeded()
+        let visible = scroll.contentView.documentVisibleRect
+        return outline.tableColumns.indices.filter { !outline.tableColumns[$0].isHidden }.map { index in
+            let column = outline.tableColumns[index]
+            let rect = outline.rect(ofColumn: index)
+            var whole = true
+            for row in 0..<outline.numberOfRows where entry(atRow: row) != nil {
+                guard let cell = outline.view(atColumn: index, row: row, makeIfNecessary: true) as? NSTableCellView,
+                      let label = cell.textField else { continue }
+                cell.layoutSubtreeIfNeeded()
+                let words = label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 100_000, height: 100_000)).width ?? 0
+                if words > label.frame.width + 0.5 { whole = false }
+            }
+            return ListColumnFit(column: column.identifier.rawValue, width: column.width,
+                                 isOnShow: rect.intersection(visible).width >= rect.width - 0.5, wordsWhole: whole)
+        }
+    }
+
+    /// Each column on show with its width, such as "name 340".
+    var columnWidthsForTesting: [String: CGFloat] {
+        Dictionary(uniqueKeysWithValues: outline.tableColumns.filter { !$0.isHidden }.map { ($0.identifier.rawValue, $0.width) })
     }
 
     func render(_ tab: TabState, force: Bool) {
@@ -127,6 +332,20 @@ import HelmCore
         }
         showSortDirection(tab.snapshot.sort)
         applySelection(tab)
+        showReasons(tab.search?.assist?.reasons ?? [:])
+        // Other rows can need more room for their words, or less.
+        if textChanged || FittedRows(snapshot: snapshotID, rows: outline.numberOfRows) != fittedRows { refitColumns(force: true) }
+    }
+
+    /// Puts each result's reason on its row as the tooltip, and takes it off once there's none. The reasons can come
+    /// after the rows, so the rows on show are brought up to date here; rows made later get theirs as they're made.
+    private func showReasons(_ next: [ItemID: SearchReason]) {
+        guard next != reasons else { return }
+        reasons = next
+        outline.enumerateAvailableRowViews { rowView, row in
+            let tip = self.entry(atRow: row).flatMap { self.reasons[$0.id]?.line }
+            for column in 0..<rowView.numberOfColumns { (rowView.view(atColumn: column) as? NSView)?.toolTip = tip }
+        }
     }
 
     /// Whether a new snapshot changes only what's inside folders, so the list can move just those rows.
@@ -302,40 +521,15 @@ import HelmCore
         }
     }
 
-    /// Search results add a Location column at the end. The columns on show then share the list's width, each giving
-    /// up room in proportion to what it has above its narrowest, so Location isn't left past the window's edge. Their
-    /// widths come back when the search ends.
+    /// Search results add a Location column at the end, and the columns on show are fitted to the list again, so
+    /// Location isn't left past the window's edge. Their widths come back when the search ends.
     private func showLocationColumn(_ searching: Bool) {
         guard let location = locationColumn, location.isHidden == searching else { return }
-        // AppKit would squeeze the column before one coming back down to its narrowest, so the widths are set here.
-        let style = outline.columnAutoresizingStyle
-        outline.columnAutoresizingStyle = .noColumnAutoresizing
-        defer { outline.columnAutoresizingStyle = style }
-        guard searching else {
-            location.isHidden = true
-            for column in outline.tableColumns { if let width = widthsBeforeSearch[column.identifier] { column.width = width } }
-            widthsBeforeSearch = [:]
-            return
-        }
-        widthsBeforeSearch = Dictionary(uniqueKeysWithValues: outline.tableColumns.filter { !$0.isHidden }.map { ($0.identifier, $0.width) })
-        location.width = Self.locationWidth
-        location.isHidden = false
-        outline.tile()
-        // A list not laid out yet has no width to share.
-        let room = scroll.contentView.bounds.width
-        guard room > 0 else { return }
-        let excess = outline.frame.width - room
-        let columns = outline.tableColumns.filter { !$0.isHidden }
-        let spare = columns.map { max(0, $0.width - (Self.narrowest[$0.identifier.rawValue] ?? $0.minWidth)) }
-        let total = spare.reduce(0, +)
-        if excess > 0, total > 0 {
-            let share = min(1, excess / total)
-            for (column, spare) in zip(columns, spare) { column.width -= (spare * share).rounded(.up) }
-        }
-        outline.sizeLastColumnToFit()
+        location.isHidden = !searching
+        refitColumns(force: true)
     }
     static let locationWidth: CGFloat = 240
-    /// How narrow each column gets to make room in search results, still showing most of what it says.
+    /// How narrow each column gets to make room, still showing most of what it says.
     static let narrowest: [String: CGFloat] = [Column.name.rawValue: 180, Column.size.rawValue: 64, Column.dateModified.rawValue: 120,
                                                Column.kind.rawValue: 90, Column.location.rawValue: 150]
 
@@ -506,6 +700,7 @@ import HelmCore
             shown.isStarred = host?.starred.contains(entry.id) ?? false
             cell.apply(shown, isCut: cut.contains(entry.id), icons: host?.icons, textSize: host?.fileTextSize ?? 14,
                        scale: view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2)
+            cell.toolTip = reasons[entry.id]?.line
             return cell
         case .size: return textCell(outlineView, "size", entry.sizeText, alignment: .right, entry: entry)
         case .dateModified: return textCell(outlineView, "date", entry.dateText, alignment: .left, entry: entry)
@@ -530,6 +725,7 @@ import HelmCore
         let cell = (outlineView.makeView(withIdentifier: id, owner: nil) as? ListTextCell) ?? ListTextCell(identifier: id)
         cell.apply(text, alignment: alignment, textSize: (host?.fileTextSize ?? 14) - 1)
         cell.alphaValue = ContentLeafPresentation.opacity(isHidden: entry.isHidden, isCut: cut.contains(entry.id))
+        cell.toolTip = reasons[entry.id]?.line
         return cell
     }
 
@@ -640,6 +836,13 @@ import HelmCore
                            columnWidth: outline.tableColumns.first?.width ?? 0)
     }
     func isOpenForTesting(_ id: ItemID) -> Bool { outline.isItemExpanded(box(id)) }
+    /// The tooltip of an item's row, read from its name cell as AppKit would show it.
+    func toolTipForTesting(_ id: ItemID) -> String? {
+        let row = outline.row(forItem: box(id))
+        guard row >= 0 else { return nil }
+        outline.scrollRowToVisible(row)
+        return outline.view(atColumn: 0, row: row, makeIfNecessary: true)?.toolTip
+    }
     /// The row view on show for an item, if it has one now, so a scripted run can watch it move.
     func rowViewForTesting(_ id: ItemID) -> NSView? {
         let row = outline.row(forItem: box(id))
@@ -669,6 +872,20 @@ import HelmCore
         }
         return nil
     }
+}
+
+/// One column of the list as a test sees it.
+public struct ListColumnFit: Equatable, CustomStringConvertible {
+    public let column: String
+    public let width: CGFloat
+    /// Whether the list shows the whole column, none of it past the list's edge.
+    public let isOnShow: Bool
+    /// Whether every row's words fit in the column whole.
+    public let wordsWhole: Bool
+    public init(column: String, width: CGFloat, isOnShow: Bool, wordsWhole: Bool) {
+        self.column = column; self.width = width; self.isOnShow = isOnShow; self.wordsWhole = wordsWhole
+    }
+    public var description: String { "\(column) \(Int(width.rounded()))\(isOnShow ? "" : " past the edge")\(wordsWhole ? "" : " cut")" }
 }
 
 /// A column heading without the system's small sort chevron, since the title shows the direction itself.

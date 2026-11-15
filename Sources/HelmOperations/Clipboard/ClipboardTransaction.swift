@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-051 adapter must compare and write in one synchronous MainActor turn (B-036/B-037).

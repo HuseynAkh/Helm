@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 
@@ -30,10 +29,16 @@ public actor WindowOperationHistory {
     public func inverseAttempts() -> [JournalEntry] { completedInverses }
 
     /// Reserve before the host starts a forward operation, including across tab changes.
-    public func beginForward(_ command: Command) -> HistoryRequestID? {
+    /// Under a group the reservation and its entry take the group's name, and the entry carries the group, so the
+    /// operations of one group are undone as one.
+    public func beginForward(_ command: Command, group: HistoryGroup? = nil) -> HistoryRequestID? {
         guard command != .recovery else { return nil }
         let request = HistoryRequestID()
-        OperationHistoryReducer.reduce(&state, .beginForward(request, name: HistoryResultMapping.name(for: command)))
+        if let group {
+            OperationHistoryReducer.reduce(&state, .beginGroupedForward(request, group))
+        } else {
+            OperationHistoryReducer.reduce(&state, .beginForward(request, name: HistoryResultMapping.name(for: command)))
+        }
         guard state.pending?.request == request else { return nil }
         forwardCommand = command
         return request

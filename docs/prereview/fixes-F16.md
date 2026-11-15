@@ -1,7 +1,5 @@
 # F16 — Operations cancellation and undo regression fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 ## Dispositions
 
 - **P12-1 CONFIRMED / FIXED.** Before production edits, the two new gated

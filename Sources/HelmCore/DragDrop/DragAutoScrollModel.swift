@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Linear edge acceleration preserves native F-067 auto-scroll behaviour (P-279).

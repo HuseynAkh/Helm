@@ -1,5 +1,3 @@
-# DRAFT: pending review, 2026-11-04
-
 AF1 only. Production changes require Opus compile-correctness and behaviour-preservation review.
 No network, publication, commit, or push. Old `Helm/`, Loading, Core, Operations and Persistence
 sources are unchanged by this lane. New disk fixtures are retained.

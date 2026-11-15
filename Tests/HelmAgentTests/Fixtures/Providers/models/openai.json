@@ -1,0 +1,8 @@
+{"object": "list", "data": [
+  {"id": "whisper-2", "object": "model", "created": 1760000000, "owned_by": "system"},
+  {"id": "gpt-6.1-sol", "object": "model", "created": 1762000000, "owned_by": "system"},
+  {"id": "text-embedding-4", "object": "model", "created": 1750000000, "owned_by": "system"},
+  {"id": "gpt-6-astra", "object": "model", "created": 1761000000, "owned_by": "system"},
+  {"id": "dall-e-4", "object": "model", "created": 1755000000, "owned_by": "system"},
+  {"id": "gpt-6-luna", "object": "model", "created": 1761500000, "owned_by": "system"}
+]}

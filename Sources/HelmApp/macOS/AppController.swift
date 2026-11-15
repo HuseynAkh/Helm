@@ -24,6 +24,11 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--continue-setup viewer,access,move`: a copy just moved into Applications reopens the welcome window and
     /// carries on with the rows chosen before the move. Only Helm's own mover passes it.
     public var continueSetup: [SetupRow]?
+    /// `--live-agent`: AI mode without the scripted model, as a real launch has it, while keys, the disk, folder facts
+    /// and servers stay stand-ins. Honoured only with both `--home` and `--support`, for the network-denied checks.
+    public var liveAgent = false
+    /// Whether `--live-agent` applies to this run.
+    var usesLiveAgent: Bool { liveAgent && home != nil && support != nil }
     public var isIsolated: Bool { home != nil || support != nil }
     public var isRoleCommand: Bool { defaultViewer != nil || dockFirst != nil || viewerStatus }
     public init() {}
@@ -62,6 +67,7 @@ public struct LaunchOptions: Equatable, Sendable {
             case "--dock-first":
                 switch value() { case "on": options.dockFirst = true; case "off": options.dockFirst = false; default: return nil }
             case "--viewer-status": options.viewerStatus = true
+            case "--live-agent": options.liveAgent = true
             case SetupRow.continueFlag:
                 guard let rows = value() else { return nil }
                 options.continueSetup = SetupRow.rows(fromFlag: rows)
@@ -78,14 +84,14 @@ public struct LaunchOptions: Equatable, Sendable {
 
 /// Owns everything that outlives a window: the environment, the windows, the menu, launch and quit (F-001, F-068).
 @MainActor public final class AppController: NSObject, NSApplicationDelegate, BrowserWindowHost, NSMenuDelegate {
-    private let options: LaunchOptions
-    private var environment: AppEnvironment?
+    let options: LaunchOptions
+    private(set) var environment: AppEnvironment?
     private var windows: [BrowserWindowController] = []
     private var router = LaunchRouter()
     private var registry = WindowRegistry()
     private var ids: [ObjectIdentifier: AppWindowID] = [:]
     private var quit = QuitCoordinator()
-    private var dependencies: WindowDependencies?
+    private(set) var dependencies: WindowDependencies?
     private var settingsWindow: SettingsWindowController?
     private var fileViewer: FileViewerModel?
     /// Paths from the command line, until the first launch takes them.
@@ -122,6 +128,8 @@ public struct LaunchOptions: Equatable, Sendable {
     var staysInBackground: Bool { didSet { access.isInteractive = !staysInBackground } }
     /// Whether Archive Utility is running now. A fixture run never asks the real Mac, so what runs there can't change it.
     var isArchiveUtilityRunning: () -> Bool
+    /// Folders the fixture Trash refuses, as a place with no Trash does. Only a fixture run's Trash reads it.
+    let fixtureTrashRules = FixtureTrashRules()
 
     public init(options: LaunchOptions) {
         self.options = options
@@ -158,7 +166,10 @@ public struct LaunchOptions: Equatable, Sendable {
             coordinator = operations
             subscription = operations.inFlightChanges.subscribe { [weak self] count in self?.operationsChanged(count) }
             let settings = environment.settings
-            let volumes = VolumeCenter(isLive: !options.isIsolated, home: environment.directories.home) { settings.snapshot.bool(.showAllMountedVolumes) }
+            // Drives and cloud folders are read once the first window is made, after setup (`register`).
+            let volumes = VolumeCenter(isLive: !options.isIsolated, home: environment.directories.home, startsNow: false) {
+                settings.snapshot.bool(.showAllMountedVolumes)
+            }
             dependencies = WindowDependencies(settings: environment.settings, bookmarks: environment.bookmarks, stars: environment.stars,
                 recents: environment.recents, trashOrigins: environment.trashOrigins, viewOptions: environment.viewOptions, fileSystem: environment.fileSystem,
                 operations: operations, home: environment.directories.home, volumes: volumes, icons: IconCache(limit: settings.snapshot.integer(.maxCachedIcons), previewLimit: settings.snapshot.integer(.maxCachedThumbnails)),
@@ -168,18 +179,25 @@ public struct LaunchOptions: Equatable, Sendable {
                 persistsWindowFrames: !options.isIsolated, openWith: environment.openWith, permissions: access.permissions,
                 handoffs: handoffs,
                 // A fixture run hands files to a stand-in: no app opens and no default app changes.
-                launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher())
+                launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher(),
+                agent: makeAgentServices(environment))
             await access.start(settings: settings, fileViewer: { [weak self] in self?.fileViewerModel() },
-                               windows: { [weak self] in self?.allWindows ?? [] })
+                               windows: { [weak self] in self?.allWindows ?? [] }, front: { [weak self] in self?.frontmost() })
             if options.smokeScript != nil { SmokeBackground.start() }
             await launchWindows(environment)
             environment.followPrivacySettings()
-            // Off the launch path: a slow or missing disk mustn't hold up the first window.
-            Task { @MainActor in await environment.forgetItemsGoneFromTrash() }
+            followAIMode()
+            // Off the launch path: a slow or missing disk mustn't hold up the first window. A launch only for Finder
+            // leaves the Trashes alone: setup may still be owed, and one may be on a disk macOS asks about.
+            if !startedForFinder { Task { @MainActor in await environment.forgetItemsGoneFromTrash() } }
             unreportedLoadFailures = environment.loadFailures
             reportLoadFailures()
             // A launch that only passed something on to Finder stays out of the way.
-            if !startedForFinder { access.showWelcomeIfNeeded(continuing: options.continueSetup) }
+            if !startedForFinder {
+                // A launch that waits for setup has shown the welcome already, before its windows.
+                if !access.launchWaitsForSetup { access.showWelcomeIfNeeded(continuing: options.continueSetup) }
+                showAIIntroIfNeeded()
+            }
             if let script = options.smokeScript { HostSmokeDriver.run(script: script, app: self) }
         } catch {
             let alert = NSAlert(error: error)
@@ -195,9 +213,12 @@ public struct LaunchOptions: Equatable, Sendable {
             let support = options.support ?? home.appendingPathComponent(".helm-support")
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let trash = home.appendingPathComponent(".Trash", isDirectory: true)
+            let rules = fixtureTrashRules
             return try await AppEnvironment.live(directories: AppDirectories(home: home, applicationSupport: support),
                                                  settingsStorage: IsolatedSettings(), legacyReader: NoLegacyDefaults(),
                                                  trash: { url in
+                // A place a script marked as having no Trash refuses, as a server without one does.
+                if rules.refuses(url.path) { throw FileSystemError.unsupported }
                 // Stands in for the system Trash, which a fixture run must never touch.
                 try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
                 var destination = trash.appendingPathComponent(url.lastPathComponent)
@@ -223,10 +244,6 @@ public struct LaunchOptions: Equatable, Sendable {
         isPlacingWindows = true
         defer { isPlacingWindows = false }
         let home = environment.directories.home
-        let session = environment.session.windows
-        // Launch never waits on a folder macOS is still asking about, or on a slow disk (RestoredFolders).
-        let restored = session.flatMap(\.tabs).compactMap(\.location.mutationTarget)
-        let folders = await RestoredFolders.availability(of: restored, fileSystem: environment.fileSystem, home: home)
         // The command line's paths are Helm's; the rest came as Apple Events before there were windows to take them.
         let queued = launchPaths.map { (request: ViewerRequest.open([$0]), sender: String?.none) } + pending
         launchPaths = []
@@ -255,6 +272,13 @@ public struct LaunchOptions: Equatable, Sendable {
             drainPending()
             return
         }
+        // Setup first, when it's owed: nothing macOS guards is read before the person has been through it, not the
+        // folders asked for, not the tabs to restore. Requests that come meanwhile wait with the rest.
+        await access.setUpBeforeWindows(continuing: options.continueSetup)
+        let session = environment.session.windows
+        // Launch never waits on a folder macOS is still asking about, or on a slow disk (RestoredFolders).
+        let restored = session.flatMap(\.tabs).compactMap(\.location.mutationTarget)
+        let folders = await RestoredFolders.availability(of: restored, fileSystem: environment.fileSystem, home: home)
         let requests = await classify(asked, fileSystem: environment.fileSystem)
         if !requests.isEmpty { _ = router.receive(requests) }
         let result = router.finishLaunch(session: session, restoreSession: environment.settings.snapshot.bool(.restoreSessionOnLaunch),
@@ -315,6 +339,8 @@ public struct LaunchOptions: Equatable, Sendable {
         if !staysInBackground { controller.showWindow(nil) } else { SmokeBackground.hide(controller.window); controller.window?.orderFrontRegardless() }
     }
     private func register(_ controller: BrowserWindowController) {
+        // The sidebar's drives and cloud folders are read from the first window on, never before setup.
+        dependencies?.volumes.start()
         let id = AppWindowID()
         ids[ObjectIdentifier(controller)] = id
         registry.register(id)
@@ -406,6 +432,8 @@ public struct LaunchOptions: Equatable, Sendable {
     private func show(_ urls: [URL], reveal: Bool) {
         guard let environment else { return }
         Task { @MainActor in
+            // After a launch only for Finder, this may be the first window: setup comes first if it's owed.
+            await access.setUpBeforeWindows(continuing: options.continueSetup)
             let requests = await classify(urls.map { ($0, reveal) }, fileSystem: environment.fileSystem)
             var rejected: [ExternalOpenRequest] = []
             var places: [(folder: URL, selecting: [URL])] = []
@@ -450,6 +478,7 @@ public struct LaunchOptions: Equatable, Sendable {
         handoffs.finished(helper: handoff.helper)
         guard let environment else { return }
         Task { @MainActor in
+            await access.setUpBeforeWindows(continuing: options.continueSetup)
             let names = (try? await environment.fileSystem.childNames(of: handoff.folder)) ?? []
             let added = handoff.added(in: names).filter { !$0.hasPrefix(".") }
             let selecting = added.isEmpty ? (names.contains(handoff.item.lastPathComponent) ? [handoff.item] : [])
@@ -559,20 +588,33 @@ public struct LaunchOptions: Equatable, Sendable {
         if let front = frontmost() { openWindow(at: front.newWindowLocation, selecting: []) } else { openStartingWindow() }
     }
     /// A window at the folder Settings › General › New windows open names, when there's no front window to follow.
+    /// While the welcome checklist holds the windows back, it's the checklist's to close first: nothing opens.
     private func openStartingWindow() {
-        guard let environment else { return }
+        guard let environment, !access.windowsWaitForSetup else { return }
+        guard access.windowsMayOpen else {
+            // Setup was never looked at in this run, as after a launch only for Finder.
+            Task { @MainActor in
+                await access.setUpBeforeWindows(continuing: options.continueSetup)
+                openStartingWindow()
+            }
+            return
+        }
         let choice = NewWindowLocation(rawValue: environment.settings.snapshot.string(.newWindowLocation)) ?? .current
         openWindow(at: .directory(choice.folder(current: nil, home: environment.directories.home)), selecting: [])
     }
     @objc func quit(_ sender: Any?) { NSApp.terminate(sender) }
     @objc func orderFrontAbout(_ sender: Any?) {
-        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Helm", .credits: NSAttributedString(string: "Finder underneath, Nautilus on top.")])
+        NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "Helm", .credits: NSAttributedString(string: "An agentic file manager for your Mac.")])
     }
     @objc func showSettingsWindow(_ sender: Any?) {
         guard environment != nil else { return }
         makeSettingsWindowIfNeeded()
         fileViewer?.refresh()
-        if let dependencies, settingsWindow?.sidebarModel == nil { settingsWindow?.showSidebarRows(SidebarSettingsModel(dependencies: dependencies)) }
+        // Settings › Sidebar looks at starred items' paths, so it waits until setup is through.
+        if let dependencies, settingsWindow?.sidebarModel == nil, !access.windowsWaitForSetup {
+            settingsWindow?.showSidebarRows(SidebarSettingsModel(dependencies: dependencies))
+        }
+        if let settingsWindow { installAISettingsPane(in: settingsWindow) }
         settingsWindow?.showWindow(nil)
         settingsWindow?.window?.makeKeyAndOrderFront(nil)
     }

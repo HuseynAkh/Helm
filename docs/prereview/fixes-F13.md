@@ -1,7 +1,5 @@
 # F13 — P8 ownership and clean cancellation fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 P8-1 and P8-2 are fixed in the authorized Core Identity, Operations and
 FileSystem Protocol/Fake scope. Public additions/defaults are recorded under F13
 in `docs/handoff/CONTRACT_INTEGRATION.md`. No existing tests were weakened,

@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// File/folder share the legacy action order; virtual locations supply explicit actions (F-038, B-031).
 public enum CommandMenuContext: Sendable { case file, folder, background, multiple, trash, recent }
 

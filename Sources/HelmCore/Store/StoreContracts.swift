@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Atomic window/tab delivery preserves F-002/F-005 and prevents mismatched selection (B-009/B-011).

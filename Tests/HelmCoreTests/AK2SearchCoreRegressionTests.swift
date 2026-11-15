@@ -1,4 +1,4 @@
-// DRAFT: pending Opus review. F-043, F-044 and F-049 regressions.
+// F-043, F-044 and F-049 regressions.
 import Foundation
 import XCTest
 import HelmCore

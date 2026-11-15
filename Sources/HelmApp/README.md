@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K22 composition glue
 
 Portable draft for M10 A6, with M4/M25 migration ordering. No AppKit or SwiftUI
@@ -34,6 +33,13 @@ repairs empty tabs and duplicate/empty frame names, preserves virtual locations,
 and replaces unavailable folders with Home plus `unavailableLocation` for a status
 note. Availability is a caller-supplied snapshot, not synchronous filesystem I/O in
 the reducer. Home itself is the fallback, even if temporarily inaccessible.
+
+Setup comes before anything macOS guards. `AccessCoordinator.setUpBeforeWindows` shows the
+welcome checklist and returns once it closes, whenever setup has never been seen or another
+build saw it last (the code signature's designated requirement is kept in `helm.setupBuild`).
+Every way to a window waits there first: the launch, before it reads the restored tabs or the
+folders asked for; requests after a launch only for Finder; and New Window. The sidebar's
+drives start reading with the first window. Fixture and scripted runs never wait.
 
 `WindowRegistry` tracks creation order independently from activation order. The
 first window remains the first registered surviving ID; frontmost and close order
@@ -114,3 +120,15 @@ The first occurrence of a valid name is preserved; repairs remain unique. New
 FrameIdentityTests exercise both reported displacement sequences and tab ownership.
 The UI PortableRunner also runs these app tests without duplicate dependency type
 metadata. macOS frame restoration behaviour still requires hosted verification.
+
+## AI mode's services
+
+`AppController+Agent.swift` makes one `AgentServices` for the app, shared by every window, Settings › AI and the
+AI mode screen. A real launch keeps keys in the login keychain (`KeychainSecretStore`), reads the home folder through
+`FileSystemAgentDisk` with `SystemStorageFactsReader`, hands a server address to macOS through `SystemServerConnector`,
+and makes its model client with `AgentLiveParts.makeClient`. A fixture run (`--home`, `--support`) keeps keys in
+memory, uses stand-in place facts, a connector that opens nothing and the scripted model, so no live client can be
+built. `--live-agent` on a fixture run keeps those stand-ins but swaps the scripted model for the shipped client
+factory; the network-denied smoke runs use it. In every run the runtime builds a client only while AI mode is on,
+the first time a request needs one, and lets it go when AI mode turns off, the provider changes or Helm quits.
+`followAIMode()` passes the AI mode setting and ai.json's choices to the runtime as they change.

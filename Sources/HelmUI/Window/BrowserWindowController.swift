@@ -62,7 +62,7 @@ struct WindowTints: Equatable {
     public let store: WindowStore
     let history = WindowOperationHistory()
     var historyState = OperationHistoryState()
-    private let effects: HostEffectRunner
+    let effects: HostEffectRunner
     private let directoryRunner: DirectoryEffectRunner
 
     let split = NSSplitViewController()
@@ -70,6 +70,8 @@ struct WindowTints: Equatable {
     let header = HeaderBarView()
     var pathBar: PathBarView { header.pathBar }
     private var sidebarItem: NSSplitViewItem?
+    /// The sidebar is sliding shut after a press of the header's button.
+    private var isHidingSidebar = false
     private let contentEffect = NSVisualEffectView()
     private let contentTint = TintView()
     private let viewOptions = ViewOptionsPopover()
@@ -86,6 +88,12 @@ struct WindowTints: Equatable {
     /// Why the listing is empty, or why a place couldn't open, shown in its place.
     let statePage = ContentStatePage()
     private let operationsHost = NSHostingView(rootView: AnyView(EmptyView()))
+    /// The AI panel's column, beside the files and under the header. Zero wide while shut.
+    let agentPanelHost = AgentPanelHost()
+    /// Watches for a press elsewhere in the window while the location is being typed (BrowserWindowController+Location).
+    var locationPressWatch: Any?
+    /// Scripted runs hold each command of an Apply after the first back this long, so Stop can be pressed midway.
+    public var agentApplyPauseForTesting: TimeInterval = 0
     private var operationsHeight: NSLayoutConstraint?
     private var tabStripHeight: NSLayoutConstraint?
     private(set) var shownContent: FileContentPresenting?
@@ -178,6 +186,8 @@ struct WindowTints: Equatable {
         effects.window = self
         configureWindow(window)
         subscribe()
+        installAgentPanel()
+        installAISearch()
         for tab in tabs { store.send(.tab(tab.id, .navigate(tab.location, intents[tab.id] ?? .restore))) }
         render(store.state)
         focusContent()
@@ -209,7 +219,11 @@ struct WindowTints: Equatable {
         self.sidebarItem = sidebarItem
         // Dragging the divider shut or open collapses the item without the toggle, so the header follows the item.
         subscriptions.append(sidebarItem.observe(\.isCollapsed) { [weak self] item, _ in
-            MainActor.assumeIsolated { self?.sidebarVisibilityChanged(!item.isCollapsed) }
+            MainActor.assumeIsolated {
+                // A hide the header button started tells the header once the sidebar has gone.
+                guard let self, !self.isHidingSidebar else { return }
+                self.sidebarVisibilityChanged(!item.isCollapsed)
+            }
         })
         sidebar.delegate = self
         springs.open = { [weak self] url in self?.navigate(to: .directory(url)) }
@@ -242,7 +256,7 @@ struct WindowTints: Equatable {
         root.blendingMode = .behindWindow
         root.state = .active
         let stateView = statePage.view
-        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost] as [NSView] {
+        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost, agentPanelHost] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -257,20 +271,24 @@ struct WindowTints: Equatable {
             header.topAnchor.constraint(equalTo: root.topAnchor),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor), header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             tabStrip.topAnchor.constraint(equalTo: header.bottomAnchor),
-            tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             stripHeight,
             contentContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
-            contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: operationsHost.topAnchor),
             // Centred in the content area and never pinned to the window's edges.
             stateView.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor), stateView.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
             stateView.widthAnchor.constraint(lessThanOrEqualTo: contentContainer.widthAnchor, constant: -16),
             stateView.heightAnchor.constraint(lessThanOrEqualTo: contentContainer.heightAnchor),
-            operationsHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), operationsHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            operationsHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), operationsHost.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             operations,
             operationsHost.bottomAnchor.constraint(equalTo: statusHost.topAnchor),
-            statusHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), statusHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 28)
+            statusHost.leadingAnchor.constraint(equalTo: root.leadingAnchor), statusHost.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
+            statusHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), statusHost.heightAnchor.constraint(equalToConstant: 28),
+            // The AI panel takes the window's trailing side below the header, all the way down.
+            agentPanelHost.topAnchor.constraint(equalTo: header.bottomAnchor),
+            agentPanelHost.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            agentPanelHost.bottomAnchor.constraint(equalTo: root.bottomAnchor), agentPanelHost.widthConstraint
         ])
         return root
     }
@@ -337,6 +355,7 @@ struct WindowTints: Equatable {
         window?.title = TabStripView.title(tab)
         if case .directory(let url) = place, tab.search == nil { window?.representedURL = url } else { window?.representedURL = nil }
         pathBar.render(location: place, home: dependencies.home, editor: tab.addressBar)
+        followLocationEditing(tab.addressBar.isEditing)
         let many = snapshot.window.tabs.count > 1
         tabStripHeight?.constant = many ? 36 : 0
         tabStrip.isHidden = !many
@@ -352,6 +371,7 @@ struct WindowTints: Equatable {
         finishPendingWork(tab)
         selectFirstResultIfWanted(tab)
         followSelectionInQuickLook()
+        agentWindowDidRender()
         // A field that had the keys can go away, such as the location bar after Return or a search that closed,
         // which leaves the window itself holding them. The files take them, so arrows and Space keep working.
         if let window, window.firstResponder === window, window.attachedSheet == nil { focusContent() }
@@ -450,7 +470,7 @@ struct WindowTints: Equatable {
         shownStatus = StatusPresentation(itemCount: shown, selectedCount: selected.count,
                                          selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
                                          isSearch: tab.search != nil)
-        statusHost.rootView = StatusBarView(status: shownStatus)
+        statusHost.rootView = StatusBarView(status: shownStatus, aiSearch: aiSearchStatus(for: tab))
     }
     /// What the status bar says now.
     public var statusTextForTesting: String { StatusText.format(shownStatus) }
@@ -526,6 +546,7 @@ struct WindowTints: Equatable {
         Task { await refreshHistory() }
     }
     public func windowWillClose(_ notification: Notification) {
+        followLocationEditing(false)
         store.send(.shutdown)
         host?.windowDidClose(self)
     }
@@ -538,13 +559,63 @@ struct WindowTints: Equatable {
     // MARK: Header bar
 
     func headerToggleSidebar() { toggleSidebar() }
+    func headerToggleAIPanel() { toggleAgentPanel() }
     func toggleSidebar() {
         guard let sidebarItem else { return }
-        let hide = !sidebarItem.isCollapsed
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            sidebarItem.animator().isCollapsed = hide
-            sidebarVisibilityChanged(!hide)
+        setSidebarShown(sidebarItem.isCollapsed)
+        agentPanelHost.sidebarToggledByPerson()
+    }
+    /// Shows or hides the sidebar, sliding. Hiding moves the header's buttons over only once the sidebar has gone, so
+    /// they never need more room than the window has while it goes, and the window never grows for it. Showing in a
+    /// narrow window makes the window as wide as the sidebar and the header need, and no wider.
+    func setSidebarShown(_ show: Bool, animated: Bool = true) {
+        guard let sidebarItem, sidebarItem.isCollapsed == show else { return }
+        if show {
+            sidebarVisibilityChanged(true, animated: animated)
+            guard let window else { sidebarItem.isCollapsed = false; return }
+            let oldWidth = window.frame.width
+            let files = max(split.splitViewItems.last?.minimumThickness ?? 0, header.compactWidth(sidebarVisible: true))
+            let divider = split.splitView.dividerThickness
+            // The narrowest the window can be with the sidebar back, squeezed to its own minimum.
+            let needed = ceil(sidebarItem.minimumThickness + divider + files)
+            // There's room for any width the sidebar comes back at: it slides in, and nothing else changes size.
+            let roomy = oldWidth >= sidebarItem.maximumThickness + divider + files
+            if animated, roomy, window.isVisible, !HeaderMotion.isReduced {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.15
+                    sidebarItem.animator().isCollapsed = false
+                }
+                return
+            }
+            // Short of room, AppKit would widen the window by the whole sidebar; it is held to what is needed instead,
+            // and the sidebar gives way to its minimum if it must.
+            sidebarItem.isCollapsed = false
+            split.view.layoutSubtreeIfNeeded()
+            let allowed = max(oldWidth, needed)
+            if abs(window.frame.width - allowed) > 0.5 {
+                var frame = window.frame
+                frame.size.width = allowed
+                window.setFrame(frame, display: window.isVisible)
+                split.view.layoutSubtreeIfNeeded()
+            }
+        } else {
+            // With nothing to watch it slide, it goes at once, and the header follows straight after.
+            guard animated, window?.isVisible == true, !HeaderMotion.isReduced else {
+                sidebarItem.isCollapsed = true
+                sidebarVisibilityChanged(false, animated: false)
+                return
+            }
+            isHidingSidebar = true
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = animated ? 0.15 : 0
+                sidebarItem.animator().isCollapsed = true
+            }, completionHandler: { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.isHidingSidebar = false
+                    self.sidebarVisibilityChanged(!(self.sidebarItem?.isCollapsed ?? true), animated: animated)
+                }
+            })
         }
     }
     func headerBack() { perform(.back) }
@@ -627,7 +698,8 @@ struct WindowTints: Equatable {
         store.send(.tab(activeTabID, .searchEnded))
         focusContent()
     }
-    public func search(_ text: String) {
+    /// Searches the tab for `text`. With `usesAI`, a model helps when a runner for that is installed.
+    public func search(_ text: String, usesAI: Bool = false) {
         guard let tab = activeTab else { return }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             store.send(.tab(tab.id, .searchEnded)); return
@@ -639,7 +711,8 @@ struct WindowTints: Equatable {
         if let url = tab.location.mutationTarget, !header.searchesEverywhere { scope = .currentFolder(url) } else { scope = .thisMac }
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
-                                limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents))
+                                limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
+                                usesAI: usesAI)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

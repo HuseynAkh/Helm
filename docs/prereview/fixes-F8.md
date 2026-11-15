@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F8 fixes for P7
 
 ## P7-1 — FIXED

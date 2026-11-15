@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K6 integration notes
 
 Portable M7 implementation and conservative M8 draft. Preserves F-051–F-057,
@@ -127,7 +126,6 @@ K15 regressions and K17 namespace-boundary tests cover these planning rules.
 
 ## F2 safety pre-review fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 Cancellation after a native primitive starts waits for its real completion (or
 existing timeout quarantine); completed mutations remain journaled. An adapter
 that throws cancellation during mutation quarantines this executor for reconciliation.

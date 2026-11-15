@@ -1,0 +1,11 @@
+# The shipped wiring with AI mode on and Ollama picked (HELM_SMOKE_AGENT=denied). Picking a provider on this Mac
+# checks it at once, and that check is HelmDev's first request: the network-denied sandbox kills HelmDev there, which
+# is the only way this run passes. If it got through, the state check below would end the run normally instead.
+setting-is aiModeEnabled false
+agent-client-built no
+setting aiModeEnabled true
+wait 0.5
+setting-is aiModeEnabled true
+agent-client-built no
+ai-provider ollama
+ai-state-is connected

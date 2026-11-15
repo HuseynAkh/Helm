@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// How two spellings of one path component compare (docs/rebuild/03-finder-nautilus-balance.md).

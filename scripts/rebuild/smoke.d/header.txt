@@ -1,6 +1,7 @@
 # Header: these start in the Documents tab, in list view, with two tabs open, and leave it that way, sort and all.
-# The Grid | List switch shows the view you're in, and the sort button says the sort
+# The view button shows the view you'd switch to, with its key in the tooltip, and the sort button says the sort
 header-view-is list
+header-tooltips
 sort-fits
 sort-save
 header-shot @SHOTS@/header-list.png
@@ -13,11 +14,18 @@ header-tooltips
 view-options open
 header-shot @SHOTS@/header-sort-open.png
 view-options close
+# With the panel shut, the main menu is drawn whole, at rest and lit, light and dark, and the resting spark's ink is its size
+agent-is closed
+header-menu-whole
 menu-lit true
 header-shot @SHOTS@/header-menu-lit.png
+header-menu-whole
 menu-lit false
 appearance light
 header-shot @SHOTS@/header-grid-light.png
+header-menu-whole
+appearance dark
+header-menu-whole
 appearance system
 # Search: an empty search closes when you click away, and the path comes back
 search-open
@@ -71,7 +79,7 @@ search-shown false
 focus-is files
 path-reads Home / Documents
 lacks q2.txt
-# Choosing a view while you type leaves the caret, and the empty search, in the field
+# Choosing a view with the view button while you type leaves the caret, and the empty search, in the field
 search-open
 header-switch list
 header-view-is list
@@ -169,7 +177,19 @@ window-width 760
 sort-title-is none
 sidebar-width-kept
 header-shot @SHOTS@/header-narrow.png
+header-menu-whole
+# Hiding the sidebar in a narrow window keeps the window's width, and showing it again needs nothing more
+cmd sidebar
+wait 0.4
+header-leading-is 84
+hunt-width-is 760
+header-menu-whole
+cmd sidebar
+wait 0.4
+header-leading-is 8
+hunt-width-is 760
 window-width 1040
+header-menu-whole
 sort-title-is Newest first
 sidebar-width-kept
 # With the sidebar hidden, the window still goes down to its 620-point minimum: the words go rather than it growing
@@ -180,6 +200,7 @@ sort-title-is none
 header-shot @SHOTS@/header-narrow-no-sidebar.png
 search-open
 header-shot @SHOTS@/header-narrow-search.png
+header-menu-whole
 search-key escape
 search-shown false
 window-width 1040
@@ -201,7 +222,8 @@ sidebar-visible-is false
 sidebar-divider 232
 header-leading-is 8
 sidebar-visible-is true
-# The window's edges stay macOS's own, in each view, with tabs and without the sidebar
+# The window's edges stay macOS's own, in each view, with tabs and without the sidebar; every header button,
+# the view button and the spark among them, is 32 points high
 window-edges-native
 view list
 header-view-is list

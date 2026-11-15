@@ -36,6 +36,15 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     case setupCarriedRows = "helm.setupCarriedRows"
     /// Recent and the apps you've used for each kind of file. Off, Helm keeps neither.
     case rememberRecentItems = "helm.rememberRecentItems"
+    /// AI mode. Off, which it is until the person turns it on, Helm connects to nothing.
+    case aiModeEnabled = "helm.aiModeEnabled"
+    /// The AI mode screen has been shown once, so it doesn't open by itself again.
+    case aiIntroSeen = "helm.aiIntroSeen"
+    /// The AI panel's width, as the person last dragged its edge. The panel still starts shut at every launch.
+    case agentPanelWidth = "helm.agentPanelWidth"
+    /// The code signature's designated requirement of the build that last went through setup, or empty. Another build
+    /// is new to macOS, which has forgotten its folder access and Full Disk Access, so setup comes first again.
+    case setupBuild = "helm.setupBuild"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

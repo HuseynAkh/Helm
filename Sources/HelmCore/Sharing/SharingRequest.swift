@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Share keeps the explicit, ordered selection of F-063; remote authorities are rejected.

@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Files, packages and links remain distinct for activation and traversal (F-035, F-048).

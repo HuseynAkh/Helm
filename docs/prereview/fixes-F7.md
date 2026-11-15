@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F7 — P6 operations and live filesystem fixes
 
 All four source-level findings reproduced in XCTest before their fixes. Initial

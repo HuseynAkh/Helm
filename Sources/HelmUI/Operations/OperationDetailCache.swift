@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-061 immutable outcomes format on demand, retaining only the current page (B-010).

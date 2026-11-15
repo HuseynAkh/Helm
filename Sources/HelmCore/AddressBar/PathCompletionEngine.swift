@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-016–F-023 filtering and completion. Slash requests always enumerate anew (B-050/B-052).

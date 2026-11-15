@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Point dimensions and backing scale stay separate to fix F-048/B-056's quadruple sizing.

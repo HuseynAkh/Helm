@@ -25,3 +25,10 @@ goes on without it. If `sandbox-exec` can't apply the profile, the run stops.
 `HELM_SMOKE_BIN=/path/to/Helm.app/Contents/MacOS/Helm` runs the steps against that build instead of building HelmDev,
 for example a Release build made by Xcode. AppKit can behave differently by the SDK a build links against: swift build
 links HelmDev as SDK 14, and Xcode links Helm.app against the newest SDK.
+
+Two more runs check AI mode's shipped wiring, with keys, the disk and servers still stand-ins and no scripted model.
+`HELM_SMOKE_AGENT=live bash scripts/rebuild/host_smoke.sh` gives both launches `--live-agent`, leaves out `agent.txt`
+and `agent.restore.txt` (they need the scripted model) and adds `../smoke.live/off.txt`: with AI mode off, every
+other step passes and no model client is built. `HELM_SMOKE_AGENT=denied bash scripts/rebuild/host_smoke.sh` runs
+only `../smoke.live/denied.txt`, which turns AI mode on and picks Ollama; the run passes only when the sandbox kills
+HelmDev at that first request (exit 137), and prints `PASS network denied`.

@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Bounded blocking queues isolate volumes; timeout quarantines a stalled queue (B-107).
@@ -82,6 +81,20 @@ public final class IOExecutor: @unchecked Sendable {
         mutationQuarantine.remove(volume); quarantined.remove(volume)
         return true
     }
+    /// Reopens every lane a timed-out mutation shut, as `clearQuarantine` does for one. For the moment the person
+    /// has acknowledged the stalled change, which is the reconciliation `clearQuarantine` asks for.
+    /// Such a lane stays shut while a timed-out call on it is still out, and the answer is then false: ask again
+    /// once it returns. True means every lane a mutation shut is open again.
+    /// A lane shut only by a timed-out read is left alone and doesn't make the answer false, since a read leaves
+    /// nothing to reconcile. It reopens by itself when the read returns, and until then every call on it, a
+    /// mutation included, still fails as timed out.
+    @discardableResult public func reopenAll() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        let stillOut = timedOutBodies.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+        let settled = mutationQuarantine.subtracting(stillOut)
+        mutationQuarantine.subtract(settled); quarantined.subtract(settled)
+        return mutationQuarantine.isEmpty
+    }
     /// Conservative mutation lane: a timeout requires explicit reconciliation (B-107).
     public func run<T: Sendable>(volume: String = "/", _ body: @escaping @Sendable () throws -> T) async throws -> T {
         try await run(volumes: [volume], body)
@@ -106,6 +119,9 @@ public final class IOExecutor: @unchecked Sendable {
     private func run<T: Sendable>(volumes: [String], mutation: Bool,
         _ body: @escaping @Sendable (@Sendable () -> Void) throws -> T) async throws -> T {
         try Task.checkCancellation()
+        // "Downloads off" is a mark on the caller's task, which the queue's thread can't see. It is read here and
+        // applied to that thread for as long as the body runs.
+        let downloadsOff = DatalessGuard.isOff
         let worker = volumes.first ?? "/"
         let footprint = Set(volumes.isEmpty ? [worker] : volumes)
         let state = IOResultState<T>()
@@ -120,8 +136,11 @@ public final class IOExecutor: @unchecked Sendable {
                     guard self.begin(state, id: id, volumes: footprint) else { return }
                     self.watch(state, id: id, volumes: footprint, mutation: mutation)
                     defer { self.bodyReturned(id: id) }
-                    do { state.complete(.success(try body { state.progress() })) }
-                    catch { state.complete(.failure(error)) }
+                    do {
+                        let value = downloadsOff ? try DatalessGuard.withDownloadsOff { try body { state.progress() } }
+                            : try body { state.progress() }
+                        state.complete(.success(value))
+                    } catch { state.complete(.failure(error)) }
                 }
             }
         } onCancel: { state.cancelIfQueued() }

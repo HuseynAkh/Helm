@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 // Component prefixes avoid both quadratic selection scans and lexical sibling-prefix mistakes.

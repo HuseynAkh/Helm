@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 ## F25 current contract integration — through wave 24 (`0021ac6`)
 
 This section supersedes dated deferrals below where explicitly described. Review
@@ -33,7 +32,6 @@ checks. [Review queue](REVIEW_QUEUE.md) retains native receipts, tree undo, safe
 redo, host composition, durability and Mac validation as open gates. Earlier
 K23/K29/K34/F12/F22 counts below are historical, never additive.
 
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Contract integration — K23 history through F22
 
 First read the [Opus/Fable review queue](REVIEW_QUEUE.md). The F22 section below
@@ -122,8 +120,6 @@ retries. No unrelated source workaround was applied.
 
 ## K29
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 - **P1-1:** Core `BatchRenameIssue.overlappingSources(URL, URL)` rejects selected
   ancestor/descendant paths before any steps, including unchanged selected ancestors.
   Uses standardized components and supplied volume case semantics; previews remain.
@@ -191,8 +187,6 @@ owned gated regression is exercised with `T1_RUN_BUGS=1` for final verification.
   checks**. Summary `/tmp/K29-run-all-final.log`; detailed `/tmp/build-K29/logs/`.
 
 ## K34
-
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 
 - **P7-2:** Core Naming adds throwing cancellation-hook overloads while retaining
   both nonthrowing planner signatures. Checks cover generation, overlap map/sort
@@ -290,8 +284,6 @@ Final verification results are appended below.
 
 ## Historical F12 disposition of earlier deferrals
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 The K23 table and its verification counts above are a dated decision record.
 K29/K34 and the current source supersede these specific earlier deferrals:
 
@@ -321,8 +313,6 @@ No source contracts were changed by F12.
 
 ## F13
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 - **P8-1:** `ItemOutcome.destinationEvidence: FileMutationPrecondition?` and
   `OperationPlan.expectedEvidence: [URL: FileMutationPrecondition]` are additive
   initializer arguments defaulting to nil/empty. Successful output metadata now
@@ -347,7 +337,6 @@ DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 
 ## Historical F22 contract pointers — through wave 21
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 First read the [full Opus/Fable queue](REVIEW_QUEUE.md). The K23/K29/K34/F12
 counts and deferrals above are historical; [VERIFICATION.md](VERIFICATION.md)
 records the K41 1,159-test baseline and separate current evidence. The

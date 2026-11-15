@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import HelmCore
 
 /// Draft toolbar layout enforces independent keyboard entry points (F-003/F-043, M24).

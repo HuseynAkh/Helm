@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pane navigation for F-038/F-041 and P-068; list callers use one column.

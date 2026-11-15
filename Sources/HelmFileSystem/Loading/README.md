@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 K31 directory loading integration (M3/M5/M6)
 
 Use one DirectoryLoadPipeline per tab load lane. Feed TabEffect.load's Location,

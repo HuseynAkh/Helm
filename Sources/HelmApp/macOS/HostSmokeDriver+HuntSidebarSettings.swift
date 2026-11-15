@@ -141,7 +141,10 @@ extension HostSmokeDriver {
             switch view {
             case let slider as NSSlider: texts.append("Slider: \(slider.doubleValue)")
             case let stepper as NSStepper: texts.append("Stepper: \(stepper.integerValue)")
-            case let popUp as NSPopUpButton: texts.append("PopUp: \(popUp.titleOfSelectedItem ?? "")")
+            case let popUp as NSPopUpButton:
+                texts.append("PopUp: \(popUp.titleOfSelectedItem ?? "")")
+                // Some SDKs draw a SwiftUI picker's value on the pop-up itself, with no text field beside it.
+                if let shown = shownValue(of: popUp) { texts.append("Text: \(shown)") }
             case let segments as NSSegmentedControl:
                 texts.append("Segments: \(segments.selectedSegment >= 0 ? segments.label(forSegment: segments.selectedSegment) ?? "" : "none")")
             case let toggle as NSSwitch: texts.append("Switch: \(toggle.state == .on ? "on" : "off")")
@@ -153,6 +156,16 @@ extension HostSmokeDriver {
         }
         walk(root)
         return texts
+    }
+
+    /// The value a pop-up draws when its own title is empty: the selected item's title or styled title, or what it
+    /// tells accessibility it shows. Nil when it shows nothing more than its title.
+    private static func shownValue(of popUp: NSPopUpButton) -> String? {
+        let title = popUp.titleOfSelectedItem ?? ""
+        let candidates: [String?] = [popUp.selectedItem?.attributedTitle?.string, popUp.attributedTitle.string,
+                                     popUp.accessibilityValue() as? String, popUp.cell?.accessibilityValue() as? String,
+                                     popUp.selectedItem?.accessibilityTitle()]
+        return candidates.compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty && $0 != title }
     }
 }
 #endif

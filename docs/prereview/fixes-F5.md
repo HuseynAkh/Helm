@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F5 review fixes
 
 All changes require Opus compile-correctness and behaviour-preservation review after

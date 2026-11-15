@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 K8 implements M3 portable state values and reducers. No I/O is performed here.
 All code remains subject to Opus compile-correctness and behavior review after
 22:00 Toronto on November 4, 2026, and subsequent macOS 14/Xcode validation.

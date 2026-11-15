@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 K19 M20/F-062: ApplicationResolving supplies installed app choices and the default per item (including
 folders). OpenWithModel intersects by standardized application URL, preserves first-item provider order,
 deduplicates, promotes a shared eligible default, and exposes the first ten menu entries plus Other….

@@ -4,9 +4,12 @@ import XCTest
 import HelmCore
 @testable import HelmUI
 
-/// The header's controls: the Grid | List switch, the sort button, the menus, tooltips and the sidebar inset.
+/// The header's controls: the view button, the sort button, the spark, the menus, the search field's spark,
+/// tooltips and the sidebar inset.
 @MainActor final class HeaderBarTests: XCTestCase {
     private let home = URL(fileURLWithPath: "/Users/me", isDirectory: true)
+    /// Windows a test lays the header out in, kept until it ends.
+    private var windows: [NSWindow] = []
 
     override func setUp() {
         super.setUp()
@@ -14,6 +17,7 @@ import HelmCore
         HeaderMotion.isDisabledForTesting = true
     }
     override func tearDown() {
+        windows = []
         HeaderMotion.isDisabledForTesting = false
         super.tearDown()
     }
@@ -36,71 +40,435 @@ import HelmCore
         if let event { button.mouseExited(with: event) }
     }
 
-    // MARK: Grid | List
+    // MARK: The view button
 
-    func testTheSwitchShowsTheViewYoureIn() {
+    func testTheViewButtonShowsTheViewYoudSwitchTo() {
         let header = HeaderBarView()
         var current = tab(.grid)
         header.render(tab: current)
-        let control = header.viewSwitch
-        XCTAssertEqual(control.mode, .grid)
-        XCTAssertEqual(control.segments.map(isSelected), [true, false])
-        XCTAssertEqual(control.thumbFrameForTesting, NSRect(x: 0, y: 0, width: 32, height: 32))
-        // The view you're in reads in full colour and doesn't react to the pointer; the other one is the one to press.
-        XCTAssertEqual(control.segments[0].contentTintColor, .labelColor)
-        XCTAssertEqual(control.segments[1].contentTintColor, .secondaryLabelColor)
-        XCTAssertFalse(control.segments[0].showsHover)
-        XCTAssertTrue(control.segments[1].showsHover)
+        let button = header.viewButton
+        // In the grid it offers the list: the list's icon, its key, and what pressing it does for VoiceOver.
+        XCTAssertEqual(button.mode, .grid)
+        XCTAssertEqual(button.offered, .list)
+        XCTAssertEqual(button.symbolName, "list.bullet")
+        XCTAssertEqual(button.toolTip, "List (⌘2)")
+        XCTAssertEqual(button.accessibilityLabel(), "Show as List")
+        XCTAssertEqual(button.accessibilityValue() as? String, "Grid")
 
         current.viewMode = .list
         header.render(tab: current)
-        XCTAssertEqual(control.mode, .list)
-        XCTAssertEqual(control.segments.map(isSelected), [false, true])
-        XCTAssertEqual(control.thumbFrameForTesting, NSRect(x: 32, y: 0, width: 32, height: 32))
-        XCTAssertEqual(control.segments[1].contentTintColor, .labelColor)
-        XCTAssertTrue(control.segments[0].showsHover)
-        XCTAssertFalse(control.segments[1].showsHover)
+        XCTAssertEqual(button.mode, .list)
+        XCTAssertEqual(button.offered, .grid)
+        XCTAssertEqual(button.symbolName, "square.grid.2x2")
+        XCTAssertEqual(button.toolTip, "Grid (⌘1)")
+        XCTAssertEqual(button.accessibilityLabel(), "Show as Grid")
+        XCTAssertEqual(button.accessibilityValue() as? String, "List")
 
-        // Another tab in grid snaps the thumb back.
+        // Another tab in the grid offers the list again.
         header.render(tab: tab(.grid))
-        XCTAssertEqual(control.mode, .grid)
-        XCTAssertEqual(control.thumbFrameForTesting.minX, 0)
+        XCTAssertEqual(button.symbolName, "list.bullet")
+        XCTAssertEqual(button.toolTip, "List (⌘2)")
     }
 
-    func testTheSwitchIsARadioGroupWithBothViewsAlwaysOnShow() {
-        let control = ViewModeSwitch()
-        XCTAssertEqual(control.accessibilityRole(), .radioGroup)
-        XCTAssertEqual(control.accessibilityLabel(), "View")
-        XCTAssertEqual(control.segments.map(\.symbolName), ["square.grid.2x2", "list.bullet"])
-        XCTAssertEqual(control.segments.map { $0.accessibilityLabel() }, ["Grid", "List"])
-        XCTAssertEqual(control.segments.map { $0.accessibilityRole() }, [.radioButton, .radioButton])
-        XCTAssertEqual(control.intrinsicContentSize, NSSize(width: 64, height: 32))
-        XCTAssertFalse(control.mouseDownCanMoveWindow)
+    func testTheViewButtonIsOneHeaderButton() {
+        let button = ViewModeButton()
+        XCTAssertNotEqual(button.accessibilityRole(), .radioButton, "One button, not a radio group's half.")
+        XCTAssertEqual(button.laidOutWidth, 34, "As wide as the header's other icon buttons.")
+        XCTAssertTrue(button.showsHover)
+        XCTAssertFalse(button.mouseDownCanMoveWindow)
     }
 
-    func testPickingTheOtherViewChoosesItOnceAndTheCurrentOneDoesNothing() {
-        let control = ViewModeSwitch()
+    func testEachPressSwitchesToTheViewOnOffer() {
+        let button = ViewModeButton()
         var chosen: [ViewMode] = []
-        control.onChoose = { chosen.append($0) }
-        control.clickForTesting(.list)
+        button.onChoose = { chosen.append($0) }
+        button.clickForTesting()
         XCTAssertEqual(chosen, [.list])
-        XCTAssertEqual(control.mode, .list)
-        XCTAssertEqual(control.thumbFrameForTesting.minX, 32)
-        control.clickForTesting(.list)
-        XCTAssertEqual(chosen, [.list])
-        // A real click on the Grid segment goes through the button's action.
-        control.segments[0].performClick(nil)
+        XCTAssertEqual(button.mode, .list)
+        XCTAssertEqual(button.toolTip, "Grid (⌘1)")
+        // A real click goes through the button's action, and goes back.
+        button.performClick(nil)
         XCTAssertEqual(chosen, [.list, .grid])
-        XCTAssertEqual(control.mode, .grid)
+        XCTAssertEqual(button.mode, .grid)
+        XCTAssertEqual(button.toolTip, "List (⌘2)")
+        // Showing the view that's already on show changes nothing and chooses nothing.
+        button.setMode(.grid, animated: false)
+        XCTAssertEqual(chosen, [.list, .grid])
     }
 
-    func testTheHeaderPassesTheSwitchOnToItsDelegate() {
+    func testTheHeaderPassesTheViewButtonOnToItsDelegate() {
         let header = HeaderBarView()
         let spy = HeaderSpy()
         header.delegate = spy
         header.render(tab: tab(.grid))
-        header.viewSwitch.clickForTesting(.list)
+        header.viewButton.clickForTesting()
         XCTAssertEqual(spy.modes, [.list])
+        header.render(tab: tab(.list))
+        header.viewButton.clickForTesting()
+        XCTAssertEqual(spy.modes, [.list, .grid])
+    }
+
+    // MARK: The spark
+
+    /// The header laid out at a comfortable width in a window that's never shown.
+    private func laidOut(width: CGFloat = 1000) -> (NSWindow, HeaderBarView) {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 120), styleMask: [.titled],
+                              backing: .buffered, defer: true)
+        windows.append(window)
+        let header = HeaderBarView()
+        if let content = window.contentView {
+            content.addSubview(header)
+            NSLayoutConstraint.activate([
+                header.topAnchor.constraint(equalTo: content.topAnchor),
+                header.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                header.trailingAnchor.constraint(equalTo: content.trailingAnchor)
+            ])
+            header.render(tab: tab())
+            content.layoutSubtreeIfNeeded()
+        }
+        return (window, header)
+    }
+
+    func testTheSparkSitsBetweenTheSortAndTheMainMenu() {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        XCTAssertEqual(spark.frame.height, 32)
+        XCTAssertEqual(spark.frame.width, 34)
+        XCTAssertEqual(spark.frame.midY, header.menuButton.frame.midY, accuracy: 0.5)
+        // The view and the sort, then a group's gap, then the spark and the main menu side by side, a little apart so
+        // their two lit fills never meet.
+        XCTAssertEqual(header.sortButton.frame.minX - header.viewButton.frame.maxX, 2, accuracy: 0.5)
+        XCTAssertEqual(spark.frame.minX - header.sortButton.frame.maxX, 6, accuracy: 0.5)
+        XCTAssertEqual(header.menuButton.frame.minX - spark.frame.maxX, 4, accuracy: 0.5)
+        XCTAssertEqual(header.viewButton.frame.minX - header.searchButton.frame.maxX, 6, accuracy: 0.5)
+        let menu = header.convert(header.menuButton.bounds, from: header.menuButton)
+        XCTAssertEqual(header.bounds.width - menu.maxX, 8, accuracy: 0.5, "The main menu stays at the end.")
+    }
+
+    func testTheSparkLightsOnlyWhileThePanelIsOpen() {
+        let header = HeaderBarView()
+        let spark = header.sparkButton
+        XCTAssertFalse(spark.isLit)
+        XCTAssertFalse(spark.isOn)
+        XCTAssertEqual(isSelected(spark), false)
+        // A request running doesn't light it; only the panel being open does.
+        header.setAIPanel(open: false, working: true, ready: true)
+        XCTAssertFalse(spark.isLit)
+        XCTAssertFalse(spark.isOn)
+        XCTAssertTrue(spark.isWorking)
+        header.setAIPanel(open: true, working: false, ready: true)
+        XCTAssertTrue(spark.isLit)
+        XCTAssertTrue(spark.isOn, "Lit, it has the lit fill of a toggle that's on.")
+        XCTAssertEqual(isSelected(spark), true)
+        XCTAssertEqual(spark.fillAlpha, 0.14, accuracy: 0.001)
+        XCTAssertFalse(spark.isWorking)
+        header.setAIPanel(open: false, working: false, ready: true)
+        XCTAssertFalse(spark.isLit)
+        XCTAssertFalse(spark.isOn)
+        XCTAssertEqual(spark.fillAlpha, 0)
+    }
+
+    func testTheSparkDrawsTheGradientWhileLitOrWorkingAndNotUnderIncreaseContrast() {
+        defer { SparkButton.increasesContrastForTesting = nil }
+        SparkButton.increasesContrastForTesting = false
+        let spark = HeaderBarView().sparkButton
+        XCTAssertFalse(spark.drawsGradient, "At rest it's in the label colour.")
+        spark.isLit = true
+        XCTAssertTrue(spark.drawsGradient)
+        spark.isLit = false
+        spark.isWorking = true
+        XCTAssertTrue(spark.drawsGradient)
+        SparkButton.increasesContrastForTesting = true
+        XCTAssertFalse(spark.drawsGradient)
+        spark.isLit = true
+        XCTAssertFalse(spark.drawsGradient, "Under Increase Contrast the lit fill alone says it's open.")
+    }
+
+    func testTheSparkTurnsOnlyWhileWorkingInAWindowWithMotion() throws {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        // Under Reduce Motion the gradient is still.
+        header.setAIPanel(open: true, working: true, ready: true)
+        XCTAssertFalse(spark.isShimmering)
+        header.setAIPanel(open: true, working: false, ready: true)
+        HeaderMotion.isDisabledForTesting = false
+        defer { HeaderMotion.isDisabledForTesting = true }
+        try XCTSkipIf(HeaderMotion.isReduced, "This Mac has Reduce Motion on.")
+        header.setAIPanel(open: true, working: true, ready: true)
+        XCTAssertTrue(spark.isShimmering)
+        let start = spark.shimmerTurn
+        // The timer steps it on the main run loop; a busy machine can hold the first step back a little.
+        let deadline = Date().addingTimeInterval(2)
+        while spark.shimmerTurn == start, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        XCTAssertNotEqual(spark.shimmerTurn, start, "The gradient turns.")
+        header.setAIPanel(open: true, working: false, ready: true)
+        XCTAssertFalse(spark.isShimmering)
+        XCTAssertEqual(spark.shimmerTurn, 0, "It rests where the still mark has it.")
+        // Out of a window it doesn't turn either.
+        let loose = SparkButton(target: nil, action: nil)
+        loose.isWorking = true
+        XCTAssertFalse(loose.isShimmering)
+    }
+
+    func testTheSparkFollowsReduceMotionAndIncreaseContrastWhenTheyChange() throws {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        HeaderMotion.isDisabledForTesting = false
+        defer { HeaderMotion.isDisabledForTesting = true; SparkButton.increasesContrastForTesting = nil }
+        try XCTSkipIf(HeaderMotion.isReduced, "This Mac has Reduce Motion on.")
+        header.setAIPanel(open: true, working: true, ready: true)
+        XCTAssertTrue(spark.isShimmering)
+        // Reduce Motion turned on while the request runs: the gradient stops turning at once.
+        HeaderMotion.isDisabledForTesting = true
+        SparkButton.increasesContrastForTesting = true
+        spark.needsDisplay = false
+        NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+                                                   object: NSWorkspace.shared)
+        XCTAssertFalse(spark.isShimmering)
+        XCTAssertEqual(spark.shimmerTurn, 0)
+        // Increase Contrast turned on: the spark is drawn again, in the label colour.
+        XCTAssertTrue(spark.needsDisplay)
+        XCTAssertFalse(spark.drawsGradient)
+        header.setAIPanel(open: true, working: false, ready: true)
+    }
+
+    func testTheSparksTooltipSaysWhatPressingItDoes() {
+        let header = HeaderBarView()
+        let spark = header.sparkButton
+        XCTAssertEqual(spark.accessibilityLabel(), "AI Panel")
+        XCTAssertEqual(spark.accessibilityRole(), .checkBox)
+        XCTAssertEqual(spark.toolTip, "Set Up AI Mode", "Until a model is ready it sets AI mode up.")
+        header.setAIPanel(open: false, working: false, ready: true)
+        XCTAssertEqual(spark.toolTip, "AI Panel (⌃⌘I)")
+        header.setAIPanel(open: true, working: false, ready: false)
+        XCTAssertEqual(spark.toolTip, "Set Up AI Mode")
+    }
+
+    func testPressingTheSparkAsksTheWindowAndLeavesTheLightToIt() {
+        let header = HeaderBarView()
+        let spy = HeaderSpy()
+        header.delegate = spy
+        header.sparkButton.performClick(nil)
+        XCTAssertEqual(spy.panelToggles, 1)
+        XCTAssertFalse(header.sparkButton.isLit, "Only the window says the panel is open.")
+        header.sparkButton.performClick(nil)
+        XCTAssertEqual(spy.panelToggles, 2)
+    }
+
+    // MARK: The search field's spark
+
+    func testTheFieldsLeadingMarkIsTheMagnifierUntilAISearchIsAvailable() {
+        let header = HeaderBarView()
+        header.render(tab: tab())
+        let field = header.searchField
+        XCTAssertEqual(field.leadingMark, "magnifier")
+        // On without being available is still the magnifier.
+        header.setAISearch(available: false, on: true)
+        XCTAssertEqual(field.leadingMark, "magnifier")
+        XCTAssertFalse(field.isAIOn)
+        header.setAISearch(available: true, on: false)
+        XCTAssertEqual(field.leadingMark, "spark")
+        XCTAssertEqual(field.placeholderStringForTesting, "Search Documents")
+        header.setAISearch(available: true, on: true)
+        XCTAssertEqual(field.leadingMark, "spark lit")
+        XCTAssertEqual(field.placeholderStringForTesting, "Describe a file in Documents")
+        header.chooseSearchScopeForTesting(everywhere: true)
+        XCTAssertEqual(field.placeholderStringForTesting, "Describe a file on this Mac")
+        header.setAISearch(available: true, on: false)
+        XCTAssertEqual(field.placeholderStringForTesting, "Search This Mac")
+        header.setAISearch(available: false, on: false)
+        XCTAssertEqual(field.leadingMark, "magnifier")
+    }
+
+    func testANarrowFieldEndsItsPlaceholderInAnEllipsis() {
+        let header = HeaderBarView()
+        header.render(tab: tab())
+        XCTAssertTrue(header.searchField.placeholderTruncatesForTesting, "the words end in … rather than a cut letter")
+        header.setAISearch(available: true, on: true)
+        XCTAssertTrue(header.searchField.placeholderTruncatesForTesting)
+        XCTAssertEqual(header.searchField.placeholderStringForTesting, "Describe a file in Documents")
+    }
+
+    func testTheFieldsSparkSitsOnTheLitFillWhileOn() {
+        let (_, header) = laidOut()
+        header.beginSearch()
+        let field = header.searchField
+        header.setAISearch(available: true, on: false)
+        XCTAssertFalse(field.aiLitShownForTesting)
+        let width = field.frame.width
+        header.setAISearch(available: true, on: true)
+        XCTAssertTrue(field.aiLitShownForTesting, "on reads as a header button that is on")
+        XCTAssertEqual(field.frame.width, width, "and adds no width")
+        header.setAISearch(available: false, on: false)
+        XCTAssertFalse(field.aiLitShownForTesting)
+    }
+
+    func testIconButtonsAreExactlyTheirWidthAndDrawTheirSymbolWhole() throws {
+        let (_, header) = laidOut()
+        for button in [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.viewButton,
+                       header.sparkButton, header.menuButton] as [FlatButton] {
+            XCTAssertEqual(button.frame.width, 34, accuracy: 0.5, button.accessibilityLabel() ?? "")
+            XCTAssertEqual(button.frame.height, 32, accuracy: 0.5, button.accessibilityLabel() ?? "")
+        }
+        XCTAssertEqual(header.menuButton.imageScaling, .scaleNone, "the symbol is never scaled down to a short image rect")
+        let ink = try XCTUnwrap(header.menuButton.inkRectForTesting())
+        XCTAssertTrue(header.menuButton.bounds.insetBy(dx: 1, dy: 1).contains(ink), "\(ink)")
+        XCTAssertEqual(ink.width, 15, accuracy: 1.5)
+        XCTAssertEqual(ink.height, 15, accuracy: 1.5)
+        XCTAssertEqual(header.menuButton.layerContentsPlacement, .scaleAxesIndependently,
+                       "an icon on its own fills the button it was drawn for")
+        XCTAssertEqual(header.sortButton.layerContentsPlacement, .center, "the sort's words stay centred as it resizes")
+    }
+
+    /// An icon on its own is drawn as dark as a plain button draws the same symbol in the label colour, in light and
+    /// dark, at rest, under the pointer and lit, and as dim as one that's off: drawing it whole doesn't change its ink. A palette colour applied the
+    /// label colour's transparency twice, so the darkest light-mode pixel was 72 where the button's is 39.
+    func testIconButtonsDrawTheirSymbolInTheFullLabelColour() throws {
+        let (window, header) = laidOut()
+        let content = try XCTUnwrap(window.contentView)
+        /// The strongest ink on a clear bitmap, laid on white in light and on black in dark, as a 0-255 grey.
+        func strongest(_ rep: NSBitmapImageRep, dark: Bool) -> Double {
+            var best: Double = dark ? 0 : 255
+            for y in 0..<rep.pixelsHigh {
+                for x in 0..<rep.pixelsWide {
+                    guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), color.alphaComponent > 0.01 else { continue }
+                    let grey = (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                    let over = grey * color.alphaComponent + (dark ? 0 : 1) * (1 - color.alphaComponent)
+                    let value = (Double(over) * 255).rounded()
+                    best = dark ? max(best, value) : min(best, value)
+                }
+            }
+            return best
+        }
+        func cached(_ view: NSView) throws -> NSBitmapImageRep {
+            let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: rep)
+            return rep
+        }
+        func plainButton(like button: FlatButton) -> NSButton {
+            let plain = NSButton(frame: button.frame)
+            plain.isBordered = false
+            plain.title = ""
+            plain.image = NSImage(systemSymbolName: button.symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: button.symbolPointSize, weight: .regular))
+            plain.imagePosition = .imageOnly
+            plain.imageScaling = .scaleNone
+            plain.contentTintColor = .labelColor
+            plain.isEnabled = button.isEnabled
+            plain.alphaValue = button.alphaValue
+            content.addSubview(plain)
+            return plain
+        }
+        for button in [header.sidebarButton, header.searchButton, header.viewButton, header.menuButton] as [FlatButton] {
+            XCTAssertTrue(button.isEnabled)
+            let plain = plainButton(like: button)
+            defer { plain.removeFromSuperview() }
+            let name = button.accessibilityLabel() ?? button.symbolName
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                window.appearance = NSAppearance(named: appearance)
+                let dark = appearance == .darkAqua
+                let expected = strongest(try cached(plain), dark: dark)
+                XCTAssertEqual(strongest(try cached(button), dark: dark), expected, accuracy: 3,
+                               "\(name) at rest, \(appearance.rawValue)")
+                for state in ["rest", "hover", "lit"] {
+                    if state == "hover" { enter(button) }
+                    if state == "lit" { button.isOn = true }
+                    let drawn = try XCTUnwrap(button.drawingForTesting())
+                    XCTAssertEqual(strongest(drawn, dark: dark), expected, accuracy: 3,
+                                   "\(name) \(state), \(appearance.rawValue)")
+                }
+                button.isOn = false
+                leave(button)
+            }
+        }
+        // Back and Forward, off with no history, are dimmed as a plain button that's off dims its symbol.
+        for button in [header.backButton, header.forwardButton] as [FlatButton] {
+            XCTAssertFalse(button.isEnabled)
+            let plain = plainButton(like: button)
+            defer { plain.removeFromSuperview() }
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                window.appearance = NSAppearance(named: appearance)
+                let dark = appearance == .darkAqua
+                XCTAssertEqual(strongest(try cached(button), dark: dark), strongest(try cached(plain), dark: dark), accuracy: 3,
+                               "\(button.accessibilityLabel() ?? "") off, \(appearance.rawValue)")
+            }
+        }
+        window.appearance = nil
+    }
+
+    /// The spark's ink is measured the same way at rest, in the label colour, and lit, in the gradient: about 15
+    /// points, the size of the main menu's.
+    func testTheSparksInkIsTheSameSizeAtRestAndLit() throws {
+        let (_, header) = laidOut()
+        let spark = header.sparkButton
+        let rest = try XCTUnwrap(spark.inkRectForTesting(threshold: 0.5))
+        spark.isLit = true
+        let lit = try XCTUnwrap(spark.inkRectForTesting(threshold: 0.5))
+        spark.isLit = false
+        XCTAssertEqual(rest.width, lit.width, accuracy: 0.5, "rest \(rest), lit \(lit)")
+        XCTAssertEqual(rest.height, lit.height, accuracy: 0.5, "rest \(rest), lit \(lit)")
+        for ink in [rest, lit] {
+            XCTAssertGreaterThanOrEqual(ink.width, 13.5, "\(ink)")
+            XCTAssertLessThanOrEqual(ink.width, 16.5, "\(ink)")
+        }
+    }
+
+    func testTheFieldsSparkIsAToggleNamedFindWithAI() throws {
+        let (_, header) = laidOut()
+        header.beginSearch()
+        let field = header.searchField
+        let toggle = try XCTUnwrap(field.subviews.compactMap { $0 as? NSButton }.first { $0.toolTip == "Find with AI" })
+        XCTAssertTrue(toggle.isHidden)
+        header.setAISearch(available: true, on: false)
+        XCTAssertFalse(toggle.isHidden)
+        XCTAssertEqual(toggle.accessibilityLabel(), "Find with AI")
+        XCTAssertEqual(toggle.accessibilityRole(), .checkBox)
+        XCTAssertEqual((toggle.accessibilityValue() as? NSNumber)?.boolValue, false)
+        XCTAssertEqual(toggle.image?.isTemplate, true, "Off, it's tinted like the magnifier.")
+        header.setAISearch(available: true, on: true)
+        XCTAssertEqual((toggle.accessibilityValue() as? NSNumber)?.boolValue, true)
+        XCTAssertEqual(toggle.image?.isTemplate, false, "On, it's in the gradient.")
+        XCTAssertTrue(toggle.refusesFirstResponder)
+    }
+
+    func testTheFieldsSparkAddsNoWidth() {
+        for available in [false, true] {
+            for on in [false, true] {
+                let (window, header) = laidOut()
+                header.beginSearch()
+                header.setAISearch(available: available, on: on)
+                window.contentView?.layoutSubtreeIfNeeded()
+                let field = header.searchField
+                let plain = HeaderSearchField()
+                let label = "available \(available), on \(on)"
+                XCTAssertEqual(field.minimumWidth, plain.minimumWidth, accuracy: 0.01, label)
+                XCTAssertEqual(field.fittingSize.width, plain.fittingSize.width, accuracy: 0.5, label)
+                XCTAssertEqual(field.minimumWidth, field.fittingSize.width, accuracy: 0.5, label)
+                // The spark is centred where the magnifier is, so the words start in the same place.
+                XCTAssertEqual(field.aiToggleFrame.midX, field.leadingMarkFrame.midX, accuracy: 0.5, label)
+                XCTAssertEqual(field.aiToggleFrame.midY, field.leadingMarkFrame.midY, accuracy: 0.5, label)
+            }
+        }
+    }
+
+    func testPressingTheFieldsSparkAsksTheWindowToTurnAISearchOver() {
+        let header = HeaderBarView()
+        let spy = HeaderSpy()
+        header.delegate = spy
+        header.render(tab: tab())
+        header.beginSearch()
+        header.setAISearch(available: true, on: false)
+        header.searchField.pressAIToggleForTesting()
+        XCTAssertEqual(spy.aiToggles, [true])
+        // The window owns the state: until it says so, the field still shows it off.
+        XCTAssertEqual(header.searchField.leadingMark, "spark")
+        header.setAISearch(available: true, on: true)
+        header.searchField.pressAIToggleForTesting()
+        XCTAssertEqual(spy.aiToggles, [true, false])
+        // Hidden, it asks nothing.
+        header.setAISearch(available: false, on: false)
+        header.searchField.pressAIToggleForTesting()
+        XCTAssertEqual(spy.aiToggles, [true, false])
     }
 
     // MARK: Sort
@@ -389,7 +757,8 @@ import HelmCore
         XCTAssertEqual(header.sidebarButton.toolTip, "Hide Sidebar (⌃⌘S)")
         XCTAssertEqual(header.backButton.toolTip, "Back (⌘[)")
         XCTAssertEqual(header.forwardButton.toolTip, "Forward (⌘])")
-        XCTAssertEqual(header.viewSwitch.segments.map(\.toolTip), ["Grid (⌘1)", "List (⌘2)"])
+        XCTAssertEqual(header.viewButton.toolTip, "List (⌘2)")
+        XCTAssertEqual(header.sparkButton.toolTip, "Set Up AI Mode")
         XCTAssertEqual(header.sortButton.toolTip, "Sorted by Name, A to Z. Sort and view options (⌘J)")
         // VoiceOver hears the name without the keys.
         XCTAssertEqual(header.backButton.accessibilityLabel(), "Back")
@@ -407,12 +776,12 @@ import HelmCore
         ])
         header.render(tab: tab())
         content.layoutSubtreeIfNeeded()
-        let buttons = [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.sortButton,
-                       header.menuButton] + header.viewSwitch.segments
+        let buttons = [header.sidebarButton, header.backButton, header.forwardButton, header.searchButton, header.viewButton,
+                       header.sortButton, header.sparkButton, header.menuButton]
         // Symbol insets used to make each fill a different height, from 33 to 38 points.
         for button in buttons {
             XCTAssertEqual(button.frame.height, 32, "\(button.accessibilityLabel() ?? "")")
-            XCTAssertEqual(button.frame.midY, header.viewSwitch.frame.midY, accuracy: 0.5, "\(button.accessibilityLabel() ?? "")")
+            XCTAssertEqual(button.frame.midY, header.menuButton.frame.midY, accuracy: 0.5, "\(button.accessibilityLabel() ?? "")")
         }
         XCTAssertEqual(header.pathBar.folderMenuButtonForTesting.frame.height, 26)
     }
@@ -483,6 +852,9 @@ import HelmCore
 /// Records what the header asks of its window.
 @MainActor final class HeaderSpy: HeaderBarDelegate {
     var modes: [ViewMode] = []
+    var panelToggles = 0
+    var submitted: [String] = []
+    var aiToggles: [Bool] = []
     var changes: [String] = []
     var closed = 0
     var dismissed = 0
@@ -499,5 +871,8 @@ import HelmCore
     func headerSearchDismissed() { dismissed += 1 }
     func headerSearchScopeChanged() {}
     func headerSearchMoveToResults() -> Bool { moves += 1; return movesToResults }
+    func headerToggleAIPanel() { panelToggles += 1 }
+    func headerSearchSubmitted(_ text: String) { submitted.append(text) }
+    func headerSearchAIToggled(_ on: Bool) { aiToggles.append(on) }
 }
 #endif

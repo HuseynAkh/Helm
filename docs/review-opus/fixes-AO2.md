@@ -1,5 +1,3 @@
-# DRAFT: pending review, 2026-11-04
-
 AO2 checked the assigned proposals against the implementation. All changes remain pending Opus review for compile correctness and behavior preservation. No network, commit, push, publication, or external action was performed. Changes are confined to AO2-owned source/test paths and this report.
 
 ## Disposition

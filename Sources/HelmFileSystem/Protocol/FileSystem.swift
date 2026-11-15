@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 import HelmCore
 #if canImport(Darwin)
@@ -22,6 +21,9 @@ public enum FileSystemError: Error, Sendable, Equatable {
     /// A collision permits retry only when the primitive guarantees it made no mutation (B-038).
     case collision(noMutation: Bool)
     case notFound, permissionDenied, timedOut, unsupported, other(String)
+    /// The item is in a cloud and not on this Mac, and reading it would have downloaded it. Raised while downloads
+    /// are off (`DatalessGuard`), where macOS refuses the read at once and nothing is fetched.
+    public static let notDownloaded: FileSystemError = .other("Not downloaded")
     public static func mapping(_ error: Error) -> FileSystemError {
         if let error = error as? FileSystemError { return error }
         let value = error as NSError
@@ -31,6 +33,8 @@ public enum FileSystemError: Error, Sendable, Equatable {
             if [Int(EPERM), Int(EACCES), Int(EROFS)].contains(value.code) { return .permissionDenied }
             if [Int(ENOTSUP), Int(EXDEV)].contains(value.code) { return .unsupported }
             if value.code == Int(ENOSPC) { return .other("No space") }
+            // What macOS answers when a read needs a download and downloads are off for the thread.
+            if value.code == Int(EDEADLK) { return .notDownloaded }
         }
         if value.domain == NSCocoaErrorDomain {
             if value.code == 516 { return .collision(noMutation: false) }
@@ -73,6 +77,12 @@ public protocol FileSystem: Sendable {
     func availableCapacity(of url: URL) async throws -> Int64
     func sizeOfTree(at url: URL) -> AsyncThrowingStream<Int64, Error>
     func makeMonitor(for directory: URL) -> any DirectoryMonitor
+    /// Lets changes through again after one stalled and shut its disk off from further changes. Call it once the
+    /// person has acknowledged the stalled change. True means every disk a stalled change shut is open again. False
+    /// means a stalled call is still out on one of them: ask again when it returns.
+    /// True doesn't mean nothing is out. A read changes nothing, so one that is still out doesn't make the answer
+    /// false. The disk it is on stays shut until it returns, and until then a change there still fails as timed out.
+    func reopenAfterStall() async -> Bool
 }
 /// Monitor lifetime is explicit; each handle belongs to one consumer (B-072).
 public protocol DirectoryMonitor: Sendable {
@@ -141,4 +151,6 @@ public extension FileSystem {
         }
     }
     func makeMonitor(for directory: URL) -> any DirectoryMonitor { PollingMonitor(directory: directory, fileSystem: self) }
+    /// A file system that never shuts a disk off has nothing to reopen.
+    func reopenAfterStall() async -> Bool { true }
 }

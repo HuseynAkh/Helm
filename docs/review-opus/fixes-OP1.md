@@ -1,5 +1,3 @@
-DRAFT: pending review, 2026-11-05
-
 # OP1 judgement-fix pass (Opus lead)
 
 ## READ THIS FIRST: nothing in this pass was compiled or run

@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Planned P-204 image attach extends F-007; encrypted images remain system credential UI work.

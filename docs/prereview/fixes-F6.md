@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 # F6 fixes for P5
 
 All four findings reproduced before implementation: five regression tests failed

@@ -1,5 +1,5 @@
 import unittest
-from static_checks import check
+from static_checks import CORE, DAG, check
 
 class StaticChecksTests(unittest.TestCase):
     def errors(self, text, module='HelmCore'):
@@ -20,5 +20,23 @@ class StaticChecksTests(unittest.TestCase):
         self.assertFalse(self.errors('let x = "{(try!" // }\n/* nested /* { */ } */'))
     def test_only_top_level_symbols(self):
         self.assertEqual(check('x', 'struct A { struct B {} }', 'HelmCore')[1], ['A'])
+    def test_agent_module_imports_core_only(self):
+        self.assertEqual(DAG['HelmAgent'], {'HelmCore'})
+        self.assertFalse(self.errors('import Foundation\nimport Security\nimport HelmCore', 'HelmAgent'))
+        for name in ('HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'HelmUI', 'HelmApp'):
+            self.assertTrue(self.errors(f'import {name}', 'HelmAgent'), name)
+        # Only the window and app layers may use it.
+        for module in ('HelmUI', 'HelmApp'):
+            self.assertFalse(self.errors('import HelmAgent', module), module)
+        for module in ('HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch', 'HelmTestKit', 'Helm'):
+            self.assertTrue(self.errors('import HelmAgent', module), module)
+    def test_modules_without_appkit_are_named(self):
+        self.assertEqual(CORE, {'HelmCore', 'HelmFileSystem', 'HelmPersistence', 'HelmOperations', 'HelmSearch',
+                                'HelmTestKit', 'HelmAgent'})
+        for module in sorted(CORE):
+            for text in ('import AppKit', 'import SwiftUI', '@objc func x() {}', 'NSPredicate(format: "x")'):
+                self.assertTrue(self.errors(text, module), f'{module}: {text}')
+        for module in ('HelmUI', 'HelmApp'):
+            self.assertFalse(self.errors('import AppKit\n@objc func x() {}', module), module)
 
 if __name__ == '__main__': unittest.main()
