@@ -1,5 +1,3 @@
-# DRAFT: pending review, 2026-11-05
-
 AF2b follow-up requires Opus compile-correctness and behaviour-preservation spot-check.
 
 | Finding | Disposition | Evidence |

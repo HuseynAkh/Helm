@@ -1,4 +1,4 @@
-// DRAFT: pending Opus review. Regression coverage for OK1 AK2.
+// Regression coverage for OK1 AK2.
 import Foundation
 import XCTest
 import HelmCore

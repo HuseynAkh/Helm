@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-050 aggregate fields distinguish absent metadata, no selection and mixed values.

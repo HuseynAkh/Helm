@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// AppKit-independent modifier bits preserve the F-066 legacy shortcut masks.
 public struct KeyModifiers: OptionSet, Hashable, Sendable {
     public let rawValue: UInt8

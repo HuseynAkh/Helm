@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 # K10 presentation values
 
 Production-quality draft for M13/M18/M20/M24; Opus compile-correctness and behaviour

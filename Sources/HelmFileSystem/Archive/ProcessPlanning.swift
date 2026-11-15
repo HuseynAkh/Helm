@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Argument-array command draft for M22 (F-052/F-059); never shell-interpolates user paths.

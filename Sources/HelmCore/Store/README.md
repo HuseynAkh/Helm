@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 K32 supplies the portable M3/M10 FIFO store integration seam. Opus review after
 22:00 Toronto on 2026-11-04 and macOS 14/Xcode validation remain required.
 

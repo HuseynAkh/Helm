@@ -1,7 +1,5 @@
 # T3 adversarial test findings
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 Only seven new T3-prefixed XCTest files and this report were created. No Sources,
 existing tests, Package.swift, scripts, legacy Helm files, network, commits, pushes,
 messages, sharing changes or external actions were used.

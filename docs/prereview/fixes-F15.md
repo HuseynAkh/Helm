@@ -1,7 +1,5 @@
 # F15 — module documentation reconciliation
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 Documentation only. Applied all six groups under F12's “README edits to apply
 later” and reconciled module notes with waves 12–18. Historical slice counts remain
 historical; the current portable suite is **1001 tests**, verified below. No source,

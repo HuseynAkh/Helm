@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K3 AddressBar draft
 
 Draft pending Opus compile-correctness and behaviour review after 22:00 Toronto,

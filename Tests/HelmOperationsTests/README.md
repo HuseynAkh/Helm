@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K15 integration notes
 
 K15 adds audit-driven XCTest coverage in the four owned test directories. Run with

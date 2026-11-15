@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// Clipboard facts for F-051; adapters must invalidate stale internal cuts (B-036).
 public enum CommandClipboardState: Sendable { case empty, text, files, cutFiles }
 /// Pure menu state fixes missing validation (B-075); text commands still route to NSText first.

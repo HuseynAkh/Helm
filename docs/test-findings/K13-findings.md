@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K13 findings
 
 ## BUG-K13-1 — Starred folders cannot become the sidebar highlight

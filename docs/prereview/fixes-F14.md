@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F14 — P9 monitor ordering and recovery
 
 All code is DRAFT pending Opus compile-correctness and behavior-preservation review after 22:00 Toronto, 2026-11-04. No network, external actions, commits, pushes, manifest/script changes, or legacy app edits. Persistence is unchanged. CONTRACT_INTEGRATION.md is not owned by F14; additive integration contracts are recorded here.

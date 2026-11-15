@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F5 integration notes
 
 IOExecutor preserves bounded, per-volume blocking work for B-107. Its executor lock

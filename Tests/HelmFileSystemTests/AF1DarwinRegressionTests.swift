@@ -1,4 +1,3 @@
-// DRAFT: pending review, 2026-11-04
 import Foundation
 import XCTest
 import HelmCore

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 """Citation inventory, not feature acceptance. Uses only the Python standard library."""
 import argparse
 import collections
@@ -121,7 +120,7 @@ def generate(root, items, mapping, passed):
         paths = sources[key] + [p for p, _ in tests[key]]
         rows.append(dict(id=key, priority=info['priority'], milestone=milestone,
                          module=owner, test_name=';'.join(evidence), state=state,
-                         notes='DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04. ' + (('Citation/file-level evidence only; Mac acceptance pending. ' + ';'.join(paths)) if paths else 'No citation evidence; acceptance pending.')))
+                         notes='' + (('Citation/file-level evidence only; Mac acceptance pending. ' + ';'.join(paths)) if paths else 'No citation evidence; acceptance pending.')))
     return rows
 
 

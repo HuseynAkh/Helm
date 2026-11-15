@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Window-owned named stacks survive tab closure (F-059/B-100/B-105).

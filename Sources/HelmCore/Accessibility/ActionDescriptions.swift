@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Named controls preserve F-003 toolbar and F-038 context-menu actions, addressing B-061.

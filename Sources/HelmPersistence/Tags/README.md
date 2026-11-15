@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K33 catalogue persistence
 
 Share one TagCatalogStore per document across windows; await initialization before

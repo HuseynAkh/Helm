@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review.
 import Foundation
 import HelmCore
 

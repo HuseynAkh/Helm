@@ -1,5 +1,3 @@
-DRAFT: pending review, 2026-11-05
-
 # Owner decisions note (OP1)
 
 For Huseyn. Every recommendation here is proposed, owner decision pending. Except for the explicitly disclosed FB1-11 symlink allowlist already implemented by OP1, these decisions remain unimplemented. No option authorizes a push, a release or any other external action. `OWNER_OPTIONS.md` (lane AK3) has fuller wording on paths and hosting; this note refers to it and does not replace it.

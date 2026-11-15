@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Stable UI-test identities follow F-035 path identity, independent of locale, sort and selection.

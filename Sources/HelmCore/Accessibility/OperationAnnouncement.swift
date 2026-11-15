@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// One value per operation supplies meaningful F-061 milestones and persistent error text (B-049).

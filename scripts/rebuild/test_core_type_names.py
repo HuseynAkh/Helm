@@ -1,4 +1,4 @@
-"""DRAFT: pending review, 2026-11-05. SDK guard regressions (OK2-35)."""
+"""SDK guard regressions (OK2-35)."""
 from pathlib import Path
 import subprocess
 import tempfile

@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K27 archive planning
 
 Pure M22 drafts extending F-007/F-052/F-059. No live Process implementation or execution.

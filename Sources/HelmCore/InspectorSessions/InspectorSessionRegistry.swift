@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-050 window policy without I/O. Owner closure retires callbacks and pending confirmations.

@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F24 — P21 lexical path corrections
 
 Both P21 findings were reverified with failing XCTest assertions before source

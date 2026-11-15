@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K16 leaf views — Astra (codex)
 
 Draft M15/M20 leaf slice, pending Opus compile-correctness and behaviour review

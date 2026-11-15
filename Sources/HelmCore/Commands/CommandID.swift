@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// Stable action identities preserve F-049–F-066 and the menu map in main.swift:19–142.
 /// Planned cases describe data only; they do not authorize or execute operations.
 public enum CommandID: String, CaseIterable, Codable, Sendable {

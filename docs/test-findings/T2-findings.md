@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # T2 adversarial hardening
 
 Five new test files provide 100 independently discoverable XCTest cases:

@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F10 — P9 store/loading fixes
 
 All changes are drafts pending Opus compile-correctness and behavior-preservation review after 22:00 Toronto, 2026-11-04. No network, external actions, commits, pushes, manifest/script edits, or legacy app edits. Persistence had no new P9 finding and is unchanged.

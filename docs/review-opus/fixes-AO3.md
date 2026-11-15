@@ -1,5 +1,3 @@
-# DRAFT: pending review, 2026-11-05
-
 AO3 changes require Opus compile-correctness and behaviour-preservation spot-check.
 Only assigned Operations/FileSystem source and matching tests were edited, plus
 this report. No network, commits, pushes, publication, sharing changes, paid work,

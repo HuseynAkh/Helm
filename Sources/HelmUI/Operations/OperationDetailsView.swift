@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import SwiftUI
 
 /// F-061 details stay collapsed without formatting outcomes; pages bound view work (B-010).

@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import HelmCore
 
 /// Shared creation/rename messages preserve F-054–F-057 while rejecting traversal (B-046).

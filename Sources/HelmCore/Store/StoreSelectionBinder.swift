@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Portable widget feedback guard preserves visible stable-ID selection (F-038/F-039, B-009/B-011).

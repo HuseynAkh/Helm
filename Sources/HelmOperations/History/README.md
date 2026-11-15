@@ -1,5 +1,3 @@
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 K38 / F19: WindowOperationHistory is a value-only actor, one per window.
 Capture it before planning and call beginForward(command). If preparation throws
 or is cancelled before execution, call abortForward(request:failure:). This is

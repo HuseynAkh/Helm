@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K13 audit hardening integration notes
 
 K13 adds adversarial XCTest cases across Search, Core Naming/Text/Presentation/Places/Settings,
@@ -32,7 +31,6 @@ would require a manifest-owner change and is outside K13 ownership.
 
 ## K26 search engine and criteria verification
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 Run `source /workspace/toolchains/env.sh`, then:
 
 ```

@@ -1,5 +1,3 @@
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 K41 / P15 N8: portable gallery state reuses SelectionModel and ThumbnailKey.
 Selected metadata and large preview share one ItemID. Unique request generations
 reject ABA; full ChangeToken also captures child-count changes. Eligibility must
@@ -18,7 +16,7 @@ requests contain a key and full change token, without a preview generation, so
 selection changes do not cancel unchanged cell subscriptions. ViewMode/menu activation, native rendering, imaging
 lifetime and macOS acceptance remain deferred; this is not native gallery parity.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

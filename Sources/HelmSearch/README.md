@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # HelmSearch integration (K26)
 
 All changes are drafts pending Opus compile/behaviour review after 22:00 Toronto,

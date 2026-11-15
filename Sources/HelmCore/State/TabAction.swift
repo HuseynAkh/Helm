@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Independent cancellation identities prevent unrelated work from invalidating results (B-014/B-021/B-052).

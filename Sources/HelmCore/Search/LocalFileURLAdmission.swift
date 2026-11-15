@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review.
 import Foundation
 
 /// Shared lexical admission preserves local-only search and cloud actions (F-044, F-049).

@@ -1,7 +1,5 @@
 # F23 — P20 history admission fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 ## Dispositions
 
 - **P20-1 CONFIRMED / FIXED.** The pre-fix executable regression accepted all

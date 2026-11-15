@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K12 UI leaf draft
 
 ## F8 pre-review follow-up

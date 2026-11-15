@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Injected values keep navigation and search independent of defaults, clocks and I/O (F-005/F-043).

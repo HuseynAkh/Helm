@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 cd "$(dirname "$0")/../.." || exit 1

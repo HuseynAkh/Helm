@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Bounded horizontal demand extends F-035/F-048 without enabling a new ViewMode.

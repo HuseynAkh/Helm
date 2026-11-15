@@ -1,5 +1,3 @@
-DRAFT: pending review, 2026-11-05
-
 # OP2 spot-check corrections
 
 All changes are drafts pending Opus compile-correctness and behaviour review. Read SC2a and SC2b in full before edits; checked the relevant implementations and legacy navigation/Cmd+L handlers. Architecture review fixes take precedence. No manifest, scripts, legacy application, other lane report, git history, network or external action was changed. Existing `.spotcheck/` was left alone.

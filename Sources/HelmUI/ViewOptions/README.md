@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # View Options integration
 
 See ../Part3-README.md for the complete K21 handoff and MAC-VERIFY list.

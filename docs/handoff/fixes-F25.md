@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F25 — final pre-review handoff refresh
 
 Documentation only, through `0021ac6` (wave 24). Updated top-level README,

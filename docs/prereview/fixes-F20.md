@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F20 — P17 search and Inspector session fixes
 
 All three findings reverified as real and fixed locally. No findings rejected.

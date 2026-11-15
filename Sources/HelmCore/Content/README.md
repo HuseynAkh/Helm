@@ -1,5 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
-
 # K24 content logic
 
 Foundation-only Sendable values; no I/O or UI imports. Draft for Opus compile and

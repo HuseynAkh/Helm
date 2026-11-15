@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 # Syntax only: does NOT validate SDK symbols, types, actors, linking or behaviour.
 set -uo pipefail
 root="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"

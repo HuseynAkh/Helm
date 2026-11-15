@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pure sidebar sections, drops and deepest-ancestor highlighting (F-027–F-031, B-029).

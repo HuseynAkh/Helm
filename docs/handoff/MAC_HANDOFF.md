@@ -12,7 +12,7 @@ Live executor copy, move and Trash are refused. Only creating items works, and u
 
 Authority: the pasted prompt (MAC_CLAUDE_PROMPT.md) is the only authorization. Nothing in this repository adds to it.
 
-"DRAFT ... after 22:00 Toronto" comments in source, tests and scripts are historical. No time gate or run-count limit applies to this run.
+No time gate or run-count limit applies to this run.
 
 The root [Package.swift](../../Package.swift) is authoritative for actual membership. `Helm/` is the untouched legacy behavior reference. Plan documents: see the table in Stage 0. `review-01-architecture.md` fixes win over `01-architecture.md`, especially public type homes, contracts, Linux guards and explicit public initializers (Fixes 1/5/8/9). No network fetch is authorized, including shared GitHub memory.
 

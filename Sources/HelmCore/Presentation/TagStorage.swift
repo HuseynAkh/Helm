@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Atomic per-item edits prevent a read/write race erasing unrelated tags (M18, F-029).

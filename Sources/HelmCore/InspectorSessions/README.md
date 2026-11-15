@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K40 Inspector sessions
 
 Foundation-only value policy for F-050, with B-009 callback identity and B-066
@@ -41,7 +40,7 @@ Open integration questions: native window lifecycle and UI prompts, metadata-err
 presentation, save completion/revalidation, recursive progress conversion, and
 macOS SDK/behavior acceptance. No I/O, services, network, commits or publication.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

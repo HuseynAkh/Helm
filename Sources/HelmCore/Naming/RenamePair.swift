@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Validated F-054/F-055 request; source URL disambiguates equal names in Recent (B-047).

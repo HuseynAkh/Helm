@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Injected provider support; cloud metadata alone grants no actions (F-035, F-049).

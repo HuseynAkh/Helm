@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F3 persistence integration
 
 Load before editing; share one store per document. Only a definite missing-file

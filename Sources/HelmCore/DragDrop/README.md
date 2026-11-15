@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K25 drag and drop values
 
 Foundation-only, synchronous, Sendable models; no filesystem reads, scheduling,

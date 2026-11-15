@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K9 integration notes
 
 VolumeReader.details() returns unfiltered VolumeDetails. Existing hidden,
@@ -30,7 +29,6 @@ static checks passed, 98 production Swift files, zero errors. Scratch path:
 
 ## F2 mutation-safety integration
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 IOExecutor cancels queued work without starting it; once begun, native work returns
 its real result despite cancellation. A timeout still quarantines the volume and
 requires external reconciliation. Cancellation is therefore not a prompt-return

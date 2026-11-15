@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K22 composition glue
 
 Portable draft for M10 A6, with M4/M25 migration ordering. No AppKit or SwiftUI

@@ -8,7 +8,6 @@ Historical: AK3 fresh Linux verification, 2026-11-05: `swift build --build-tests
 
 ## Historical F25 verification — through wave 24
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 Baseline: `0021ac623e2cb55645ee00fd279992ba0880d0f5` on `forge/rebuild-build`.
 Git history records P16–P19 at `30c826b`, F19–F22 at `6400fa5`, then
 F23/F24, P20/P21 and T4 at `0021ac6`. The Package/Sources/Tests/scripts diff
@@ -80,7 +79,6 @@ locally before cleanup. Earlier hashes and counts below are historical snapshots
 
 ## Historical F22 verification — through wave 21
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 First read the [complete Opus/Fable queue](REVIEW_QUEUE.md). Linux Swift 6.0.3,
 tools 5.9 / Swift 5 mode. F22 changes documentation only; no Swift, manifest,
 scripts or legacy app changes, network, commits, pushes or external actions.
@@ -176,7 +174,6 @@ construction bounds remain review/acceptance obligations. Historical records fol
 
 ## Historical F12 verification — wave 17
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
 Linux Swift 6.0.3 / tools 5.9 / Swift 5 mode; isolated scratch `/tmp/build-F12`.
 F12 changes handoff documentation, the top-level README and the explicitly requested fixes-F12 report.
 All counts below are executions, not declarations. Parallel source changes are

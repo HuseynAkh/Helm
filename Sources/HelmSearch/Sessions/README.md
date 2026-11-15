@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Search session bridge
 
 K39 / P15 N2. SearchSessionDriver consumes an injected event closure or existing

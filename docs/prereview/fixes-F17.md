@@ -1,7 +1,5 @@
 # F17 — recovery, criteria admission and regression strength
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 Local draft only. No network, commit, push, external action, manifest/script edit or
 legacy app edit. Read K1_HANDOFF, CONTRACT_INTEGRATION, P13/P14/P15, architecture
 and overriding review contracts, current-state/audit references, and legacy

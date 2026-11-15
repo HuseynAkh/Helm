@@ -1,7 +1,5 @@
 # F22 — P19 handoff freshness
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04.
-
 ## P19-1 disposition
 
 Documentation refreshed through wave 21. Top-level README and handoff entry points

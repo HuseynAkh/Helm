@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Explicit locale, calendar/time zone and clock for F-064 speech, without disk I/O (B-058).

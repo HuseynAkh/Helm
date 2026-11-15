@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K11 Linux tooling
 
 Run `bash scripts/rebuild/run_all.sh` from any directory. It activates the installed

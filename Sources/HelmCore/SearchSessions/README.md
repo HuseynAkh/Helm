@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Search session values
 
 K39 / P15 N2. SearchSessionState preserves F-043/F-046 and rejects stale B-021
@@ -17,7 +16,7 @@ Envelope-to-TabAction wiring is deferred; current TabAction cannot carry this fu
 state. Native Spotlight lifecycle/debounce, publication and macOS SDK verification
 remain host/Opus follow-up. No I/O, service invocation or persistence occurs here.
 
-F22 status pointer (DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04):
+F22 status pointer:
 read the [Opus/Fable review queue](../../../docs/handoff/REVIEW_QUEUE.md) and
 [current verification](../../../docs/handoff/VERIFICATION.md) before acceptance.
 Historical lane counts above are not current-suite certification; P16–P18 and

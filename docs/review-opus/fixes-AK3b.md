@@ -1,5 +1,3 @@
-# DRAFT: pending review, 2026-11-05
-
 ## Finding disposition
 
 | Finding | Status | Evidence |

@@ -1,4 +1,3 @@
-# DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 """Exercise shell gates with fake Swift commands; no Swift build in these fixtures."""
 import importlib.util
 import json

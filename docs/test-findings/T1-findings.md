@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # T1 adversarial test hardening
 
 All changes are draft pending Opus compile-correctness and behaviour-preservation review after 22:00 Toronto on November 4, 2026. No production source, existing test, manifest, script or old app file was edited by T1.

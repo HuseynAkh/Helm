@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # Inspector integration (K35 / M20)
 
 Pure Foundation values extend F-050/F-062 without I/O. Supply InspectorItem metadata

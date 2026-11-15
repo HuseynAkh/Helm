@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # F3 pre-review fixes
 
 All seven findings were reproduced before production edits. `/tmp/F3-before.log`

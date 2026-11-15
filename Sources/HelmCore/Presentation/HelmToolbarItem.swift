@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Plain identifiers preserve the F-003 toolbar order without importing UI frameworks.

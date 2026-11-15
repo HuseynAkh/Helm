@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Ordered custom tabs preserve adjacent activation and last-tab behavior (F-002/F-003, B-020).

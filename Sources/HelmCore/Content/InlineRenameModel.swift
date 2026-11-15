@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Live rename failures for F-054/P-071, including operation-supplied collisions (B-046).

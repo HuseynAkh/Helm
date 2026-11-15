@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// F-055 preview lifetime: one running calculation and at most one latest pending revision (B-010).

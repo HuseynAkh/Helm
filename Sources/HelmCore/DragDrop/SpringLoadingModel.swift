@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Cancellable, once-per-hover spring loading adds P-273 to F-067 without scheduling work.

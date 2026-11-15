@@ -1,7 +1,5 @@
 # F21 — P18 fixes
 
-DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 All five findings were reverified. The initial regression run was interrupted by
 an outside-owned Operations test file disappearing during compilation. After the
 required 60-second wait, the unchanged regression suite ran: **5 tests, 26 failing

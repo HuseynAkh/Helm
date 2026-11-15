@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Pure transitions preserve navigation/selection while rejecting callbacks from retired work (B-009/B-069).

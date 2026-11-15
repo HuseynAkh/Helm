@@ -1,4 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
 import Foundation
 
 /// Availability is evidence supplied by the source, never inferred from empty results (F-046).

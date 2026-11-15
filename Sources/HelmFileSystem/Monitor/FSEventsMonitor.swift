@@ -1,4 +1,3 @@
-// DRAFT: pending review, 2026-11-05
 import Foundation
 import HelmCore
 #if canImport(Darwin)

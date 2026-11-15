@@ -1,5 +1,3 @@
-// DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04
-
 /// Declarative menu item preserves legacy labels and routing (F-066); children are dynamic adapter slots.
 public struct CommandMenuItem: Equatable, Sendable {
     public let title: String

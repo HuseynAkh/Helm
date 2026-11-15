@@ -1,4 +1,3 @@
-<!-- DRAFT: pending Opus review after 22:00 Toronto, 2026-11-04 -->
 # K23 shared contract integration
 
 AddressEditorState/Action are the sole editor contracts. SearchScope, SearchClause,

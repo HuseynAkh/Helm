@@ -1,4 +1,4 @@
-// DRAFT: pending Opus review. AK1 regression coverage for F-047/F-048/F-050/F-067.
+// AK1 regression coverage for F-047/F-048/F-050/F-067.
 import Foundation
 import XCTest
 @testable import HelmCore
