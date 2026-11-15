@@ -15,11 +15,14 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var otherAddress: String?
     /// Which build of Helm last saved each key, by the key's keychain account. The key itself is only in the keychain.
     public var keyOwners: [String: String]
+    /// OpenAI is reached with an API key the person pasted, in place of their ChatGPT sign-in. Off unless they chose
+    /// "Use an API key instead": signing in with ChatGPT is the usual way. A flag only; the sign-in is in the keychain.
+    public var openAIUsesKey: Bool
 
     public init(provider: String? = nil, models: [String: String] = [:], ports: [String: Int] = [:],
-                otherAddress: String? = nil, keyOwners: [String: String] = [:]) {
+                otherAddress: String? = nil, keyOwners: [String: String] = [:], openAIUsesKey: Bool = false) {
         self.provider = provider; self.models = models; self.ports = ports
-        self.otherAddress = otherAddress; self.keyOwners = keyOwners
+        self.otherAddress = otherAddress; self.keyOwners = keyOwners; self.openAIUsesKey = openAIUsesKey
     }
 
     /// Every field is optional on disk, so a file written by an older or a newer Helm still loads.
@@ -30,5 +33,6 @@ public struct AIConfig: Codable, Equatable, Sendable {
         ports = try values.decodeIfPresent([String: Int].self, forKey: .ports) ?? [:]
         otherAddress = try values.decodeIfPresent(String.self, forKey: .otherAddress)
         keyOwners = try values.decodeIfPresent([String: String].self, forKey: .keyOwners) ?? [:]
+        openAIUsesKey = try values.decodeIfPresent(Bool.self, forKey: .openAIUsesKey) ?? false
     }
 }
