@@ -47,12 +47,22 @@ Turn on the spark in the search field and describe the file. The model plans the
 ## How it works
 
 - **AI mode** is a model that works on your files through Helm. It lists folders and proposes changes. Helm checks every change, and only Helm touches the disk.
-- **Bring your own model.** Claude, OpenAI, Gemini and Grok with your key. Ollama and LM Studio on your Mac. Or any OpenAI-compatible API, by its https address.
+- **Bring your own model.** OpenAI with your ChatGPT plan: click **Continue with ChatGPT**, with no key to paste. Claude, Gemini and Grok with your key. Ollama and LM Studio on your Mac. Or any OpenAI-compatible API, by its https address.
 - **Only the folders you give it.** The folder on show, plus any you add: type `/add` and a folder, type or drop a path, or drop a folder on the panel. `/clear` starts over and forgets them.
 - **Remote and cloud folders.** iCloud Drive, Google Drive, Dropbox, OneDrive, servers and external disks work too. The folder's chip says where it is, and the plan says when changes will sync or reach other people. Helm never downloads files to do it.
 - **Nothing changes until you press Apply.** Changes run through Helm's own file operations, so conflicts keep both files, removals go to the Trash, and one Undo puts everything back.
 
-AI mode is off until you turn it on. The AI Mode screen appears after setup, and Settings › AI holds the same choices.
+AI mode is off until you turn it on. The AI Mode screen appears after setup, and Settings › AI holds the same choices. Beside each provider, the ⓘ button says in one line what it uses and what it costs, and **How to connect** opens the provider's own page in your browser.
+
+| Provider | How to connect |
+|---|---|
+| OpenAI | Click **Continue with ChatGPT** and sign in in your browser. Your ChatGPT plan pays for the requests. **Use an API key instead** takes a key from [OpenAI's platform](https://developers.openai.com/api/docs/quickstart) |
+| Claude | Paste an API key from the [Claude Console](https://platform.claude.com/docs/en/manage-claude/authentication#api-keys). Anthropic requires a key for apps like Helm and doesn't allow them to use a Claude plan |
+| Gemini | Paste an API key from [Google AI Studio](https://aistudio.google.com/docs/api-key) |
+| Grok | Paste an API key made as [xAI's quickstart](https://docs.x.ai/docs/quickstart) shows |
+| Ollama | Open [Ollama](https://docs.ollama.com/quickstart) and download a model. Helm finds it on this Mac |
+| LM Studio | Turn on LM Studio's [local server](https://lmstudio.ai/docs/developer/core/server) and load a model. **Refresh Models** in Settings › AI picks up one loaded later |
+| Other | Type the service's https address, and its key if it needs one |
 
 <p align="center">
   <img src="docs/images/ai-mode-screen.png" width="49%" alt="The AI Mode screen: the switch on, Claude picked, the key saved in the keychain, Connected, and the consent line">
@@ -73,15 +83,19 @@ Helm connects only to the AI provider you choose, and only while AI mode is on. 
 | Provider | Address |
 |---|---|
 | Claude | `https://api.anthropic.com` |
-| OpenAI | `https://api.openai.com/v1` |
+| OpenAI | `https://api.openai.com/v1`. Signing in with ChatGPT also goes to OpenAI's sign-in host, `https://auth.openai.com`, which gets no file names |
 | Gemini | `https://generativelanguage.googleapis.com/v1beta` |
 | Grok | `https://api.x.ai/v1` |
 | Ollama, LM Studio | Loopback, `127.0.0.1`, on this Mac. Ports 11434 and 1234 unless you change them |
 | Other | The https address you type |
 
-**Keys.** Each key is saved in your Mac's keychain, never in a file, a log or a picture. Removing the app doesn't remove them: click **Remove Key** in Settings › AI first, or delete the items named **Helm AI key** in Keychain Access (their place is `com.helm.filemanager.ai-key`). Helm is signed ad hoc, so macOS may ask for your keychain password after an update.
+**Signing in with ChatGPT.** Your browser opens OpenAI's sign-in page, and comes back to Helm on this Mac: Helm listens on `127.0.0.1` for that one visit, for up to five minutes, then stops. Helm sends OpenAI a random ID for this Mac and the name Helm, never your name or your Mac's. Your email is shown in Settings › AI and is never sent to a model. The sign-in's tokens stay in your Mac's keychain, never in a file, a log or `ai.json`, and Helm renews them as they run out. **Remove** in Settings › AI signs out and asks OpenAI to revoke them; if OpenAI doesn't confirm, disconnect Helm under **Sign in with ChatGPT** in ChatGPT's settings. [OpenAI's help](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites) explains plan use in other apps, and [ChatGPT's usage page](https://chatgpt.com/settings/usage) shows what Helm used.
 
-Keys are made on each provider's site: [Claude](https://platform.claude.com), [OpenAI](https://platform.openai.com/api-keys), [Gemini](https://aistudio.google.com/apikey) and [Grok](https://console.x.ai). On Gemini's free tier, Google may use what you send to improve its products.
+**Keys.** Claude requires a key: Anthropic doesn't allow apps like Helm to sign in with a Claude account or use a Claude plan. Each key is saved in your Mac's keychain, never in a file, a log or a picture. Removing the app doesn't remove keys or a sign-in: click **Remove Key** or **Remove** in Settings › AI first, or delete the items named **Helm AI key** and **Helm ChatGPT sign-in** in Keychain Access (their place is `com.helm.filemanager.ai-key`). Helm is signed ad hoc, so macOS may ask for your keychain password after an update.
+
+Keys are made on each provider's site, as the table under [How it works](#how-it-works) shows. On Gemini's free tier, Google may use what you send to improve its products.
+
+The help pages open in your browser. Helm itself never connects to them.
 
 **Limits.**
 
@@ -104,12 +118,12 @@ What Helm keeps stays on your Mac, in `~/Library/Application Support/Helm`:
 | `session.json` | Your windows and tabs, only while **Reopen windows and tabs** is on. |
 | `bookmarks.json`, `stars.json`, `sidebar.json`, `tag-catalog.json` | Your sidebar and tags. A star or bookmark you remove leaves nothing in them. |
 | `view-options.json` | Views you set for particular folders. |
-| `ai.json` | AI mode's provider, models, ports, the address you typed for Other, and which build of Helm saved each key. Never a key, a folder or a conversation. |
+| `ai.json` | AI mode's provider, models, ports, the address you typed for Other, whether OpenAI uses a key in place of your ChatGPT sign-in, and which build of Helm saved each key. Never a key, a token, a folder or a conversation. |
 | `trash-origins.json` | Where trashed items came from, for Put Back. A record goes when its item leaves the Trash through Helm, or at Helm's next launch once it sees the item is gone. Without Full Disk Access Helm can't look in the Trash, so a Trash emptied in Finder leaves its records, up to 1,000. |
 
-Settings live in `~/Library/Preferences/com.helm.filemanager.dev.plist`. To remove everything, first click **Restore Finder** in Settings › General and turn off **Show next to Finder in the Dock** and **Open at login**. Click **Remove Key** in Settings › AI. Then quit Helm and delete that file and the folder above.
+Settings live in `~/Library/Preferences/com.helm.filemanager.dev.plist`. To remove everything, first click **Restore Finder** in Settings › General and turn off **Show next to Finder in the Dock** and **Open at login**. Click **Remove Key**, or **Remove** for a ChatGPT sign-in, in Settings › AI. Then quit Helm and delete that file and the folder above.
 
-Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network code appears outside AI mode's one transport file, if a web address appears outside its four, or if tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls, web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking, so any try at it fails the run, and one run turns AI mode on with the shipped code to prove the block bites.
+Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network code appears outside AI mode's one transport file, if a socket appears outside the one file that listens on `127.0.0.1` for a ChatGPT sign-in, if a web address appears that isn't one of the providers', OpenAI's sign-in host or the listed help pages, or if tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls (it may listen, never connect a socket), web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking, so any try at it fails the run, and one run turns AI mode on with the shipped code to prove the block bites.
 
 ## Install
 
@@ -128,7 +142,7 @@ Helm is an early preview for macOS 14 Sonoma or later, on Apple silicon or Intel
 3. **Drag Helm to Applications.** Open the disk image and drag Helm onto the Applications folder beside it, then eject the disk image.
 4. **Open it the first time.** Helm isn't notarized yet, so macOS stops it once. On macOS 15 and later, click **Done**, open **System Settings › Privacy & Security**, scroll to **Security**, click **Open Anyway** next to the note about Helm, and confirm with your password. On macOS 14, Control-click Helm in Applications, choose **Open**, then **Open** again. [Why it isn't notarized](docs/RELEASING.md#why-helm-isnt-notarized-yet).
 5. **Set it up.** Helm opens one setup screen. Leave **Use Helm instead of Finder** and **Full Disk Access** checked and click **Set Up**, or click **Not Now** to change nothing. Opened from the disk image, Helm offers to move itself to Applications first. **Help › Set Up Helm…** brings the screen back.
-6. **Turn on AI mode**, if you want it. The AI Mode screen comes next: switch it on, pick a provider, paste your key or start Ollama or LM Studio, and click **Done**. The panel opens. Close the screen any other way and AI mode stays off.
+6. **Turn on AI mode**, if you want it. The AI Mode screen comes next: switch it on, pick a provider, then click **Continue with ChatGPT** for OpenAI, paste your key, or start Ollama or LM Studio, and click **Done**. The panel opens. Close the screen any other way and AI mode stays off.
 
 Helm is signed ad hoc, so macOS treats each new version as a new app. After an update, open it as in step 4 again, and turn Full Disk Access back on: remove Helm from the list with − and add it back with +.
 
