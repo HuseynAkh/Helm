@@ -127,6 +127,18 @@ extension HostSmokeDriver {
             // agent-apply-pause <seconds>: each command of an Apply after the first waits that long first, so a step
             // can press Stop between two of them. 0 puts it back.
             window.agentApplyPauseForTesting = Double(argument) ?? 0
+        case "agent-width":
+            // agent-width <points>: how wide the panel is, zero while shut.
+            let width = Int(window.agentPanelWidthForTesting.rounded())
+            check(width == Int(argument), step, "\(width)")
+        case "agent-drag-edge":
+            // agent-drag-edge <points>: a drag of the panel's leading edge that far towards the leading side, from press
+            // to release; a negative distance goes back towards the files' side.
+            window.dragAgentPanelEdgeForTesting(by: CGFloat(Double(argument) ?? 0))
+            await wait(seconds: 0.3)
+        case "agent-edge-double-click":
+            window.doubleClickAgentPanelEdgeForTesting()
+            await wait(seconds: 0.3)
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.

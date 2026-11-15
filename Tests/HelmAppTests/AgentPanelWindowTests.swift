@@ -195,6 +195,101 @@ import HelmTestKit
         XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 420, "the files' own minimum is back once shut")
     }
 
+    // MARK: Resizing
+
+    func testThePanelsLimits() {
+        XCTAssertEqual(AgentPanelHost.widest(inWindowWidth: 1400), 560, "560 points at most")
+        XCTAssertEqual(AgentPanelHost.widest(inWindowWidth: 1000), 450, "or 45% of the window, whichever is less")
+        XCTAssertEqual(AgentPanelHost.widest(inWindowWidth: 620), 340, "never under the width it opens at")
+        XCTAssertEqual(AgentPanelHost.clamped(200, windowWidth: 1400), 300)
+        XCTAssertEqual(AgentPanelHost.clamped(900, windowWidth: 1400), 560)
+        XCTAssertEqual(AgentPanelHost.clamped(500, windowWidth: 1000), 450)
+        XCTAssertEqual(AgentPanelHost.clamped(410.4, windowWidth: 1400), 410)
+    }
+
+    func testTheEdgeResizesThePanelWithinItsLimitsAndADoubleClickPutsBack340() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        let settings = controller.dependencies.settings
+        _ = try await open(controller)
+        let host = controller.agentPanelHost
+        XCTAssertEqual(host.frame.width, 340)
+        // The handle sits on the panel's leading edge, over the divider, with the resize cursor.
+        XCTAssertEqual(host.edgeFrameForTesting.minX, 0)
+        XCTAssertEqual(host.edgeFrameForTesting.height, host.frame.height, accuracy: 0.5)
+        if #available(macOS 15.0, *) { XCTAssertTrue(host.edgeCursorForTesting === NSCursor.columnResize) }
+
+        host.dragEdgeForTesting(by: 100)
+        XCTAssertEqual(host.frame.width, 440)
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 440, "kept once the drag ends")
+        XCTAssertEqual(controller.contentContainer.frame.maxX, host.frame.minX, accuracy: 0.5, "the files end where it starts")
+        XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 440 + AgentPanelHost.minimumFilesWidth)
+        host.dragEdgeForTesting(by: 400)
+        XCTAssertEqual(host.frame.width, 560, "560 at most")
+        host.dragEdgeForTesting(by: -500)
+        XCTAssertEqual(host.frame.width, 300, "300 at least")
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 300)
+        XCTAssertGreaterThanOrEqual(controller.contentContainer.frame.width, AgentPanelHost.minimumFilesWidth)
+        host.doubleClickEdgeForTesting()
+        XCTAssertEqual(host.frame.width, 340)
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 340)
+        XCTAssertEqual(window.frame.width, 1400, accuracy: 0.5, "a drag never changes the window")
+        XCTAssertTrue(controller.isSidebarVisibleForTesting, "or hides the sidebar")
+    }
+
+    func testADragNeverTakesTheFilesUnderTheirMinimum() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        _ = try await open(controller)
+        let host = controller.agentPanelHost
+        host.dragEdgeForTesting(by: 300)
+        XCTAssertLessThanOrEqual(host.frame.width, 450, "45% of the window")
+        XCTAssertGreaterThanOrEqual(controller.contentContainer.frame.width, AgentPanelHost.minimumFilesWidth - 0.5,
+                                    "the files keep their room")
+        XCTAssertEqual(window.frame.width, 1000, accuracy: 0.5)
+    }
+
+    func testTheWidthIsKeptForTheNextOpeningAndAsMuchOfItAsAWindowAllows() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        let settings = controller.dependencies.settings
+        _ = try await open(controller)
+        controller.agentPanelHost.dragEdgeForTesting(by: 140)
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 480)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 0)
+        controller.clickSparkForTesting()
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 480, "it opens as wide as it was left")
+        controller.clickSparkForTesting()
+
+        // A narrower window opens it at 45% of the window, and keeps the width chosen for a wider one.
+        window.setFrame(NSRect(x: 0, y: 0, width: 1000, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        controller.clickSparkForTesting()
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 450)
+        XCTAssertGreaterThanOrEqual(controller.contentContainer.frame.width, AgentPanelHost.minimumFilesWidth - 0.5,
+                                    "the sidebar made room for the width chosen")
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 480)
+        // Made narrower while open, the window takes the panel down with it.
+        window.setFrame(NSRect(x: 0, y: 0, width: 900, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 405)
+        controller.clickSparkForTesting()
+
+        // A width read back from Settings, as at the next launch, opens the panel the same way.
+        settings.set(.double(380), for: .agentPanelWidth)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        controller.clickSparkForTesting()
+        XCTAssertEqual(controller.agentPanelHost.frame.width, 380)
+    }
+
     // MARK: The location bar
 
     func testAPressAnywhereOutsideTheLocationBarClosesItAndGoesNowhere() async throws {

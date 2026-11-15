@@ -362,7 +362,31 @@ hunt-width-is 700
 sidebar-visible-is true
 window-width 1040
 agent-open
-# 15b. While the location bar is typed in, a click on the panel, the files or the header closes it as Escape does,
+# 15b. The panel's leading edge: a drag takes it from 300 to 560 points, or 45% of the window when that is less, a
+# double click puts back 340, and the width is kept for the next opening
+agent-close
+window-width 1400
+agent-open
+agent-is open
+agent-width 340
+agent-drag-edge 100
+agent-width 440
+agent-drag-edge 400
+agent-width 560
+agent-drag-edge -500
+agent-width 300
+agent-edge-double-click
+agent-width 340
+agent-drag-edge 60
+agent-width 400
+agent-close
+agent-width 0
+agent-open
+agent-width 400
+hunt-width-is 1400
+agent-edge-double-click
+agent-width 340
+# 15c. While the location bar is typed in, a click on the panel, the files or the header closes it as Escape does,
 # and goes nowhere
 location @FIX@/home/AgentMess
 cmd location
@@ -389,6 +413,8 @@ location-typing true
 location-press sidebar
 location-typing false
 location @FIX@/home/AgentMess
+hunt-width-is 1400
+window-width 1040
 agent-open
 # 16. Closing: the panel shut, AI mode off, the stand-ins put back, the tab closed and the width as it was
 agent-close

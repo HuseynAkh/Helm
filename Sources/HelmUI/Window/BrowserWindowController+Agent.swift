@@ -50,6 +50,12 @@ extension BrowserWindowController {
     func connectAgentServer(_ location: ServerLocation) -> Bool { dependencies.agent.connector.connect(location) }
 
     public var agentPanelModelForTesting: AgentPanelModel? { agentPanelHost.model }
+    /// How wide the AI panel is: what it shows while open, and zero while shut.
+    public var agentPanelWidthForTesting: CGFloat { agentPanelHost.isOpen ? agentPanelHost.frame.width : 0 }
+    /// A drag of the AI panel's leading edge, `distance` points towards the leading side (negative goes back).
+    public func dragAgentPanelEdgeForTesting(by distance: CGFloat) { agentPanelHost.dragEdgeForTesting(by: distance) }
+    /// A double click on the AI panel's leading edge.
+    public func doubleClickAgentPanelEdgeForTesting() { agentPanelHost.doubleClickEdgeForTesting() }
 
     // MARK: For the panel
 
