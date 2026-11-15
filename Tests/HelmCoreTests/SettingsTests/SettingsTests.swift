@@ -8,8 +8,8 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 32)
-        XCTAssertEqual(SettingKey.allCases.count, 32)
+        XCTAssertEqual(snapshot.values.count, 34)
+        XCTAssertEqual(SettingKey.allCases.count, 34)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -37,6 +37,29 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(SettingsSchema.appliesLive(.rememberRecentItems))
         XCTAssertFalse(SettingsSchema.appliesLive(.defaultViewMode))
         XCTAssertTrue(SettingsSchema.appliesLive(.gridIconSize))
+    }
+    /// The AI panel opens 340 points wide until its edge is dragged, and a width read back stays within 300 to 560.
+    func testThePanelWidthStartsAt340AndStaysWithinItsLimits() {
+        XCTAssertEqual(SettingsSnapshot().double(.agentPanelWidth), 340)
+        XCTAssertEqual(SettingKey.agentPanelWidth.rawValue, "helm.agentPanelWidth")
+        XCTAssertEqual(SettingsSchema.validated(.double(420), for: .agentPanelWidth), .double(420))
+        XCTAssertEqual(SettingsSchema.validated(.double(100), for: .agentPanelWidth), .double(300))
+        XCTAssertEqual(SettingsSchema.validated(.double(2_000), for: .agentPanelWidth), .double(560))
+        XCTAssertEqual(SettingsSchema.validated(.double(.nan), for: .agentPanelWidth), .double(340))
+        XCTAssertEqual(SettingsSchema.validated(.string("wide"), for: .agentPanelWidth), .double(340))
+        XCTAssertTrue(SettingsSchema.appliesLive(.agentPanelWidth))
+    }
+    /// No build has been through setup at first. A designated requirement is kept as it reads, and nothing else is.
+    func testTheSetupBuildKeepsARequirementsTextOnly() {
+        XCTAssertEqual(SettingsSnapshot().string(.setupBuild), "")
+        XCTAssertEqual(SettingKey.setupBuild.rawValue, "helm.setupBuild")
+        let adHoc = "cdhash H\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c\""
+        XCTAssertEqual(SettingsSchema.validated(.string(adHoc), for: .setupBuild), .string(adHoc))
+        let signed = "identifier \"com.helm.filemanager\" and anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\""
+        XCTAssertEqual(SettingsSchema.validated(.string(signed), for: .setupBuild), .string(signed))
+        XCTAssertEqual(SettingsSchema.validated(.string("two\nlines"), for: .setupBuild), .string(""))
+        XCTAssertEqual(SettingsSchema.validated(.string(String(repeating: "a", count: 2_049)), for: .setupBuild), .string(""))
+        XCTAssertEqual(SettingsSchema.validated(.bool(true), for: .setupBuild), .string(""))
     }
     /// AI mode is off until the person turns it on, and its screen hasn't been shown. Both take effect at once.
     func testAIModeKeysAreOffAndApplyLive() {
