@@ -56,7 +56,7 @@ Two more values can only be made by initializers that check what they are given.
 
 ## AI mode on and off
 
-`AgentRuntime` starts off. While it is off, `client()` answers `.off`, `makeSession()` answers nil and nothing is built. Turning it on builds nothing either: the client is made the first time it is needed, for a provider with an address, a model, and a key where the provider needs one. Turning it off shuts the client down, which forgets the key it had cached, and stops and clears every conversation.
+`AgentRuntime` starts off. While it is off, `client()` answers `.off`, `makeSession()` answers nil and nothing is built. Turning it on builds nothing either: the client is made the first time it is needed, for a provider with an address, a model, and a key where the provider needs one. Turning it off shuts the client down, which forgets the key it had cached, and stops and clears every conversation. Every check of a provider is reported to `checked` with the models it listed, or nil, and the app keeps the lists for the panel's model menu. `relistLocal` asks Ollama or LM Studio for its models again through a client of its own, and asks no other provider.
 
 A changed provider, local port or typed address drops the client and starts every conversation over, so names listed for one provider are never sent to another. A changed model keeps the threads.
 

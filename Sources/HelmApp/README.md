@@ -34,6 +34,13 @@ and replaces unavailable folders with Home plus `unavailableLocation` for a stat
 note. Availability is a caller-supplied snapshot, not synchronous filesystem I/O in
 the reducer. Home itself is the fallback, even if temporarily inaccessible.
 
+Setup comes before anything macOS guards. `AccessCoordinator.setUpBeforeWindows` shows the
+welcome checklist and returns once it closes, whenever setup has never been seen or another
+build saw it last (the code signature's designated requirement is kept in `helm.setupBuild`).
+Every way to a window waits there first: the launch, before it reads the restored tabs or the
+folders asked for; requests after a launch only for Finder; and New Window. The sidebar's
+drives start reading with the first window. Fixture and scripted runs never wait.
+
 `WindowRegistry` tracks creation order independently from activation order. The
 first window remains the first registered surviving ID; frontmost and close order
 use most-recent activation. Controllers/observer tokens stay in the macOS host.
