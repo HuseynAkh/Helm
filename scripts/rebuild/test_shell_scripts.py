@@ -303,6 +303,22 @@ class ShellTests(unittest.TestCase):
                 self.assertIn(line, result.stdout)
 
     @unittest.skipUnless(*NEEDS_MAC)
+    def test_binary_check_links_read_contents_frameworks_and_no_speech(self):
+        # Read contents reads PDFs, pictures and video frames with PDFKit, Vision and AVFoundation. Speech isn't used,
+        # since recognizing it needs a question macOS asks the person, so it stays off the list.
+        apple = ['/usr/lib/libSystem.B.dylib', '/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation']
+        reading = ['/System/Library/Frameworks/%s.framework/Versions/A/%s' % (name, name)
+                   for name in ('AVFoundation', 'CoreMedia', 'PDFKit', 'Vision')]
+        speech = '/System/Library/Frameworks/Speech.framework/Versions/A/Speech'
+        for libraries, line in ((apple + reading, 'ok   linked libraries: 6, all on the list'),
+                                (apple + reading + [speech], f"FAIL linked libraries that aren't on the list: {speech}")):
+            with self.subTest(libraries[-1]), tempfile.TemporaryDirectory() as directory:
+                result = binary_check(stand_in_app(directory), tool_stand_ins(directory, libraries=libraries))
+                if result.returncode == 2:
+                    self.skipTest(result.stderr.strip())
+                self.assertIn(line, result.stdout)
+
+    @unittest.skipUnless(*NEEDS_MAC)
     def test_binary_check_method_names(self):
         # Removing a downloaded copy of a cloud file, the shared session, the default configuration, a credential
         # from a server's certificate and a task-making call each leave a method name, and each fails.
