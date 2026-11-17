@@ -180,4 +180,39 @@ final class ExecutorTests: XCTestCase {
         let created = await executor.execute(OperationPlanner.plan(.createFile(parent: parent, name: name, template: nil), context: context))
         XCTAssertNil(created.error)
     }
+    /// A file made with contents given directly holds them, never runs, keeps an existing file of its name beside it,
+    /// and Undo moves it to the Trash.
+    func testAFileMadeWithGivenContentsKeepsBothAndUndoesToTheTrash() async throws {
+        let temp = try TempDirectory()
+        defer { try? temp.remove() }
+        let fs = LiveFileSystem()
+        let parent = temp.url.appendingPathComponent("Trip")
+        try await fs.createDirectory(at: parent)
+        try await fs.createFileExclusively(at: parent.appendingPathComponent("Packing List.txt"), contents: Data("old".utf8))
+        let origins = InMemoryTrashOrigins(), journal = OperationJournal()
+        let executor = OperationExecutor(fileSystem: fs, origins: origins, journal: journal)
+        let name = try XCTUnwrap(ValidFileName("Packing List.txt"))
+        let text = Data("Passport\nCharger\n".utf8)
+        let context = try await PlanningContextBuilder(fileSystem: fs).build(sources: [], destinations: [parent])
+        let plan = OperationPlanner.plan(.createFile(parent: parent, name: name, template: nil, contents: text), context: context)
+        XCTAssertEqual(plan.steps.map(\.kind), [.createFile])
+        XCTAssertEqual(plan.steps.first?.contents, text)
+        let result = await executor.execute(plan)
+        XCTAssertNil(result.error)
+        let made = parent.appendingPathComponent("Packing List 2.txt")
+        XCTAssertEqual(try Data(contentsOf: made), text)
+        XCTAssertEqual(try Data(contentsOf: parent.appendingPathComponent("Packing List.txt")), Data("old".utf8))
+        let mode = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: made.path)[.posixPermissions] as? NSNumber).intValue
+        XCTAssertEqual(mode & 0o111, 0, "nobody may run it")
+
+        let stored = await journal.entry(result.id)
+        let entry = try XCTUnwrap(stored)
+        let undo = await UndoPlanner.inverse(of: entry, origins: origins)
+        XCTAssertEqual(undo.steps.map(\.kind), [.trash])
+        XCTAssertEqual(undo.steps.first?.source?.lastPathComponent, "Packing List 2.txt")
+        // A template is copied as before, and contents go with no template only.
+        let template = OperationPlanner.plan(.createFile(parent: parent, name: name, template: made, contents: text), context: context)
+        XCTAssertEqual(template.steps.first?.kind, .copy)
+        XCTAssertEqual(template.steps.first?.contents, Data())
+    }
 }
