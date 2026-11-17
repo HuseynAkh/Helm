@@ -50,7 +50,7 @@ All on this Mac, on fixtures, with Helm's windows invisible and its networking b
 | Script tests | 59 in `scripts`, 39 in `scripts/rebuild`, all pass |
 | Full smoke, Debug | 2,230 checks passed (run 5: 2,140). Three failed, all where the list's Name column is widened by a test hook. Run 5's own commit fails the same three on this Mac now, since an external 1080p display became the main screen during the run, so they come from the display, not from this run |
 | Release build (`make_release.sh`, ad hoc) and `check_binary_privacy.sh` | Every check passes, with ImageIO added to the allowed list for Read contents |
-| Full smoke on the Release build | @RSMOKE@ |
+| Full smoke on the Release build | 2,228 checks passed (run 5: 2,138). The failures are the known 14-point band (run 3, Open 6) and the same three list-width steps as the Debug run |
 | README pictures (`make_readme_images.sh`) | All 24 and both banners taken in the background with the network blocked, all 120 steps passing. The seven that changed were looked at: fixture names only |
 | Private data | No names, emails, keys, home paths or real files in the change or its pictures. Every commit is Huseyn's, with no other author line |
 
