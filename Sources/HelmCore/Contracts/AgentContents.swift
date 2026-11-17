@@ -54,10 +54,35 @@ public struct AgentContentRequest: Hashable, Sendable {
     public let modified: Date
     /// Marked as not downloaded when it was listed. Such a file is never opened.
     public let isDataless: Bool
+    /// Make small pictures of it for a model to look at: the picture itself, a video's frames, or a scanned PDF's
+    /// first page (`AgentContentSummary.images`). Off, the summary holds words only.
+    public let wantsImages: Bool
     public init(path: String, name: String, identity: FileObjectIdentity?, typeIdentifier: String?, size: Int64,
-                modified: Date, isDataless: Bool) {
+                modified: Date, isDataless: Bool, wantsImages: Bool = false) {
         self.path = path; self.name = name; self.identity = identity; self.typeIdentifier = typeIdentifier
-        self.size = size; self.modified = modified; self.isDataless = isDataless
+        self.size = size; self.modified = modified; self.isDataless = isDataless; self.wantsImages = wantsImages
+    }
+}
+
+/// A small JPEG Helm made on this Mac from a picture, a video frame or a PDF page, for a model to look at. It is at
+/// most `AgentContentLimits.lookEdge` pixels on its longer side, carries no metadata (no location, no camera, no
+/// date), and is data from the file: it may show anything, words that read like instructions included.
+public struct AgentContentImage: Hashable, Sendable {
+    /// Where in the file it comes from.
+    public enum Source: Hashable, Sendable {
+        case picture
+        /// A video frame, this many seconds in.
+        case frame(seconds: Double)
+        /// A PDF page, counted from 1.
+        case page(Int)
+    }
+    /// JPEG bytes, made by Helm from decoded pixels: nothing of the file's own bytes or metadata is kept.
+    public let jpeg: Data
+    public let width: Int
+    public let height: Int
+    public let source: Source
+    public init(jpeg: Data, width: Int, height: Int, source: Source) {
+        self.jpeg = jpeg; self.width = width; self.height = height; self.source = source
     }
 }
 
@@ -78,10 +103,15 @@ public struct AgentContentSummary: Hashable, Sendable {
     public let seconds: Double?
     /// The video frames that were looked at.
     public let frames: Int
+    /// Small pictures for a model to look at, made only when the request asked for them: one for a picture, one for
+    /// each frame of a video that was looked at, and the first page of a PDF that holds next to no text (a scan).
+    /// Empty for text and for anything that wasn't read.
+    public let images: [AgentContentImage]
     public init(kind: AgentContentKind, status: AgentContentStatus, lines: [String] = [], pages: Int? = nil,
-                labels: [AgentContentLabel] = [], foundText: [String] = [], seconds: Double? = nil, frames: Int = 0) {
+                labels: [AgentContentLabel] = [], foundText: [String] = [], seconds: Double? = nil, frames: Int = 0,
+                images: [AgentContentImage] = []) {
         self.kind = kind; self.status = status; self.lines = lines; self.pages = pages; self.labels = labels
-        self.foundText = foundText; self.seconds = seconds; self.frames = frames
+        self.foundText = foundText; self.seconds = seconds; self.frames = frames; self.images = images
     }
 
     /// A summary of a file that wasn't read, and why.
@@ -90,7 +120,8 @@ public struct AgentContentSummary: Hashable, Sendable {
     }
 }
 
-/// Reads inside files on this Mac and answers short summaries, never the files. It runs where Helm may open files,
+/// Reads inside files on this Mac and answers what is inside them: text, what pictures and video frames show, and,
+/// when a request asks, small pictures for a model to look at. Never the files themselves. It runs where Helm may open files,
 /// beside the disk AI mode reads names from, and never in the module that talks to a model. Every read needs the
 /// person's permit, runs with downloads off, opens no link, and stops at the limits in `AgentContentLimits`.
 public protocol AgentContentReading: Sendable {
@@ -123,6 +154,25 @@ public enum AgentContentLimits {
     /// Files read at once.
     public static let filesAtOnce = 4
 
+    // MARK: Pictures for a model
+
+    /// The longer side of a picture made for a model, in pixels. Small enough to cost a few hundred tokens a picture
+    /// at most providers, large enough to tell what a photo shows and to read a document's headings.
+    public static let lookEdge = 512
+    /// JPEG quality of those pictures.
+    public static let lookQuality = 0.7
+    /// A PDF whose first pages hold fewer characters than this is read as a scan, and its first page is pictured.
+    public static let scannedPageCharacters = 40
+    /// Pictures that go to the model in one request in the panel, across every `read_contents` call; past it a
+    /// summary holds words only.
+    public static let picturesPerRequest = 24
+    /// Files the model looks at in one AI search: pictures, video frames and the first lines of documents, the best
+    /// candidates first. A model on this Mac is slower, so it looks at fewer.
+    public static func searchLooks(isLocal: Bool) -> Int { isLocal ? 12 : 48 }
+    /// Files shown to the model in one question of an AI search's look, and questions asked at once.
+    public static let looksPerQuestion = 12
+    public static let lookQuestionsAtOnce = 2
+
     /// What kind of file this is to Read contents, from its type and its extension. A link, a folder and a package
     /// are `.other`.
     public static func kind(typeIdentifier: String?, extension ext: String, kind: FileEntryKind) -> AgentContentKind {
@@ -134,9 +184,12 @@ public enum AgentContentLimits {
         case .text?, .code?: return .text
         default: break
         }
-        return richTextExtensions.contains(ext.lowercased()) ? .text : .other
+        let lowered = ext.lowercased()
+        return richTextExtensions.contains(lowered) || wordExtensions.contains(lowered) ? .text : .other
     }
 
     /// Rich text that is read as text: RTF.
     public static let richTextExtensions: Set<String> = ["rtf"]
+    /// Word processor files whose text Helm reads with macOS's own document reader: Word and OpenDocument text.
+    public static let wordExtensions: Set<String> = ["docx", "doc", "odt"]
 }
