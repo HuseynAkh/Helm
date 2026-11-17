@@ -77,12 +77,17 @@ plan = {"sort": "newest", "queries": [
      "date_from": (today - datetime.timedelta(days=60)).isoformat(), "date_to": today.isoformat()}]}
 rank = {"ranked": [{"row": row, "why": ["name", "kind", "date"]} for row in range(1, 4)]}
 script = {"rules": rules, "searchPlan": plan, "searchRank": rank, "models": models}
-# AI search with Read contents: the word "receipt", looked for inside pictures on this Mac. Helm keeps a word to look
-# for inside files only when the person typed it.
+# AI search with Read contents: the word "receipt", looked for inside pictures on this Mac, then the model looks at
+# the receipts and keeps the two from places to eat. Helm keeps a word to look for inside files only when the person
+# typed it.
 receipts = {"rules": rules, "models": models, "searchRank": {"ranked": []},
             "searchPlan": {"sort": "relevance", "queries": [
                 {"content_all": ["receipt"], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
-                 "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}]}}
+                 "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}]},
+            "searchLooks": [{"when": "receipt", "fits": [
+                {"name": "IMG_2041.jpg", "seen": "A Harbour Cafe receipt for a flat white, a croissant and soup"},
+                {"name": "IMG_2110.jpg", "seen": "A Mountain Deli receipt for a sandwich and lemonade"}],
+                "misses": ["IMG_1988.jpg", "IMG_2066.jpg", "IMG_2079.jpg", "IMG_2102.jpg"]}]}
 for name, value in (("agent-script.json", script), ("agent-receipts.json", receipts)):
     with open(os.path.join(fix, name), 'w', encoding='utf-8') as handle:
         json.dump(value, handle, ensure_ascii=False, indent=1)

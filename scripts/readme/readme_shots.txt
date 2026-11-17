@@ -154,7 +154,7 @@ agent-scope thisFolder
 agent-edge-double-click
 agent-width 340
 # Read contents, in a folder of scans whose names say nothing: Helm reads inside them on this Mac and hands the model
-# short summaries, and the plan files the receipts and the invoice by what they say
+# their text and small copies, and the plan files the receipts and the invoice by what they say
 go @FIX@/home/Documents/Scans
 wait 1
 agent-contents on
@@ -162,7 +162,7 @@ agent-contents-is on
 agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
 agent-say sort these scans
 agent-phase plan
-agent-reads and 6 summaries to Claude.
+agent-reads and what's inside 6 files to Claude.
 agent-group Move 4 items to “Receipts” on
 wait 1
 screenshot @SHOTS@/ai-contents-light.png
@@ -177,8 +177,8 @@ agent-say /clear
 agent-contents-is off
 agent-close
 agent-is closed
-# AI search from Home, kept to photos, with Read contents on: Helm looks inside the pictures on this Mac for the word
-# typed, and finds the receipts by the word printed on them. Nothing it reads is sent
+# AI search from Home, kept to photos, with Read contents on: Helm finds the six receipts by the word printed on them,
+# on this Mac, and the model looks at them and keeps the two from places to eat
 appearance dark
 go @FIX@/home
 view grid
@@ -192,17 +192,15 @@ search-kind Photo
 search-kind-is Photo
 search-contents on
 search-contents-is on
-search the photo of the receipt
+search a receipt from somewhere I ate
 search-return
-search-status-reads Photos
+search-status-reads Looked at
 has IMG_2041.jpg
-has IMG_1988.jpg
-has IMG_2102.jpg
-has IMG_2066.jpg
-has IMG_2079.jpg
 has IMG_2110.jpg
+lacks IMG_1988.jpg
+lacks IMG_2102.jpg
 lacks Sunset over the Bay.jpg
-result-reason IMG_2041.jpg=Text in image: “receipt” · Image
+result-reason IMG_2041.jpg=Model saw: A Harbour Cafe receipt for a flat white, a croissant and soup
 # A click on the files: the search keeps its words and results, and its field rests, as a finished search does
 focus-files
 search-shown true

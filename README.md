@@ -50,18 +50,18 @@ Names don't always say what a file is. Turn on **Read contents** under the compo
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-contents-dark.png">
-  <img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: four receipt photos named IMG_1988.jpg, IMG_2041.jpg, IMG_2066.jpg and IMG_2079.jpg, and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and short summaries of file contents to Claude. After Sent 12 names and 6 summaries to Claude, the reply names the four receipts and the invoice, and the plan moves 4 items to a new Receipts folder and 1 to a new Invoices folder">
+  <img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: four receipt photos named IMG_1988.jpg, IMG_2041.jpg, IMG_2066.jpg and IMG_2079.jpg, and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames. After Sent 12 names and what's inside 6 files to Claude, the reply names the four receipts and the invoice, and the plan moves 4 items to a new Receipts folder and 1 to a new Invoices folder">
 </picture>
 
 ### Find with AI
 
 Turn on the trefoil in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
 
-The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "the photo of the receipt from the Italian place" finds it by what it shows, whatever its name, and pointing at it says what the model saw.
+The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "a receipt from somewhere I ate" finds the café's and the deli's among six receipts, by what they show, whatever their names, and pointing at one says what the model saw.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
-  <img src="docs/images/ai-search-light.png" alt="AI search from Home for the photo of the receipt, with Photo chosen in the kind row and Read contents on: six receipt photos, IMG_2110.jpg, IMG_2102.jpg, IMG_2041.jpg, IMG_2066.jpg, IMG_2079.jpg and IMG_1988.jpg, and the status bar reading 6 matches, Mentions “receipt”, Photos">
+  <img src="docs/images/ai-search-light.png" alt="AI search from Home for a receipt from somewhere I ate, with Photo chosen in the kind row and Read contents on: two receipt photos, IMG_2110.jpg from a deli and IMG_2041.jpg from a café, and the status bar reading 2 matches, Mentions “receipt”, Photos, Looked at 34">
 </picture>
 
 ## How it works
@@ -87,7 +87,7 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
 | LM Studio | Turn on LM Studio's [local server](https://lmstudio.ai/docs/developer/core/server) and load a model. **Refresh Models** in Settings › AI picks up one loaded later |
 | Other | Type the service's https address, and its key if it needs one |
 
-<p align="center"><img src="docs/images/settings-ai-light.png" width="560" alt="Settings, AI pane: AI mode on, the line Sends your requests and file names to Claude, never file contents, Provider Claude with its info button and How to connect, Key saved in your Mac's keychain with Remove Key and Connected, and the model menu with Refresh"></p>
+<p align="center"><img src="docs/images/settings-ai-light.png" width="560" alt="Settings, AI pane: AI mode on, the line Sends your requests and file names to Claude; file contents only while Read contents is on. Helm has no servers and collects nothing. Then Provider Claude with its info button and How to connect, Key saved in your Mac's keychain with Remove Key and Connected, and the model menu with Refresh"></p>
 
 ## Privacy
 
@@ -177,7 +177,7 @@ Helm is an early preview for macOS 14 Sonoma or later, on Apple silicon or Intel
 
 <p align="center">
   <img src="docs/images/onboarding-access-light.png" width="49%" alt="The onboarding's Full Disk Access step, step 2 of 5: Full Disk Access is off, Without it, macOS asks about Desktop, Documents and Downloads, the Open System Settings button, and the note that macOS will ask to quit and reopen Helm and setup continues after. Back and Continue">
-  <img src="docs/images/onboarding-ai-light.png" width="49%" alt="The onboarding's AI Mode step, step 4 of 5: the trefoil over the title AI Mode, the AI mode switch on, Provider OpenAI with its info button and How to connect, Continue with ChatGPT, Use an API key instead, and the line Sends your requests and file names to OpenAI, never file contents. Back, Not Now and Continue">
+  <img src="docs/images/onboarding-ai-light.png" width="49%" alt="The onboarding's AI Mode step, step 4 of 5: the trefoil over the title AI Mode, the AI mode switch on, Provider OpenAI with its info button and How to connect, Continue with ChatGPT, Use an API key instead, and the line Sends your requests and file names to OpenAI; file contents only while Read contents is on. Helm has no servers and collects nothing. Back, Not Now and Continue">
 </p>
 
 Helm is signed ad hoc, so macOS treats each new version as a new app. After an update, open it as in step 4 again, and turn Full Disk Access back on: remove Helm from the list with − and add it back with +.
@@ -227,7 +227,7 @@ In the list, a folder unfolds right where it is, with a short, smooth animation,
 
 Press ⌘F and type. Helm looks in the folder you're in, or across the whole Mac, matching names first and then what's inside files. The row under the header keeps a search to one kind, such as Photo or Document, and the status bar names it. Click anywhere else and the keys go back to your files: an empty search closes, and one with words keeps its results until you go somewhere else. Each tab keeps its own search.
 
-<img src="docs/images/search-dark.png" alt="Searching Home for invoice, with the results in the grid">
+<img src="docs/images/search-dark.png" alt="Searching Home for invoice, with the kind row under the header at Any, and the results in the grid">
 
 ### Your sidebar, your way
 
