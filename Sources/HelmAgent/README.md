@@ -59,6 +59,16 @@ Two more values can only be made by initializers that check what they are given.
 
 Read contents is the person's switch beside the composer. On, the session holds their `AgentContentPermit`, the thread starts over, the model is also offered `read_contents`, and the prompt ends with `AgentPrompt.readContents`; a new thread starts with it off. `read_contents` checks each id as a plan's are and hands the plain files that are on this Mac to `AgentContentReading`, with the permit. The reader lives in HelmUI (`Contents/AgentContentReader.swift`), outside this module: it reads on this Mac with PDFKit, Vision and AVFoundation and answers short summaries, which go to the model escaped, with the home folder's path written as `~`, and marked as untrusted data. This module still names no way to open a file.
 
+The model also sees pictures. For pictures, videos and PDFs `read_contents` asks the reader for small JPEGs made on this Mac (`AgentContentRequest.wantsImages`), up to `AgentContentLimits.picturesPerRequest` in one request across its calls. An item's pictures go whole or not at all, in item order, with the result (`AgentToolResult.images`), and the item's JSON names them by label: `"pictures": ["Picture 3", "Picture 4"]`. Labels are numbered across one user turn's results, in result order and then picture order, which is how every adapter numbers them on the wire. An item that could have had pictures and has none says why: `"not sent: limit"`, or `"not sent: this model can't take pictures"`. Where the pictures go on the wire:
+
+| Wire | A tool result's pictures | A structured question's pictures |
+|---|---|---|
+| Claude's Messages | inside the `tool_result`, whose `content` becomes blocks: the JSON as text, then each label as text and the picture as a base64 `image` block | the user content becomes blocks: the question, then each label and picture |
+| Responses (OpenAI by key or ChatGPT plan, Grok) | each `function_call_output` stays the JSON; after them one user message of `input_text` "Pictures from read_contents, as its items name them:", then each label and an `input_image` data URL at `detail: low`; then the person's text | the user content becomes `input_text` and `input_image` parts |
+| Chat Completions (Gemini, LM Studio, Ollama, other servers) | each `tool` message stays text; after them one user message of a `text` part, then each label and an `image_url` data URL; then the person's text | the user content becomes `text` and `image_url` parts |
+
+Without pictures every body is byte for byte what it was. A provider that refuses a turn as a bad request while the thread holds pictures (`AgentErrorMapper` also reads Ollama's and LM Studio's words for a model that can't take them as one) gets the same turn once more with each user turn that held pictures built again without them, its items saying they weren't sent; the thread sends no more pictures, and a new thread tries again. Pictures count toward the thread's size like everything else in it.
+
 A thread works in This Folder or Whole Mac (`AgentScopeMode`), and every new thread starts in This Folder. Whole Mac adds the home folder, iCloud Drive, each folder of the home's `Library/CloudStorage` and each disk the app reports mounted as roots of their own (`AgentScope.setMode`), each let in by `AgentScopeGate` as a folder the person names is: the allow list, no Library or other apps' data, dot names left out, links never followed, and Desktop, Documents and Downloads listed by name and never entered from the home folder. A disk is named for the model by its kind, the home folder as "Home", and the note marks it `home`. The request goes with `AgentPrompt.wholeMac`. Switching starts the thread over, as a change of provider does.
 
 ## AI mode on and off
@@ -114,7 +124,7 @@ The stand-ins are part of the module, not of a test target, because a fixture ru
 - `stop` may be `refusal` or `max_tokens`. `failure` is an `AgentFailure` by its raw value, and the request fails with it once the rule's turns are used up.
 - `searchPlan` and `searchRank` answer AI search's two questions. Without one, that question fails.
 
-The client keeps everything it was sent. `allSentText()` gives it back as one text, with every string inside the JSON spelled out again, so a test can show that a path or an account's name never left the app.
+The client keeps everything it was sent. `allSentText()` gives it back as one text, with every string inside the JSON spelled out again, so a test can show that a path or an account's name never left the app. Its own user turns list a result's pictures by label and size, never their bytes, and `allSentText()` writes each as `[picture WxH]`. With `picturesFailure` set, a turn whose history holds a picture fails with it, as a model that can't take pictures does.
 
 `MemoryAgentDisk` is a disk by path with the marks a real one can carry: hidden, not downloaded, not loaded, refused by macOS, slow, on a server or in a cloud folder. It notes every path it is asked about (`asked`).
 
