@@ -20,15 +20,18 @@ import HelmSearch
 ///
 /// With the kind row's Read contents switch on, and outside a server, Helm reads inside files and the model looks.
 /// Up to 200 files are read on this Mac by `AgentContentReader` with the person's permit, and kept for the search
-/// session by path and modification date: the readable files (pictures, videos, PDFs, text and Word files) the queries
-/// and the plain search found, and those the queries describe in every way but their words for inside files. A
-/// picture or a video whose text or labels hold every one of a query's words for inside files is a match of that
-/// query, read on this Mac. Then the model looks at the best `AgentContentLimits.searchLooks` of them, those matches
-/// first: it is sent each file's row facts, a document's first lines, the words found on this Mac, and the small
-/// pictures Helm makes of pictures, video frames and scanned pages, `looksPerQuestion` files a question. The files it
-/// says fit come first, each with what it saw; one it says doesn't fit is no longer a match for what was read on this
-/// Mac. A provider that turns pictures away gets the question again in words, and no pictures until AI mode or the
-/// provider changes. A file that isn't downloaded is never read, and the status bar counts it and the files looked at.
+/// session by path and modification date: the files the model may look at (`isLookable`: pictures, videos, PDFs,
+/// Word files and prose, with code and settings only for the kinds that ask for them) that the queries and the plain
+/// search found, and those the queries describe in every way but their words for inside files: in the folder
+/// searched, or for a search of the whole Mac only its pictures and videos. A picture or a video whose text or labels
+/// hold every one of a query's words for inside files is a match of that query, read on this Mac. Then the model looks
+/// at `AgentContentLimits.searchLooks` of them at most: those matches first, then the files found, and only in a search
+/// kept to a folder the newest files described, so a search of the whole Mac never sends a file just for being new.
+/// It is sent each file's row facts, a document's first lines, the words found on this Mac, and the small pictures
+/// Helm makes of pictures, video frames and scanned pages, `looksPerQuestion` files a question. The files it says fit
+/// come first, each with what it saw; one it says doesn't fit is no longer a match for what was read on this Mac. A
+/// provider that turns pictures away gets the question again in words, and no pictures until AI mode or the provider
+/// changes. A file that isn't downloaded is never read, and the status bar counts it and the files looked at.
 @MainActor final class AISearchRunner: AISearchRunning {
     private let dependencies: WindowDependencies
 
@@ -163,8 +166,9 @@ import HelmSearch
         var looked = AISearchLooked()
         if let looking, coverage != .namesOnly {
             let read = await readInside(queries, walked: walked, found: found, plain: plainKept, scopeRoot: scopeRoot,
-                                        coverage: coverage, hiddenFolders: hiddenFolders, reader: looking.reader,
-                                        permit: looking.permit, looks: AgentContentLimits.searchLooks(isLocal: isLocal))
+                                        kind: query.kind, coverage: coverage, hiddenFolders: hiddenFolders,
+                                        reader: looking.reader, permit: looking.permit,
+                                        looks: AgentContentLimits.searchLooks(isLocal: isLocal))
             guard !Task.isCancelled else { return }
             notDownloaded = read.notDownloaded
             looked = await look(at: Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal))),
@@ -315,31 +319,36 @@ import HelmSearch
 
     // MARK: Inside files
 
-    /// Reads inside the files a search may be about, on this Mac, with the person's permit: the readable files the
-    /// queries and the plain search found, and every readable file a query describes in every way but its words for
-    /// inside files (`lookQuery`), from the walk of the folder searched and, on this Mac outside a folder, from
-    /// Spotlight. As many found files as the model looks at come first, then the described ones, newest first, then
-    /// the rest of the found ones: `AgentContentLimits.searchCandidates` at most. A picture or a video a query's
-    /// pictures-and-videos form (`visualQuery`) describes, whose text or labels hold every one of its words for inside
-    /// files, is a match of that query. Answers each query's matches, what was seen in each, how many weren't read
-    /// because they aren't downloaded, and the files read, in the order the model is to look at them: the matches,
-    /// then the files found, then the newest.
+    /// Reads inside the files a search may be about, on this Mac, with the person's permit: the files the model may
+    /// look at (`isLookable` for the chosen `kind`) that the queries and the plain search found, and every such file a
+    /// query describes in every way but its words for inside files: from the walk of the folder searched
+    /// (`lookQuery`), or for a search of the whole Mac its pictures and videos from Spotlight (`visualQuery`), which
+    /// are read only to be matched on this Mac. As many found files as the model looks at come first, then the
+    /// described ones, newest first, then the rest of the found ones: `AgentContentLimits.searchCandidates` at most. A
+    /// picture or a video a query's pictures-and-videos form (`visualQuery`) describes, whose text or labels hold every
+    /// one of its words for inside files, is a match of that query. Answers each query's matches, what was seen in
+    /// each, how many weren't read because they aren't downloaded, and the files read that the model may look at, in
+    /// the order it is to look at them: the matches, then the files found, then, in a search kept to a folder alone,
+    /// the newest.
     private func readInside(_ queries: [AISearchQuery], walked: [FileEntry], found: [[FileEntry]], plain: [FileEntry],
-                            scopeRoot: URL?, coverage: SearchAssist.Coverage, hiddenFolders: AISearchHiddenFolders,
-                            reader: any AgentContentReading, permit: AgentContentPermit, looks: Int) async -> AISearchReading {
+                            scopeRoot: URL?, kind: AISearchKind?, coverage: SearchAssist.Coverage,
+                            hiddenFolders: AISearchHiddenFolders, reader: any AgentContentReading, permit: AgentContentPermit,
+                            looks: Int) async -> AISearchReading {
         var foundFirst: [FileEntry] = []
         var known: Set<ItemID> = []
-        for entry in Array(found.joined()) + plain where allows(entry) && Self.isReadable(entry) && known.insert(entry.id).inserted {
+        for entry in Array(found.joined()) + plain
+            where allows(entry) && Self.isLookable(entry, kind: kind) && known.insert(entry.id).inserted {
             foundFirst.append(entry)
         }
         var described: [FileEntry] = []
-        for (index, look) in queries.map(Self.lookQuery).enumerated() {
+        let describe = scopeRoot == nil ? Self.visualQuery : Self.lookQuery
+        for (index, look) in queries.map(describe).enumerated() {
             guard let look else { continue }
             var pool = walked
             if scopeRoot == nil {
                 pool += await spotlightHits(for: look, original: queries[index], coverage: coverage, hiddenFolders: hiddenFolders)
             }
-            for entry in pool where !known.contains(entry.id) && allows(entry) && Self.isReadable(entry)
+            for entry in pool where !known.contains(entry.id) && allows(entry) && Self.isLookable(entry, kind: kind)
                 && AISearchMatcher.matches(entry, look, scopeRoot: scopeRoot, contentVerified: false) {
                 known.insert(entry.id)
                 described.append(entry)
@@ -389,14 +398,17 @@ import HelmSearch
             }
         }
         // The order the model looks in: matches by the query that saw them, then the files found in the order found,
-        // then the newest.
+        // then the newest. A search of the whole Mac stops before the newest: a file there is looked at only when this
+        // Mac matched it or a search found it.
         let foundAt = Dictionary(foundFirst.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         func rank(_ entry: FileEntry) -> (tier: Int, place: Int) {
             if let query = sightedBy[entry.id] { return (0, query) }
             if let place = foundAt[entry.id] { return (1, place) }
             return (2, 0)
         }
-        reading.pool = byDate.filter { summaries[$0.id]?.status == .read }.enumerated().sorted { left, right in
+        let lastTier = scopeRoot == nil ? 1 : 2
+        let lookable = byDate.filter { summaries[$0.id]?.status == .read && rank($0).tier <= lastTier }
+        reading.pool = lookable.enumerated().sorted { left, right in
             let one = rank(left.element), other = rank(right.element)
             if one.tier != other.tier { return one.tier < other.tier }
             if one.place != other.place { return one.place < other.place }
@@ -515,10 +527,23 @@ import HelmSearch
                             modified: entry.modificationDate, isDataless: false, wantsImages: pictures)
     }
 
-    /// Whether Read contents reads inside this kind of file: a picture, a video, a PDF, text or a Word file.
-    static func isReadable(_ entry: FileEntry) -> Bool {
-        AgentContentLimits.kind(typeIdentifier: entry.contentTypeIdentifier, extension: entry.url.pathExtension,
-                                kind: entry.kind) != .other
+    /// Whether the model may look inside this file in a search kept to `kind`, nil for Any: a picture, a video, a PDF,
+    /// a Word file or prose (`AISearchKind.proseExtensions`) always; code only when the person chose Code; other text,
+    /// such as settings in JSON, YAML or XML, or text with no extension, only when they chose Document or Code. Code
+    /// and settings can hold keys and addresses that have nothing to do with a search for a photo or a letter.
+    static func isLookable(_ entry: FileEntry, kind chosen: AISearchKind?) -> Bool {
+        let ext = entry.url.pathExtension
+        switch AgentContentLimits.kind(typeIdentifier: entry.contentTypeIdentifier, extension: ext, kind: entry.kind) {
+        case .other: return false
+        case .image, .video, .pdf: return true
+        case .text:
+            let lowered = ext.lowercased()
+            if AISearchKind.proseExtensions.contains(lowered) || AgentContentLimits.wordExtensions.contains(lowered) { return true }
+            if AISearchKind.of(typeIdentifier: entry.contentTypeIdentifier, extension: ext, kind: entry.kind) == .code {
+                return chosen == .code
+            }
+            return chosen == .document || chosen == .code
+        }
     }
 
     private static func medium(of kind: AgentContentKind) -> AISearchSighting.Medium {

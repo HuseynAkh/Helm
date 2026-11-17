@@ -79,6 +79,10 @@ public enum AISearchKind: String, Sendable, CaseIterable {
         (.font, ["ttf", "otf", "ttc", "otc", "woff", "woff2", "dfont"])
     ]
 
+    /// Text that reads as prose, whatever kind a search is kept to: plain text, Markdown, RTF, logs, subtitles and
+    /// TeX. The rest of `text`, such as settings in JSON or YAML, is nearer to code.
+    public static let proseExtensions: Set<String> = ["txt", "text", "md", "markdown", "rtf", "log", "srt", "tex"]
+
     /// Type identifiers in lower case, for a file whose extension the table doesn't know.
     static let identifiers: [(kind: AISearchKind, identifiers: [String])] = [
         (.pdf, ["com.adobe.pdf"]),

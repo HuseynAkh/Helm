@@ -182,6 +182,62 @@ import HelmPersistence
                        controller.aiSearchStatusForTesting?.text ?? "")
     }
 
+    // MARK: What the model may look at
+
+    func testASearchOfTheWholeMacLooksOnlyAtWhatThisMacMatchedOrASearchFound() async throws {
+        // Spotlight stands in: the name query finds the list; the pictures and videos a query describes are every file.
+        let everything = files.map { pictures.appendingPathComponent($0) }
+        let list = pictures.appendingPathComponent("kite-list.txt")
+        AISearchRunner.fanOutAnswersForTesting = { query in
+            if !query.nameAny.isEmpty { return [list] }
+            return query.contentAll.isEmpty ? everything : []
+        }
+        let client = AISearchLookClient(plan: kitePlan) { names in
+            AISearchLookClient.answer(names, fits: ["IMG_0042.jpg": "A kite on a beach"], misses: [], order: ["IMG_0042.jpg"])
+        }
+        let reader = AISearchLookReader()
+        let (controller, _) = try await window(client: client, reader: reader)
+        controller.setAISearchForTesting(true)
+        controller.setSearchScopeForTesting(everywhere: true)
+        await searchReadingContents(controller, client, "kite")
+        XCTAssertEqual(controller.activeTab?.search?.query.scope, .thisMac)
+
+        // The photo whose label matched, then the list found by name. The newest photo and the video are read on this
+        // Mac to be matched, and neither matched, so neither is sent; the note isn't a picture or a video.
+        let look = try XCTUnwrap(client.looks.first)
+        XCTAssertEqual(AISearchLookClient.items(in: look), ["IMG_0042.jpg", "kite-list.txt"])
+        XCTAssertEqual(look.pictures.map(\.label), ["Item 1"])
+        XCTAssertFalse(client.sentText.contains("DSC_0193"))
+        XCTAssertFalse(client.sentText.contains("beach.mov"))
+        XCTAssertEqual(Set(reader.asked(pictures: false)), ["IMG_0042.jpg", "DSC_0193.jpg", "beach.mov", "kite-list.txt"])
+        XCTAssertEqual(reader.asked(pictures: true), ["IMG_0042.jpg"])
+        XCTAssertEqual(controller.aiSearchStatusForTesting?.text.hasSuffix(" · Looked at 2"), true,
+                       controller.aiSearchStatusForTesting?.text ?? "")
+        XCTAssertEqual(names(controller).first, "IMG_0042.jpg")
+    }
+
+    func testCodeAndSettingsAreLookedAtOnlyWhenThePersonChoosesCode() async throws {
+        let client = AISearchLookClient(plan: """
+            {"sort": "relevance", "queries": [{"content_all": ["kite"]}]}
+            """) { names in AISearchLookClient.answer(names, fits: [:], misses: [], order: []) }
+        let reader = AISearchLookReader()
+        let (controller, _) = try await window(client: client, reader: reader,
+                                               files: ["notes.txt", "kite.swift", "kite.json", "DSC_0193.jpg"])
+        await searchReadingContents(controller, client, "kite")
+        XCTAssertEqual(Set(AISearchLookClient.items(in: try XCTUnwrap(client.looks.last))), ["notes.txt", "DSC_0193.jpg"])
+        XCTAssertFalse(reader.asked(pictures: false).contains("kite.swift"), "never read for a search of any kind")
+        XCTAssertFalse(reader.asked(pictures: false).contains("kite.json"))
+
+        XCTAssertTrue(controller.chooseAISearchKindForTesting("Code"))
+        if !controller.aiSearchContentsForTesting.on { XCTAssertTrue(controller.clickAISearchContentsForTesting()) }
+        let looked = client.looks.count
+        controller.submitSearchForTesting()
+        let done = await until { client.looks.count > looked && controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        XCTAssertEqual(controller.activeTab?.search?.query.kind, .code)
+        XCTAssertEqual(AISearchLookClient.items(in: try XCTUnwrap(client.looks.last)), ["kite.swift"])
+    }
+
     // MARK: When the look goes wrong
 
     func testAProviderThatTurnsPicturesAwayIsAskedInWordsAndGetsNoPicturesUntilAIModeChanges() async throws {
