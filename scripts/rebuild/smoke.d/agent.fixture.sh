@@ -24,11 +24,13 @@ done
 echo outside > "$fix/outside.txt"
 # Read contents: the made-up files of Tests/HelmUITests/Fixtures/Contents (scripts/rebuild/make_content_fixtures.swift
 # draws them): a note, a file that tries to give orders, a scanned invoice, a photo of a receipt, a sky with no words
-# and a short video, plus a copy of the receipt that the steps mark as not downloaded.
+# and a short video, plus a copy of the receipt that the steps mark as not downloaded, and a copy of the sky whose
+# name says nothing, which AI search's look finds by what the scripted model says it saw.
 look="$fix/home/AgentLook"
 mkdir -p "$look"
 cp Tests/HelmUITests/Fixtures/Contents/* "$look/" || exit 1
 cp "$look/receipt-photo.png" "$look/receipt-copy.png"
+cp "$look/IMG_0042.png" "$look/DSC_0193.png"
 mkdir -p "$fix/home/Pictures/Screenshots"
 echo older > "$fix/home/Pictures/Screenshots/older.png"
 python3 - "$fix" <<'PY' || exit 1
@@ -116,7 +118,9 @@ no_search = {key: value for key, value in script.items() if key != "searchPlan"}
 
 # Read contents, in AgentLook: a look inside six files, and a plan that files the two invoices, which only what is
 # inside them tells apart. AI search's plan looks inside files for one word of the request each time; a query whose
-# word isn't in the request is dropped, so one plan serves every search.
+# word isn't in the request is dropped, so one plan serves every search. Its look answers only a request for a kite,
+# with the copy of the sky whose name says nothing; for any other request it fails, and what was read on this Mac
+# stands.
 inside = ["@name:" + name for name in ("receipt-photo.png", "IMG_0042.png", "invoice-scan.pdf", "beach-day.mov",
                                        "groceries.md", "hostile-note.txt")]
 looks = {"rules": [
@@ -133,8 +137,10 @@ looks = {"rules": [
     "searchPlan": {"sort": "relevance", "queries": [
         {"content_all": [word], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
          "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}
-        for word in ("invoice", "sky", "beach")]},
-    "searchRank": {"ranked": []}, "models": ["scripted-1"]}
+        for word in ("invoice", "sky", "beach", "kite")]},
+    "searchRank": {"ranked": []},
+    "searchLooks": [{"when": "kite", "fits": [{"name": "DSC_0193.png", "seen": "A red kite against a clear sky"}]}],
+    "models": ["scripted-1"]}
 
 for name, value in (("agent-script.json", script), ("agent-hostile.json", hostile), ("agent-search-fails.json", no_search),
                     ("agent-contents.json", looks)):

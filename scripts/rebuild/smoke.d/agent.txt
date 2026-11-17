@@ -446,10 +446,11 @@ agent-say /clear
 agent-contents-is off
 agent-reads Sends your requests and file names to Claude, never file contents.
 agent-places-clear
-# 13c. Read contents in AI search: a switch at the end of the kind row, off until pressed. On, the hint says what is
-# read stays on this Mac, and Return also looks inside pictures and videos here for the words: a photo of a receipt
-# by its text, a sky by what it shows, a video by the text in its frames. Each result says what was seen. Closing the
-# search turns it off and forgets what was read
+# 13c. Read contents in AI search: a switch at the end of the kind row, off until pressed. On, Return also reads
+# inside the files here, on this Mac, and looks for the words in pictures and videos: a photo of a receipt by its
+# text, a sky by what it shows, a video by the text in its frames. Each result says what was seen. The model looks
+# too: a photo whose name says nothing is found by what it says it saw, shown first with that, and the status bar
+# counts the files it looked at; paths are never sent. Closing the search turns it off and forgets what was read
 search-ai on
 search-kinds-shown true
 search-contents-is off
@@ -462,7 +463,7 @@ has receipt-photo.png
 has invoice-scan.pdf
 result-reason receipt-photo.png=Text in image: “invoice”
 search-status-reads Mentions “invoice”
-search-contents-read 4
+search-contents-read 8
 search sky
 search-return
 has IMG_0042.png
@@ -472,7 +473,15 @@ search beach
 search-return
 has beach-day.mov
 result-reason beach-day.mov=Text in video: “beach”
-search-contents-read 4
+search-contents-read 8
+search kite
+search-return
+first-row DSC_0193.png
+result-reason DSC_0193.png=Seen: A red kite against a clear sky
+search-status-reads 1 match · Mentions “kite” · Looked at 8
+agent-sent-has Items (data):
+agent-sent-lacks @FIX@
+search-contents-read 8
 search-key escape
 search-shown false
 search-ai-is off
