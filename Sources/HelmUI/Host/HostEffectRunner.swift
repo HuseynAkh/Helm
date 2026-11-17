@@ -148,6 +148,12 @@ import HelmSearch
         let spotlight = SpotlightSearch(query: query)
         let standIn = Self.spotlightAnswersForTesting?(query)
         let context = Self.rankingContext(query, settings: dependencies.settings.snapshot)
+        // The kind row's choice: everything found, by the walk or by Spotlight, is of that kind or isn't a result.
+        let kind = query.kind
+        let rank: @Sendable ([SearchCandidate]) -> [SearchResult] = { candidates in
+            let kept = kind.map { kind in candidates.filter { AISearchMatcher.isOf(kind, $0.entry) } } ?? candidates
+            return SearchRanker.rank(kept, context: context, clock: clock).results
+        }
         // Current-folder searches also walk the folder, which finds what Spotlight hasn't indexed.
         let walk = Task.detached { () -> [SearchCandidate] in
             let resolver = SearchRootResolver(home: home, computerRoots: [home], removableVolumeRoots: volumes)
@@ -165,7 +171,7 @@ import HelmSearch
             // answer can say there are no results, and the search keeps saying Searching… until it comes.
             var answered = false
             if case .currentFolder = query.scope {
-                results(rank(walked, context: context, clock: clock))
+                results(rank(walked))
                 answered = true
             }
             let answers: AsyncStream<[URL]>
@@ -178,11 +184,11 @@ import HelmSearch
                     guard let entry = try? await fileSystem.entry(at: url), seen.insert(entry.id).inserted else { continue }
                     merged.append(SearchCandidate(entry: entry))
                 }
-                results(rank(merged, context: context, clock: clock))
+                results(rank(merged))
                 answered = true
             }
             // Spotlight couldn't start, so what was found is all there is.
-            if !answered, !Task.isCancelled { results(rank(walked, context: context, clock: clock)) }
+            if !answered, !Task.isCancelled { results(rank(walked)) }
         }
         return StoreEffectCancellation {
             walk.cancel(); task.cancel()
@@ -258,10 +264,6 @@ func loadError(_ error: Error) -> LoadError {
     }
 }
 
-private func rank(_ candidates: [SearchCandidate], context: SearchRankingContext, clock: any HelmClock) -> [SearchResult] {
-    SearchRanker.rank(candidates, context: context, clock: clock).results
-}
-
 /// Lists a folder for the location bar's completions.
 struct LiveCompletionListing: DirectoryListing {
     let fileSystem: any FileSystem
@@ -319,10 +321,17 @@ final class SpotlightSearch: @unchecked Sendable {
         super.init()
         // The text is bound as a value, never interpolated into the predicate's syntax.
         let names = NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemFSNameKey, "*\(query.text)*")
+        let words: NSPredicate
         if query.includesContents, let contents = Self.contentsPredicate(query.text) {
-            metadata.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [names, contents])
+            words = NSCompoundPredicate(orPredicateWithSubpredicates: [names, contents])
         } else {
-            metadata.predicate = names
+            words = names
+        }
+        // The kind row's choice is asked of Spotlight too, so the results it hands back are spent on that kind.
+        if let kind = query.kind, let kinds = AISearchPredicates.kinds([kind]) {
+            metadata.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [words, kinds])
+        } else {
+            metadata.predicate = words
         }
         switch query.scope {
         case .currentFolder(let url): metadata.searchScopes = [url.path]

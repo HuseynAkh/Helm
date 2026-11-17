@@ -256,7 +256,8 @@ struct WindowTints: Equatable {
         root.blendingMode = .behindWindow
         root.state = .active
         let stateView = statePage.view
-        for view in [contentTint, header, tabStrip, contentContainer, stateView, operationsHost, statusHost, agentPanelHost] as [NSView] {
+        let kindBar = header.kindBar
+        for view in [contentTint, header, tabStrip, kindBar, contentContainer, stateView, operationsHost, statusHost, agentPanelHost] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
@@ -273,7 +274,12 @@ struct WindowTints: Equatable {
             tabStrip.topAnchor.constraint(equalTo: header.bottomAnchor),
             tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             stripHeight,
-            contentContainer.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
+            // The AI search's kind row sits over the files, as Finder's scope bar does: zero high until the search
+            // field's spark is on.
+            kindBar.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
+            kindBar.leadingAnchor.constraint(equalTo: root.leadingAnchor), kindBar.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
+            kindBar.heightConstraint,
+            contentContainer.topAnchor.constraint(equalTo: kindBar.bottomAnchor),
             contentContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor), contentContainer.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: operationsHost.topAnchor),
             // Centred in the content area and never pinned to the window's edges.
@@ -709,10 +715,11 @@ struct WindowTints: Equatable {
         // The scope pill in the search field widens it to the whole Mac, as Finder's "This Mac" does (P-170).
         let scope: SearchScope
         if let url = tab.location.mutationTarget, !header.searchesEverywhere { scope = .currentFolder(url) } else { scope = .thisMac }
+        // While the spark is on, the kind row's choice limits typed searches and the model's alike.
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
                                 limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
-                                usesAI: usesAI)
+                                usesAI: usesAI, kind: aiSearchKind)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

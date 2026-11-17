@@ -166,5 +166,6 @@ AI mode's interface. None of it reaches the network: requests go through `HelmAg
 | `Onboarding/AIModeScreen.swift`, `Settings/AISettings.swift`, `Settings/AISetupModel.swift` | The AI Mode screen and Settings › AI, which share one model |
 | `Host/AISearchRunner.swift`, `AISearchPredicates.swift` | AI search: asks the model for a plan, runs its searches on this Mac, and asks it to rank the matches |
 | `Window/BrowserWindowController+Agent.swift`, `+AISearch.swift` | The window's side of the panel and of AI search. The search field's spark shows whenever AI mode is on; with no model ready, it opens the AI Mode screen |
+| `Chrome/SearchKindBar.swift` | AI search's kind row under the header, shown while the search field's spark is on: Any, Photo, Video, Document, Folder, Code, Audio or Archive. The choice keeps the name matches, the model's plan and the results to that kind, and goes back to Any when the search closes. Tab in the field reaches it; the arrows choose |
 
 The path bar is unchanged by AI mode (Huseyn, 2026-11-13). The panel's folder chip shows what kind of place the folder is. While the location is typed in, a press anywhere else in the window closes it as Escape does (`Window/BrowserWindowController+Location.swift`).
