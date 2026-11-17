@@ -22,6 +22,9 @@ public enum AgentPlanTarget: Hashable, Sendable { case existing(AgentPlanItem), 
 /// One change. A renamed file keeps its extension.
 public enum AgentPlanStep: Hashable, Sendable {
     case newFolder(key: String, parent: AgentPlanTarget, name: ValidFileName)
+    /// A file the plan makes, holding the whole text the model wrote. Its name ends in one of
+    /// `AgentNewName.newFileExtensions`; an RTF or Word file is made from the text when the plan is applied.
+    case newFile(parent: AgentPlanTarget, name: ValidFileName, text: String)
     case move(AgentPlanItem, to: AgentPlanTarget)
     case copy(AgentPlanItem, to: AgentPlanTarget)
     case rename(AgentPlanItem, to: ValidFileName)
@@ -38,6 +41,8 @@ public struct AgentPlanGroup: Hashable, Sendable, Identifiable {
     public enum Kind: Hashable, Sendable {
         /// New folders that nothing else in the plan goes into.
         case newFolders
+        /// New files, by the folder they are made in.
+        case newFiles(toLabel: String, isNew: Bool)
         case renames
         case moves(toLabel: String, isNew: Bool)
         case copies(toLabel: String, isNew: Bool)
@@ -65,6 +70,7 @@ public enum AgentPlanTitle: Hashable, Sendable {
     case copy(Int)
     case rename(Int)
     case trash(Int)
+    case create(Int)
 }
 
 /// A line under a plan. A card shows one line a slot: what was left out (slot 1), what can't be undone (slot 2),
@@ -79,9 +85,10 @@ public enum AgentPlanNotice: Hashable, Sendable {
 
 /// How many changes of each kind a plan makes.
 public struct AgentPlanCounts: Equatable, Sendable {
-    public var moves: Int, copies: Int, newFolders: Int, renames: Int, trash: Int
-    public init(moves: Int = 0, copies: Int = 0, newFolders: Int = 0, renames: Int = 0, trash: Int = 0) {
-        self.moves = moves; self.copies = copies; self.newFolders = newFolders; self.renames = renames; self.trash = trash
+    public var moves: Int, copies: Int, newFiles: Int, newFolders: Int, renames: Int, trash: Int
+    public init(moves: Int = 0, copies: Int = 0, newFiles: Int = 0, newFolders: Int = 0, renames: Int = 0, trash: Int = 0) {
+        self.moves = moves; self.copies = copies; self.newFiles = newFiles; self.newFolders = newFolders
+        self.renames = renames; self.trash = trash
     }
 }
 
@@ -127,9 +134,19 @@ public struct AgentProposedChanges: Equatable, Sendable {
             self.item = item; self.name = name
         }
     }
-    public let newFolders: [NewFolder], moves: [Transfer], copies: [Transfer], renames: [Rename], trash: [String]
-    public init(newFolders: [NewFolder], moves: [Transfer], copies: [Transfer], renames: [Rename], trash: [String]) {
-        self.newFolders = newFolders; self.moves = moves; self.copies = copies; self.renames = renames; self.trash = trash
+    /// A file to make: the folder it goes in (an id or a new-folder key), its name, and the whole text it holds.
+    public struct NewFile: Equatable, Sendable {
+        public let parent, name, text: String
+        public init(parent: String, name: String, text: String) {
+            self.parent = parent; self.name = name; self.text = text
+        }
+    }
+    public let newFolders: [NewFolder], newFiles: [NewFile], moves: [Transfer], copies: [Transfer], renames: [Rename],
+               trash: [String]
+    public init(newFolders: [NewFolder], newFiles: [NewFile] = [], moves: [Transfer], copies: [Transfer], renames: [Rename],
+                trash: [String]) {
+        self.newFolders = newFolders; self.newFiles = newFiles; self.moves = moves; self.copies = copies
+        self.renames = renames; self.trash = trash
     }
 }
 

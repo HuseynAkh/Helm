@@ -132,10 +132,10 @@ public struct AgentPlanValidator: AgentPlanValidating {
         return now
     }
 
-    /// The existing folder a step puts something in, or makes a folder in.
+    /// The existing folder a step puts something in, or makes a folder or a file in.
     private static func existingFolder(of step: AgentPlanStep) -> AgentPlanTarget? {
         switch step {
-        case .newFolder(_, let parent, _):
+        case .newFolder(_, let parent, _), .newFile(let parent, _, _):
             if case .existing = parent { return parent }
             return nil
         case .move(_, let target), .copy(_, let target):
@@ -146,10 +146,11 @@ public struct AgentPlanValidator: AgentPlanValidating {
         }
     }
 
-    /// The existing folder a step puts something in or makes a folder in, through any new folders on the way.
+    /// The existing folder a step puts something in or makes a folder or a file in, through any new folders on the
+    /// way.
     private static func destinationAnchor(of step: AgentPlanStep, chart: AgentPlanChart) -> AgentPlanItem? {
         switch step {
-        case .newFolder(_, let parent, _): return chart.anchor(of: parent)
+        case .newFolder(_, let parent, _), .newFile(let parent, _, _): return chart.anchor(of: parent)
         case .move(_, let target), .copy(_, let target): return chart.anchor(of: target)
         case .rename, .trash: return nil
         }
@@ -172,7 +173,7 @@ extension AgentPlanStep {
     /// The same step with its item replaced.
     func with(item: AgentPlanItem) -> AgentPlanStep {
         switch self {
-        case .newFolder: return self
+        case .newFolder, .newFile: return self
         case .move(_, let target): return .move(item, to: target)
         case .copy(_, let target): return .copy(item, to: target)
         case .rename(_, let name): return .rename(item, to: name)
@@ -214,17 +215,38 @@ final class AgentPlanIntake {
         self.scope = scope; self.disk = disk; self.limits = limits
     }
 
-    /// Refuses a proposal as a whole before anything is looked up: more changes or new folders than one plan may
-    /// hold, or a key that isn't `n` and a number, or is declared twice.
+    /// Refuses a proposal as a whole before anything is looked up: more changes, new folders or new files than one
+    /// plan may hold, a new file's text or all of them longer than `AgentLimits` allows, a text that isn't plain
+    /// text, or a key that isn't `n` and a number, or is declared twice.
     static func refusal(of proposal: AgentProposedChanges, limits: AgentLimits) -> AgentToolCode? {
-        let changes = proposal.newFolders.count + proposal.renames.count + proposal.trash.count
+        let changes = proposal.newFolders.count + proposal.newFiles.count + proposal.renames.count + proposal.trash.count
             + (proposal.moves + proposal.copies).reduce(0) { $0 + $1.items.count + ($1.allIn.isEmpty ? 0 : 1) }
-        if changes > limits.planSteps || proposal.newFolders.count > limits.planNewFolders { return .too_many }
+        if changes > limits.planSteps || proposal.newFolders.count > limits.planNewFolders
+            || proposal.newFiles.count > AgentLimits.newFiles { return .too_many }
+        var characters = 0
+        for file in proposal.newFiles {
+            let length = file.text.unicodeScalars.count
+            characters += length
+            if length > AgentLimits.newFileCharacters || characters > AgentLimits.newFilesCharacters { return .too_many }
+            if !isPlainText(file.text) { return .bad_arguments }
+        }
         var declared: Set<String> = []
         for folder in proposal.newFolders {
             guard isKey(folder.key), declared.insert(folder.key).inserted else { return .bad_arguments }
         }
         return nil
+    }
+
+    /// Whether a new file's text is plain text: no NUL and no other control character but tab, line feed, form feed
+    /// and carriage return, and no replacement character, which is what text that wasn't valid became on its way in.
+    static func isPlainText(_ text: String) -> Bool {
+        !text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x09, 0x0A, 0x0C, 0x0D: return false
+            case 0x00...0x1F, 0x7F, 0xFFFD: return true
+            default: return false
+            }
+        }
     }
 
     /// A key for a new folder: "n" and a number with no leading zero.
@@ -234,12 +256,16 @@ final class AgentPlanIntake {
         return digits.first != "0" && digits.allSatisfy { $0.isASCII && $0.isNumber }
     }
 
-    /// The checked steps: new folders first, in the order they were declared, then moves, copies, renames and the
-    /// Trash. Throws a code that ends the whole call.
+    /// The checked steps: new folders first, in the order they were declared, then new files, moves, copies, renames
+    /// and the Trash. Throws a code that ends the whole call.
     func steps(for proposal: AgentProposedChanges) async throws -> [AgentPlanStep] {
         var steps: [AgentPlanStep] = []
         for folder in proposal.newFolders {
             if let step = try await newFolder(folder) { steps.append(step) }
+        }
+        let newFolders = steps.count
+        for file in proposal.newFiles {
+            if let step = try await newFile(file) { steps.append(step) }
         }
 
         var asks: [(record: AgentHandleRecord, ask: Ask)] = []
@@ -270,8 +296,7 @@ final class AgentPlanIntake {
         for entry in asks {
             if seen[Self.identityKey(entry.record), default: 0] > 1 { count(.listed_twice) } else { kept.append(entry) }
         }
-        let newFolders = steps.count
-        guard newFolders + kept.count <= limits.planSteps, newFolders <= limits.planNewFolders else { throw AgentToolCode.too_many }
+        guard steps.count + kept.count <= limits.planSteps, newFolders <= limits.planNewFolders else { throw AgentToolCode.too_many }
 
         for entry in kept {
             let item = try await planItem(entry.record)
@@ -345,6 +370,28 @@ final class AgentPlanIntake {
         lostKeys[key] = code
         count(code)
         return nil
+    }
+
+    // MARK: New files
+
+    /// A new file in an existing folder or in a key declared among the new folders. Its name passes
+    /// `AgentNewName.validateNewFileName`; a name already taken there is kept with both, numbered, as Apply makes it.
+    private func newFile(_ file: AgentProposedChanges.NewFile) async throws -> AgentPlanStep? {
+        let target: AgentPlanTarget
+        if Self.isKey(file.parent) {
+            if let code = lostKeys[file.parent] { count(code); return nil }
+            guard let key = keys[file.parent] else { count(.unknown_id); return nil }
+            target = key.target
+        } else {
+            switch try await destinationFolder(file.parent) {
+            case .failure(let code): count(code); return nil
+            case .success(let record): target = .existing(Self.planItem(record))
+            }
+        }
+        switch AgentNewName.validateNewFileName(file.name) {
+        case .failure(let code): count(code); return nil
+        case .success(let name): return .newFile(parent: target, name: name, text: file.text)
+        }
     }
 
     // MARK: Moves and copies

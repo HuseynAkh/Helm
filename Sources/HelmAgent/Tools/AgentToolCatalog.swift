@@ -2,9 +2,9 @@ import Foundation
 import HelmCore
 
 /// The tools a model is offered, in the order it is told about them. There are three: two that look and one that
-/// proposes. While the person's Read contents switch is on for the thread there is a fourth, `read_contents`, after
-/// them. None takes a path or an address: existing items are named by ids Helm issued, and only new names are
-/// written as text. Every schema refuses unknown properties and requires every property; the empty string, the
+/// proposes changes, new files with their text among them. While the person's Read contents switch is on for the
+/// thread there is a fourth, `read_contents`, after them. None takes a path or an address: existing items are named
+/// by ids Helm issued, and only new names and a new file's text are written as text. Every schema refuses unknown properties and requires every property; the empty string, the
 /// empty array and 0 mean "none".
 public enum AgentToolCatalog {
     public static let all: [AgentToolSpec] = [listFolder, findItems, proposeChanges]
@@ -42,12 +42,18 @@ public enum AgentToolCatalog {
     private static let proposeChanges = AgentToolSpec(
         name: "propose_changes",
         description: "Show the person one plan of changes. Nothing changes until they press Apply. Use ids from listings. "
-            + "Each item may appear once. A renamed file keeps its extension.",
-        schema: record(required: ["new_folders", "moves", "copies", "renames", "trash"], [
+            + "Each item may appear once. A renamed file keeps its extension. A new file holds the whole text you write: "
+            + "plain text, Markdown, CSV, JSON, HTML or code, or .rtf and .docx, which Helm makes from the text.",
+        schema: record(required: ["new_folders", "new_files", "moves", "copies", "renames", "trash"], [
             "new_folders": list(of: record(required: ["key", "parent", "name"], [
                 "key": text("n1, n2, and so on."),
                 "parent": text("A folder id, or an earlier key."),
                 "name": text("One folder name, no slashes and no extension.")
+            ])),
+            "new_files": list(of: record(required: ["parent", "name", "text"], [
+                "parent": text("A folder id, or a new-folder key."),
+                "name": text("One file name with its extension, such as Notes.md or Budget.csv."),
+                "text": text("Everything the file holds, as plain text.")
             ])),
             "moves": list(of: transfer),
             "copies": list(of: transfer),

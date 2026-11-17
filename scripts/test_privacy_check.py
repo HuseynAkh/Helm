@@ -551,6 +551,9 @@ class PrivacyCheckTests(unittest.TestCase):
             ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
             ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
             ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
+            ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
+             'return try? string.data(from: whole, documentAttributes: '
+             '[.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
             ('network-key', 'App/Info.plist', '<key>NSAppTransportSecurity</key>'),
         ])
         self.assertEqual(NETWORK_FILES, {'Sources/HelmAgent/Transport/HTTPTransport.swift'})

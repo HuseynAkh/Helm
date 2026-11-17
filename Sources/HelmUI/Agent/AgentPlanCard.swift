@@ -94,6 +94,7 @@ struct AgentPlanCard: Equatable {
         case .copy(let count): repeats = counts == AgentPlanCounts(copies: count)
         case .rename(let count): repeats = counts == AgentPlanCounts(renames: count)
         case .trash(let count): repeats = counts == AgentPlanCounts(trash: count)
+        case .create(let count): repeats = counts == AgentPlanCounts(newFiles: count)
         case .organize: repeats = false
         }
         return repeats ? "" : counts.line
@@ -111,7 +112,7 @@ struct AgentPlanCard: Equatable {
         /// Why the group starts unticked: "Goes to Google Drive", "Leaves iCloud Drive", "Shared". The Trash group's
         /// title says it already.
         let mark: String?
-        /// Where a group of moves or copies goes, under its title.
+        /// Where a group of moves, copies or new files goes, under its title.
         var destination: AgentPlanPath? = nil
         let rows: [ItemRow]
     }
@@ -122,7 +123,7 @@ struct AgentPlanCard: Equatable {
         let name: String
         /// Where the item is now, in words. Empty on a row that shows where it goes.
         let detail: String
-        /// The folder a moved or copied item lands in.
+        /// The folder a moved or copied item lands in, or a new file is made in.
         var destination: AgentPlanPath? = nil
         let tags: [String]
     }
@@ -135,16 +136,16 @@ struct AgentPlanCard: Equatable {
         }
     }
 
-    /// The folder a group of moves or copies goes to, with "new folder" when the plan makes it.
+    /// The folder a group of moves, copies or new files goes to, with "new folder" when the plan makes it.
     private func destination(of group: AgentPlanGroup) -> AgentPlanPath? {
         let isNew: Bool
         switch group.kind {
-        case .moves(_, let new), .copies(_, let new): isNew = new
+        case .moves(_, let new), .copies(_, let new), .newFiles(_, let new): isNew = new
         case .newFolders, .renames, .trash: return nil
         }
         for index in group.steps where plan.steps.indices.contains(index) {
             switch plan.steps[index] {
-            case .move(_, let target), .copy(_, let target):
+            case .move(_, let target), .copy(_, let target), .newFile(let target, _, _):
                 return path(of: target).map { AgentPlanPath(path: $0, homes: homes, isNew: isNew) }
             case .newFolder, .rename, .trash:
                 continue
@@ -178,7 +179,7 @@ struct AgentPlanCard: Equatable {
         case .renames: ownTag = AgentText.tagRenamed
         case .trash: ownTag = AgentText.tagTrash
         case .newFolders: ownTag = AgentText.tagNew
-        case .moves, .copies: ownTag = nil
+        case .moves, .copies, .newFiles: ownTag = nil
         }
         let labels = Set(roots.map { AgentTextEscaper.escape($0.label) })
         let sameFolder = all.count > 1 && Set(all.map(\.detail)).count == 1 && labels.contains(all.first?.detail ?? "")
@@ -196,6 +197,7 @@ struct AgentPlanCard: Equatable {
         case .renames: return AgentText.groupRenames(changes)
         case .moves(let label, _): return AgentText.groupMoves(changes, folder: label)
         case .copies(let label, _): return AgentText.groupCopies(changes, folder: label)
+        case .newFiles(let label, _): return AgentText.groupNewFiles(changes, folder: label)
         case .trash: return AgentText.groupTrash(changes)
         }
     }
@@ -227,6 +229,12 @@ struct AgentPlanCard: Equatable {
                 }
             }
             tags.append(AgentText.tagNew)
+        case .newFile(let parent, let file, let text):
+            name = AgentTextEscaper.escape(file.value)
+            // Where it is made, as a move shows where it goes, and the size of the text it holds.
+            destination = path(of: parent).map { AgentPlanPath(path: $0, homes: homes, isNew: false) }
+            detail = ""
+            tags.append(AgentText.rowSize(text.utf8.count))
         case .move(let item, let target), .copy(let item, let target):
             name = AgentTextEscaper.escape(item.name)
             // Where it goes, which the person needs more than where it is now.

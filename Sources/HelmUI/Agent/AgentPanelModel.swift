@@ -414,6 +414,7 @@ import HelmCore
         switch card.plan.title {
         case .copy: line = AgentText.applyCopying(done: step, total: total, name: name)
         case .rename: line = AgentText.applyRenaming(done: step, total: total, name: name)
+        case .create: line = AgentText.applyCreating(done: step, total: total, name: name)
         case .organize, .move, .trash: line = AgentText.applyMoving(done: step, total: total, name: name)
         }
         card.stage = .applying(line)
@@ -808,12 +809,14 @@ import HelmCore
             if counts.moves > 0 { return AgentText.resultOrganized(items: counts.moves, folders: destinations(of: plan, ticked: ticked)) }
             if counts.renames > 0 { return AgentText.resultRenamed(counts.renames) }
             if counts.copies > 0 { return AgentText.resultCopied(counts.copies) }
+            if counts.newFiles > 0 { return AgentText.resultMadeFiles(counts.newFiles) }
             if counts.trash == 0, counts.newFolders > 0 { return AgentText.resultMadeFolders(counts.newFolders) }
             return AgentText.resultTrashed(counts.trash)
         case .move: return AgentText.resultMoved(counts.moves)
         case .copy: return AgentText.resultCopied(counts.copies)
         case .rename: return AgentText.resultRenamed(counts.renames)
         case .trash: return AgentText.resultTrashed(counts.trash)
+        case .create: return AgentText.resultMadeFiles(counts.newFiles)
         }
     }
 

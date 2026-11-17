@@ -56,6 +56,13 @@ public struct AgentApplyReport: Equatable, Sendable {
                     made[key] = created
                     tally.changed.append(created)
                 }
+            case .createFile(let parent, let name, let contents):
+                progress(tally.handled, total, name.value)
+                // Written once, never over another file, and without the executable bit.
+                guard let folder = Self.address(of: parent, made: made), let contents else { tally.skipped += 1; continue }
+                let outcome = await Self.run(.createFile(parent: folder, name: name, template: nil, contents: contents),
+                                             group: group, in: window)
+                tally.collect(tally.count(outcome, items: 1))
             case .batchRename(let renames):
                 progress(tally.handled, total, renames.first?.source.url.lastPathComponent ?? "")
                 let still = await Self.unchanged(renames.map(\.source), in: fileSystem)
@@ -144,7 +151,7 @@ public struct AgentApplyReport: Equatable, Sendable {
     /// How many changes a command stands for.
     private static func size(of command: AgentCompiledCommand) -> Int {
         switch command {
-        case .createFolder: return 1
+        case .createFolder, .createFile: return 1
         case .batchRename(let renames): return renames.count
         case .move(let sources, _), .copy(let sources, _), .trash(let sources): return sources.count
         }

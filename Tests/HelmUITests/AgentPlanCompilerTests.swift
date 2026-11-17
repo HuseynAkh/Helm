@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import XCTest
 import HelmAgent
 import HelmCore
@@ -136,7 +137,7 @@ final class AgentPlanCompilerTests: XCTestCase {
         var sources: [AgentCompiledSource] = []
         for command in commands {
             switch command {
-            case .createFolder: break
+            case .createFolder, .createFile: break
             case .batchRename(let renames): sources += renames.map(\.source)
             case .move(let items, _), .copy(let items, _), .trash(let items): sources += items
             }
@@ -153,6 +154,75 @@ final class AgentPlanCompilerTests: XCTestCase {
 
     func testAnIDThatIsNoGroupOfThePlanCompilesToNothing() {
         XCTAssertEqual(AgentPlanCompiler.commands(for: plan, ticked: [42]), [])
+    }
+
+    // MARK: New files
+
+    /// A new folder, two new files in it and one beside it, and a move into the new folder.
+    private lazy var creation: AgentChangePlan = {
+        let steps: [AgentPlanStep] = [
+            .newFolder(key: "n1", parent: .existing(rootItem), name: name("Trip")),                       // 0
+            .newFile(parent: .new(key: "n1"), name: name("Packing List.txt"), text: "Passport\nCharger"),  // 1
+            .newFile(parent: .new(key: "n1"), name: name("Budget.csv"), text: "Item,Cost\r\nTrain,40"),   // 2
+            .newFile(parent: .existing(rootItem), name: name("Read Me.md"), text: "# Trip\n\n- one 🎒"),   // 3
+            .move(a, to: .new(key: "n1"))                                                                 // 4
+        ]
+        let groups = [
+            AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Trip", isNew: true), steps: [0, 1, 2]),
+            AgentPlanGroup(id: 2, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [3]),
+            AgentPlanGroup(id: 3, kind: .moves(toLabel: "Trip", isNew: true), steps: [4])
+        ]
+        return AgentChangePlan(title: .organize(rootLabel: "Downloads"), steps: steps, groups: groups, notices: [], leftOut: [:])
+    }()
+
+    func testANewFileIsMadeAfterTheFolderItGoesInWithItsTextInUTF8() {
+        XCTAssertEqual(AgentPlanCompiler.commands(for: creation, ticked: [1, 2, 3]), [
+            .createFolder(key: "n1", parent: .url(rootURL), name: name("Trip")),
+            .createFile(parent: .key("n1"), name: name("Packing List.txt"), contents: Data("Passport\nCharger".utf8)),
+            .createFile(parent: .key("n1"), name: name("Budget.csv"), contents: Data("Item,Cost\r\nTrain,40".utf8)),
+            .createFile(parent: .url(rootURL), name: name("Read Me.md"), contents: Data("# Trip\n\n- one 🎒".utf8)),
+            .move(sources: [source(a)], to: .key("n1"))
+        ])
+        // A file beside the folder needs no folder; the move alone still makes it.
+        XCTAssertEqual(AgentPlanCompiler.commands(for: creation, ticked: [2]),
+                       [.createFile(parent: .url(rootURL), name: name("Read Me.md"), contents: Data("# Trip\n\n- one 🎒".utf8))])
+        XCTAssertEqual(AgentPlanCompiler.commands(for: creation, ticked: [3]), [
+            .createFolder(key: "n1", parent: .url(rootURL), name: name("Trip")),
+            .move(sources: [source(a)], to: .key("n1"))
+        ])
+        XCTAssertEqual(creation.counts(ticked: [1]), AgentPlanCounts(newFiles: 2, newFolders: 1))
+    }
+
+    func testRTFAndWordAreMadeFromTheTextAParagraphALine() throws {
+        let text = "Dear Sam,\nThe trip is on.\r\n{Braces} and \\backslashes stay text.\n\nSee you"
+        let wanted = "Dear Sam,\nThe trip is on.\n{Braces} and \\backslashes stay text.\n\nSee you"
+        let plan = AgentChangePlan(title: .create(2), steps: [
+            .newFile(parent: .existing(rootItem), name: name("Letter.rtf"), text: text),
+            .newFile(parent: .existing(rootItem), name: name("Letter.DOCX"), text: text)
+        ], groups: [AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [0, 1])],
+           notices: [], leftOut: [:])
+        let commands = AgentPlanCompiler.commands(for: plan, ticked: [1])
+        XCTAssertEqual(commands.count, 2)
+        guard case .createFile(_, _, let rtf?) = commands[0], case .createFile(_, _, let docx?) = commands[1] else {
+            return XCTFail("no bytes: \(commands)")
+        }
+        XCTAssertTrue(String(decoding: rtf.prefix(5), as: UTF8.self) == "{\\rtf", "an RTF file")
+        let readRTF = try NSAttributedString(data: rtf, options: [.documentType: NSAttributedString.DocumentType.rtf],
+                                             documentAttributes: nil)
+        XCTAssertEqual(readRTF.string, wanted)
+        XCTAssertEqual(Array(docx.prefix(2)), Array("PK".utf8), "a Word file is a zip file")
+        let readWord = try NSAttributedString(data: docx, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+                                              documentAttributes: nil)
+        XCTAssertEqual(readWord.string.trimmingCharacters(in: .newlines), wanted)
+        XCTAssertEqual(readWord.string.components(separatedBy: "\n").filter { !$0.isEmpty }.count, 4, "a paragraph a line")
+    }
+
+    func testEveryOtherKindIsItsTextAsWritten() {
+        for file in ["a.json", "b.html", "c.swift", "d.tsv", "e.txt"] {
+            XCTAssertEqual(AgentNewFileContents.data(name: name(file), text: "<b>{\"x\": 1}</b>\r\n"),
+                           Data("<b>{\"x\": 1}</b>\r\n".utf8), file)
+        }
+        XCTAssertEqual(AgentNewFileContents.data(name: name("empty.md"), text: ""), Data())
     }
 }
 #endif

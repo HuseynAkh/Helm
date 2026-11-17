@@ -38,9 +38,9 @@ fix = sys.argv[1]
 def listing(folder="@root"):
     return {"calls": [{"name": "list_folder", "args": {"folder": folder, "depth": 1, "after": ""}}]}
 
-def proposal(text, new_folders=(), moves=(), copies=(), renames=(), trash=()):
+def proposal(text, new_folders=(), new_files=(), moves=(), copies=(), renames=(), trash=()):
     return {"text": text, "calls": [{"name": "propose_changes", "args": {
-        "new_folders": list(new_folders), "moves": list(moves), "copies": list(copies),
+        "new_folders": list(new_folders), "new_files": list(new_files), "moves": list(moves), "copies": list(copies),
         "renames": list(renames), "trash": list(trash)}}]}
 
 search = {"searchPlan": {"sort": "relevance", "queries": []}, "searchRank": {"ranked": []}, "models": ["scripted-1"]}

@@ -26,6 +26,7 @@ import HelmPersistence
             {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
             {"text": "Photos and notes get folders of their own.", "calls": [{"name": "propose_changes", "args": {
               "new_folders": [{"key": "n1", "parent": "@root", "name": "Images"}, {"key": "n2", "parent": "@root", "name": "Notes"}],
+              "new_files": [],
               "moves": [{"items": ["@name:photo-1.png", "@name:photo-2.jpg"], "all_in": "", "to": "n1"},
                         {"items": ["@name:memo.txt", "@name:todo.txt"], "all_in": "", "to": "n2"}],
               "copies": [], "renames": [], "trash": []}}]}]},
@@ -221,7 +222,7 @@ import HelmPersistence
         try scripted.load(Data("""
             {"rules": [{"when": "copy", "turns": [
               {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
-              {"calls": [{"name": "propose_changes", "args": {"new_folders": [], "moves": [],
+              {"calls": [{"name": "propose_changes", "args": {"new_folders": [], "new_files": [], "moves": [],
                 "copies": [{"items": ["@name:clip.mov"], "all_in": "", "to": "@name:Backup"}], "renames": [], "trash": []}}]}]}]}
             """.utf8))
         // The window's commands see the clip go back to the cloud just before it is copied: after the conversation

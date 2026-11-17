@@ -25,10 +25,10 @@ public enum AgentPlaceRules {
     }
 
     /// The ruling for one step. `source` holds the facts of the item's own folder (a file's parent; a folder
-    /// itself), or for a new folder the folder it is made in. `destination` holds the facts of the folder a move or
-    /// a copy goes into. `holdsDataless` says the item is a file that isn't downloaded, or a folder that holds one.
-    /// `names` are what the notes call the two places, such as the label of the folder the person added; without
-    /// them a note names the kind of place.
+    /// itself), or for a new folder or a new file the folder it is made in. `destination` holds the facts of the
+    /// folder a move or a copy goes into. `holdsDataless` says the item is a file that isn't downloaded, or a folder
+    /// that holds one. `names` are what the notes call the two places, such as the label of the folder the person
+    /// added; without them a note names the kind of place.
     ///
     /// The bulk guard, for many changes in a place others share, needs the whole plan and is decided afterwards by
     /// `bulkGuarded`.
@@ -40,7 +40,7 @@ public enum AgentPlaceRules {
         // A place that doesn't answer can't be checked, so nothing there is planned.
         if !source.isResponding || !target.isResponding { return Ruling(leftOut: .not_responding) }
         switch step {
-        case .newFolder:
+        case .newFolder, .newFile:
             if target.isReadOnly { return viewOnly(targetName) }
             return Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
 
@@ -94,7 +94,7 @@ public enum AgentPlaceRules {
         case .move:
             let target = destination ?? source
             return target.placeKey != source.placeKey || target.volumeRoot != source.volumeRoot
-        case .newFolder, .rename, .trash: return false
+        case .newFolder, .newFile, .rename, .trash: return false
         }
     }
 

@@ -398,7 +398,7 @@ final class AgentToolRunnerTests: XCTestCase {
 
     func testProposalsGoToTheValidator() async {
         let rig = await self.rig { disk in disk.addFile(home + "/a.txt") }
-        let empty = #"{"new_folders":[],"moves":[{"items":["f1"],"all_in":"","to":"d2"}],"copies":[],"renames":[],"trash":[]}"#
+        let empty = #"{"new_folders":[],"new_files":[],"moves":[{"items":["f1"],"all_in":"","to":"d2"}],"copies":[],"renames":[],"trash":[]}"#
         guard case .plan = await run(rig, "propose_changes", empty) else { return XCTFail("no plan") }
         XCTAssertEqual(rig.validator.proposed.first?.moves.first?.items, ["f1"])
 

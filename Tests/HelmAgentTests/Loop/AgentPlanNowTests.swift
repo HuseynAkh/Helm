@@ -9,7 +9,7 @@ final class AgentPlanNowTests: XCTestCase {
     private let home = "/home/helm"
 
     private static let list = #"{"calls": [{"name":"list_folder","args":{"folder":"@root","depth":1,"after":""}}]}"#
-    private static let propose = #"{"text": "Images go into a new Images folder.", "calls": [{"name":"propose_changes","args":{"new_folders":[{"key":"n1","parent":"@root","name":"Images"}],"moves":[{"items":["@name:a.png","@name:b.png"],"all_in":"","to":"n1"}],"copies":[],"renames":[],"trash":[]}}]}"#
+    private static let propose = #"{"text": "Images go into a new Images folder.", "calls": [{"name":"propose_changes","args":{"new_folders":[{"key":"n1","parent":"@root","name":"Images"}],"new_files":[],"moves":[{"items":["@name:a.png","@name:b.png"],"all_in":"","to":"n1"}],"copies":[],"renames":[],"trash":[]}}]}"#
 
     private struct Rig {
         let session: AgentSession
@@ -127,6 +127,8 @@ final class AgentPlanNowTests: XCTestCase {
         XCTAssertFalse(AgentPrompt.planNow.contains("/"))
         XCTAssertTrue(AgentPrompt.planNow.contains("propose_changes"))
         XCTAssertTrue(AgentPrompt.system.contains("answer with one propose_changes call, not a description"))
+        XCTAssertTrue(AgentPrompt.system.contains("rename, remove or create things"), "a request to create is answered with a plan")
+        XCTAssertTrue(AgentPrompt.system.contains("Write each new file's whole text in new_files."))
     }
 
     // MARK: What asks for changes
@@ -134,14 +136,17 @@ final class AgentPlanNowTests: XCTestCase {
     func testTypedWordsThatAskForChanges() {
         for text in ["Can you organize them properly?", "organise these", "Sort by year", "tidy up", "Move the photos to r2",
                      "copy everything in this folder to r3", "rename the scans by date", "delete the old drafts",
-                     "Put the PDFs in a folder", "make a folder for receipts", "Create folders by month", "clean up Downloads"] {
+                     "Put the PDFs in a folder", "make a folder for receipts", "Create folders by month", "clean up Downloads",
+                     "write a packing list in this folder", "Create a budget spreadsheet", "draft a cover letter",
+                     "make a list of the trip", "add a note about the scans", "a new file called ideas.md"] {
             XCTAssertTrue(AgentChangeAsk.asksForChanges(text), text)
         }
     }
 
     func testTypedWordsThatOnlyAsk() {
         for text in ["what's in here?", "What sort of files are these?", "how big is this folder", "hello",
-                     "which files are the newest?", "make sense of this", "Is anything moved?", ""] {
+                     "which files are the newest?", "make sense of this", "Is anything moved?", "",
+                     "is the draft finished?", "what's new here?", "make sure nothing changes"] {
             XCTAssertFalse(AgentChangeAsk.asksForChanges(text), text)
         }
     }

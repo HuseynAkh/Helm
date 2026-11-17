@@ -22,6 +22,7 @@ final class AgentOutboundTests: XCTestCase {
         {"calls": [{"name": "find_items", "args": {"folder": "@root", "name_any": ["report"], "kinds": [], "modified_from": "",
                     "modified_to": "", "min_bytes": 0, "max_bytes": 0}}]},
         {"text": "Photos go into Projects.", "calls": [{"name": "propose_changes", "args": {"new_folders": [],
+           "new_files": [],
            "moves": [{"items": ["@name:photo.png"], "all_in": "", "to": "@name:Projects"}], "copies": [], "renames": [], "trash": []}}]}]},
       {"when": "*", "turns": [{"text": "Hello."}]}]}
     """

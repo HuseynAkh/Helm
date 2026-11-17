@@ -108,6 +108,18 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertEqual(rule(.newFolder(key: "n1", parent: into, name: newName), mac, mac).notices, [])
     }
 
+    func testANewFileIsRuledAsANewFolderIs() {
+        let made = AgentPlanStep.newFile(parent: into, name: ValidFileName("Notes.md")!, text: "Hi")
+        XCTAssertEqual(rule(made, readOnly, readOnly), AgentPlaceRules.Ruling(leftOut: .read_only, notices: [.readOnly(place: "Server")]))
+        XCTAssertEqual(rule(made, serverNoTrash, serverNoTrash).notices, [.cantUndo(place: "Server"), .shared(place: "Server")])
+        XCTAssertNil(rule(made, serverNoTrash, serverNoTrash).leftOut)
+        XCTAssertEqual(rule(made, iCloud, iCloud), AgentPlaceRules.Ruling(notices: [.syncs]))
+        XCTAssertEqual(rule(made, drive, drive), AgentPlaceRules.Ruling(notices: [.syncsMaybeShared]))
+        XCTAssertEqual(rule(made, mac, mac), AgentPlaceRules.Ruling())
+        XCTAssertEqual(rule(made, quiet, quiet).leftOut, .not_responding)
+        XCTAssertFalse(AgentPlaceRules.needsBytes(made, source: drive, destination: drive))
+    }
+
     func testAMoveOutOfAPlaceOthersSeeLeavesIt() {
         XCTAssertEqual(rule(.move(file(), to: into), iCloud, mac),
                        AgentPlaceRules.Ruling(guardedBy: .leaves, place: "iCloud Drive", notices: [.syncs]))

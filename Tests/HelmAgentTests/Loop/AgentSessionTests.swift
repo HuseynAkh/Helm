@@ -10,7 +10,7 @@ final class AgentSessionTests: XCTestCase {
     private let home = "/home/helm"
 
     private static let list = #"{"name":"list_folder","args":{"folder":"@root","depth":1,"after":""}}"#
-    private static let propose = #"{"name":"propose_changes","args":{"new_folders":[{"key":"n1","parent":"@root","name":"Images"}],"moves":[{"items":["@name:a.png","@name:b.png"],"all_in":"","to":"n1"}],"copies":[],"renames":[],"trash":[]}}"#
+    private static let propose = #"{"name":"propose_changes","args":{"new_folders":[{"key":"n1","parent":"@root","name":"Images"}],"new_files":[],"moves":[{"items":["@name:a.png","@name:b.png"],"all_in":"","to":"n1"}],"copies":[],"renames":[],"trash":[]}}"#
     private static let script = """
     {"rules": [
       {"when": "organize", "turns": [{"calls": [\(list)]}, {"text": "Images go into a new Images folder.", "calls": [\(propose)]}]},

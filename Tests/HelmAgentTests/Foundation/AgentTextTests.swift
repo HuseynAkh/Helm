@@ -71,9 +71,11 @@ final class AgentTextTests: XCTestCase {
         ("planTitleCopy", AgentText.planTitleCopy(12), "Copy 12 Items"),
         ("planTitleRename", AgentText.planTitleRename(12), "Rename 12 Items"),
         ("planTitleTrash", AgentText.planTitleTrash(12), "Move 12 Items to Trash"),
+        ("planTitleCreate", AgentText.planTitleCreate(2), "Create 2 Files"),
         ("countMoves", AgentText.countMoves(214), "214 moves"),
         ("countCopies", AgentText.countCopies(5), "5 copies"),
         ("countNewFolders", AgentText.countNewFolders(6), "6 new folders"),
+        ("countNewFiles", AgentText.countNewFiles(2), "2 new files"),
         ("countRenames", AgentText.countRenames(3), "3 renames"),
         ("countTrash", AgentText.countTrash(2), "2 to Trash"),
         ("apply", AgentText.apply, "Apply"),
@@ -86,6 +88,8 @@ final class AgentTextTests: XCTestCase {
         ("groupMoves", AgentText.groupMoves(12, folder: "Images"), "Move 12 items to “Images”"),
         ("groupCopies", AgentText.groupCopies(12, folder: "Images"), "Copy 12 items to “Images”"),
         ("groupTrash", AgentText.groupTrash(12), "Move 12 items to the Trash"),
+        ("groupNewFiles", AgentText.groupNewFiles(3, folder: "Trip"), "Create 3 files in “Trip”"),
+        ("rowSize", AgentText.rowSize(1_234), "1.2 KB"),
         ("markGoesTo", AgentText.markGoesTo("Google Drive"), "Goes to Google Drive"),
         ("markLeaves", AgentText.markLeaves("iCloud Drive"), "Leaves iCloud Drive"),
         ("rowHolds", AgentText.rowHolds(37), "37 items"),
@@ -107,12 +111,14 @@ final class AgentTextTests: XCTestCase {
         ("applyMoving", AgentText.applyMoving(done: 3, total: 12, name: "a.png"), "Moving 3 of 12 · a.png"),
         ("applyCopying", AgentText.applyCopying(done: 3, total: 12, name: "a.png"), "Copying 3 of 12 · a.png"),
         ("applyRenaming", AgentText.applyRenaming(done: 3, total: 12, name: "a.png"), "Renaming 3 of 12 · a.png"),
+        ("applyCreating", AgentText.applyCreating(done: 1, total: 2, name: "Notes.md"), "Creating 1 of 2 · Notes.md"),
         ("resultOrganized", AgentText.resultOrganized(items: 210, folders: 6), "Moved 210 items into 6 folders."),
         ("resultMoved", AgentText.resultMoved(12), "Moved 12 items."),
         ("resultCopied", AgentText.resultCopied(12), "Copied 12 items."),
         ("resultRenamed", AgentText.resultRenamed(12), "Renamed 12 items."),
         ("resultTrashed", AgentText.resultTrashed(12), "Moved 12 items to the Trash."),
         ("resultMadeFolders", AgentText.resultMadeFolders(6), "Made 6 new folders."),
+        ("resultMadeFiles", AgentText.resultMadeFiles(3), "Made 3 new files."),
         ("resultPartial", AgentText.resultPartial(done: 210, total: 214, skipped: 4), "210 of 214 done, and 4 were skipped."),
         ("resultStopped", AgentText.resultStopped(done: 3, total: 12), "Stopped after 3 of 12."),
         ("undo", AgentText.undo, "Undo"),
@@ -230,8 +236,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 205)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 205, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 211)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 211, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
@@ -271,6 +277,11 @@ final class AgentTextTests: XCTestCase {
         XCTAssertEqual(AgentText.planTitleCopy(1), "Copy 1 Item")
         XCTAssertEqual(AgentText.planTitleRename(1), "Rename 1 Item")
         XCTAssertEqual(AgentText.planTitleTrash(1), "Move 1 Item to Trash")
+        XCTAssertEqual(AgentText.planTitleCreate(1), "Create 1 File")
+        XCTAssertEqual(AgentText.countNewFiles(1), "1 new file")
+        XCTAssertEqual(AgentText.groupNewFiles(1, folder: "Trip"), "Create 1 file in “Trip”")
+        XCTAssertEqual(AgentText.resultMadeFiles(1), "Made 1 new file.")
+        XCTAssertEqual(AgentText.rowSize(1), "1 byte")
         XCTAssertEqual(AgentText.groupRenames(1), "Rename 1 item")
         XCTAssertEqual(AgentText.groupMoves(1, folder: "Images"), "Move 1 item to “Images”")
         XCTAssertEqual(AgentText.groupCopies(1, folder: "Images"), "Copy 1 item to “Images”")
