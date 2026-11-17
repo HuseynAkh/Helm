@@ -4,7 +4,7 @@ import HelmCore
 /// The words that say why a result matched, and how a request was read, built only from facts Helm holds.
 ///
 /// A model ranking rows answers with reason codes and never with words, so nothing here repeats a phrase it wrote
-/// there. The one phrase of a model's a line holds is what it said it saw in a file it looked at, after "Seen: ",
+/// there. The one phrase of a model's a line holds is what it said it saw in a file it looked at, after "Model saw: ",
 /// cleaned to plain text of 80 characters by `AISearchSession`. Every word of a query is a single token by the time it
 /// gets here (`AISearchQuery.clamped`), a word looked for inside files is one the person typed, and every word, name
 /// and phrase passes `AgentTextEscaper`, so a line can't hold hidden characters. A code Helm can't back with a fact
@@ -90,7 +90,7 @@ public enum SearchReasonBuilder {
     static let shows = "Shows: "
     static let textInImage = "Text in image: "
     static let textInVideo = "Text in video: "
-    static let seenByModel = "Seen: "
+    static let seenByModel = "Model saw: "
     static let nameHas = "Name has "
     static let inFolder = "In "
 
@@ -177,9 +177,9 @@ public enum SearchReasonBuilder {
     }
 
     /// What a file showed or held: "Shows: dog, beach", "Text in image: “invoice”", or both, from what was read on this
-    /// Mac; or "Seen: a red kite over the beach" for a file a model looked at and said fits. The things shown are the
-    /// classifier's words, the text words are the person's own, and the phrase seen is the model's, cleaned to plain
-    /// text and escaped here.
+    /// Mac; or "Model saw: a red kite over the beach" for a file a model looked at and said fits. The things shown are
+    /// the classifier's words and the text words are the person's own; the phrase seen is the model's, which Helm can't
+    /// check, so the line says whose it is. It is cleaned to plain text and escaped here.
     public static func seen(_ sighting: AISearchSighting) -> String? {
         if let phrase = sighting.seen, !phrase.isEmpty { return seenByModel + escaped(phrase) }
         var parts: [String] = []

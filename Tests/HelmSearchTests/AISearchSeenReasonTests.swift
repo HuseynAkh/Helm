@@ -2,14 +2,14 @@ import XCTest
 import HelmCore
 @testable import HelmSearch
 
-/// The reason a file a model looked at and said fits carries: "Seen: " and the model's phrase, escaped, in place of
+/// The reason a file a model looked at and said fits carries: "Model saw: " and the model's phrase, escaped, in place of
 /// what was read on this Mac.
 final class AISearchSeenReasonTests: XCTestCase {
     func testWhatAModelSawIsTheContentFact() {
         let seen = AISearchSighting(medium: .image, textWords: ["kite"], labels: ["sky"], seen: "A red kite over the sand")
-        XCTAssertEqual(SearchReasonBuilder.seen(seen), "Seen: A red kite over the sand")
+        XCTAssertEqual(SearchReasonBuilder.seen(seen), "Model saw: A red kite over the sand")
         XCTAssertEqual(SearchReasonBuilder.seen(AISearchSighting(medium: .document, textWords: [], labels: [], seen: "An invoice\u{202E}")),
-                       "Seen: An invoice\\u{202E}", "a hidden character is shown, never hidden")
+                       "Model saw: An invoice\\u{202E}", "a hidden character is shown, never hidden")
         XCTAssertEqual(SearchReasonBuilder.seen(AISearchSighting(medium: .document, textWords: ["plumber"], labels: [])),
                        "Mentions “plumber”")
         XCTAssertEqual(SearchReasonBuilder.seen(AISearchSighting(medium: .image, textWords: [], labels: ["dog"], seen: "")),
@@ -19,6 +19,6 @@ final class AISearchSeenReasonTests: XCTestCase {
         let reason = SearchReasonBuilder.reason(codes: [.content], entry: entry, query: AISearchQuery(contentAll: ["kite"]),
                                                 scopeRoot: nil, calendar: .current, locale: Locale(identifier: "en_US"),
                                                 sighting: seen)
-        XCTAssertEqual(reason, SearchReason(codes: [.content], line: "Seen: A red kite over the sand"))
+        XCTAssertEqual(reason, SearchReason(codes: [.content], line: "Model saw: A red kite over the sand"))
     }
 }

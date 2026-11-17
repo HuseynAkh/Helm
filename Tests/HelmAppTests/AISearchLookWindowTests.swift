@@ -138,8 +138,8 @@ import HelmPersistence
         XCTAssertEqual(names(controller), ["DSC_0193.jpg", "kite-list.txt"])
         let listed = await until { controller.matchReasonForTesting(named: "DSC_0193.jpg") != nil }
         XCTAssertTrue(listed)
-        XCTAssertEqual(controller.matchReasonForTesting(named: "DSC_0193.jpg"), "Seen: A red kite in a blue sky")
-        XCTAssertEqual(controller.matchReasonForTesting(named: "kite-list.txt"), "Seen: A list of kites to buy")
+        XCTAssertEqual(controller.matchReasonForTesting(named: "DSC_0193.jpg"), "Model saw: A red kite in a blue sky")
+        XCTAssertEqual(controller.matchReasonForTesting(named: "kite-list.txt"), "Model saw: A list of kites to buy")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.text, "2 matches · Mentions “kite” · Looked at 5")
 
         // A second search reads nothing again: the memo holds the words and the pictures.
@@ -194,7 +194,7 @@ import HelmPersistence
         XCTAssertEqual(client.looks.map(\.pictures.count), [5, 0], "asked again in words alone")
         XCTAssertTrue(client.looks[1].user.contains("\"shows\":[\"kite\"]"), "the words found on this Mac stand in")
         XCTAssertEqual(names(controller).first, "DSC_0193.jpg")
-        XCTAssertEqual(controller.matchReasonForTesting(named: "DSC_0193.jpg"), "Seen: A red kite")
+        XCTAssertEqual(controller.matchReasonForTesting(named: "DSC_0193.jpg"), "Model saw: A red kite")
         XCTAssertEqual(controller.aiSearchRunner?.picturesRefused, true)
 
         // The next search sends no pictures and makes none.
