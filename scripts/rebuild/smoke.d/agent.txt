@@ -434,8 +434,8 @@ search-ai-is off
 go @FIX@/home/AgentMess
 wait 0.5
 # 13b. Read contents, beside the composer. A new thread has it off, and a model that asks to read inside files then
-# gets only an unknown tool: nothing is read or sent. On, the thread starts over, the consent line says short
-# summaries are sent, and read_contents hands the model Helm's summaries, made on this Mac: the text in a photo of a
+# gets only an unknown tool: nothing is read or sent. On, the thread starts over, the consent line says what is
+# sent, and read_contents hands the model what Helm read on this Mac: the text in a photo of a
 # receipt, what a sky shows, a scanned invoice's first lines, a video's text, a note, and a file that gives orders,
 # sent as quoted data that changes nothing. A copy marked as not downloaded isn't read, and a plan that files the
 # invoices comes from what is inside them. Whole Mac keeps it on and names the home folder; a new thread is off again
@@ -459,7 +459,7 @@ agent-lacks never file contents
 agent-reads Started over.
 agent-say look inside
 agent-phase idle
-agent-reads and 6 summaries to Claude.
+agent-reads and what's inside 6 files to Claude.
 agent-sent-has Harbour Plumbing
 agent-sent-has INVOICE 2026-117
 agent-sent-has Total due: 184.00
@@ -474,7 +474,7 @@ agent-cloud-only @FIX@/home/AgentLook/receipt-copy.png
 agent-say look at the copy
 agent-phase idle
 agent-reads 1 file isn't downloaded, so Helm didn't read it.
-agent-reads and 1 summary to Claude.
+agent-reads and what's inside 1 file to Claude.
 agent-say file the invoices
 agent-phase plan
 agent-group Move 2 items to “Invoices” on

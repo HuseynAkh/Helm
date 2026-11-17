@@ -30,7 +30,7 @@ struct AISettingsView: View {
             } footer: {
                 Text(verbatim: model.consentLine)
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
             }
             if model.isOn {
                 Section {

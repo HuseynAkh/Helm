@@ -75,9 +75,9 @@ public enum AgentText {
     public static func traceSent(names count: Int, destination: String) -> String {
         "Sent \(counted(count, "name", "names")) to \(shown(destination))."
     }
-    /// The trace line of a request that also sent summaries of what is inside files.
+    /// The trace line of a request that also sent what is inside files: their text, and small copies of pictures.
     public static func traceSentSummaries(names: Int, summaries: Int, destination: String) -> String {
-        "Sent \(counted(names, "name", "names")) and \(counted(summaries, "summary", "summaries")) to \(shown(destination))."
+        "Sent \(counted(names, "name", "names")) and what's inside \(counted(summaries, "file", "files")) to \(shown(destination))."
     }
     public static let noticeStopped = "Stopped."
     public static let noticeStartedOver = "Started over."
