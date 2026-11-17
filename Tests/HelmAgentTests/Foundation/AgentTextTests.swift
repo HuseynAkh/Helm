@@ -231,8 +231,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 205)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 205, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 206)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 206, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
