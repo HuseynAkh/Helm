@@ -27,8 +27,8 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
 
     public func structuredBody(_ ask: AgentStructuredAsk, model: String) throws -> Data {
         try AgentWireParts.check(model: model)
-        var body = common(model: model, system: ask.system,
-                          messages: [.object(["role": .string("user"), "content": .string(ask.user)])])
+        let content: AgentJSON = ask.pictures.isEmpty ? .string(ask.user) : .array(Self.textPart(ask.user) + Self.parts(ask.pictures))
+        var body = common(model: model, system: ask.system, messages: [.object(["role": .string("user"), "content": content])])
         body["response_format"] = .object([
             "type": .string("json_schema"),
             "json_schema": .object(["name": .string(ask.schemaName), "schema": ask.schema, "strict": .bool(true)])
@@ -53,10 +53,16 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
 
     public func makeReader() -> any AgentStreamReading { Reader() }
 
-    /// One `tool` message for each result, in the order of the calls, then the person's text.
+    /// One `tool` message for each result, in the order of the calls, then one message with the results' pictures,
+    /// each after its label, since a tool message holds only text on most of these servers, then the person's text.
     public func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] {
         var items: [AgentJSON] = toolResults.map { result in
             .object(["role": .string("tool"), "tool_call_id": .string(result.callID), "content": .string(result.json)])
+        }
+        let pictures = AgentToolResult.labeledPictures(toolResults).flatMap { $0 }
+        if !pictures.isEmpty {
+            items.append(.object(["role": .string("user"),
+                                  "content": .array(Self.textPart(AgentWireParts.picturesIntro) + Self.parts(pictures))]))
         }
         if let text, !text.isEmpty { items.append(.object(["role": .string("user"), "content": .string(text)])) }
         return items
@@ -81,6 +87,18 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
         .object(["type": .string("function"),
                  "function": .object(["name": .string(spec.name), "description": .string(spec.description),
                                       "parameters": spec.schema])])
+    }
+
+    /// Each picture after its label, as a data URL: the one way to send a picture that every one of these servers takes.
+    private static func parts(_ pictures: [AgentAskPicture]) -> [AgentJSON] {
+        pictures.flatMap { picture in
+            textPart(picture.label) + [.object(["type": .string("image_url"),
+                                                "image_url": .object(["url": .string(AgentWireParts.dataURL(picture.image))])])]
+        }
+    }
+
+    private static func textPart(_ text: String) -> [AgentJSON] {
+        text.isEmpty ? [] : [.object(["type": .string("text"), "text": .string(text)])]
     }
 
     // MARK: Reading a stream

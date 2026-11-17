@@ -59,7 +59,7 @@ final class AgentWholeMacScopeTests: XCTestCase {
 
     /// The names a listing gave, in its order.
     private func names(_ outcome: AgentToolOutcome) -> [String] {
-        guard case .result(let json, _) = outcome, let found = AgentJSON(jsonText: json) else { return [] }
+        guard case .result(let json, _, _) = outcome, let found = AgentJSON(jsonText: json) else { return [] }
         return AgentLoopKit.array(found, "items").compactMap { AgentLoopKit.string($0, "name") }
     }
 

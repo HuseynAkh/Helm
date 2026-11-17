@@ -49,7 +49,7 @@ final class AgentToolRunnerTests: XCTestCase {
     }
 
     private func json(_ outcome: AgentToolOutcome, file: StaticString = #filePath, line: UInt = #line) -> AgentJSON? {
-        guard case .result(let text, _) = outcome else {
+        guard case .result(let text, _, _) = outcome else {
             XCTFail("not a result: \(outcome)", file: file, line: line)
             return nil
         }

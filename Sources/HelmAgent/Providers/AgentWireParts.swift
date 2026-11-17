@@ -98,3 +98,34 @@ enum AgentWireParts {
         return text
     }
 }
+
+// MARK: Pictures
+
+extension AgentToolResult {
+    /// What the nth picture of one user turn's results is called, counted from 1 across the results in order and then
+    /// within each result: the words each adapter puts before it, and the name `read_contents` gives it in its JSON.
+    static func pictureLabel(_ number: Int) -> String { "Picture \(number)" }
+
+    /// The pictures of one user turn's results, result by result, each with its label.
+    static func labeledPictures(_ results: [AgentToolResult]) -> [[AgentAskPicture]] {
+        var number = 0
+        return results.map { result in
+            result.images.map { image in
+                number += 1
+                return AgentAskPicture(label: pictureLabel(number), image: image)
+            }
+        }
+    }
+}
+
+extension AgentWireParts {
+    /// The words before a turn's pictures, where a provider takes them in a message of their own after the results.
+    static let picturesIntro = "Pictures from read_contents, as its items name them:"
+
+    /// A picture as a data URL, which every Chat Completions server and the Responses API take.
+    static func dataURL(_ image: AgentContentImage) -> String {
+        "data:" + jpegType + ";base64," + image.jpeg.base64EncodedString()
+    }
+
+    static let jpegType = "image/jpeg"
+}

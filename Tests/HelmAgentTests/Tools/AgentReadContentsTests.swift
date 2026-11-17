@@ -241,7 +241,7 @@ final class AgentReadContentsTests: XCTestCase {
 
     /// Lists the root and answers the ids of its items by name.
     private func ids(_ runner: AgentToolRunner, _ root: String) async -> [String: String] {
-        guard case .result(let text, _) = await call(runner, "list_folder", #"{"folder":"\#(root)","depth":1,"after":""}"#),
+        guard case .result(let text, _, _) = await call(runner, "list_folder", #"{"folder":"\#(root)","depth":1,"after":""}"#),
               let json = try? AgentJSON(data: Data(text.utf8)) else { return [:] }
         var found: [String: String] = [:]
         for item in AgentLoopKit.array(json, "items") {
@@ -265,7 +265,7 @@ final class AgentReadContentsTests: XCTestCase {
         }
         let found = await ids(runner, root)
         let order = ["a.txt", "Work", "shortcut.txt", "Tool.app", "id.pem"].compactMap { found[$0] } + [root, "f999", "r1/../a.txt"]
-        guard case .result(let text, _) = await call(runner, "read_contents", readIDs(order)),
+        guard case .result(let text, _, _) = await call(runner, "read_contents", readIDs(order)),
               let json = try? AgentJSON(data: Data(text.utf8)) else { return XCTFail("no result") }
         let codes = AgentLoopKit.array(json, "items").map { AgentLoopKit.string($0, "code") ?? AgentLoopKit.string($0, "status") ?? "" }
         XCTAssertEqual(codes, ["read", "not_allowed", "link", "inside_package", "not_allowed", "not_allowed", "unknown_id", "unknown_id"])
@@ -288,7 +288,7 @@ final class AgentReadContentsTests: XCTestCase {
         XCTAssertEqual(reader.askedNames, [])
         // Fifty files a request in all: a second call gets what is left, and the rest answer limit_reached.
         _ = await call(runner, "read_contents", readIDs(Array(all.prefix(30))))
-        guard case .result(let text, _) = await call(runner, "read_contents", readIDs(Array(all.suffix(30)))),
+        guard case .result(let text, _, _) = await call(runner, "read_contents", readIDs(Array(all.suffix(30)))),
               let json = try? AgentJSON(data: Data(text.utf8)) else { return XCTFail("no result") }
         let codes = AgentLoopKit.array(json, "items").map { AgentLoopKit.string($0, "code") ?? AgentLoopKit.string($0, "status") ?? "" }
         XCTAssertEqual(codes.filter { $0 == "read" }.count, 20)
