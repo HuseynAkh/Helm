@@ -195,6 +195,26 @@ import HelmTestKit
         XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 420, "the files' own minimum is back once shut")
     }
 
+    /// The panel sits on the sidebar's material under the sidebar's tint, and follows the window's transparency as
+    /// the sidebar does: glass with less colour as it goes up, and the plain window background once it is off.
+    func testThePanelSitsOnTheSidebarsMaterialAndFollowsTheTransparency() async throws {
+        let (controller, _, _) = try await window()
+        _ = try await open(controller)
+        let settings = controller.dependencies.settings
+        let host = controller.agentPanelHost
+        settings.set(.bool(true), for: .sidebarLiquidGlass)
+        settings.set(.double(30), for: .windowTransparency)
+        let tinted = await until(5) { host.backgroundForTesting.tint == WindowTints(percent: 30).sidebar }
+        XCTAssertTrue(tinted, "the sidebar's tint: \(host.backgroundForTesting.tint)")
+        XCTAssertEqual(host.backgroundForTesting.material, .sidebar)
+        XCTAssertEqual(host.backgroundForTesting.blending, .behindWindow)
+        settings.set(.bool(false), for: .sidebarLiquidGlass)
+        let solid = await until(5) { host.backgroundForTesting.material == .windowBackground }
+        XCTAssertTrue(solid, "transparency off")
+        XCTAssertEqual(host.backgroundForTesting.blending, .withinWindow)
+        XCTAssertEqual(host.backgroundForTesting.tint, 0)
+    }
+
     // MARK: Resizing
 
     func testThePanelsLimits() {

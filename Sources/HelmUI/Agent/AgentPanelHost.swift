@@ -122,6 +122,11 @@ import HelmCore
         tint.fraction = transparent ? amount : 0
     }
 
+    /// For tests: the material behind the panel, how it blends, and how much solid colour lies over it.
+    var backgroundForTesting: (material: NSVisualEffectView.Material, blending: NSVisualEffectView.BlendingMode, tint: CGFloat) {
+        (background.material, background.blendingMode, tint.fraction)
+    }
+
     func setOpen(_ open: Bool, animated: Bool) {
         guard let browser else { return }
         guard open != isOpen else {
