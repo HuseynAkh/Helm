@@ -15,7 +15,8 @@ struct AgentApprovedPlan {
 
 /// A checked plan as its card shows it: the groups and which are ticked, what the plan does with those ticks, its
 /// notes, and how far it has got. Every word on it is Helm's own, worked out from the checked steps; names from the
-/// disk are shown escaped.
+/// disk are shown escaped. A new file's text appears only in its row's tooltip, its first lines escaped as plain
+/// text, and never in the card's lines or the thread's text.
 struct AgentPlanCard: Equatable {
     enum Stage: Equatable {
         /// Waiting for the person: Apply or Cancel.
@@ -126,6 +127,8 @@ struct AgentPlanCard: Equatable {
         /// The folder a moved or copied item lands in, or a new file is made in.
         var destination: AgentPlanPath? = nil
         let tags: [String]
+        /// A new file's first lines (`preview(of:)`), shown when the pointer rests on its row. Nil on other rows.
+        var tooltip: String? = nil
     }
 
     var groupRows: [GroupRow] {
@@ -185,7 +188,7 @@ struct AgentPlanCard: Equatable {
         let sameFolder = all.count > 1 && Set(all.map(\.detail)).count == 1 && labels.contains(all.first?.detail ?? "")
         return all.map { row in
             ItemRow(id: row.id, name: row.name, detail: sameFolder ? "" : row.detail, destination: row.destination,
-                    tags: row.tags.filter { $0 != ownTag })
+                    tags: row.tags.filter { $0 != ownTag }, tooltip: row.tooltip)
         }
     }
 
@@ -212,10 +215,34 @@ struct AgentPlanCard: Equatable {
         }
     }
 
+    /// The most lines, and characters, of a new file's text its row's tooltip shows.
+    static let previewLines = 12
+    static let previewCharacters = 600
+
+    /// The start of a new file's text, for its row's tooltip: the first `previewLines` lines and `previewCharacters`
+    /// characters at most, each line escaped so a hidden character shows as an escape, and "…" on a line of its own
+    /// when the text goes on. Nil for an empty file.
+    static func preview(of text: String) -> String? {
+        let scalars = text.unicodeScalars
+        let head = String(String.UnicodeScalarView(scalars.prefix(previewCharacters)))
+        var goesOn = !scalars.dropFirst(previewCharacters).isEmpty
+        var lines = head.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        // A text that ends a line has no line after it.
+        if !goesOn, lines.count > 1, lines.last == "" { lines.removeLast() }
+        if lines.count > previewLines {
+            lines.removeLast(lines.count - previewLines)
+            goesOn = true
+        }
+        let shown = lines.map(AgentTextEscaper.escape) + (goesOn ? ["\u{2026}"] : [])
+        let preview = shown.joined(separator: "\n")
+        return preview.isEmpty ? nil : preview
+    }
+
     private func row(_ index: Int) -> ItemRow {
         var tags: [String] = []
         let name: String, detail: String
         var destination: AgentPlanPath?
+        var tooltip: String?
         switch plan.steps[index] {
         case .newFolder(_, let parent, let folder):
             name = AgentTextEscaper.escape(folder.value)
@@ -236,6 +263,7 @@ struct AgentPlanCard: Equatable {
             destination = path(of: parent).map { AgentPlanPath(path: $0, homes: homes, isNew: false) }
             detail = ""
             tags.append(AgentText.rowSize(text.utf8.count))
+            tooltip = Self.preview(of: text)
         case .move(let item, let target), .copy(let item, let target):
             name = AgentTextEscaper.escape(item.name)
             // Where it goes, which the person needs more than where it is now.
@@ -253,7 +281,7 @@ struct AgentPlanCard: Equatable {
             tags.append(AgentText.tagTrash)
         }
         if plan.keepsBoth.contains(index) { tags.append(AgentText.tagKeepsBoth) }
-        return ItemRow(id: index, name: name, detail: detail, destination: destination, tags: tags)
+        return ItemRow(id: index, name: name, detail: detail, destination: destination, tags: tags, tooltip: tooltip)
     }
 
     private func newFolderName(_ key: String) -> String? {
@@ -448,7 +476,8 @@ struct AgentPlanGroupView: View {
     }
 }
 
-/// One item of a group: its name, where it goes or where it is now, and its tags.
+/// One item of a group: its name, where it goes or where it is now, and its tags. A new file's row has its first
+/// lines as its tooltip, which `help` draws as plain text.
 struct AgentPlanRowView: View {
     let row: AgentPlanCard.ItemRow
 
@@ -466,6 +495,7 @@ struct AgentPlanRowView: View {
                 Text(verbatim: tag).font(.system(size: AgentPanelStyle.small)).foregroundStyle(.secondary)
             }
         }
+        .help(row.tooltip ?? "")
     }
 }
 #endif
