@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 
 /// The header's side of the window: the sidebar's place, the main menu's shortcuts, and how a search that goes away
@@ -86,7 +87,7 @@ extension BrowserWindowController {
         guard !spark.isHiddenOrHasHiddenAncestor, spark.isEnabled else { return }
         spark.performClick(nil)
     }
-    /// Who has the keys: files, search, kinds (the AI search's kind row), path, sidebar, window or other.
+    /// Who has the keys: files, search, kinds (the search's kind row), path, sidebar, window or other.
     public var focusOwnerForTesting: String {
         guard let window else { return "none" }
         let responder = window.firstResponder
@@ -153,6 +154,29 @@ extension BrowserWindowController {
     public func showSearchWordsForTesting(_ text: String) {
         guard header.isSearching, header.searchText != text else { return }
         header.searchField.stringValue = text
+    }
+    /// Whether the kind row is on show under the header, at its height.
+    public var searchKindRowShownForTesting: Bool {
+        !header.kindBar.isHidden && header.kindBar.heightConstraint.constant == SearchKindBar.height
+    }
+    /// The kind row's choices, in order, and the one chosen, by their words.
+    public var searchKindChoicesForTesting: [String] { header.kindBar.wordsForTesting }
+    public var searchKindChosenForTesting: String {
+        header.kindBar.kind.map(AgentText.searchKind) ?? AgentText.searchKindAny
+    }
+    /// A click on the kind row's choice with these words, as a person makes it. False when the row has none.
+    @discardableResult public func chooseSearchKindForTesting(_ word: String) -> Bool { header.kindBar.clickForTesting(word) }
+    /// A key pressed while the kind row has the keys: left, right, tab or escape. False when it hasn't them.
+    @discardableResult public func kindRowKeyForTesting(_ name: String) -> Bool {
+        guard header.kindBar.hasKeys else { return false }
+        return header.kindBar.keyForTesting(name)
+    }
+    /// The kind row as VoiceOver reads it: its role and label, then each choice's role, label and value.
+    public var searchKindRowAccessibilityForTesting: (role: NSAccessibility.Role?, label: String?,
+                                                      choices: [(role: NSAccessibility.Role?, label: String?, chosen: Bool)]) {
+        let bar = header.kindBar
+        return (bar.accessibilityRole(), bar.accessibilityLabel(),
+                bar.chips.map { ($0.accessibilityRole(), $0.accessibilityLabel(), ($0.accessibilityValue() as? NSNumber)?.boolValue ?? false) })
     }
     /// The main menu button as laid out: its size, its gap to the header's trailing edge, and where its drawing
     /// leaves ink, in its own points. The spark's ink, for comparing the two: its sharp tips fade out over a pixel

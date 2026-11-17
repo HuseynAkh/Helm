@@ -23,10 +23,25 @@ extension HostSmokeDriver {
             window.focusFilesForTesting()
             await wait(seconds: 0.2)
         case "focus-is":
-            // files, search, kinds (the AI search's kind row), path, sidebar, window or other.
+            // files, search, kinds (the search's kind row), path, sidebar, window or other.
             check(window.focusOwnerForTesting == argument, step, window.focusOwnerForTesting)
         case "search-shown":
             check(window.isSearchingForTesting == (argument == "true"), step, "\(window.isSearchingForTesting)")
+        case "search-kind":
+            // search-kind Photo: a click on that choice in the kind row, which searches the words again by name.
+            check(window.chooseSearchKindForTesting(argument), step, window.searchKindChoicesForTesting.joined(separator: ","))
+            await wait(seconds: 0.8)
+        case "search-kind-is":
+            // The kind row's choice, by its word: Any, Photo, Video, Document, Folder, Code, Audio or Archive.
+            check(window.searchKindChosenForTesting == argument, step, window.searchKindChosenForTesting)
+        case "search-kinds-shown":
+            // true while the kind row is on show under the header, which is while the search is open.
+            let shown = window.searchKindRowShownForTesting ? "true" : "false"
+            check(shown == argument, step, shown)
+        case "search-kind-key":
+            // left, right, tab or escape, pressed while the kind row has the keys.
+            check(window.kindRowKeyForTesting(argument), step, "the kind row hasn't the keys: \(window.focusOwnerForTesting)")
+            await wait(seconds: 0.8)
         case "search-text-is":
             check(window.searchTextForTesting == argument, step, window.searchTextForTesting)
         case "search-looks":

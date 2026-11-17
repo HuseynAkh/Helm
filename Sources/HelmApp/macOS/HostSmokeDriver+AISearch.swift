@@ -3,15 +3,15 @@ import AppKit
 import HelmCore
 import HelmUI
 
-/// Smoke verbs for searching with a model's help: the field's toggle, the kind row, Return, each result's reason and
+/// Smoke verbs for searching with a model's help: the field's toggle, Read contents, Return, each result's reason and
 /// the status bar's line. They run only in a fixture run, where the model is the scripted one, and every verb that
-/// waits gives up after 10 seconds.
+/// waits gives up after 10 seconds. The kind row's verbs are the plain search's, with the header's.
 extension HostSmokeDriver {
     static func performAISearchVerb(_ verb: String, _ argument: String, step: String,
                                     window: BrowserWindowController, app: AppController) async -> Bool {
         let verbs: Set<String> = ["search-ai", "search-ai-is", "search-return", "result-reason", "search-status-reads",
-                                  "search-queries-read", "search-mark-is", "search-kind", "search-kind-is", "search-kinds-shown",
-                                  "search-kind-key", "search-contents", "search-contents-is", "search-contents-read"]
+                                  "search-queries-read", "search-mark-is", "search-contents", "search-contents-is",
+                                  "search-contents-read"]
         guard verbs.contains(verb) else { return false }
         guard app.options.isIsolated else { check(false, step, "not a fixture run"); return true }
         switch verb {
@@ -26,21 +26,6 @@ extension HostSmokeDriver {
         case "search-ai-is":
             let shown = window.isAISearchOnForTesting ? "on" : "off"
             check(shown == argument, step, shown)
-        case "search-kind":
-            // search-kind Photo: a click on that choice in the kind row, which searches the words again by name.
-            check(window.chooseAISearchKindForTesting(argument), step, window.aiSearchKindChoicesForTesting.joined(separator: ","))
-            await wait(seconds: 0.8)
-        case "search-kind-is":
-            // The kind row's choice, by its word: Any, Photo, Video, Document, Folder, Code, Audio or Archive.
-            check(window.aiSearchKindChosenForTesting == argument, step, window.aiSearchKindChosenForTesting)
-        case "search-kinds-shown":
-            // true while the kind row is on show under the header, which is while the spark is on.
-            let shown = window.aiSearchKindRowShownForTesting ? "true" : "false"
-            check(shown == argument, step, shown)
-        case "search-kind-key":
-            // left, right, tab or escape, pressed while the kind row has the keys.
-            check(window.kindRowKeyForTesting(argument), step, "the kind row hasn't the keys: \(window.focusOwnerForTesting)")
-            await wait(seconds: 0.8)
         case "search-contents":
             // search-contents on|off: a click on the Read contents switch at the end of the kind row, when it isn't
             // already as asked.

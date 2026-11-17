@@ -3,10 +3,11 @@ import AppKit
 import HelmAgent
 import HelmCore
 
-/// The AI search's kind row: Any, Photo, Video, Document, Folder, Code, Audio and Archive, one chosen at a time, as
+/// The search's kind row: Any, Photo, Video, Document, Folder, Code, Audio and Archive, one chosen at a time, as
 /// Finder's search scope bar offers its places. The window shows it under the header, and under the tabs when there
-/// are several, only while the search field's spark is on; the choice is the window's. At its trailing end is the
-/// Read contents switch, when the run can read inside files, which the window holds too.
+/// are several, whenever the search is open, the search field's spark on or off; the choice is the search's, and
+/// goes back to Any when the search closes. At its trailing end is the Read contents switch, while the spark is on
+/// and the run can read inside files, which the window holds.
 ///
 /// A click chooses and leaves the caret where it was, so an empty search stays open. Tab in the search field brings
 /// the keys here: Left and Right then choose the one before or after, and Tab, Shift-Tab or Escape give the keys back

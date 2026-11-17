@@ -227,7 +227,7 @@ public enum AgentText {
     public static let searchFailed = "AI search isn't available."
     public static let searchOnThisMac = "Searched what's on this Mac."
     public static let searchNamesOnly = "Names only here."
-    /// The kind row under the header while AI search is on: its VoiceOver label, then its first choice.
+    /// The kind row under the header while the search is open: its VoiceOver label, then its first choice.
     public static let searchKindRow = "File type"
     public static let searchKindAny = "Any"
     /// A choice in the kind row, and the word VoiceOver reads for it. The row offers `AISearchKind.searchChoices`;

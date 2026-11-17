@@ -52,7 +52,7 @@ public enum AISearchKind: String, Sendable, CaseIterable {
         return self == .document && [.pdf, .text, .spreadsheet, .presentation].contains(other)
     }
 
-    /// The kinds the AI search's kind row offers after Any, in its order: Photo, Video, Document, Folder, Code, Audio
+    /// The kinds the search's kind row offers after Any, in its order: Photo, Video, Document, Folder, Code, Audio
     /// and Archive. Photo is `image`, and Document takes in the kinds `covers` gives it.
     public static let searchChoices: [AISearchKind] = [.image, .video, .document, .folder, .code, .audio, .archive]
 

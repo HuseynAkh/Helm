@@ -11,14 +11,15 @@ import HelmCore
 /// names at once and only Return asks the model. The runner it installs does the searching; the window shows how it
 /// went in the status bar and each result's reason as its tooltip.
 ///
-/// While the spark is on, the kind row shows under the header: Any, or one kind that limits every search, typed or
-/// sent, and the plan a model answers. Choosing another kind searches the words again by name, and Return asks the
-/// model again; nothing is sent by the choice itself. The row goes, and the choice goes back to Any, whenever the
-/// spark goes off, as it does when the search closes.
+/// The kind row under the header is the search's, spark on or off (`headerSearchKindChanged`): its kind limits every
+/// search, typed or sent, and the plan a model answers. Choosing another kind searches the words again by name, and
+/// Return asks the model again; nothing is sent by the choice itself. Turning the spark on or off keeps the kind; it
+/// goes back to Any when the search closes.
 ///
-/// The row's trailing end holds the Read contents switch, in a run that can read inside files. On, it hands the
-/// runner the person's permit, and Return then also looks inside pictures and videos on this Mac. Like the kind, it
-/// lasts for the search: it goes off, and what was read is forgotten, whenever the spark goes off.
+/// While the spark is on, the row's trailing end holds the Read contents switch, in a run that can read inside files.
+/// On, it hands the runner the person's permit, and Return then also looks inside pictures and videos on this Mac. It
+/// lasts while the spark does: it goes off, and what was read is forgotten, whenever the spark goes off, as it does
+/// when the search closes.
 extension BrowserWindowController {
     /// Installs the window's AI search runner, and keeps the spark in step with the tab and with AI mode.
     func installAISearch() {
@@ -31,7 +32,6 @@ extension BrowserWindowController {
         runner.watch = watch
         watch.shown = (isAISearchAvailable, false)
         header.setAISearch(available: isAISearchAvailable, on: false)
-        header.kindBar.onChoose = { [weak self] kind in self?.chooseAISearchKind(kind) }
         header.kindBar.onContents = { [weak self] on in self?.chooseAISearchContents(on) }
     }
 
@@ -70,31 +70,6 @@ extension BrowserWindowController {
         if on, isAISearchAvailable, !isAISearchReady { askForAIModeScreen() }
         runner.isOn = on && isAISearchReady
         showAISearchState()
-        if !runner.isOn { searchAgainForEveryKind() }
-    }
-
-    /// A choice in the kind row. The words on show are searched again by name for that kind; Return asks the model.
-    func chooseAISearchKind(_ kind: AISearchKind?) {
-        guard let runner = aiSearchRunner, runner.isOn else { header.kindBar.show(nil); return }
-        runner.kind = kind
-        header.kindBar.show(kind)
-        let typed = header.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : header.searchText
-        guard let text = typed ?? activeTab?.search?.query.text,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            if let tab = activeTab { renderStatus(tab) }
-            return
-        }
-        cancelPendingSearch()
-        search(text)
-    }
-
-    /// The kind row went away while a name search kept to one kind was on show: it runs again for every kind, as a
-    /// search with the spark off does. A search the model helped with stays as it is, its status naming the kind.
-    private func searchAgainForEveryKind() {
-        guard header.isSearching, let shown = activeTab?.search, shown.query.kind != nil, !shown.query.usesAI else { return }
-        let typed = header.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : header.searchText
-        cancelPendingSearch()
-        search(typed ?? shown.query.text)
     }
 
     /// The AI mode screen, through the same call the header's spark makes.
@@ -141,11 +116,6 @@ extension BrowserWindowController {
     // MARK: State
 
     var aiSearchRunner: AISearchRunner? { effects.aiSearch as? AISearchRunner }
-    /// The kind every search is kept to: the kind row's choice while the spark is on, and nil otherwise.
-    var aiSearchKind: AISearchKind? {
-        guard let runner = aiSearchRunner, runner.isOn else { return nil }
-        return runner.kind
-    }
 
     /// A model is ready to help.
     var isAISearchReady: Bool {
@@ -160,22 +130,18 @@ extension BrowserWindowController {
     private func followAISearchReadiness() {
         guard let runner = aiSearchRunner else { return }
         let closed = !header.isSearching && activeTab?.search == nil
-        var turnedOff = false
-        if runner.isOn, closed || !isAISearchReady { runner.isOn = false; turnedOff = true }
+        if runner.isOn, closed || !isAISearchReady { runner.isOn = false }
         // Each snapshot renders the status bar already; the field and the bar change here only when the spark does.
         guard runner.watch?.shown.map({ $0 != (isAISearchAvailable, runner.isOn) }) ?? true else { return }
         showAISearchState()
-        if turnedOff, !closed { searchAgainForEveryKind() }
     }
 
     private func showAISearchState() {
         let shown = (available: isAISearchAvailable, on: aiSearchRunner?.isOn ?? false)
         aiSearchRunner?.watch?.shown = shown
         header.setAISearch(available: shown.available, on: shown.on)
-        // The kind row shows with the spark on, at the runner's choice: Any each time it comes back.
-        header.kindBar.show(shown.on ? aiSearchRunner?.kind : nil)
+        // The kind row shows with the search, and keeps its choice; the Read contents switch at its end, with the spark.
         header.kindBar.showContents(offered: shown.on && dependencies.agent.contents != nil, on: aiSearchRunner?.readsContents ?? false)
-        header.kindBar.setShown(shown.on)
         if let tab = activeTab { renderStatus(tab) }
     }
 
@@ -208,17 +174,6 @@ extension BrowserWindowController {
         return nil
     }
     public var aiSearchStatusForTesting: AISearchStatus? { activeTab.flatMap { aiSearchStatus(for: $0) } }
-    /// Whether the kind row is on show under the header, at its height.
-    public var aiSearchKindRowShownForTesting: Bool {
-        !header.kindBar.isHidden && header.kindBar.heightConstraint.constant == SearchKindBar.height
-    }
-    /// The kind row's choices, in order, and the one chosen, by their words.
-    public var aiSearchKindChoicesForTesting: [String] { header.kindBar.wordsForTesting }
-    public var aiSearchKindChosenForTesting: String {
-        header.kindBar.kind.map(AgentText.searchKind) ?? AgentText.searchKindAny
-    }
-    /// A click on the kind row's choice with these words, as a person makes it. False when the row has none.
-    @discardableResult public func chooseAISearchKindForTesting(_ word: String) -> Bool { header.kindBar.clickForTesting(word) }
     /// The Read contents switch at the end of the kind row: whether it shows and whether it is on.
     public var aiSearchContentsForTesting: (shown: Bool, on: Bool) {
         let shown = header.kindBar.contentsForTesting
@@ -228,18 +183,6 @@ extension BrowserWindowController {
     @discardableResult public func clickAISearchContentsForTesting() -> Bool { header.kindBar.clickContentsForTesting() }
     /// How many pictures and videos this search session has read inside.
     public var aiSearchContentsReadForTesting: Int { aiSearchRunner?.memo.count ?? 0 }
-    /// A key pressed while the kind row has the keys: left, right, tab or escape. False when it hasn't them.
-    @discardableResult public func kindRowKeyForTesting(_ name: String) -> Bool {
-        guard header.kindBar.hasKeys else { return false }
-        return header.kindBar.keyForTesting(name)
-    }
-    /// The kind row as VoiceOver reads it: its role and label, then each choice's role, label and value.
-    public var aiSearchKindRowAccessibilityForTesting: (role: NSAccessibility.Role?, label: String?,
-                                                        choices: [(role: NSAccessibility.Role?, label: String?, chosen: Bool)]) {
-        let bar = header.kindBar
-        return (bar.accessibilityRole(), bar.accessibilityLabel(),
-                bar.chips.map { ($0.accessibilityRole(), $0.accessibilityLabel(), ($0.accessibilityValue() as? NSNumber)?.boolValue ?? false) })
-    }
 }
 
 /// What the window's AI search listens to. The runtime outlives the window, so its subscription ends with this.
