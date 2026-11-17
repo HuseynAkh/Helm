@@ -67,10 +67,10 @@ import HelmPersistence
 
     // MARK: What the screens show
 
-    /// The one line that says what is sent and to whom.
+    /// The one line that says what is sent and to whom, and that Helm itself collects nothing.
     public var consentLine: String {
-        if let profile { return AgentText.consent(profile.destination) }
-        return AgentText.consent(provider == .other ? AgentText.destinationNotSet : providerName)
+        if let profile { return AgentText.consentSetup(profile.destination) }
+        return AgentText.consentSetup(provider == .other ? AgentText.destinationNotSet : providerName)
     }
 
     /// Whether a key is saved for the provider at its address. The key itself is never read. Never for OpenAI while it

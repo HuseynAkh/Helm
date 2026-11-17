@@ -279,6 +279,11 @@ public enum AgentText {
     public static func consentWholeMac(_ destination: String) -> String {
         "Sends your requests and file names from your home folder and disks to \(shown(destination)), never file contents."
     }
+    /// The line under AI mode's switch in Settings and on the AI Mode screen: what is sent and to whom, and that
+    /// Helm, which has no servers, gets none of it.
+    public static func consentSetup(_ destination: String) -> String {
+        "Sends your requests and file names to \(shown(destination)); file contents only while Read contents is on. Helm has no servers and collects nothing."
+    }
     public static func destinationOnThisMac(_ provider: String) -> String { "\(shown(provider)) on this Mac" }
 
     // MARK: Read contents
@@ -286,20 +291,20 @@ public enum AgentText {
     /// The switch beside the composer and at the end of AI search's kind row: its words and VoiceOver label.
     public static let readContents = "Read contents"
     /// The panel switch's tooltip.
-    public static let readContentsHelp = "Lets AI mode read inside text files, PDFs, pictures and videos, on this Mac, for this thread."
+    public static let readContentsHelp = "Lets AI mode read documents and look at pictures and videos, for this thread."
     /// The search switch's tooltip.
-    public static let readContentsSearchHelp = "Looks inside documents, photos and videos on this Mac to find matches, for this search."
+    public static let readContentsSearchHelp = "Lets the model read documents and look at photos and videos to find matches, for this search."
     /// The consent line at the top of a thread while Read contents is on, for a model on this Mac.
-    public static let consentContentsOnThisMac = "Reads file contents on this Mac; nothing leaves your Mac."
+    public static let consentContentsOnThisMac = "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac."
     /// The same, for a model elsewhere.
     public static func consentContents(_ destination: String) -> String {
-        "Sends your requests, file names and short summaries of file contents to \(shown(destination))."
+        "Sends your requests, file names and what it reads inside files to \(shown(destination)): text, and small copies of pictures and video frames."
     }
     /// With Whole Mac on too, for a model on this Mac.
     public static let consentContentsWholeMacOnThisMac = "Reads file names and contents from your home folder and disks on this Mac; nothing leaves your Mac."
     /// With Whole Mac on too, for a model elsewhere.
     public static func consentContentsWholeMac(_ destination: String) -> String {
-        "Sends your requests, file names and short summaries of file contents from your home folder and disks to \(shown(destination))."
+        "Sends your requests, file names and what it reads inside files, from your home folder and disks, to \(shown(destination))."
     }
     public static let destinationNotSet = "the address you enter"
     public static let providerLabel = "Provider"

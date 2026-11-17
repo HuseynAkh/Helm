@@ -336,7 +336,7 @@ setting-is aiModeEnabled true
 # Gemini, which has no key saved by the steps before these
 ai-provider gemini
 ai-state-is noKey
-setup-ai-reads Sends your requests and file names to Gemini, never file contents.
+setup-ai-reads Sends your requests and file names to Gemini; file contents only while Read contents is on. Helm has no servers and collects nothing.
 onboarding-size 540x560
 onboarding-shot @SHOTS@/onboarding-7-ai-on-light.png
 appearance dark

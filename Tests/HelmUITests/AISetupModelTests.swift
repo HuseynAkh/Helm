@@ -72,15 +72,15 @@ import HelmTestKit
 
     func testTheConsentLineNamesWhereRequestsGo() {
         let (model, _, _, _, _) = rig(on: true)
-        XCTAssertEqual(model.consentLine, "Sends your requests and file names to Claude, never file contents.")
+        XCTAssertEqual(model.consentLine, "Sends your requests and file names to Claude; file contents only while Read contents is on. Helm has no servers and collects nothing.")
         model.choose(.ollama)
-        XCTAssertEqual(model.consentLine, "Sends your requests and file names to Ollama on this Mac, never file contents.")
+        XCTAssertEqual(model.consentLine, "Sends your requests and file names to Ollama on this Mac; file contents only while Read contents is on. Helm has no servers and collects nothing.")
         model.choose(.other)
-        XCTAssertEqual(model.consentLine, "Sends your requests and file names to the address you enter, never file contents.",
+        XCTAssertEqual(model.consentLine, "Sends your requests and file names to the address you enter; file contents only while Read contents is on. Helm has no servers and collects nothing.",
                        "Other before an address is saved names no provider called Other")
         model.setAddress("models.example.com")
-        XCTAssertEqual(model.consentLine, "Sends your requests and file names to models.example.com, never file contents.")
-        XCTAssertEqual(model.consentLine, AgentText.consent("models.example.com"))
+        XCTAssertEqual(model.consentLine, "Sends your requests and file names to models.example.com; file contents only while Read contents is on. Helm has no servers and collects nothing.")
+        XCTAssertEqual(model.consentLine, AgentText.consentSetup("models.example.com"))
     }
 
     // MARK: Keys

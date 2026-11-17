@@ -159,7 +159,7 @@ go @FIX@/home/Documents/Scans
 wait 1
 agent-contents on
 agent-contents-is on
-agent-reads Sends your requests, file names and short summaries of file contents to Claude.
+agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
 agent-say sort these scans
 agent-phase plan
 agent-reads and 6 summaries to Claude.

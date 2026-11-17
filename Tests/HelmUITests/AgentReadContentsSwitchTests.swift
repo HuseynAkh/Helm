@@ -41,11 +41,11 @@ import HelmCore
         XCTAssertEqual(AgentPanelModel.consentLine(cloud, .thisFolder, readsContents: false),
                        "Sends your requests and file names to Claude, never file contents.")
         XCTAssertEqual(AgentPanelModel.consentLine(cloud, .thisFolder, readsContents: true),
-                       "Sends your requests, file names and short summaries of file contents to Claude.")
+                       "Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.")
         XCTAssertEqual(AgentPanelModel.consentLine(cloud, .wholeMac, readsContents: true),
-                       "Sends your requests, file names and short summaries of file contents from your home folder and disks to Claude.")
+                       "Sends your requests, file names and what it reads inside files, from your home folder and disks, to Claude.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .thisFolder, readsContents: true),
-                       "Reads file contents on this Mac; nothing leaves your Mac.")
+                       "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .wholeMac, readsContents: true),
                        "Reads file names and contents from your home folder and disks on this Mac; nothing leaves your Mac.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .thisFolder, readsContents: false),

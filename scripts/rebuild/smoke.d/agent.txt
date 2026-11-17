@@ -409,7 +409,7 @@ agent-sent-lacks BEACH DAY
 agent-sent-lacks oat milk
 agent-contents on
 agent-contents-is on
-agent-reads Sends your requests, file names and short summaries of file contents to Claude.
+agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
 agent-lacks never file contents
 agent-reads Started over.
 agent-say look inside
@@ -438,10 +438,10 @@ agent-press Cancel
 missing @FIX@/home/AgentLook/Invoices
 agent-scope wholeMac
 agent-contents-is on
-agent-reads Sends your requests, file names and short summaries of file contents from your home folder and disks to Claude.
+agent-reads Sends your requests, file names and what it reads inside files, from your home folder and disks, to Claude.
 agent-scope thisFolder
 agent-contents-is on
-agent-reads Sends your requests, file names and short summaries of file contents to Claude.
+agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
 agent-say /clear
 agent-contents-is off
 agent-reads Sends your requests and file names to Claude, never file contents.
