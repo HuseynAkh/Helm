@@ -166,10 +166,34 @@ final class AgentItemFilterTests: XCTestCase {
                      "backup.pem.bak", "1Password.opvault"] {
             XCTAssertTrue(AgentItemFilter.isSecretKind(name: name), name)
         }
-        for name in ["Talk.key", "Budget.xlsx", "keys.txt", "wallet", "Wallet photos.zip", "pem", "password ideas.md",
-                     "Keychain Access.app", "credentials-howto.pdf", "id.pdf"] {
+        for name in ["Talk.key", "Budget.xlsx", "keys.txt", "wallet", "Wallet photos.zip", "pem", "Keychain Access.app", "id.pdf"] {
             XCTAssertFalse(AgentItemFilter.isSecretKind(name: name), name)
         }
+    }
+
+    func testNamesThatSayTheyHoldASecretAndTheFilesThatHoldLogins() {
+        // A word of the name, in any case, alone or with an "s"; and environment, login, Terraform and service account
+        // files. Names with such a word that are ordinary files are left out too: that is the rule's price.
+        for name in ["client_secret.json", "Secrets.txt", "api-token.txt", "GitHubToken.md", "MyAPIToken_v2.txt", "tokens.json",
+                     "AWS Credentials.xlsx", "credentials-howto.pdf", "PASSWORDS.csv", "password ideas.md", "passwd",
+                     "Password reset instructions.pdf", "wifi_passwd.txt", "token2.txt",
+                     "service-account.json", "service-account-prod.json", "Service_Account_Key.json",
+                     "terraform.tfstate", "terraform.tfstate.backup", "prod.tfvars", "dev.auto.tfvars.json",
+                     ".env", ".env.local", ".env.production", "prod.env", "Staging.ENV",
+                     ".netrc", "work.netrc", "_netrc", "id_rsa.old", "id_ed25519.pub", "Vault.kdbx", "login.keychain-db",
+                     "home.ovpn"] {
+            XCTAssertTrue(AgentItemFilter.isSecretKind(name: name), name)
+        }
+        // A word that only starts like one, or a file named for a service account that isn't its key.
+        for name in ["Secretary notes.docx", "tokenizer.py", "Tokyo trip.jpg", "Passwordless sign-in.pdf", "passport.pdf",
+                     "Environment.pdf", "environment.yml", "envelope.png", "env.txt", "service-account-howto.pdf",
+                     "terraform-notes.md", "netflix.txt", "credit card.pdf", "id_card.jpg", "Keynote.key"] {
+            XCTAssertFalse(AgentItemFilter.isSecretKind(name: name), name)
+        }
+        XCTAssertEqual(AgentItemFilter.nameWords("MyAPIToken_v2.txt"), ["my", "api", "token", "v", "txt"])
+        XCTAssertEqual(AgentItemFilter.nameWords("Zoë's PASSWORDS 2026.csv"), ["zoë", "s", "passwords", "csv"])
+        XCTAssertFalse(AgentItemFilter.allowsSearchRow(path: home + "/Documents/api-token.txt", name: "api-token.txt",
+                                                       isHidden: false, home: home), "never a row of an AI search")
     }
 
     func testSearchRows() {
