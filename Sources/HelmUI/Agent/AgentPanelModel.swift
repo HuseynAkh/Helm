@@ -11,11 +11,12 @@ import HelmCore
     public enum Phase: String, Sendable { case noFolder, idle, working, plan, applying, result, failed }
     @Published public private(set) var phase: Phase = .noFolder
 
-    /// The model the requests go to, as the panel names it.
+    /// The model the requests go to, as the panel names it, and whether it runs on this Mac.
     struct Provider: Equatable {
         var name: String
         var destination: String
         var model: String
+        var isLocal = false
     }
 
     /// What the tab in front shows: its folder, if it shows one, how many items are in it and which are selected.
@@ -114,6 +115,12 @@ import HelmCore
     @Published private(set) var scopeMode: AgentScopeMode = .thisFolder
     /// The switch is changing the thread's folders. Nothing is sent until it has.
     @Published private(set) var scopeChanging = false
+    /// Read contents, for the thread on show. A new thread starts with it off.
+    @Published private(set) var readsContents = false
+    /// The switch beside the composer is changing the thread. Nothing is sent until it has.
+    @Published private(set) var contentsChanging = false
+    /// Whether this run can read inside files, so the switch beside the composer shows.
+    let offersReadContents: Bool
 
     let session: any AgentConversing
     var actions: Actions
@@ -144,12 +151,14 @@ import HelmCore
     private var nextLineID = 0
     private var noticeTask: Task<Void, Never>?
 
-    init(session: any AgentConversing, home: String, provider: Provider, actions: Actions = Actions()) {
+    init(session: any AgentConversing, home: String, provider: Provider, actions: Actions = Actions(),
+         offersReadContents: Bool = false) {
         self.session = session
         self.home = home
         self.provider = provider
         self.actions = actions
-        lines = [Line(id: 0, kind: .consent(Self.consentLine(provider.destination, .thisFolder)))]
+        self.offersReadContents = offersReadContents
+        lines = [Line(id: 0, kind: .consent(Self.consentLine(provider, .thisFolder, readsContents: false)))]
         nextLineID = 1
         noticeTask = Task { [weak self, notices = session.notices] in
             for await notice in notices {
@@ -291,7 +300,7 @@ import HelmCore
     }
 
     func choose(_ suggestion: AgentSuggestion, depth: AgentOrganizeDepth) {
-        guard !requestOpen, !applying, !scopeChanging, suggestions.contains(suggestion), let root = tabRoot else { return }
+        guard !requestOpen, !applying, !scopeChanging, !contentsChanging, suggestions.contains(suggestion), let root = tabRoot else { return }
         if suggestion.runsAtOnce {
             let message = AgentSuggestions.message(for: suggestion, depth: depth, root: root.alias)
             begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths, asksForChanges: true), shown: suggestion.title)
@@ -315,7 +324,22 @@ import HelmCore
     }
 
     /// Whether the switch can be pressed now.
-    var canChooseScope: Bool { !requestOpen && !applying && !undoing && !scopeChanging }
+    var canChooseScope: Bool { !requestOpen && !applying && !undoing && !scopeChanging && !contentsChanging }
+
+    /// The Read contents switch beside the composer. On hands the conversation the person's permit; either way the
+    /// thread starts over, as the scope switch does, so a thread's tools never change inside it. Never while a
+    /// request, an Apply or an Undo runs.
+    public func chooseReadsContents(_ on: Bool) {
+        guard offersReadContents, on != readsContents, canChooseScope else { return }
+        readsContents = on
+        contentsChanging = true
+        let permit = on ? AgentContentPermit(switchedOnByPerson: .panel) : nil
+        work { model in
+            await model.session.setReadsContents(permit)
+            await model.followScope()
+            model.contentsChanging = false
+        }
+    }
 
     func applyCard(line id: Int) {
         guard openCardIndex.map({ lines[$0].id }) == id else { return }
@@ -406,6 +430,8 @@ import HelmCore
     public var chipsForTesting: [String] { chips.map { "\($0.label):\($0.kind.rawValue)" } }
     /// "thisFolder" or "wholeMac", as the switch shows it.
     public var scopeForTesting: String { scopeMode.rawValue }
+    /// "on" or "off", as the Read contents switch shows it.
+    public var readsContentsForTesting: String { readsContents ? "on" : "off" }
     /// Each chip's place line, by its label. A folder on this Mac has none.
     public var chipKindsForTesting: [String: String] {
         Dictionary(chips.map { ($0.label, $0.placeLine) }, uniquingKeysWith: { first, _ in first })
@@ -490,7 +516,7 @@ import HelmCore
     // MARK: Sending
 
     private func submit() {
-        guard !requestOpen, !applying, !scopeChanging else { return }
+        guard !requestOpen, !applying, !scopeChanging, !contentsChanging else { return }
         let typed = composerText
         switch AgentComposerIntent.parse(typed) {
         case .empty:
@@ -618,6 +644,9 @@ import HelmCore
                 case .trace(.sent(let names, let destination)):
                     // Right under its request, so it never reads as something sent after the plan.
                     self.insertAfterRequest(.helm(AgentText.traceSent(names: names, destination: destination), button: nil))
+                case .trace(.sentWithSummaries(let names, let summaries, let destination)):
+                    self.insertAfterRequest(.helm(AgentText.traceSentSummaries(names: names, summaries: summaries,
+                                                                               destination: destination), button: nil))
                 case .reply(let text):
                     self.append(.reply(Self.shownReply(text)))
                 case .plan(let plan):
@@ -879,21 +908,32 @@ import HelmCore
     /// The Whole Mac chip's id, which no root's alias can be.
     private static let wholeMacChipID = "whole-mac"
 
-    /// After a new thread: the switch shows the conversation's scope, the consent line says what it sends, and the
-    /// folders row shows its folders.
+    /// After a new thread: the switches show the conversation's scope and whether it reads contents, the consent
+    /// line says what it sends, and the folders row shows its folders.
     private func followScope() async {
         let mode = await session.scopeMode()
         if mode != scopeMode { scopeMode = mode }
+        let reads = await session.readsContents()
+        if reads != readsContents { readsContents = reads }
         if let first = lines.first, case .consent = first.kind {
-            let line = Self.consentLine(provider.destination, scopeMode)
+            let line = Self.consentLine(provider, scopeMode, readsContents: readsContents)
             if first.kind != .consent(line) { lines[0].kind = .consent(line) }
         }
         await refreshRoots()
     }
 
-    /// The thread's first line: what is sent and where, and, in Whole Mac, that it comes from the home folder.
-    private static func consentLine(_ destination: String, _ mode: AgentScopeMode) -> String {
-        mode == .wholeMac ? AgentText.consentWholeMac(destination) : AgentText.consent(destination)
+    /// The thread's first line: what is sent and where, and, in Whole Mac, that it comes from the home folder. With
+    /// Read contents on it says that contents are read: for a model on this Mac, that nothing leaves the Mac, and for
+    /// any other, that short summaries of them are sent.
+    static func consentLine(_ provider: Provider, _ mode: AgentScopeMode, readsContents: Bool) -> String {
+        switch (readsContents, mode, provider.isLocal) {
+        case (false, .wholeMac, _): return AgentText.consentWholeMac(provider.destination)
+        case (false, .thisFolder, _): return AgentText.consent(provider.destination)
+        case (true, .thisFolder, true): return AgentText.consentContentsOnThisMac
+        case (true, .thisFolder, false): return AgentText.consentContents(provider.destination)
+        case (true, .wholeMac, true): return AgentText.consentContentsWholeMacOnThisMac
+        case (true, .wholeMac, false): return AgentText.consentContentsWholeMac(provider.destination)
+        }
     }
 
     private func chip(_ root: AgentScopeRoot) -> Chip {
@@ -943,13 +983,15 @@ import HelmCore
         case .foldersNotLoaded(let count): append(.helm(AgentText.noticeFoldersNotLoaded(count), button: nil))
         case .notResponding(let label): append(.helm(AgentText.noticeNotResponding(label), button: nil))
         case .disconnected(let label): append(.helm(AgentText.noticeDisconnected(label), button: nil))
+        case .notDownloadedNotRead(let count): append(.helm(AgentText.noticeNotDownloadedNotRead(count), button: nil))
         }
     }
 
     /// A new thread: the consent line, naming where requests go now, and one line saying the old one ended. A
     /// request that is running stays on show under them.
     private func startOver() {
-        var fresh = [Line.Kind.consent(Self.consentLine(provider.destination, scopeMode)), .helm(AgentText.noticeStartedOver, button: nil)]
+        var fresh = [Line.Kind.consent(Self.consentLine(provider, scopeMode, readsContents: readsContents)),
+                     .helm(AgentText.noticeStartedOver, button: nil)]
         if requestOpen, let lastShown { fresh.append(.request(lastShown)) }
         // Said once, however many parts of Helm report the same start.
         guard lines.map(\.kind) != fresh else { return }
@@ -987,6 +1029,7 @@ import HelmCore
     private static func words(for status: AgentStatus) -> String {
         switch status {
         case .reading(let count): return AgentText.statusReading(count)
+        case .readingContents(let count): return AgentText.statusReadingContents(count)
         case .thinking: return AgentText.statusThinking
         case .checkingPlan: return AgentText.statusCheckingPlan
         case .stopping: return AgentText.statusStopping

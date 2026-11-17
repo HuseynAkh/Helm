@@ -53,11 +53,14 @@ public struct AISearchSession: Sendable {
     /// `kind` is the one the person chose in the kind row. The model is told it, and every query it answers is then
     /// kept to it (`AISearchPlan.limited(to:)`), so no answer can widen the search to another kind. It is applied
     /// after the empty queries are dropped, so a query that asked for nothing never becomes "every photo".
+    ///
+    /// `readsContents` is the search's Read contents switch: the model is told Helm can also look inside photos and
+    /// videos, so it may put what they show in the content words. Those words are still clamped to the request.
     public func plan(request: String, scopeLabel: String, today: Date, languageCode: String,
-                     kind: AISearchKind? = nil) async throws -> AISearchPlan {
+                     kind: AISearchKind? = nil, readsContents: Bool = false) async throws -> AISearchPlan {
         let request = Self.trimmed(request)
         let ask = AgentStructuredAsk(
-            system: AISearchPrompt.planSystem,
+            system: readsContents ? AISearchPrompt.planSystemReadingContents : AISearchPrompt.planSystem,
             user: AISearchPrompt.planUser(request: request, scopeLabel: scopeLabel, today: today, languageCode: languageCode,
                                           kind: kind, calendar: calendar),
             schemaName: AISearchSchemas.planName, schema: AISearchSchemas.plan)

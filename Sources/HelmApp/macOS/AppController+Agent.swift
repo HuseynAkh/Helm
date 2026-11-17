@@ -50,6 +50,9 @@ extension AppController {
         } else {
             mountedVolumes = { ((try? await VolumeReader().volumes()) ?? []).map(\.url.path) }
         }
+        // Read contents reads on this Mac, beside the disk, in every run; a fixture run reads only its fixture home,
+        // since the folder rules admit nothing else. It reads nothing until a person's switch hands it a permit.
+        let contents = AgentContentReader()
         // The home as the windows spell a folder's path (standardized, so /private/tmp reads /tmp). The folder rules
         // also hold the home's canonical path, so a folder spelled either way is found inside it.
         let parts = AgentRuntimeParts(secrets: secrets, disk: disk, home: home.standardizedFileURL.path,
@@ -58,13 +61,13 @@ extension AppController {
                                       makeClient: scripted == nil ? AgentLiveParts.makeClient : nil,
                                       makeSession: AgentLiveParts.makeSession,
                                       makeSignIn: options.isIsolated ? nil : AgentLiveParts.makeSignIn,
-                                      mountedVolumes: mountedVolumes)
+                                      mountedVolumes: mountedVolumes, contents: contents)
         let isolated = options.isIsolated
         let openInBrowser: @MainActor @Sendable (URL) -> Bool = { @MainActor url in
             isolated ? false : NSWorkspace.shared.open(url)
         }
         return AgentServices(runtime: AgentRuntime(parts: parts), config: environment.aiConfig, secrets: secrets, disk: disk,
-                             storage: storage, connector: connector, openInBrowser: openInBrowser)
+                             storage: storage, connector: connector, openInBrowser: openInBrowser, contents: contents)
     }
 
     /// The scripted model of a fixture run. It takes its answers from `agent-script.json` beside the fixture home when

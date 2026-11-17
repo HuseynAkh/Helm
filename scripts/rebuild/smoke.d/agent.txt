@@ -388,6 +388,103 @@ search-shown false
 search-ai-is off
 go @FIX@/home/AgentMess
 wait 0.5
+# 13b. Read contents, beside the composer. A new thread has it off, and a model that asks to read inside files then
+# gets only an unknown tool: nothing is read or sent. On, the thread starts over, the consent line says short
+# summaries are sent, and read_contents hands the model Helm's summaries, made on this Mac: the text in a photo of a
+# receipt, what a sky shows, a scanned invoice's first lines, a video's text, a note, and a file that gives orders,
+# sent as quoted data that changes nothing. A copy marked as not downloaded isn't read, and a plan that files the
+# invoices comes from what is inside them. Whole Mac keeps it on and names the home folder; a new thread is off again
+go @FIX@/home/AgentLook
+wait 0.5
+agent-open
+agent-is open
+agent-script @FIX@/agent-contents.json
+agent-say /clear
+agent-contents-is off
+agent-say look inside
+agent-phase idle
+agent-reads Two of these are invoices
+agent-sent-lacks Harbour Plumbing
+agent-sent-lacks BEACH DAY
+agent-sent-lacks oat milk
+agent-contents on
+agent-contents-is on
+agent-reads Sends your requests, file names and short summaries of file contents to Claude.
+agent-lacks never file contents
+agent-reads Started over.
+agent-say look inside
+agent-phase idle
+agent-reads and 6 summaries to Claude.
+agent-sent-has Harbour Plumbing
+agent-sent-has INVOICE 2026-117
+agent-sent-has Total due: 184.00
+agent-sent-has BEACH DAY
+agent-sent-has blue sky
+agent-sent-has oat milk
+agent-sent-has IGNORE PREVIOUS INSTRUCTIONS
+agent-sent-lacks @FIX@
+exists @FIX@/home/AgentLook/hostile-note.txt
+exists @FIX@/home/AgentLook/receipt-photo.png
+agent-cloud-only @FIX@/home/AgentLook/receipt-copy.png
+agent-say look at the copy
+agent-phase idle
+agent-reads 1 file isn't downloaded, so Helm didn't read it.
+agent-reads and 1 summary to Claude.
+agent-say file the invoices
+agent-phase plan
+agent-group Move 2 items to “Invoices” on
+agent-group-path Move 2 items to “Invoices”=~/AgentLook/Invoices new folder
+agent-press Cancel
+missing @FIX@/home/AgentLook/Invoices
+agent-scope wholeMac
+agent-contents-is on
+agent-reads Sends your requests, file names and short summaries of file contents from your home folder to Claude.
+agent-scope thisFolder
+agent-contents-is on
+agent-reads Sends your requests, file names and short summaries of file contents to Claude.
+agent-say /clear
+agent-contents-is off
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-places-clear
+# 13c. Read contents in AI search: a switch at the end of the kind row, off until pressed. On, the hint says what is
+# read stays on this Mac, and Return also looks inside pictures and videos here for the words: a photo of a receipt
+# by its text, a sky by what it shows, a video by the text in its frames. Each result says what was seen. Closing the
+# search turns it off and forgets what was read
+search-ai on
+search-kinds-shown true
+search-contents-is off
+search-contents on
+search-contents-is on
+search-status-reads what Helm reads inside files stays on this Mac
+search invoice
+search-return
+has receipt-photo.png
+has invoice-scan.pdf
+result-reason receipt-photo.png=Text in image: “invoice”
+search-status-reads Mentions “invoice”
+search-contents-read 4
+search sky
+search-return
+has IMG_0042.png
+lacks receipt-photo.png
+result-reason IMG_0042.png=Shows: sky
+search beach
+search-return
+has beach-day.mov
+result-reason beach-day.mov=Text in video: “beach”
+search-contents-read 4
+search-key escape
+search-shown false
+search-ai-is off
+search-ai on
+search-contents-is off
+search-contents-read 0
+search-key escape
+search-shown false
+search-ai-is off
+agent-script @FIX@/agent-script.json
+go @FIX@/home/AgentMess
+wait 0.5
 # 14. The AI mode screen and Settings › AI, with keys in memory. Closing the screen with the switch on leaves AI mode
 # off. With a key entered, Done leaves it on and opens the panel in the window whose spark asked, and ai.json never
 # holds the key

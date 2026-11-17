@@ -15,6 +15,8 @@ import HelmPersistence
     public let disk: any AgentDisk
     public let storage: any StorageFactsReading
     public let connector: any ServerConnecting
+    /// Reads inside files on this Mac for Read contents, with the person's permit. Nil in a run that reads nothing.
+    public let contents: (any AgentContentReading)?
     /// Hands an address to the person's default browser, and says whether it went: a help page, ChatGPT's usage page,
     /// or the ChatGPT sign-in. Helm makes no connection itself. The stand-in opens nothing, so a fixture run never
     /// takes the screen.
@@ -22,9 +24,10 @@ import HelmPersistence
 
     public init(runtime: AgentRuntime, config: AIConfigStore, secrets: any AgentSecretStoring, disk: any AgentDisk,
                 storage: any StorageFactsReading, connector: any ServerConnecting,
-                openInBrowser: @escaping @MainActor @Sendable (URL) -> Bool = { _ in false }) {
+                openInBrowser: @escaping @MainActor @Sendable (URL) -> Bool = { _ in false },
+                contents: (any AgentContentReading)? = nil) {
         self.runtime = runtime; self.config = config; self.secrets = secrets; self.disk = disk
-        self.storage = storage; self.connector = connector; self.openInBrowser = openInBrowser
+        self.storage = storage; self.connector = connector; self.openInBrowser = openInBrowser; self.contents = contents
         // Each check's list of models is kept in ai.json under the provider and where it was asked, for the panel's
         // model menu; a check that fails takes that list away.
         runtime.checked = { [config] profile, models in

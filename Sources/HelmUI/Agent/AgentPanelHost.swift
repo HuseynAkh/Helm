@@ -184,6 +184,9 @@ import HelmCore
 
     /// The composer's text view, for tests that press keys in it.
     var composerTextViewForTesting: NSTextView { composer.textView }
+    /// The Read contents switch beside the composer: whether it shows, is on and can be pressed; and a click on it.
+    var contentsToggleForTesting: (shown: Bool, on: Bool, enabled: Bool) { composer.contentsToggleForTesting }
+    func pressContentsToggleForTesting() { composer.pressContentsToggleForTesting() }
     /// The name under the composer, and whether it shows as a menu.
     var modelNameForTesting: (name: String, isMenu: Bool) { (composer.modelNameForTesting, composer.modelNameIsMenuForTesting) }
     /// The rows of the menu under the composer, by title: section names, models and AI Settings…. Empty with no menu.

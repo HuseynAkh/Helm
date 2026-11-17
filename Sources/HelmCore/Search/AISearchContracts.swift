@@ -272,6 +272,18 @@ public struct AISearchPlan: Hashable, Sendable {
 /// What about a result matched. A model answers with these codes only; the words shown come from Helm.
 public enum SearchReasonCode: String, Sendable, CaseIterable { case name, content, kind, date, folder, size }
 
+/// What Read contents found in a picture or a video that answered every word a search looks for inside files: the
+/// words found in the text it holds, and the things it shows that answered a word, in the classifier's own words.
+public struct AISearchSighting: Hashable, Sendable {
+    public enum Medium: String, Sendable { case image, video }
+    public let medium: Medium
+    public let textWords: [String]
+    public let labels: [String]
+    public init(medium: Medium, textWords: [String], labels: [String]) {
+        self.medium = medium; self.textWords = textWords; self.labels = labels
+    }
+}
+
 /// Why one result matched, as facts Helm can back.
 public struct SearchReason: Hashable, Sendable {
     public var codes: [SearchReasonCode]

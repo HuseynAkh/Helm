@@ -17,6 +17,12 @@ import HelmSearch
 /// Every item that is merged or sent passes `AgentItemFilter.allowsSearchRow` and sits in no folder with the hidden
 /// flag, whatever Show Hidden Files says. Hits are looked up with downloads off.
 /// A model never sees a path: rows carry the name, the folder in Helm's words, the kind, a rounded size and dates.
+///
+/// With the kind row's Read contents switch on, a planned query's words for inside files are also looked for inside
+/// pictures and videos: up to 200 of them in the search's place, read on this Mac by `AgentContentReader` with the
+/// person's permit, and kept for the search session by path and modification date. A picture or a video whose text
+/// or whose labels hold every one of those words is a match of that query, and its reason says what was seen. What
+/// was read inside a file is never sent; a file that isn't downloaded is never read, and the status bar counts it.
 @MainActor final class AISearchRunner: AISearchRunning {
     private let dependencies: WindowDependencies
 
@@ -27,7 +33,23 @@ import HelmSearch
     static var fanOutAnswersForTesting: ((AISearchQuery) -> [URL])?
 
     /// The search field's spark is on: Return asks the model. Off at launch and whenever the search closes.
-    var isOn = false { didSet { if !isOn { kind = nil } } }
+    var isOn = false {
+        didSet {
+            if !isOn {
+                kind = nil
+                contentPermit = nil
+            }
+        }
+    }
+    /// The person's permit while the kind row's Read contents switch is on. It goes, and what was read with it, when
+    /// the spark goes off, as it does when the search closes.
+    var contentPermit: AgentContentPermit? {
+        didSet { if contentPermit == nil { memo.clear() } }
+    }
+    /// What this search session has read inside pictures and videos.
+    let memo = AgentContentMemo()
+    /// Whether the kind row's Read contents switch is on.
+    var readsContents: Bool { contentPermit != nil }
     /// The kind row's choice, nil for Any. The row shows only while the spark is on, so the choice goes back to Any
     /// whenever the spark goes off, as it does when the search closes.
     var kind: AISearchKind?
@@ -89,12 +111,17 @@ import HelmSearch
         let label = scopeRoot.map { AgentItemFilter.placeWords(path: $0.path, home: home.path, storage: place).last ?? place.name }
             ?? StorageFacts.thisMac.name
 
+        // Read contents, when its switch is on and this run can read inside files.
+        let looking: (reader: any AgentContentReading, permit: AgentContentPermit)? = contentPermit.flatMap { permit in
+            dependencies.agent.contents.map { ($0, permit) }
+        }
+
         // 1. Plan.
         let plan: AISearchPlan
         do {
             plan = try await session.plan(request: query.text, scopeLabel: label, today: dependencies.clock.now(),
                                           languageCode: Locale.current.language.languageCode?.identifier ?? "en",
-                                          kind: query.kind)
+                                          kind: query.kind, readsContents: looking != nil)
         } catch {
             guard !Task.isCancelled else { return }
             // The name matches stay on show, and Return again tries again.
@@ -106,9 +133,24 @@ import HelmSearch
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
-        let found = await fanOut(queries, search: query, scopeRoot: scopeRoot, place: place, coverage: coverage,
+        let walked = await walk(query, scopeRoot: scopeRoot, place: place)
+        var found = await fanOut(queries, search: query, scopeRoot: scopeRoot, walked: walked, coverage: coverage,
                                  hiddenFolders: hiddenFolders)
         guard !Task.isCancelled else { return }
+        // 2b. Inside pictures and videos, with Read contents on. A server is searched by name only.
+        var sightings: [ItemID: AISearchSighting] = [:]
+        var notDownloaded = 0
+        if let looking, coverage != .namesOnly {
+            let seen = await lookInside(queries, walked: walked, scopeRoot: scopeRoot, coverage: coverage,
+                                        hiddenFolders: hiddenFolders, reader: looking.reader, permit: looking.permit)
+            guard !Task.isCancelled else { return }
+            for (index, hits) in seen.found.enumerated() where found.indices.contains(index) {
+                let known = Set(found[index].map(\.id))
+                found[index] += hits.filter { !known.contains($0.id) }
+            }
+            sightings = seen.sightings
+            notDownloaded = seen.notDownloaded
+        }
 
         // 3. Fuse with the plain search, and show that at once.
         let plainResults = await delivery.firstBaseline(waiting: Self.baselineWaitSeconds)
@@ -135,7 +177,8 @@ import HelmSearch
             guard let index = foundBy[entry.id] else { return nil }
             let planned = queries[index]
             return SearchReasonBuilder.reason(codes: Self.codes(of: planned), entry: entry, query: planned,
-                                              scopeRoot: scopeRoot, calendar: calendar, locale: locale)
+                                              scopeRoot: scopeRoot, calendar: calendar, locale: locale,
+                                              sighting: sightings[entry.id])
         }
         var reasons: [ItemID: SearchReason] = [:]
         for entry in order { reasons[entry.id] = queryReason(entry) }
@@ -163,8 +206,12 @@ import HelmSearch
                     let entry = shown[verdict.row - 1]
                     first.append(entry)
                     let planned = foundBy[entry.id].map { queries[$0] }
-                    if let reason = SearchReasonBuilder.reason(codes: verdict.why, entry: entry, query: planned,
-                                                               scopeRoot: scopeRoot, calendar: calendar, locale: locale) {
+                    // What a picture or a video was seen to hold comes first, whatever the model said made it fit.
+                    var why = verdict.why
+                    if sightings[entry.id] != nil, !why.contains(.content) { why.insert(.content, at: 0) }
+                    if let reason = SearchReasonBuilder.reason(codes: why, entry: entry, query: planned,
+                                                               scopeRoot: scopeRoot, calendar: calendar, locale: locale,
+                                                               sighting: sightings[entry.id]) {
                         reasons[entry.id] = reason
                     }
                 }
@@ -180,18 +227,18 @@ import HelmSearch
         var readAs = SearchReasonBuilder.readAs(count: order.count, query: shown(queries.first ?? AISearchQuery()), calendar: calendar,
                                                 locale: locale)
         if let kind = query.kind { readAs += " · " + AgentText.searchKindShown(kind) }
+        if notDownloaded > 0 { readAs += " · " + AgentText.searchNotDownloaded(notDownloaded) }
         delivery.assist(SearchAssist(phase: .done, reasons: reasons, readAs: readAs, queriesRead: queriesRead, coverage: coverage))
     }
 
     /// Runs every planned query and answers what each found, best first, in the plan's order. Each hit is looked up
     /// with downloads off, so a hit in a cloud folder that isn't loaded is skipped and nothing is fetched.
-    private func fanOut(_ queries: [AISearchQuery], search: SearchQuery, scopeRoot: URL?, place: StorageFacts,
+    private func fanOut(_ queries: [AISearchQuery], search: SearchQuery, scopeRoot: URL?, walked: [FileEntry],
                         coverage: SearchAssist.Coverage, hiddenFolders: AISearchHiddenFolders) async -> [[FileEntry]] {
         let fileSystem = dependencies.fileSystem
         let hook = Self.fanOutAnswersForTesting
         // A fixture run keeps its keys in memory. It never asks Spotlight; the walk and the hook stand in.
         let asksSpotlight = hook == nil && !dependencies.agent.secrets.isMemoryOnly && coverage != .namesOnly
-        let walked = await walk(search, scopeRoot: scopeRoot, place: place)
         var found = Array(repeating: [FileEntry](), count: queries.count)
         var next = 0
         while next < queries.count, !Task.isCancelled {
@@ -224,6 +271,120 @@ import HelmSearch
             }
         }
         return found
+    }
+
+    // MARK: Inside pictures and videos
+
+    /// What Read contents finds for the queries that look for words inside files: for each such query, the pictures
+    /// and videos it describes in every other way, from the walk of the folder searched and, on this Mac outside a
+    /// folder, from Spotlight; read on this Mac, 200 at most for the whole search, newest first, and kept when every
+    /// word is in what they show or the text they hold. Answers each query's matches, what was seen in each, and how
+    /// many weren't read because they aren't downloaded.
+    private func lookInside(_ queries: [AISearchQuery], walked: [FileEntry], scopeRoot: URL?, coverage: SearchAssist.Coverage,
+                            hiddenFolders: AISearchHiddenFolders, reader: any AgentContentReading,
+                            permit: AgentContentPermit) async -> (found: [[FileEntry]], sightings: [ItemID: AISearchSighting], notDownloaded: Int) {
+        let looks = queries.map(Self.visualQuery)
+        var candidates: [ItemID: FileEntry] = [:]
+        for (index, look) in looks.enumerated() {
+            guard let look else { continue }
+            var pool = walked
+            if scopeRoot == nil {
+                pool += await spotlightHits(for: look, original: queries[index], coverage: coverage, hiddenFolders: hiddenFolders)
+            }
+            for entry in pool where candidates[entry.id] == nil && allows(entry)
+                && AISearchMatcher.matches(entry, look, scopeRoot: scopeRoot, contentVerified: false) {
+                candidates[entry.id] = entry
+            }
+        }
+        let chosen = candidates.values.sorted { $0.modificationDate > $1.modificationDate }.prefix(AgentContentLimits.searchCandidates)
+        guard !chosen.isEmpty, !Task.isCancelled else { return (queries.map { _ in [] }, [:], 0) }
+
+        // Read what this session hasn't read yet. A file that isn't downloaded is never opened.
+        var summaries: [ItemID: AgentContentSummary] = [:]
+        var notDownloaded = 0
+        var unread: [FileEntry] = []
+        for entry in chosen {
+            if entry.cloudAvailability == .evicted {
+                notDownloaded += 1
+            } else if let known = memo.summary(path: entry.url.path, modified: entry.modificationDate) {
+                summaries[entry.id] = known
+            } else {
+                unread.append(entry)
+            }
+        }
+        if !unread.isEmpty {
+            let requests = unread.map { entry in
+                AgentContentRequest(path: entry.url.path, name: entry.name, identity: entry.objectIdentity,
+                                    typeIdentifier: entry.contentTypeIdentifier, size: entry.size,
+                                    modified: entry.modificationDate, isDataless: false)
+            }
+            let answers = await reader.summaries(of: requests, permit: permit, seconds: AgentContentLimits.secondsPerSearch)
+            for (entry, summary) in zip(unread, answers) {
+                if summary.status == .not_downloaded { notDownloaded += 1 }
+                memo.keep(summary, path: entry.url.path, modified: entry.modificationDate)
+                summaries[entry.id] = summary
+            }
+        }
+
+        var found = queries.map { _ in [FileEntry]() }
+        var sightings: [ItemID: AISearchSighting] = [:]
+        for (index, look) in looks.enumerated() {
+            guard let look else { continue }
+            for entry in chosen where AISearchMatcher.matches(entry, look, scopeRoot: scopeRoot, contentVerified: false) {
+                guard let summary = summaries[entry.id],
+                      let sighting = AISearchMatcher.sighting(of: queries[index].contentAll, in: summary) else { continue }
+                found[index].append(entry)
+                if sightings[entry.id] == nil { sightings[entry.id] = sighting }
+            }
+        }
+        return (found, sightings, notDownloaded)
+    }
+
+    /// A query that looks for words inside files, as one for the pictures and videos it describes: the same names,
+    /// folders, dates and sizes, with no words inside files, and kept to pictures and videos. Nil for a query with no
+    /// such words, and for one kept to kinds that are neither.
+    static func visualQuery(_ query: AISearchQuery) -> AISearchQuery? {
+        guard !query.contentAll.isEmpty else { return nil }
+        var look = query
+        look.contentAll = []
+        let seen: [AISearchKind] = [.image, .video]
+        if query.kinds.isEmpty {
+            look.kinds = seen
+        } else {
+            look.kinds = seen.filter { kind in query.kinds.contains { $0.covers(kind) } }
+            guard !look.kinds.isEmpty else { return nil }
+        }
+        if !look.extensions.isEmpty {
+            look.extensions = look.extensions.filter { ext in
+                let kind = AISearchKind.of(typeIdentifier: nil, extension: ext, kind: .regular)
+                return kind == .image || kind == .video
+            }
+            if look.extensions.isEmpty { return nil }
+        }
+        return look
+    }
+
+    /// Spotlight's pictures and videos for a query searched outside any folder, looked up with downloads off. A
+    /// fixture run never asks Spotlight; the hook stands in.
+    private func spotlightHits(for look: AISearchQuery, original: AISearchQuery, coverage: SearchAssist.Coverage,
+                               hiddenFolders: AISearchHiddenFolders) async -> [FileEntry] {
+        let fileSystem = dependencies.fileSystem
+        let urls: [URL]
+        if let hook = Self.fanOutAnswersForTesting {
+            urls = hook(look)
+        } else {
+            guard !dependencies.agent.secrets.isMemoryOnly, coverage != .namesOnly else { return [] }
+            urls = await AISearchSpotlightGather.gather(AISearchPredicates.predicate(for: look), scopes: [NSMetadataQueryLocalComputerScope],
+                                                        limit: Self.spotlightReadLimit, seconds: Self.spotlightSeconds)
+        }
+        let entries = await DatalessGuard.off { () async -> [FileEntry] in
+            var entries: [FileEntry] = []
+            for url in urls.prefix(Self.spotlightReadLimit) where !Task.isCancelled {
+                if let entry = try? await fileSystem.entry(at: url) { entries.append(entry) }
+            }
+            return entries
+        }
+        return await hiddenFolders.outside(entries)
     }
 
     /// What one query keeps: the index's hits checked again (the index already checked words inside files), and the

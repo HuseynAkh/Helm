@@ -11,7 +11,7 @@ extension HostSmokeDriver {
                                     window: BrowserWindowController, app: AppController) async -> Bool {
         let verbs: Set<String> = ["search-ai", "search-ai-is", "search-return", "result-reason", "search-status-reads",
                                   "search-queries-read", "search-mark-is", "search-kind", "search-kind-is", "search-kinds-shown",
-                                  "search-kind-key"]
+                                  "search-kind-key", "search-contents", "search-contents-is", "search-contents-read"]
         guard verbs.contains(verb) else { return false }
         guard app.options.isIsolated else { check(false, step, "not a fixture run"); return true }
         switch verb {
@@ -41,6 +41,24 @@ extension HostSmokeDriver {
             // left, right, tab or escape, pressed while the kind row has the keys.
             check(window.kindRowKeyForTesting(argument), step, "the kind row hasn't the keys: \(window.focusOwnerForTesting)")
             await wait(seconds: 0.8)
+        case "search-contents":
+            // search-contents on|off: a click on the Read contents switch at the end of the kind row, when it isn't
+            // already as asked.
+            guard argument == "on" || argument == "off" else { check(false, step, "usage"); return true }
+            if window.aiSearchContentsForTesting.on != (argument == "on") {
+                check(window.clickAISearchContentsForTesting(), step, "the switch doesn't show")
+            }
+            await wait(seconds: 0.3)
+            check(window.aiSearchContentsForTesting.on == (argument == "on"), step, window.aiSearchContentsForTesting.on ? "on" : "off")
+        case "search-contents-is":
+            // search-contents-is on|off|hidden: the switch at the end of the kind row.
+            let state = window.aiSearchContentsForTesting
+            let shown = !state.shown ? "hidden" : state.on ? "on" : "off"
+            check(shown == argument, step, shown)
+        case "search-contents-read":
+            // search-contents-read <n>: pictures and videos this search session has read inside.
+            let count = window.aiSearchContentsReadForTesting
+            check(count == Int(argument), step, "\(count)")
         case "search-return":
             // Return in the search field, then waits until the model has answered or failed.
             window.submitSearchForTesting()

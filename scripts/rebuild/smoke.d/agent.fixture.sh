@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # AI mode's fixture: a folder of mixed files to organize, a folder of 30 files in the Google Drive stand-in, a folder
 # of 30 files that the steps make answer as a shared server, a file outside the home that no plan may reach, a
-# Pictures/Screenshots folder for Whole Mac to file a screenshot into, and the scripted model's answers. The app reads agent-script.json beside the home at launch; agent-hostile.json is loaded
+# Pictures/Screenshots folder for Whole Mac to file a screenshot into, a folder of made-up files for Read contents to
+# look inside, and the scripted model's answers. The app reads agent-script.json beside the home at launch; agent-hostile.json is loaded
 # by a step (agent-script) and answers as a model that tries to get round Helm's rules, and agent-search-fails.json
-# is the usual script with no answer for a search.
+# is the usual script with no answer for a search. agent-contents.json answers the Read contents steps.
 mess="$fix/home/AgentMess"
 mkdir -p "$mess"
 echo p1 > "$mess/photo-1.png"
@@ -21,6 +22,13 @@ for n in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
     echo "share $n" > "$share/share-$n.txt"
 done
 echo outside > "$fix/outside.txt"
+# Read contents: the made-up files of Tests/HelmUITests/Fixtures/Contents (scripts/rebuild/make_content_fixtures.swift
+# draws them): a note, a file that tries to give orders, a scanned invoice, a photo of a receipt, a sky with no words
+# and a short video, plus a copy of the receipt that the steps mark as not downloaded.
+look="$fix/home/AgentLook"
+mkdir -p "$look"
+cp Tests/HelmUITests/Fixtures/Contents/* "$look/" || exit 1
+cp "$look/receipt-photo.png" "$look/receipt-copy.png"
 mkdir -p "$fix/home/Pictures/Screenshots"
 echo older > "$fix/home/Pictures/Screenshots/older.png"
 python3 - "$fix" <<'PY' || exit 1
@@ -106,7 +114,30 @@ hostile = {"rules": [
 
 no_search = {key: value for key, value in script.items() if key != "searchPlan"}
 
-for name, value in (("agent-script.json", script), ("agent-hostile.json", hostile), ("agent-search-fails.json", no_search)):
+# Read contents, in AgentLook: a look inside six files, and a plan that files the two invoices, which only what is
+# inside them tells apart. AI search's plan looks inside files for one word of the request each time; a query whose
+# word isn't in the request is dropped, so one plan serves every search.
+inside = ["@name:" + name for name in ("receipt-photo.png", "IMG_0042.png", "invoice-scan.pdf", "beach-day.mov",
+                                       "groceries.md", "hostile-note.txt")]
+looks = {"rules": [
+    {"when": "look inside", "turns": [listing(), {"calls": [{"name": "read_contents", "args": {"ids": inside}}]},
+                                      {"text": "Two of these are invoices, one is a sky and one is a beach video."}]},
+    {"when": "look at the copy", "turns": [listing(), {"calls": [{"name": "read_contents", "args": {
+        "ids": ["@name:receipt-copy.png", "@name:groceries.md"]}}]}, {"text": "The copy isn't on this Mac."}]},
+    {"when": "file the invoices", "turns": [listing(), {"calls": [{"name": "read_contents", "args": {"ids": inside[:3]}}]},
+                                            proposal("The receipt and the scan are invoices.",
+                                                     new_folders=[{"key": "n1", "parent": "@root", "name": "Invoices"}],
+                                                     moves=[{"items": ["@name:receipt-photo.png", "@name:invoice-scan.pdf"],
+                                                             "all_in": "", "to": "n1"}])]},
+    anything],
+    "searchPlan": {"sort": "relevance", "queries": [
+        {"content_all": [word], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
+         "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}
+        for word in ("invoice", "sky", "beach")]},
+    "searchRank": {"ranked": []}, "models": ["scripted-1"]}
+
+for name, value in (("agent-script.json", script), ("agent-hostile.json", hostile), ("agent-search-fails.json", no_search),
+                    ("agent-contents.json", looks)):
     with open(os.path.join(fix, name), "w", encoding="utf-8") as handle:
         json.dump(value, handle, ensure_ascii=False, indent=1)
 PY
