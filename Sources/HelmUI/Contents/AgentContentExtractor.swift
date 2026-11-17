@@ -315,7 +315,9 @@ enum AgentContentExtractor {
         let contentType = UTType(filenameExtension: ext)?.identifier ?? UTType.movie.identifier
         let bytes = AgentContentVideoBytes(file: file, contentType: contentType)
         guard let address = URL(string: AgentContentVideoBytes.address) else { return .notRead(.video, .unreadable) }
-        let asset = AVURLAsset(url: address)
+        // A reference movie names other media to play; none is followed, so only this file's own frames are read.
+        let asset = AVURLAsset(url: address, options: [AVURLAssetReferenceRestrictionsKey:
+                                                        NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)])
         asset.resourceLoader.setDelegate(bytes, queue: bytes.queue)
         let answer = AgentContentVideoAnswer()
         let work = Task {
