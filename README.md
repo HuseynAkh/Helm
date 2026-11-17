@@ -39,7 +39,7 @@ Helm shows the plan before anything happens. Each group of changes has a tick an
 
 Every new thread starts in **This Folder**: the folder on show, plus any you add. Switch the folders row to **Whole Mac** and AI mode can look through your home folder, iCloud Drive, your cloud folders and your disks, and propose moving files to where they belong. It never sees system folders, your Library or other apps' data. The thread's first line then says so.
 
-<img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two folders, a PDF, two receipt photos, two screenshots and a note. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
+<img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two folders, a PDF, two receipt photos, two screenshots and a note. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder and disks to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
 
 ### Read contents
 

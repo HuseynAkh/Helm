@@ -922,9 +922,9 @@ import HelmCore
         await refreshRoots()
     }
 
-    /// The thread's first line: what is sent and where, and, in Whole Mac, that it comes from the home folder. With
-    /// Read contents on it says that contents are read: for a model on this Mac, that nothing leaves the Mac, and for
-    /// any other, that short summaries of them are sent.
+    /// The thread's first line: what is sent and where, and, in Whole Mac, that it comes from the home folder and disks.
+    /// With Read contents on it says that contents are read: for a model on this Mac, that nothing leaves the Mac, and
+    /// for any other, that short summaries of them are sent.
     static func consentLine(_ provider: Provider, _ mode: AgentScopeMode, readsContents: Bool) -> String {
         switch (readsContents, mode, provider.isLocal) {
         case (false, .wholeMac, _): return AgentText.consentWholeMac(provider.destination)

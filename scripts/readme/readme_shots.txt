@@ -126,7 +126,8 @@ exists @FIX@/home/Downloads/Beach Day.jpg
 missing @FIX@/home/Downloads/Images
 agent-say /clear
 # Whole Mac, from the Desktop, with the panel's edge dragged out to 440 points: the consent line names the home
-# folder, and the screenshots go to the Screenshots folder in Pictures, which only the home folder's listing shows.
+# folder and disks, and the screenshots go to the Screenshots folder in Pictures, which only the home folder's listing
+# shows.
 # Cancel leaves them where they are, and a double click on the edge puts back 340 points
 go @FIX@/home/Desktop
 wait 1
@@ -134,7 +135,7 @@ agent-drag-edge 100
 agent-width 440
 agent-scope wholeMac
 agent-scope-is wholeMac
-agent-reads Sends your requests and file names from your home folder to Claude, never file contents.
+agent-reads Sends your requests and file names from your home folder and disks to Claude, never file contents.
 agent-say file my screenshots
 agent-phase plan
 agent-group Move 2 items to “Screenshots” on

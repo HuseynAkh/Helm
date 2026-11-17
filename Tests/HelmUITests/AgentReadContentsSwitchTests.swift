@@ -43,11 +43,11 @@ import HelmCore
         XCTAssertEqual(AgentPanelModel.consentLine(cloud, .thisFolder, readsContents: true),
                        "Sends your requests, file names and short summaries of file contents to Claude.")
         XCTAssertEqual(AgentPanelModel.consentLine(cloud, .wholeMac, readsContents: true),
-                       "Sends your requests, file names and short summaries of file contents from your home folder to Claude.")
+                       "Sends your requests, file names and short summaries of file contents from your home folder and disks to Claude.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .thisFolder, readsContents: true),
                        "Reads file contents on this Mac; nothing leaves your Mac.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .wholeMac, readsContents: true),
-                       "Reads file names and contents from your home folder on this Mac; nothing leaves your Mac.")
+                       "Reads file names and contents from your home folder and disks on this Mac; nothing leaves your Mac.")
         XCTAssertEqual(AgentPanelModel.consentLine(local, .thisFolder, readsContents: false),
                        "Sends your requests and file names to Ollama on this Mac, never file contents.")
         // A name with a hidden character in it is written out, as every destination is.

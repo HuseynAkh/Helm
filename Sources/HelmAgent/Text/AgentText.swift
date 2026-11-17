@@ -277,7 +277,7 @@ public enum AgentText {
     }
     /// The consent line at the top of a thread while Whole Mac is on.
     public static func consentWholeMac(_ destination: String) -> String {
-        "Sends your requests and file names from your home folder to \(shown(destination)), never file contents."
+        "Sends your requests and file names from your home folder and disks to \(shown(destination)), never file contents."
     }
     public static func destinationOnThisMac(_ provider: String) -> String { "\(shown(provider)) on this Mac" }
 
@@ -296,10 +296,10 @@ public enum AgentText {
         "Sends your requests, file names and short summaries of file contents to \(shown(destination))."
     }
     /// With Whole Mac on too, for a model on this Mac.
-    public static let consentContentsWholeMacOnThisMac = "Reads file names and contents from your home folder on this Mac; nothing leaves your Mac."
+    public static let consentContentsWholeMacOnThisMac = "Reads file names and contents from your home folder and disks on this Mac; nothing leaves your Mac."
     /// With Whole Mac on too, for a model elsewhere.
     public static func consentContentsWholeMac(_ destination: String) -> String {
-        "Sends your requests, file names and short summaries of file contents from your home folder to \(shown(destination))."
+        "Sends your requests, file names and short summaries of file contents from your home folder and disks to \(shown(destination))."
     }
     public static let destinationNotSet = "the address you enter"
     public static let providerLabel = "Provider"

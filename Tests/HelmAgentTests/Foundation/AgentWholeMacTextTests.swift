@@ -15,7 +15,7 @@ final class AgentWholeMacTextTests: XCTestCase {
         ("scopeSwitchHelp", AgentText.scopeSwitchHelp, "Whole Mac lets AI mode look through your home folder, cloud folders and disks."),
         ("chipWholeMac", AgentText.chipWholeMac, "Your home folder, iCloud Drive, cloud folders and disks."),
         ("consentWholeMac", AgentText.consentWholeMac("Claude"),
-         "Sends your requests and file names from your home folder to Claude, never file contents.")
+         "Sends your requests and file names from your home folder and disks to Claude, never file contents.")
     ]
 
     func testEverySentenceIsWordForWordAndOneSentenceAtMost() {
@@ -26,11 +26,11 @@ final class AgentWholeMacTextTests: XCTestCase {
         }
     }
 
-    func testTheConsentLineNamesTheHomeFolderAndSaysWhereRequestsGoAsTheOtherDoes() {
+    func testTheConsentLineNamesTheHomeFolderAndDisksAndSaysWhereRequestsGoAsTheOtherDoes() {
         XCTAssertEqual(AgentText.consentWholeMac(AgentText.destinationOnThisMac("LM Studio")),
-                       "Sends your requests and file names from your home folder to LM Studio on this Mac, never file contents.")
+                       "Sends your requests and file names from your home folder and disks to LM Studio on this Mac, never file contents.")
         XCTAssertEqual(AgentText.consentWholeMac("Clau\u{0}de"),
-                       "Sends your requests and file names from your home folder to Clau\\u{0}de, never file contents.")
+                       "Sends your requests and file names from your home folder and disks to Clau\\u{0}de, never file contents.")
         XCTAssertEqual(AgentText.consent("Claude"), "Sends your requests and file names to Claude, never file contents.",
                        "This Folder's line is as it was")
     }
