@@ -225,6 +225,30 @@ final class AgentReadContentsTests: XCTestCase {
         XCTAssertEqual(AgentToolRunner.redacted("/home/helm/a and /home/helmet", homes: ["/home/helm/"]), "~/a and ~et")
     }
 
+    func testTheHomeFolderIsWrittenAsTildeInAnyCaseUnicodeFormOrFileURL() {
+        // The home as macOS spells it on disk (decomposed) and as a person types it (composed).
+        let composed = "/Users/Zo\u{EB} Doe", decomposed = "/Users/Zoe\u{308} Doe"
+        for homes in [[composed], [decomposed]] {
+            XCTAssertEqual(AgentToolRunner.redacted("at /users/ZO\u{CB} doe/Notes", homes: homes), "at ~/Notes", "any case")
+            XCTAssertEqual(AgentToolRunner.redacted("at /Users/Zoe\u{308} Doe/a and /Users/Zo\u{EB} Doe/b", homes: homes),
+                           "at ~/a and ~/b", "either Unicode form")
+            XCTAssertEqual(AgentToolRunner.redacted("open file:///Users/Zoe%CC%88%20Doe/a.txt", homes: homes), "open ~/a.txt",
+                           "a file URL, which spells the home decomposed")
+            XCTAssertEqual(AgentToolRunner.redacted("open file:///users/zo%c3%ab%20doe/b.txt", homes: homes), "open ~/b.txt")
+            XCTAssertEqual(AgentToolRunner.redacted("see /Users/Zo%C3%AB%20Doe/c and file:///Users/Zo\u{EB} Doe/d", homes: homes),
+                           "see ~/c and ~/d", "percent-encoded alone, and a file URL written plainly")
+        }
+        let url = URL(fileURLWithPath: composed + "/Pictures/a b.jpg").absoluteString
+        XCTAssertEqual(AgentToolRunner.redacted(url, homes: [composed]), "~/Pictures/a%20b.jpg")
+        for text in ["/USERS/ZOE\u{308} DOE/x", url, "/users/zo%c3%ab%20doe/y"] {
+            XCTAssertTrue(AgentOutboundCheck.helmTextIsClean(AgentToolRunner.redacted(text, homes: [composed]), home: decomposed),
+                          "what is redacted passes the check: \(text)")
+        }
+        // A longer home goes first, so a shorter one can't leave part of it behind.
+        XCTAssertEqual(AgentToolRunner.redacted("/Users/zoe/Shared/a and /Users/zoe/b", homes: ["/Users/zoe", "/Users/zoe/Shared"]),
+                       "~/a and ~/b")
+    }
+
     func testAFileThatRanOutOfTimeIsNamedOnce() async {
         let reader = AgentRecordingContentReader { request in
             request.name == "a.png" ? .notRead(.other, .not_responding) : AgentContentSummary(kind: .text, status: .read, lines: ["x"])

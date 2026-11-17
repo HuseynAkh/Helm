@@ -106,6 +106,58 @@ final class AISearchLookTests: XCTestCase {
         XCTAssertFalse(ask.pictures.contains { $0.label.hasPrefix("Item 13") })
     }
 
+    func testAFilesTextHasTheHomeWrittenAsTildeInAnySpelling() async throws {
+        let model = client([AgentScript.LookRule(when: "*")])
+        let session = AISearchSession(client: model, calendar: calendar)
+        let note = item(1, "links.txt", kind: "text", summary: AgentContentSummary(
+            kind: .text, status: .read, lines: ["file:///users/SOMEONE/Pictures/kite.jpg", "/USERS/someone/Desktop"]))
+        _ = try await session.look(request: "kite", kind: nil, items: [note], homes: [home], pictures: false)
+        let ask = try XCTUnwrap(model.sentAsks.first)
+        let object = try XCTUnwrap(ask.user.split(separator: "\n").compactMap { AgentJSON(jsonText: String($0)) }.first)
+        XCTAssertEqual(object["first_lines"], .array([.string("~/Pictures/kite.jpg"), .string("~/Desktop")]))
+        XCTAssertNil(model.allSentText().range(of: "/users/someone", options: .caseInsensitive))
+    }
+
+    func testItemsThatStillHoldTheHomeInAnySpellingAreNeverSentButTheRequestIsntChecked() async throws {
+        let model = client([AgentScript.LookRule(when: "*")])
+        let session = AISearchSession(client: model, calendar: calendar)
+        func photo(folder: String, shows: String = "kite") -> AISearchLookItem {
+            AISearchLookItem(item: 1, name: "a.jpg", folder: folder, kind: "image", modified: nil, summary: AgentContentSummary(
+                kind: .image, status: .read, labels: [AgentContentLabel(identifier: shows, confidence: 0.9)]))
+        }
+        _ = try await session.look(request: "kite", kind: nil, items: [photo(folder: "Home / Pictures")], homes: [home],
+                                   pictures: false)
+        XCTAssertEqual(model.sentAsks.count, 1, "Helm's own words for a folder go")
+        // Words Helm doesn't write as ~, such as a folder's words or what Vision says a picture shows, are checked: with
+        // the home in them in any case or in a file URL, the question isn't sent and fails as unreadable.
+        for item in [photo(folder: "/users/Someone/Pictures"), photo(folder: "file:///Users/someone"),
+                     photo(folder: "Home", shows: home.uppercased() + "/x")] {
+            await assertNotSent(try await session.look(request: "kite", kind: nil, items: [item], homes: [home], pictures: true))
+            await assertNotSent(try await session.look(request: "kite", kind: nil, items: [item], homes: ["/elsewhere", home],
+                                                       pictures: false))
+        }
+        XCTAssertEqual(model.sentAsks.count, 1)
+        XCTAssertNil(model.allSentText().range(of: home, options: .caseInsensitive))
+
+        // A path the person typed is theirs to send, as in the panel.
+        _ = try await session.look(request: "kite in \(home)/Pictures", kind: nil, items: [photo(folder: "Home / Pictures")],
+                                   homes: [home], pictures: false)
+        XCTAssertEqual(model.sentAsks.count, 2)
+        XCTAssertTrue(model.sentAsks.last?.user.contains("kite in \(home)/Pictures") == true)
+    }
+
+    private func assertNotSent(_ look: @autoclosure () async throws -> [AISearchLook], file: StaticString = #filePath,
+                               line: UInt = #line) async {
+        do {
+            _ = try await look()
+            XCTFail("sent", file: file, line: line)
+        } catch let failure as AgentFailure {
+            XCTAssertEqual(failure, .unreadable, file: file, line: line)
+        } catch {
+            XCTFail("\(error)", file: file, line: line)
+        }
+    }
+
     // MARK: Reading the answer
 
     func testTheAnswerIsReadStrictly() throws {

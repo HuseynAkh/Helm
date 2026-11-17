@@ -496,7 +496,7 @@ search-contents-read 8
 search kite
 search-return
 first-row DSC_0193.png
-result-reason DSC_0193.png=Seen: A red kite against a clear sky
+result-reason DSC_0193.png=Model saw: A red kite against a clear sky
 search-status-reads 1 match · Mentions “kite” · Looked at 8
 agent-sent-has Items (data):
 agent-sent-lacks @FIX@

@@ -59,13 +59,18 @@ public enum AgentItemFilter {
         }
     }
 
-    /// Whether a name is a kind of file that holds keys or a wallet. Such a file's name is never a row of an AI
-    /// search, where the words that find it may be a model's.
+    /// Whether a name is a kind of file that holds keys, passwords, tokens or a wallet: by its extension or its whole
+    /// name, a cloud service account's key (`service-account….json`), or a name one of whose words is a word for a
+    /// secret, such as "api_token.txt" or "Passwords.csv". Such a file is never read, and its name is never a row of an
+    /// AI search, where the words that find it may be a model's. A word can leave out an ordinary file too, such as
+    /// "Password reset steps.pdf"; that is the price of never reading a list of passwords.
     public static func isSecretKind(name: String) -> Bool {
         let lower = name.lowercased()
         if secretNames.contains(lower) || secretNamePrefixes.contains(where: lower.hasPrefix) { return true }
+        if serviceAccountPrefixes.contains(where: lower.hasPrefix), lower.hasSuffix(".json") { return true }
         let parts = lower.split(separator: ".", omittingEmptySubsequences: false).dropFirst()
-        return parts.contains { secretExtensions.contains(String($0)) }
+        if parts.contains(where: { secretExtensions.contains(String($0)) }) { return true }
+        return nameWords(name).contains { word in secretWords.contains { word == $0 || word == $0 + "s" } }
     }
 
     /// Whether an item may be a row of an AI search: in an allowed area, listable, not inside a package and not a
@@ -131,12 +136,41 @@ public enum AgentItemFilter {
         "playground", "xcarchive", "dsym", "docset", "sparsebundle", "download", "scptd", "workflow"
     ]
 
-    /// Extensions of files that hold private keys, certificates with their keys, password stores and wallets.
-    /// ".key" is left out on purpose: it is also a Keynote presentation, which is far more common.
+    /// Extensions of files that hold private keys, certificates with their keys, password stores, wallets, login
+    /// files (`.netrc`), environment files (`.env`, `.env.local`, `prod.env`) and Terraform's state and variables.
+    /// Any part after the first dot counts, so "terraform.tfstate.backup" is one too. ".key" is left out on purpose: it
+    /// is also a Keynote presentation, which is far more common.
     static let secretExtensions: Set<String> = [
         "pem", "p12", "pfx", "p8", "ppk", "jks", "keystore", "kdbx", "kdb", "keychain", "keychain-db", "agilekeychain",
-        "opvault", "1pif", "wallet", "gpg", "pgp", "asc", "ovpn", "mobileprovision"
+        "opvault", "1pif", "wallet", "gpg", "pgp", "asc", "ovpn", "mobileprovision", "netrc", "env", "tfstate", "tfvars"
     ]
-    static let secretNames: Set<String> = ["wallet.dat", "credentials", "credentials.json", "secrets.json"]
+    static let secretNames: Set<String> = ["wallet.dat", "credentials", "credentials.json", "secrets.json", "_netrc"]
     static let secretNamePrefixes = ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]
+    static let serviceAccountPrefixes = ["service-account", "service_account"]
+    /// Words for a secret, each also with an "s": a name holds one when one of its words is one.
+    static let secretWords = ["secret", "token", "credential", "password", "passwd"]
+
+    /// The words of a name in lower case: its runs of letters, split where a lower-case letter meets an upper-case
+    /// one and before the last capital of a run of them, so "MyAPIToken_v2.txt" is "my", "api", "token", "v", "txt".
+    static func nameWords(_ name: String) -> [String] {
+        let characters = Array(name)
+        var words: [String] = []
+        var word = ""
+        for (index, character) in characters.enumerated() {
+            guard character.isLetter else {
+                if !word.isEmpty { words.append(word.lowercased()); word = "" }
+                continue
+            }
+            if character.isUppercase, !word.isEmpty {
+                let previous = characters[index - 1]
+                let next = characters.indices.contains(index + 1) ? characters[index + 1] : nil
+                if previous.isLowercase || (previous.isUppercase && next?.isLowercase == true) {
+                    words.append(word.lowercased()); word = ""
+                }
+            }
+            word.append(character)
+        }
+        if !word.isEmpty { words.append(word.lowercased()) }
+        return words
+    }
 }

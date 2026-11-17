@@ -436,14 +436,13 @@ public struct AgentToolRunner: Sendable {
     }
 
     /// `text` with each home folder's path in it written as `~`, so a path inside a file never carries the account's
-    /// folder out, and Helm's own check on what it sends holds for file text too.
+    /// folder out, and Helm's own check on what it sends holds for file text too. Every spelling the check looks for
+    /// goes (`AgentOutboundCheck.homeSpellings`): in any case, in either Unicode form, percent-encoded, and in a file
+    /// URL, where `file:///Users/name/a` becomes `~/a`. The longest goes first, so a longer home isn't cut by a shorter.
     static func redacted(_ text: String, homes: [String]) -> String {
         var text = text
-        for home in homes.sorted(by: { $0.count > $1.count }) {
-            var path = home
-            while path.count > 1, path.hasSuffix("/") { path.removeLast() }
-            guard path.count > 1, path.hasPrefix("/") else { continue }
-            text = text.replacingOccurrences(of: path, with: "~")
+        for spelling in homes.flatMap(AgentOutboundCheck.homeSpellings).sorted(by: { $0.utf8.count > $1.utf8.count }) {
+            text = text.replacingOccurrences(of: spelling, with: "~", options: .caseInsensitive)
         }
         return text
     }

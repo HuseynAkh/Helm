@@ -58,7 +58,8 @@ final class AISearchLookMemoTests: XCTestCase {
 }
 
 /// Which files a query that looks for words inside files lets the model look at: the same query with no words for
-/// inside files, kept to what Read contents reads, documents too unless the query is kept to pictures or videos.
+/// inside files, kept to what Read contents reads, documents too unless the query is kept to pictures or videos; and
+/// which files the model may look inside for the kind chosen.
 @MainActor final class AISearchLookQueryTests: XCTestCase {
     func testAQueryAsOneForTheFilesTheModelLooksAt() {
         XCTAssertNil(AISearchRunner.lookQuery(AISearchQuery(nameAny: ["beach"])), "no words for inside files")
@@ -76,18 +77,38 @@ final class AISearchLookMemoTests: XCTestCase {
         XCTAssertNil(AISearchRunner.lookQuery(AISearchQuery(contentAll: ["dog"], extensions: ["xlsx"])))
     }
 
-    func testOnlyWhatReadContentsReadsIsLookedAt() {
+    func testOnlyWhatReadContentsReadsIsLookedAtAndCodeAndSettingsOnlyForTheKindsThatAskForThem() {
         func entry(_ name: String, _ kind: FileEntryKind = .regular) -> FileEntry {
             FileEntry(url: URL(fileURLWithPath: "/home/someone/" + name), kind: kind)
         }
-        for name in ["a.jpg", "b.mov", "c.pdf", "d.txt", "e.docx", "f.swift", "g.rtf"] {
-            XCTAssertTrue(AISearchRunner.isReadable(entry(name)), name)
+        let every: [AISearchKind?] = [nil] + AISearchKind.searchChoices
+        // Pictures, videos, PDFs, Word files and prose, whatever kind was chosen.
+        for name in ["a.jpg", "b.mov", "c.pdf", "d.txt", "e.docx", "g.rtf", "h.MD", "i.markdown", "j.log", "k.srt", "l.tex",
+                     "m.text", "n.odt", "o.doc"] {
+            for kind in every { XCTAssertTrue(AISearchRunner.isLookable(entry(name), kind: kind), "\(name) \(String(describing: kind))") }
         }
-        for name in ["h.zip", "i.xlsx", "j.mp3", "k.pages"] {
-            XCTAssertFalse(AISearchRunner.isReadable(entry(name)), name)
+        // Code only for Code; settings and other text only for Document or Code.
+        for name in ["f.swift", "p.py", "q.sh", "r.html", "s.ipynb"] {
+            for kind in every {
+                XCTAssertEqual(AISearchRunner.isLookable(entry(name), kind: kind), kind == .code, "\(name) \(String(describing: kind))")
+            }
         }
-        XCTAssertFalse(AISearchRunner.isReadable(entry("Photos.jpg", .directory)), "a folder")
-        XCTAssertFalse(AISearchRunner.isReadable(entry("link.png", .symlinkToFile)), "a link")
+        for name in ["t.json", "u.yaml", "v.yml", "w.xml", "x.toml", "y.ini", "z.cfg", "aa.conf"] {
+            for kind in every {
+                XCTAssertEqual(AISearchRunner.isLookable(entry(name), kind: kind), kind == .document || kind == .code,
+                               "\(name) \(String(describing: kind))")
+            }
+        }
+        // What Read contents doesn't read, never.
+        for name in ["h.zip", "i.xlsx", "j.mp3", "k.pages", "l.csv"] {
+            for kind in every { XCTAssertFalse(AISearchRunner.isLookable(entry(name), kind: kind), name) }
+        }
+        XCTAssertFalse(AISearchRunner.isLookable(entry("Photos.jpg", .directory), kind: nil), "a folder")
+        XCTAssertFalse(AISearchRunner.isLookable(entry("link.png", .symlinkToFile), kind: nil), "a link")
+        let plainText = FileEntry(url: URL(fileURLWithPath: "/home/someone/config"), kind: .regular,
+                                  contentTypeIdentifier: "public.plain-text")
+        XCTAssertFalse(AISearchRunner.isLookable(plainText, kind: nil), "text with no extension may be settings")
+        XCTAssertTrue(AISearchRunner.isLookable(plainText, kind: .document))
     }
 }
 #endif

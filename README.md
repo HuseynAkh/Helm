@@ -57,7 +57,7 @@ Names don't always say what a file is. Turn on **Read contents** under the compo
 
 Turn on the trefoil in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
 
-The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at the best candidates, up to 48 photos, videos and documents, and says which match. So "the photo of the receipt from the Italian place" finds it by what it shows, whatever its name, and pointing at it says what the model saw.
+The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "the photo of the receipt from the Italian place" finds it by what it shows, whatever its name, and pointing at it says what the model saw.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
@@ -104,8 +104,8 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
 
   The files themselves never leave your Mac, and neither do full-size pictures. With Ollama or LM Studio nothing leaves your Mac at all, and the thread's first line says "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other provider, what Helm reads goes to it, and the first line says "Sends your requests, file names and what it reads inside files to" that provider. A model that can't take pictures gets the on-device description instead. Text and pictures from inside a file are handed over as data, and the model is told never to follow instructions in them. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
 - In the AI panel, Read contents reads 50 files a request at most and sends 24 pictures at most. It reads text and PDFs up to 20 MB and pictures up to 50 MB.
-- In AI search, Read contents first reads up to 200 candidates on your Mac. Then the model looks at the best of them, 48 at most, or 12 with a model on your Mac: their small copies and first lines are sent with the question. Helm forgets what it read when the search closes.
-- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video.
+- In AI search, Read contents first reads up to 200 candidates on your Mac. Then the model looks at 48 of them at most, or 12 with a model on your Mac, and their small copies and first lines are sent with the question: across the whole Mac only files the search or the on-device recognition matched, in a folder its newest files too. Code goes only when you choose Code, and settings files such as JSON or YAML only with Code or Document. Helm forgets what it read when the search closes.
+- Read contents never downloads a file to read it, never follows a link, never reads a key, password or wallet file, and doesn't listen to the speech in a video.
 - AI search without Read contents sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
 - A path you type in the middle of a message is sent as you typed it, your home folder's name included. A folder at the end of a message is added to the panel and sent only as an id.
 
