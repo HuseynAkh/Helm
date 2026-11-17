@@ -300,6 +300,7 @@ struct WindowTints: Equatable {
         let transparent = settings.bool(.sidebarLiquidGlass)
         let tints = WindowTints(percent: transparent ? settings.double(.windowTransparency) : 0)
         sidebar.setTransparent(transparent, tint: tints.sidebar)
+        agentPanelHost.setTransparent(transparent, tint: tints.sidebar)
         contentEffect.material = transparent ? .underWindowBackground : .windowBackground
         contentEffect.blendingMode = transparent ? .behindWindow : .withinWindow
         contentTint.fraction = tints.content

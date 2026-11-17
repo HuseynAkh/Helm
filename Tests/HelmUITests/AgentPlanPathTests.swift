@@ -146,8 +146,8 @@ import HelmCore
         return (outside, inside, height)
     }
 
-    /// The card inside the thread: the panel's width less the thread's padding on each side.
-    private func cardWidth(panel: CGFloat) -> CGFloat { panel - 24 }
+    /// The card inside the thread: the panel's width less its leading line and the thread's margin on each side.
+    private func cardWidth(panel: CGFloat) -> CGFloat { panel - 1 - 2 * AgentPanelStyle.margin }
 
     func testTheCheckSeesTextTooWideForTheCard() throws {
         let tooWide = Text(verbatim: String(repeating: "Screenshots ", count: 20)).fixedSize()

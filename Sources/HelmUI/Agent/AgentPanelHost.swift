@@ -9,7 +9,8 @@ import HelmCore
 /// every launch. Opening it in a window too narrow for the files first hides the sidebar, then widens the window;
 /// shutting it gives both back, unless the person has moved the sidebar or the window's edge since. Its leading edge
 /// can be dragged, from 300 points to 560 or 45% of the window, whichever is less, and a double click on it puts back
-/// 340. The width is kept in Settings for the next time the panel opens.
+/// 340. The width is kept in Settings for the next time the panel opens. It sits on the sidebar's own material, with
+/// the same tint, so it clears and fills with the window's transparency as the sidebar does.
 @MainActor final class AgentPanelHost: NSView {
     /// The width the panel opens at until its edge is dragged, and the one a double click on its edge puts back.
     static let width: CGFloat = 340, minimumFilesWidth: CGFloat = 420
@@ -44,6 +45,9 @@ import HelmCore
     private let column = NSView()
     private lazy var columnWidth: NSLayoutConstraint = column.widthAnchor.constraint(equalToConstant: Self.width)
     private let divider = NSBox()
+    /// The sidebar's material behind everything in the column, and the solid colour over it.
+    private let background = NSVisualEffectView()
+    private let tint = TintView()
     /// The leading edge's handle, over the divider: drag it to resize, double-click it to put back 340.
     private let edge = Edge()
     /// The width when the edge's drag began, while it lasts.
@@ -73,13 +77,19 @@ import HelmCore
         column.isHidden = true
         addSubview(column)
         divider.boxType = .separator
-        for view in [divider, composer] as [NSView] {
+        for view in [background, divider, composer] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             column.addSubview(view)
         }
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(tint)
         NSLayoutConstraint.activate([
             column.topAnchor.constraint(equalTo: topAnchor), column.bottomAnchor.constraint(equalTo: bottomAnchor),
             column.leadingAnchor.constraint(equalTo: leadingAnchor), columnWidth,
+            background.topAnchor.constraint(equalTo: column.topAnchor), background.bottomAnchor.constraint(equalTo: column.bottomAnchor),
+            background.leadingAnchor.constraint(equalTo: column.leadingAnchor), background.trailingAnchor.constraint(equalTo: column.trailingAnchor),
+            tint.topAnchor.constraint(equalTo: background.topAnchor), tint.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: background.leadingAnchor), tint.trailingAnchor.constraint(equalTo: background.trailingAnchor),
             divider.topAnchor.constraint(equalTo: column.topAnchor), divider.bottomAnchor.constraint(equalTo: column.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: column.leadingAnchor), divider.widthAnchor.constraint(equalToConstant: 1),
             composer.leadingAnchor.constraint(equalTo: divider.trailingAnchor), composer.trailingAnchor.constraint(equalTo: column.trailingAnchor),
@@ -101,6 +111,15 @@ import HelmCore
             }
         }
         updateSpark()
+    }
+
+    /// The window's transparency, as the sidebar takes it: the sidebar's material behind the desktop while it is on,
+    /// with `amount` of solid colour over it, and the plain window background while it is off.
+    func setTransparent(_ transparent: Bool, tint amount: CGFloat) {
+        background.state = transparent ? .active : .inactive
+        background.material = transparent ? .sidebar : .windowBackground
+        background.blendingMode = transparent ? .behindWindow : .withinWindow
+        tint.fraction = transparent ? amount : 0
     }
 
     func setOpen(_ open: Bool, animated: Bool) {

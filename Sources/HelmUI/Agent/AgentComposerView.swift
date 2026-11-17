@@ -4,8 +4,10 @@ import Combine
 import HelmAgent
 import HelmCore
 
-/// The panel's composer, pinned to its bottom: a plain text view of one to five lines, the model's name in quiet
-/// secondary text, and Send, which becomes Stop while a request or an Apply runs. With more than one model to choose
+/// The panel's composer, pinned to its bottom: a rounded field holding a plain text view of one to five lines and
+/// Send at its trailing end, as Messages draws its field, then the model's name in quiet secondary text under it.
+/// Send shows an arrow in the accent colour and becomes Stop while a request or an Apply runs; its title, which
+/// VoiceOver reads and its tooltip shows, says which. With more than one model to choose
 /// from, the name is a compact menu of every connected provider's models, the current one ticked, then AI Settings…;
 /// with one, a press on the name opens Settings › AI. Return sends; Shift-Return or Option-Return starts a new line;
 /// Command-Return presses Apply on the card that waits; Escape stops a request or gives the keys back to the files.
@@ -20,8 +22,16 @@ import HelmCore
     private weak var model: AgentPanelModel?
     private var shownModel: String?
     private var shownAsMenu = false
+    /// What Send shows now: Stop or Send, and whether it can be pressed.
+    private var shownSend: (stop: Bool, enabled: Bool)? = (stop: false, enabled: false)
+    /// The text view has the keys.
+    private var hasKeys = false
+    /// The window becoming key or giving it up, which shows or hides the field's accent edge, as a focus ring.
+    private var keyObservers: [NSObjectProtocol] = []
 
-    static let lineHeight: CGFloat = 17, maximumLines: CGFloat = 5, textInset: CGFloat = 6
+    static let lineHeight: CGFloat = 17, maximumLines: CGFloat = 5, textInset: CGFloat = 6.5
+    /// Send's circle, inside the field's trailing end.
+    static let sendSize: CGFloat = 22
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -56,11 +66,17 @@ import HelmCore
 
     private func build() {
         box.wantsLayer = true
-        box.layer?.cornerRadius = 8
+        // Round at the ends for one line, as Messages' field is, and kept as it grows.
+        box.layer?.cornerRadius = (Self.lineHeight + Self.textInset * 2 + 2) / 2
+        box.layer?.cornerCurve = .continuous
         box.layer?.borderWidth = 1
         AgentComposerTextView.makePlain(textView)
         textView.delegate = self
-        textView.font = .systemFont(ofSize: 13)
+        textView.onFocus = { [weak self] focused in
+            self?.hasKeys = focused
+            self?.paintBox()
+        }
+        textView.font = .systemFont(ofSize: AgentPanelStyle.body)
         textView.textContainerInset = NSSize(width: 2, height: Self.textInset)
         textView.drawsBackground = false
         textView.isVerticallyResizable = true
@@ -85,36 +101,47 @@ import HelmCore
         modelButton.action = #selector(pressModelName)
         modelButton.imagePosition = .noImage
         modelButton.imageHugsTitle = true
-        sendButton.bezelStyle = .rounded
-        sendButton.controlSize = .small
+        // An arrow in a circle, inside the field. The title stays the word, for VoiceOver, the tooltip and tests.
+        sendButton.isBordered = false
+        sendButton.setButtonType(.momentaryChange)
+        sendButton.imagePosition = .imageOnly
+        sendButton.imageScaling = .scaleProportionallyUpOrDown
+        // The circle is grey while there's nothing to send; AppKit's own dimming would fade it twice.
+        (sendButton.cell as? NSButtonCell)?.imageDimsWhenDisabled = false
         sendButton.target = self
         sendButton.action = #selector(pressSend)
 
-        for view in [box, modelButton, sendButton] as [NSView] {
+        for view in [box, modelButton] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(scrollView)
+        for view in [scrollView, sendButton] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            box.addSubview(view)
+        }
         let height = box.heightAnchor.constraint(equalToConstant: Self.lineHeight + Self.textInset * 2 + 2)
         boxHeight = height
+        let margin = AgentPanelStyle.margin
         NSLayoutConstraint.activate([
             box.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            box.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            box.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin),
+            box.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -margin),
             height,
             scrollView.topAnchor.constraint(equalTo: box.topAnchor, constant: 1),
             scrollView.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -1),
-            scrollView.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
-            scrollView.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
-            modelButton.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 6),
-            modelButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            modelButton.trailingAnchor.constraint(lessThanOrEqualTo: sendButton.leadingAnchor, constant: -8),
-            modelButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
-            sendButton.centerYAnchor.constraint(equalTo: modelButton.centerYAnchor),
-            sendButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10)
+            scrollView.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 7),
+            scrollView.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -2),
+            // At the field's trailing end, level with the last line as the field grows.
+            sendButton.widthAnchor.constraint(equalToConstant: Self.sendSize),
+            sendButton.heightAnchor.constraint(equalToConstant: Self.sendSize),
+            sendButton.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -5),
+            sendButton.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -5),
+            modelButton.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 5),
+            modelButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin + 6),
+            modelButton.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -margin),
+            modelButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
         ])
-        // A long model name gives way before Send does, and never widens the panel.
+        // A long model name gives way, and never widens the panel.
         modelButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
@@ -122,14 +149,42 @@ import HelmCore
         super.viewDidChangeEffectiveAppearance()
         paintBox()
     }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        for observer in keyObservers { NotificationCenter.default.removeObserver(observer) }
+        keyObservers = []
+        guard let newWindow else { return }
+        keyObservers = [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: newWindow, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.paintBox() }
+            }
+        }
+    }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         paintBox()
     }
+    /// The field's fill and edge for the window's appearance. The edge takes the accent colour while the field has the
+    /// keys in the key window, where a focus ring would show.
     private func paintBox() {
+        let focused = hasKeys && window?.isKeyWindow == true
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            box.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
-            box.layer?.borderColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+            box.layer?.backgroundColor = AgentPanelStyle.fieldFill.cgColor
+            box.layer?.borderColor = (focused ? AgentPanelStyle.fieldFocusBorder : AgentPanelStyle.fieldBorder).cgColor
+        }
+        paintSend()
+    }
+
+    /// Send's circle: the accent colour while it can be pressed, a quiet grey while there's nothing to send.
+    private func paintSend() {
+        guard let shown = shownSend else { return }
+        let symbol = shown.stop ? "stop.circle.fill" : "arrow.up.circle.fill"
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let circle: NSColor = shown.enabled ? .controlAccentColor : .tertiaryLabelColor
+            let configuration = NSImage.SymbolConfiguration(pointSize: Self.sendSize - 2, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [.white, circle]))
+            sendButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration)
         }
     }
 
@@ -138,8 +193,16 @@ import HelmCore
     private func refresh() {
         guard let model else { return }
         let running = model.showsStop
-        sendButton.title = running ? AgentText.stop : AgentText.send
+        let title = running ? AgentText.stop : AgentText.send
+        if sendButton.title != title { sendButton.title = title }
+        // A new title puts itself beside the image; Send draws the image alone.
+        sendButton.imagePosition = .imageOnly
+        sendButton.toolTip = title
         sendButton.isEnabled = running || model.canSend
+        if shownSend?.stop != running || shownSend?.enabled != sendButton.isEnabled {
+            shownSend = (running, sendButton.isEnabled)
+            paintSend()
+        }
         textView.needsDisplay = true
         // The model's id, or the provider's name when it has none, as the disk's and the model's words are: escaped.
         let name = AgentTextEscaper.escape(model.provider.model.isEmpty ? model.provider.name : model.provider.model)
@@ -148,7 +211,7 @@ import HelmCore
         shownModel = name
         shownAsMenu = asMenu
         modelButton.attributedTitle = NSAttributedString(string: name, attributes: [
-            .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+            .font: NSFont.systemFont(ofSize: AgentPanelStyle.small), .foregroundColor: NSColor.secondaryLabelColor])
         modelButton.setAccessibilityLabel(name)
         if asMenu {
             // A small up-and-down chevron after the name, as a pop-up button shows, says it's a menu.
@@ -277,7 +340,20 @@ import HelmCore
     var onReturn: (() -> Void)?
     var onCommandReturn: (() -> Void)?
     var onEscape: (() -> Void)?
+    /// The keys came to the composer (true) or left it (false), so its field can show which.
+    var onFocus: ((Bool) -> Void)?
     weak var dropTarget: AgentPanelHost?
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became { onFocus?(true) }
+        return became
+    }
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { onFocus?(false) }
+        return resigned
+    }
 
     /// Turns off everything that would change what is typed, read meaning into it, or offer it to another app.
     static func makePlain(_ textView: NSTextView) {
