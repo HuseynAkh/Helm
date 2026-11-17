@@ -51,19 +51,19 @@ screenshots = {"when": "file my screenshots", "turns": [
     {"text": "Your screenshots go into Screenshots in Pictures, with the others.",
      "calls": [{"name": "propose_changes", "args": {
         "new_folders": [], "copies": [], "renames": [], "trash": [],
-        "moves": [{"items": names("Screenshot 2026-11-08 at 10.42.12.png", "Screenshot 2026-11-12 at 14.20.05.png"),
+        "moves": [{"items": names("Screenshot 10.42.12.png", "Screenshot 14.20.05.png"),
                    "all_in": "", "to": "@name:Screenshots"}]}}]}]}
 # Read contents, in Documents/Scans: the names say nothing, so the model asks Helm what is inside, and files the two
 # receipts and the invoice by what they say.
-scans = names("IMG_1988.jpg", "IMG_2041.jpg", "Scan 2026-11-03.pdf", "Scan 2026-11-09.pdf")
+scans = names("IMG_1988.jpg", "IMG_2041.jpg", "IMG_2066.jpg", "IMG_2079.jpg", "Scan 2026-11-03.pdf", "Scan 2026-11-09.pdf")
 sort_scans = {"when": "sort these scans", "turns": [
     {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
     {"calls": [{"name": "read_contents", "args": {"ids": scans}}]},
-    {"text": "Two photos are receipts, from Harbour Cafe and Corner Market, and one scan is an invoice from Studio Maple. The lease letter stays.",
+    {"text": "Four photos are receipts, from Harbour Cafe, Corner Market, Riverside Books and City Pharmacy, and one scan is an invoice from Studio Maple. The lease letter stays.",
      "calls": [{"name": "propose_changes", "args": {
         "new_folders": [{"key": "n1", "parent": "@root", "name": "Receipts"},
                         {"key": "n2", "parent": "@root", "name": "Invoices"}],
-        "moves": [{"items": names("IMG_1988.jpg", "IMG_2041.jpg"), "all_in": "", "to": "n1"},
+        "moves": [{"items": names("IMG_1988.jpg", "IMG_2041.jpg", "IMG_2066.jpg", "IMG_2079.jpg"), "all_in": "", "to": "n1"},
                   {"items": names("Scan 2026-11-03.pdf"), "all_in": "", "to": "n2"}],
         "copies": [], "renames": [], "trash": []}}]}]}
 anything = {"when": "*", "turns": [{"text": "I can organize, move and copy files in these folders."}]}
@@ -113,9 +113,12 @@ frame() { name=$1; shift; "$root/frame_shot" "$root/shots/$name.png" "docs/image
 frame ai-panel-dark 1600
 frame ai-panel-light 1600
 frame ai-plan-light 760 18 crop=900,52,340,548
+frame ai-plan-dark 760 18 crop=900,52,340,548
 frame ai-undo-light 760 18 crop=900,52,340,548
+frame ai-undo-dark 760 18 crop=900,52,340,548
 frame ai-whole-mac-light 1600
 frame ai-contents-light 1600
+frame ai-search-light 1600
 frame ai-search-dark 1600
 frame onboarding-ai-light 900 16
 frame onboarding-access-light 900 16

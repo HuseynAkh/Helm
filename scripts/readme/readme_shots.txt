@@ -3,7 +3,8 @@
 # answers to @FIX@/agent-script.json. AI mode's pictures use that scripted model, so no request leaves the Mac.
 windows 1
 free-space hidden
-window-size 1240 800
+# One size for every window picture, so they keep the same proportions down the page
+window-size 1240 760
 activate
 app-icon docs/brand/logo-variants/variant-4-isometric.png
 setting-is aiModeEnabled false
@@ -61,7 +62,9 @@ search-type invoice
 wait 3
 screenshot @SHOTS@/search-dark.png
 search-key escape
-# AI mode, after Recent's picture so Recent shows none of its folders.
+# AI mode, after Recent's picture so Recent shows none of its folders. The plan, the result and AI search are taken
+# in light and dark, for the README's pairs. The Whole Mac and Read contents pictures stay light only: a capture draws
+# the empty composer's placeholder in light-mode grey on the dark field (docs/images/ai-panel-dark.png shows it).
 # The AI Mode screen, switched on with a stand-in key, which the screen never draws
 appearance dark
 go @FIX@/home/Downloads
@@ -98,6 +101,11 @@ agent-group Move 1 item to the Trash off
 agent-group-path Move 3 items to “Images”=~/Downloads/Images new folder
 wait 1
 screenshot @SHOTS@/ai-plan-light.png
+appearance dark
+wait 1.5
+screenshot @SHOTS@/ai-plan-dark.png
+appearance light
+wait 1
 exists @FIX@/home/Downloads/Beach Day.jpg
 # Apply, then one Undo puts everything back
 agent-press Apply
@@ -105,6 +113,11 @@ agent-phase result
 agent-reads Moved 9 items into 3 folders.
 wait 1.5
 screenshot @SHOTS@/ai-undo-light.png
+appearance dark
+wait 1.5
+screenshot @SHOTS@/ai-undo-dark.png
+appearance light
+wait 1
 exists @FIX@/home/Downloads/Images/Beach Day.jpg
 exists @FIX@/home/Downloads/Read Me.txt
 agent-undo
@@ -129,7 +142,7 @@ agent-group-path Move 2 items to “Screenshots”=~/Pictures/Screenshots
 wait 1
 screenshot @SHOTS@/ai-whole-mac-light.png
 agent-press Cancel
-exists @FIX@/home/Desktop/Screenshot 2026-11-12 at 14.20.05.png
+exists @FIX@/home/Desktop/Screenshot 14.20.05.png
 agent-scope thisFolder
 agent-edge-double-click
 agent-width 340
@@ -142,8 +155,8 @@ agent-contents-is on
 agent-reads Sends your requests, file names and short summaries of file contents to Claude.
 agent-say sort these scans
 agent-phase plan
-agent-reads and 4 summaries to Claude.
-agent-group Move 2 items to “Receipts” on
+agent-reads and 6 summaries to Claude.
+agent-group Move 4 items to “Receipts” on
 wait 1
 screenshot @SHOTS@/ai-contents-light.png
 agent-press Cancel
@@ -153,10 +166,8 @@ agent-contents-is off
 agent-close
 agent-is closed
 # AI search from Home, kept to photos, with Read contents on: Helm looks inside the pictures on this Mac for the word
-# typed, and finds the receipts by the word printed on them. Nothing it reads is sent. The window is shorter for
-# this one picture, so three results don't sit in an empty window
+# typed, and finds the receipts by the word printed on them. Nothing it reads is sent
 appearance dark
-window-size 1240 640
 go @FIX@/home
 view grid
 wait 1
@@ -175,12 +186,21 @@ search-status-reads Photos
 has IMG_2041.jpg
 has IMG_1988.jpg
 has IMG_2102.jpg
+has IMG_2066.jpg
+has IMG_2079.jpg
+has IMG_2110.jpg
 lacks Sunset over the Bay.jpg
 result-reason IMG_2041.jpg=Text in image: “receipt” · Image
+# A click on the files: the search keeps its words and results, and its field rests, as a finished search does
+focus-files
+search-shown true
+search-looks resting
+has IMG_2110.jpg
 wait 3
 screenshot @SHOTS@/ai-search-dark.png
-search-key escape
-window-size 1240 800
+appearance light
+wait 1.5
+screenshot @SHOTS@/ai-search-light.png
 agent-script @FIX@/agent-script.json
 # The header with the panel open: one button for Grid and List, the sort button, the mark, lit, and the main menu
 appearance dark

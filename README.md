@@ -31,21 +31,21 @@ Under the composer, the model's name is a menu of the models your connected prov
 Helm shows the plan before anything happens. Each group of changes has a tick and its full list, and a group of moves or copies says which folder it goes to. Moving to the Trash, and anything that lands where others can see it, starts unticked. Press Apply, and one Undo puts it all back.
 
 <p align="center">
-  <img src="docs/images/ai-plan-light.png" width="49%" alt="A plan card in the AI panel: Organize “Downloads”, 9 moves and 3 new folders, with ticked groups for Documents, Images and Archives, each showing its new folder in Downloads, an unticked Trash group for Read Me.txt, and Cancel and Apply">
-  <img src="docs/images/ai-undo-light.png" width="49%" alt="The same plan after Apply, greyed out, and under it a result card: Moved 9 items into 3 folders, with Show and Undo">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-plan-dark.png"><img src="docs/images/ai-plan-light.png" width="49%" alt="A plan card in the AI panel: Organize “Downloads”, 9 moves and 3 new folders, with ticked groups for Documents, Images and Archives, each showing its new folder in Downloads, an unticked Trash group for Read Me.txt, and Cancel and Apply"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-undo-dark.png"><img src="docs/images/ai-undo-light.png" width="49%" alt="The same plan after Apply, greyed out, and under it a result card: Moved 9 items into 3 folders, with Show and Undo"></picture>
 </p>
 
 ### This Folder or Whole Mac
 
-Every new thread starts in **This Folder**: the folder on show, plus any you add. Switch the folders row to **Whole Mac** and AI mode can look through your home folder, iCloud Drive, your cloud folders and your disks, and propose moving files to where they belong. It never sees system folders, your Library or other apps' data. The thread's first line then says it sends names from your home folder.
+Every new thread starts in **This Folder**: the folder on show, plus any you add. Switch the folders row to **Whole Mac** and AI mode can look through your home folder, iCloud Drive, your cloud folders and your disks, and propose moving files to where they belong. It never sees system folders, your Library or other apps' data. The thread's first line then says so.
 
-<img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two screenshots and a receipt photo. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
+<img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two folders, a PDF, two receipt photos, two screenshots and a note. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
 
 ### Read contents
 
 Names don't always say what a file is. Turn on **Read contents** under the composer and Helm reads inside files on your Mac: the first lines of text files and PDFs, and what pictures and a few frames of a video show, with any text in them. The model gets those short summaries, never the files, so it can file a scan by what it says. Read contents is off in every new thread, and turning it on or off starts the thread over.
 
-<img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: two receipt photos named IMG_1988.jpg and IMG_2041.jpg and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and short summaries of file contents to Claude. After Sent 8 names and 4 summaries to Claude, the reply names the receipts and the invoice, and the plan moves 2 items to a new Receipts folder and 1 to a new Invoices folder">
+<img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: four receipt photos named IMG_1988.jpg, IMG_2041.jpg, IMG_2066.jpg and IMG_2079.jpg, and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and short summaries of file contents to Claude. After Sent 12 names and 6 summaries to Claude, the reply names the four receipts and the invoice, and the plan moves 4 items to a new Receipts folder and 1 to a new Invoices folder">
 
 ### Find with AI
 
@@ -53,7 +53,10 @@ Turn on the trefoil in the search field and describe the file. The model plans t
 
 The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. **Read contents** at the end of the row also looks inside photos and videos on your Mac, at what they show and the text in them. So "the photo of the receipt" finds receipts by the word printed on them, and pointing at one shows "Text in image: “receipt”", or for a picture with no words, something like "Shows: dog, beach". What Helm reads stays on your Mac.
 
-<img src="docs/images/ai-search-dark.png" alt="AI search from Home for the photo of the receipt, with Photo chosen in the kind row and Read contents on: three receipt photos, IMG_2102.jpg, IMG_2041.jpg and IMG_1988.jpg, and the status bar reading 3 matches, Mentions “receipt”, Photos">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
+  <img src="docs/images/ai-search-light.png" alt="AI search from Home for the photo of the receipt, with Photo chosen in the kind row and Read contents on: six receipt photos, IMG_2110.jpg, IMG_2102.jpg, IMG_2041.jpg, IMG_2066.jpg, IMG_2079.jpg and IMG_1988.jpg, and the status bar reading 6 matches, Mentions “receipt”, Photos">
+</picture>
 
 ## How it works
 
@@ -85,9 +88,9 @@ Helm connects only to the AI provider you choose, and only while AI mode is on. 
 
 **What is sent.** Your requests, and the names and details of files (size, dates and kind). Never what's inside a file, unless you turn on Read contents. The top of every thread says what it sends, and each request says how many names it sent. With Whole Mac on, the names can come from anywhere in your home folder, your cloud folders and your disks, but never from your Library, hidden files or system folders.
 
-- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (PDFKit, Vision and AVFoundation): the first 1,500 characters of text files and PDFs, and up to five things a picture, or three to five frames of a video, show, with the text in them. The model gets those short summaries, never the files. With Ollama or LM Studio nothing leaves your Mac, and the thread's first line says "Reads file contents on this Mac; nothing leaves your Mac." With any other provider the summaries are sent to it, and the first line says "Sends your requests, file names and short summaries of file contents to" that provider. Each request then says how many summaries it sent. Text inside a file is handed over as quoted data, and instructions in it are never followed.
+- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (PDFKit, Vision and AVFoundation): the first 1,500 characters of text files and PDFs; for a picture, up to five things it shows and any text in it; for a video, the same from three to five frames taken through it. The model gets those short summaries, never the files. With Ollama or LM Studio nothing leaves your Mac, and the thread's first line says "Reads file contents on this Mac; nothing leaves your Mac." With any other provider the summaries are sent to it, and the first line says "Sends your requests, file names and short summaries of file contents to" that provider. Each request then says how many summaries it sent. Text from inside a file is handed over as quoted data, and the model is told never to follow instructions in it. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
 - AI search with Read contents on never sends what it reads. It matches your words against what up to 200 photos and videos show and the text in them, on your Mac, and forgets what it read when the search closes.
-- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video. It reads 50 files a request at most, text and PDFs up to 20 MB and pictures up to 50 MB.
+- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video. In the AI panel it reads 50 files a request at most, text and PDFs up to 20 MB and pictures up to 50 MB.
 - AI search sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
 - A path you type in the middle of a message is sent as you typed it, your home folder's name included. A folder at the end of a message is added to the panel and sent only as an id.
 
@@ -155,7 +158,7 @@ Helm is an early preview for macOS 14 Sonoma or later, on Apple silicon or Intel
 3. **Drag Helm to Applications.** Open the disk image and drag Helm onto the Applications folder beside it, then eject the disk image.
 4. **Open it the first time.** Helm isn't notarized yet, so macOS stops it once. On macOS 15 and later, click **Done**, open **System Settings › Privacy & Security**, scroll to **Security**, click **Open Anyway** next to the note about Helm, and confirm with your password. On macOS 14, Control-click Helm in Applications, choose **Open**, then **Open** again. [Why it isn't notarized](docs/RELEASING.md#why-helm-isnt-notarized-yet).
 5. **Set it up.** Helm opens one window that goes step by step, with Back and Continue: **Welcome**, **Full Disk Access**, **Default File Viewer**, **AI Mode** and **You're All Set**. A step that's already done is left out. Opened from the disk image, the welcome offers to move Helm to Applications first. Full Disk Access opens System Settings only when you click its button; when macOS asks to quit and reopen Helm, setup carries on at the next step. Default File Viewer makes Helm open in place of Finder and puts it next to Finder in the Dock, if you leave its box ticked.
-6. **Turn on AI mode**, if you want it, at the AI Mode step: switch it on, pick a provider, then click **Continue with ChatGPT** for OpenAI, paste your key, or start Ollama or LM Studio. **Not Now** leaves it off. Click **Get Started** at the end and your files open, with nothing else popping up. **Help › Set Up Helm…** goes through the steps again.
+6. **Turn on AI mode**, if you want it, at the AI Mode step: switch it on, pick a provider, then click **Continue with ChatGPT** for OpenAI, paste your key, or start Ollama or LM Studio. **Continue** keeps it on; **Not Now**, or closing the window before you answer, leaves it off. Click **Get Started** at the end and your files open, with nothing else popping up. **Help › Set Up Helm…** goes through the steps again.
 
 <p align="center">
   <img src="docs/images/onboarding-access-light.png" width="49%" alt="The onboarding's Full Disk Access step, step 2 of 5: Full Disk Access is off, Without it, macOS asks about Desktop, Documents and Downloads, the Open System Settings button, and the note that macOS will ask to quit and reopen Helm and setup continues after. Back and Continue">
@@ -221,7 +224,7 @@ Drag sidebar rows into the order you like, and drag out the ones you don't use. 
 
 macOS guards some places, such as the Trash and other apps' data. When Helm can't open one, it says why and offers a way forward: grant access, open it in Finder, or try again. The onboarding's Full Disk Access step, and **Help › Full Disk Access…**, open the right place in System Settings.
 
-<p align="center"><img src="docs/images/trash-card-light.png" width="720" alt="A card in place of the Trash: Helm can't show the Trash, Only apps with Full Disk Access can look inside the Trash, with Grant Access…, Open in Finder and Try Again"></p>
+<img src="docs/images/trash-card-light.png" alt="A card in place of the Trash: Helm can't show the Trash, Only apps with Full Disk Access can look inside the Trash, with Grant Access…, Open in Finder and Try Again">
 
 ### Everything else
 

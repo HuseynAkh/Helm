@@ -1,12 +1,13 @@
 // Draws Helm's brand pictures in docs/brand: the mark of AI mode, the trefoil, and the README's banner in light and
-// dark: the app icon, then the mark with "AI mode", the name and one line, as one lockup on a quiet field of the mark's
-// colours. Everything is drawn here, with no image service and no network.
+// dark: the app icon, then the mark with "AI mode" in the mark's colours, the name and one line, as one lockup on a
+// soft field of the mark's colours. Everything is drawn here, with no image service and no network.
 // usage: swift scripts/readme/make_brand.swift <app-icon.icns> <out-dir>
 // The mark's line, weight, gaps, shade and colours are the ones Sources/HelmUI/Agent/SparkMark.swift draws in the app
 // (the files keep the name spark, the mark it replaced). The icon is read from the app's own icon file and is never
 // changed: it is only scaled.
 import AppKit
 import CoreGraphics
+import CoreText
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -294,23 +295,27 @@ struct Look {
     let name: String
     let field: [UInt32]
     let washes: [(x: CGFloat, y: CGFloat, radius: CGFloat, color: CGColor, squash: CGFloat)]
-    let eyebrow: NSColor, title: NSColor, line: NSColor
+    /// The eyebrow's gradient, left to right: the mark's colours, deepened on the light field so the word reads.
+    let eyebrow: [CGColor], title: NSColor, line: NSColor
     let shadow: CGFloat, edge: CGColor
 }
 let looks = [
-    // Light: a white field that warms a little towards the bottom, with pale tints of amber, coral and violet
-    // drawn over white, so nothing mixes into grey.
+    // Light: a white field that warms a little towards the bottom, with tints of amber, coral and violet drawn over
+    // white, so nothing mixes into grey, strong enough that all three still read at the width GitHub shows.
     Look(name: "banner-light.png", field: [0xFFFFFF, 0xF8F6F3],
-         washes: [(0.02, 1.02, 980, rgb(0xFFF0D4, 0.85), 0.62),
-                  (0.70, -0.10, 900, rgb(0xFFE4DE, 0.80), 0.55),
-                  (1.00, 0.70, 1000, rgb(0xEDE4FF, 0.95), 0.72)],
-         eyebrow: NSColor(white: 0.16, alpha: 1), title: NSColor(white: 0.07, alpha: 1), line: NSColor(white: 0.40, alpha: 1),
+         washes: [(0.02, 1.02, 1000, rgb(0xFFE6BA, 0.95), 0.62),
+                  (0.70, -0.10, 920, rgb(0xFFD6CC, 0.90), 0.55),
+                  (1.00, 0.70, 1020, rgb(0xE2D3FF, 1.00), 0.72)],
+         eyebrow: [rgb(0xE08600), rgb(0xEC5444), rgb(0x7B45EA)],
+         title: NSColor(white: 0.07, alpha: 1), line: NSColor(white: 0.40, alpha: 1),
          shadow: 0.24, edge: CGColor(gray: 0, alpha: 0.07)),
-    // Dark: a deep neutral with only violet and a trace of coral, since amber over black turns brown.
+    // Dark: a deep neutral with only violet and coral, since amber over black turns brown; the mark and the
+    // eyebrow carry the amber.
     Look(name: "banner-dark.png", field: [0x131317, 0x09090B],
-         washes: [(0.70, -0.10, 900, rgb(0xFA7061, 0.07), 0.55),
-                  (1.00, 0.70, 1000, rgb(0x8F5CF5, 0.20), 0.72)],
-         eyebrow: NSColor(white: 0.90, alpha: 1), title: NSColor(white: 0.97, alpha: 1), line: NSColor(white: 0.64, alpha: 1),
+         washes: [(0.70, -0.10, 900, rgb(0xFA7061, 0.12), 0.55),
+                  (1.00, 0.70, 1000, rgb(0x8F5CF5, 0.28), 0.72)],
+         eyebrow: sparkColors,
+         title: NSColor(white: 0.97, alpha: 1), line: NSColor(white: 0.64, alpha: 1),
          shadow: 0.55, edge: CGColor(gray: 1, alpha: 0.12))
 ]
 
@@ -335,10 +340,10 @@ for look in looks {
         drawWash(at: CGPoint(x: w * wash.x, y: h * wash.y), radius: wash.radius, color: wash.color, squash: wash.squash, context: context)
     }
 
-    let eyebrow = words("AI mode", size: 44, weight: .semibold, color: look.eyebrow, kern: -0.2)
+    let eyebrow = words("AI mode", size: 60, weight: .semibold, color: .black, kern: -0.3)
     let title = words("Helm", size: 188, weight: .semibold, color: look.title, kern: -4.8)
     let line = words("An agentic file manager for your Mac.", size: 54, weight: .regular, color: look.line, kern: -0.4)
-    let markSide: CGFloat = 62, markGap: CGFloat = 16
+    let markSide: CGFloat = 88, markGap: CGFloat = 16
     let column = max(markSide + markGap + eyebrow.size().width, title.size().width, line.size().width)
     let iconSide: CGFloat = 380, gutter: CGFloat = 116
     let left = ((w - iconSide - gutter - column) / 2).rounded()
@@ -349,14 +354,27 @@ for look in looks {
     context.restoreGState()
 
     let textX = iconFrame.maxX + gutter
-    let eyebrowY = h / 2 + 130
-    drawSpark(in: CGRect(x: textX - 4, y: eyebrowY - 7, width: markSide, height: markSide), context: context)
+    // The mark's ink starts 7 % in from its square, so the square is set back by that much to line up with the name.
+    let eyebrowY = h / 2 + 122
+    let markInset = (markSide * 0.07).rounded()
+    drawSpark(in: CGRect(x: textX - markInset, y: eyebrowY - 10, width: markSide, height: markSide), context: context)
+    // "AI mode" in the mark's colours, left to right: the word clips a gradient, as a kicker does.
+    let eyebrowLine = CTLineCreateWithAttributedString(eyebrow)
+    let eyebrowX = textX + markSide + markGap - markInset, eyebrowBase = eyebrowY + 12
+    let eyebrowWidth = CGFloat(CTLineGetTypographicBounds(eyebrowLine, nil, nil, nil))
+    context.saveGState()
+    context.textPosition = CGPoint(x: eyebrowX, y: eyebrowBase)
+    context.setTextDrawingMode(.clip)
+    CTLineDraw(eyebrowLine, context)
+    let kicker = CGGradient(colorsSpace: sRGB, colors: look.eyebrow as CFArray, locations: [0, 0.5, 1])!
+    context.drawLinearGradient(kicker, start: CGPoint(x: eyebrowX, y: eyebrowBase), end: CGPoint(x: eyebrowX + eyebrowWidth, y: eyebrowBase),
+                               options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    context.restoreGState()
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-    eyebrow.draw(at: CGPoint(x: textX + markSide + markGap - 4, y: eyebrowY + 2))
     // The name's H is set back by its side bearing, so its stem lines up with the mark and the line below.
-    title.draw(at: CGPoint(x: textX - 12, y: h / 2 - 108))
-    line.draw(at: CGPoint(x: textX - 2, y: h / 2 - 198))
+    title.draw(at: CGPoint(x: textX - 12, y: h / 2 - 114))
+    line.draw(at: CGPoint(x: textX - 2, y: h / 2 - 204))
     NSGraphicsContext.restoreGraphicsState()
     context.restoreGState()
 
