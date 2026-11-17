@@ -183,12 +183,16 @@ import HelmCore
         paintSend()
     }
 
-    /// Send's circle: the accent colour while it can be pressed, a quiet grey while there's nothing to send.
+    /// Send's circle: the accent colour while it can be pressed, a quiet grey while there's nothing to send. The grey
+    /// is the plain appearance's, as the hint's is, and painted again when the appearance changes: the panel's
+    /// vibrant grey drew a dark circle on the dark field under a bright arrow. The accent stays the system's, so it
+    /// follows a change of accent colour.
     private func paintSend() {
         guard let shown = shownSend else { return }
         let symbol = shown.stop ? "stop.circle.fill" : "arrow.up.circle.fill"
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            let circle: NSColor = shown.enabled ? .controlAccentColor : .tertiaryLabelColor
+            let circle: NSColor = shown.enabled ? .controlAccentColor
+                : AgentPanelStyle.plain(.tertiaryLabelColor, for: effectiveAppearance)
             let configuration = NSImage.SymbolConfiguration(pointSize: Self.sendSize - 2, weight: .semibold)
                 .applying(NSImage.SymbolConfiguration(paletteColors: [.white, circle]))
             sendButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
@@ -434,12 +438,13 @@ import HelmCore
     /// Paste always pastes plain text.
     override func paste(_ sender: Any?) { pasteAsPlainText(sender) }
 
-    /// The placeholder, while nothing is typed.
+    /// The placeholder, while nothing is typed, in the placeholder grey of the plain light or dark appearance. The
+    /// panel's vibrant appearance has an opaque mid grey for it, which drew dark on the dark field, hardly readable.
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard string.isEmpty else { return }
-        let attributes: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 13),
-                                                         .foregroundColor: NSColor.placeholderTextColor]
+        let ink = AgentPanelStyle.plain(.placeholderTextColor, for: effectiveAppearance)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font ?? .systemFont(ofSize: 13), .foregroundColor: ink]
         let origin = NSPoint(x: textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0), y: textContainerInset.height)
         (AgentText.composerPlaceholder as NSString).draw(at: origin, withAttributes: attributes)
     }
