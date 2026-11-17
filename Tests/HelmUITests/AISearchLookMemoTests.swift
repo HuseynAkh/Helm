@@ -84,7 +84,7 @@ final class AISearchLookMemoTests: XCTestCase {
         let every: [AISearchKind?] = [nil] + AISearchKind.searchChoices
         // Pictures, videos, PDFs, Word files and prose, whatever kind was chosen.
         for name in ["a.jpg", "b.mov", "c.pdf", "d.txt", "e.docx", "g.rtf", "h.MD", "i.markdown", "j.log", "k.srt", "l.tex",
-                     "m.text", "n.odt", "o.doc"] {
+                     "m.text", "n.odt"] {
             for kind in every { XCTAssertTrue(AISearchRunner.isLookable(entry(name), kind: kind), "\(name) \(String(describing: kind))") }
         }
         // Code only for Code; settings and other text only for Document or Code.
@@ -99,8 +99,8 @@ final class AISearchLookMemoTests: XCTestCase {
                                "\(name) \(String(describing: kind))")
             }
         }
-        // What Read contents doesn't read, never.
-        for name in ["h.zip", "i.xlsx", "j.mp3", "k.pages", "l.csv"] {
+        // What Read contents doesn't read, never: an old Word file among them.
+        for name in ["h.zip", "i.xlsx", "j.mp3", "k.pages", "l.csv", "o.doc"] {
             for kind in every { XCTAssertFalse(AISearchRunner.isLookable(entry(name), kind: kind), name) }
         }
         XCTAssertFalse(AISearchRunner.isLookable(entry("Photos.jpg", .directory), kind: nil), "a folder")
