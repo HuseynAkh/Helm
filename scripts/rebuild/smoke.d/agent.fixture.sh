@@ -93,6 +93,10 @@ script = {"rules": places + [
         moves=[{"items": ["@name:photo-1.png", "@name:photo-2.jpg"], "all_in": "", "to": "n1"},
                {"items": ["@name:memo.txt", "@name:todo.txt"], "all_in": "", "to": "n2"}])]},
     {"when": "tidy", "turns": [listing(), proposal("The old draft can go.", trash=["@name:draft-old.txt"])]},
+    # A new file with the text the model wrote, made only on Apply.
+    {"when": "packing list", "turns": [listing(), proposal(
+        "A packing list for the trip.",
+        new_files=[{"parent": "@root", "name": "Packing List.txt", "text": "Passport\nCharger\nSocks\n"}])]},
     anything], **search}
 
 # Each rule tries one thing Helm refuses. "escape" names items by path, and one of them is outside the home.
@@ -107,6 +111,7 @@ hostile = {"rules": [
     {"when": "make an app", "turns": [listing(), proposal(
         "Making a tool.",
         new_folders=[{"key": "n1", "parent": "@root", "name": "Tools.app"}],
+        new_files=[{"parent": "@root", "name": "launch.command", "text": "open -a Calculator\n"}],
         moves=[{"items": ["@name:scan.pdf"], "all_in": "", "to": "n1"}],
         renames=[{"item": "@name:memo.txt", "name": "memo.command"}])]},
     {"when": "broken", "turns": [], "failure": "unreachable"},

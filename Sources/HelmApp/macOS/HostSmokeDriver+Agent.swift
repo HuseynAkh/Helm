@@ -196,6 +196,17 @@ extension HostSmokeDriver {
         case "agent-scope-is":
             let reached = await until { model?.scopeForTesting == argument }
             check(reached, step, model?.scopeForTesting ?? "no panel")
+        case "agent-file-is":
+            // agent-file-is <path>=<line>|<line>: a file a plan made holds these lines, each ending in a line break,
+            // and nobody may run it.
+            let bits = argument.split(separator: "=", maxSplits: 1).map(String.init)
+            guard bits.count == 2 else { check(false, step, "usage"); return true }
+            let wanted = bits[1].split(separator: "|", omittingEmptySubsequences: false).map { $0 + "\n" }.joined()
+            let found = (try? String(contentsOfFile: bits[0], encoding: .utf8)) ?? "<unreadable>"
+            let attributes = try? FileManager.default.attributesOfItem(atPath: bits[0])
+            let mode = (attributes?[.posixPermissions] as? NSNumber)?.intValue ?? 0o777
+            let shown = found.replacingOccurrences(of: "\n", with: "|")
+            check(found == wanted && mode & 0o111 == 0, step, "\(shown) mode \(String(mode, radix: 8))")
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.
