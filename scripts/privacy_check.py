@@ -479,6 +479,10 @@ ALLOW = [
     ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
     ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
     ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
+    # A Word file an AI panel plan makes: NSAttributedString writes the text as a .docx in memory. It is the same
+    # spelling as a session's load from an address, and reads nothing.
+    ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
+     'return try? string.data(from: whole, documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
     # Plain http to a model on this Mac. transport_security() holds what is under the key to ATS_SHAPE.
     ATS_KEY,
 ]

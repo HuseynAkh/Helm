@@ -9,7 +9,8 @@ public enum Command: Hashable, Sendable {
     case trash(items: [URL])
     case rename(RenamePair), batchRename([RenamePair])
     case createFolder(parent: URL, name: ValidFileName)
-    case createFile(parent: URL, name: ValidFileName, template: URL?)
+    /// A new file: a copy of `template`, or else a file holding `contents`, written once and never over another.
+    case createFile(parent: URL, name: ValidFileName, template: URL?, contents: Data = Data())
     /// An alias or symbolic link to each item, named "<name> alias" or "<name> link", in `destinationDirectory` or,
     /// when that's nil, next to the item. Undo moves them to the Trash.
     case link(sources: [URL], destinationDirectory: URL?, alias: Bool)

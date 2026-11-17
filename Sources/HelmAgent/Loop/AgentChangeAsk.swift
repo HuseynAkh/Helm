@@ -15,7 +15,11 @@ public enum AgentChangeAsk {
                 if word == "sort", next == "of" { continue }
                 return true
             }
-            if makers.contains(word), words[(index + 1)...].prefix(4).contains(where: { folders.contains($0) }) { return true }
+            // "Draft a letter" asks for one; "the draft is old" doesn't.
+            if word == "draft", determiners.contains(next) { return true }
+            if word == "new", things.contains(next) { return true }
+            let soon = words[(index + 1)...].prefix(4)
+            if makers.contains(word), soon.contains(where: { folders.contains($0) || things.contains($0) }) { return true }
         }
         return false
     }
@@ -24,8 +28,14 @@ public enum AgentChangeAsk {
     private static let verbs: Set<String> = [
         "organize", "organise", "reorganize", "reorganise", "sort", "tidy", "declutter", "clean", "arrange", "group",
         "gather", "move", "copy", "duplicate", "rename", "trash", "delete", "remove", "put", "flatten", "merge",
+        "create", "write",
     ]
-    /// "Make a folder for the photos" asks for a change; "make sense of this" doesn't.
-    private static let makers: Set<String> = ["make", "create", "add"]
+    /// "Make a folder for the photos" or "make a packing list" asks for a change; "make sense of this" doesn't.
+    private static let makers: Set<String> = ["make", "add"]
     private static let folders: Set<String> = ["folder", "folders", "subfolder", "subfolders"]
+    /// What a new file can be called in a request: "a new note", "make a list".
+    private static let things: Set<String> = [
+        "file", "files", "document", "documents", "doc", "docs", "note", "notes", "list", "page", "readme", "spreadsheet",
+    ]
+    private static let determiners: Set<String> = ["a", "an", "the", "me", "my", "some", "up"]
 }

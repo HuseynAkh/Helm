@@ -14,6 +14,7 @@ extension AgentPlanTitle {
         case .copy(let count): return AgentText.planTitleCopy(count)
         case .rename(let count): return AgentText.planTitleRename(count)
         case .trash(let count): return AgentText.planTitleTrash(count)
+        case .create(let count): return AgentText.planTitleCreate(count)
         }
     }
 }
@@ -66,13 +67,14 @@ extension AgentPlanNotice {
 }
 
 extension AgentPlanCounts {
-    public var total: Int { moves + copies + newFolders + renames + trash }
+    public var total: Int { moves + copies + newFiles + newFolders + renames + trash }
 
     /// The kinds that aren't zero, joined by a middle dot: "214 moves · 6 new folders · 3 renames".
     public var line: String {
         var parts: [String] = []
         if moves != 0 { parts.append(AgentText.countMoves(moves)) }
         if copies != 0 { parts.append(AgentText.countCopies(copies)) }
+        if newFiles != 0 { parts.append(AgentText.countNewFiles(newFiles)) }
         if newFolders != 0 { parts.append(AgentText.countNewFolders(newFolders)) }
         if renames != 0 { parts.append(AgentText.countRenames(renames)) }
         if trash != 0 { parts.append(AgentText.countTrash(trash)) }
@@ -85,7 +87,8 @@ extension AgentChangePlan {
     public var defaultTicked: Set<Int> { Set(groups.filter(\.startsOn).map(\.id)) }
 
     /// What the plan does with these groups ticked. A new folder counts only when something ticked needs it: it is
-    /// in a ticked group of new folders, a ticked step goes into it, or a folder that counts is made inside it.
+    /// in a ticked group of new folders, a ticked step goes into it or is made in it, or a folder that counts is made
+    /// inside it.
     public func counts(ticked: Set<Int>) -> AgentPlanCounts {
         var counts = AgentPlanCounts()
         var needed: Set<String> = []
@@ -104,6 +107,9 @@ extension AgentChangePlan {
                 case .copy(_, let target):
                     counts.copies += 1
                     if case .new(let key) = target { needed.insert(key) }
+                case .newFile(let parent, _, _):
+                    counts.newFiles += 1
+                    if case .new(let key) = parent { needed.insert(key) }
                 case .rename:
                     counts.renames += 1
                 case .trash:
@@ -157,11 +163,17 @@ extension AgentProposedChanges {
     /// that the schema doesn't have, or a value is of the wrong kind. Nothing is guessed or filled in.
     public static func decodeStrictly(_ arguments: Data) -> AgentProposedChanges? {
         guard let json = try? AgentJSON(data: arguments),
-              let top = members(of: json, exactly: ["new_folders", "moves", "copies", "renames", "trash"]),
+              let top = members(of: json, exactly: ["new_folders", "new_files", "moves", "copies", "renames", "trash"]),
               let newFolders = each(top["new_folders"], { item -> NewFolder? in
                   guard let fields = members(of: item, exactly: ["key", "parent", "name"]), let key = fields["key"]?.stringValue,
                         let parent = fields["parent"]?.stringValue, let name = fields["name"]?.stringValue else { return nil }
                   return NewFolder(key: key, parent: parent, name: name)
+              }),
+              let newFiles = each(top["new_files"], { item -> NewFile? in
+                  guard let fields = members(of: item, exactly: ["parent", "name", "text"]),
+                        let parent = fields["parent"]?.stringValue, let name = fields["name"]?.stringValue,
+                        let text = fields["text"]?.stringValue else { return nil }
+                  return NewFile(parent: parent, name: name, text: text)
               }),
               let moves = each(top["moves"], transfer), let copies = each(top["copies"], transfer),
               let renames = each(top["renames"], { item -> Rename? in
@@ -170,7 +182,8 @@ extension AgentProposedChanges {
                   return Rename(item: handle, name: name)
               }),
               let trash = each(top["trash"], { $0.stringValue }) else { return nil }
-        return AgentProposedChanges(newFolders: newFolders, moves: moves, copies: copies, renames: renames, trash: trash)
+        return AgentProposedChanges(newFolders: newFolders, newFiles: newFiles, moves: moves, copies: copies, renames: renames,
+                                    trash: trash)
     }
 
     private static func transfer(_ item: AgentJSON) -> Transfer? {

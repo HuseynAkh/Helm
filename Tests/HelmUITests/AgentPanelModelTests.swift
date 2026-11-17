@@ -786,6 +786,59 @@ import HelmCore
         XCTAssertFalse(model.threadTextForTesting.contains("Trash"), "nothing went to the Trash")
     }
 
+    /// Two new files in a new Trip folder and one in Downloads, the second Trip file's name already taken.
+    private func creationPlan() -> AgentChangePlan {
+        let root = item(downloads, kind: .directory, handle: "r1")
+        let steps: [AgentPlanStep] = [
+            .newFolder(key: "n1", parent: .existing(root), name: name("Trip")),
+            .newFile(parent: .new(key: "n1"), name: name("Packing List.txt"), text: "Passport\nCharger\n"),
+            .newFile(parent: .new(key: "n1"), name: name("Budget.csv"), text: String(repeating: "x", count: 1_500)),
+            .newFile(parent: .existing(root), name: name("Letter\u{202E}fdp.docx"), text: "Dear Sam")
+        ]
+        return AgentChangePlan(title: .create(3), steps: steps, groups: [
+            AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Trip", isNew: true), steps: [0, 1, 2]),
+            AgentPlanGroup(id: 2, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [3])
+        ], notices: [], keepsBoth: [2], leftOut: [:])
+    }
+
+    func testNewFilesShowTheirNamesSizesAndWhereTheyAreMade() {
+        let card = AgentPlanCard(plan: creationPlan(), roots: [], home: "/home/helm")
+        XCTAssertEqual(card.title, "Create 3 Files")
+        XCTAssertEqual(card.countsLine, "3 new files · 1 new folder")
+        XCTAssertEqual(card.shownCountsLine, "3 new files · 1 new folder", "the folder is news the title doesn't give")
+        let groups = card.groupRows
+        XCTAssertEqual(groups.map(\.title), ["Create 2 files in “Trip”", "Create 1 file in “Downloads”"])
+        XCTAssertEqual(groups.map(\.isOn), [true, true])
+        XCTAssertEqual(groups.map { $0.destination?.whole }, ["~/Downloads/Trip", "~/Downloads"])
+        XCTAssertEqual(groups.map { $0.destination?.isNew }, [true, false])
+        XCTAssertEqual(groups[0].rows.map(\.name), ["Trip", "Packing List.txt", "Budget.csv"])
+        XCTAssertEqual(groups[0].rows.map(\.tags), [[AgentText.tagNew], ["17 bytes"], ["1.5 KB", AgentText.tagKeepsBoth]])
+        XCTAssertEqual(groups[0].rows.map { $0.destination?.whole }, ["~/Downloads", "~/Downloads/Trip", "~/Downloads/Trip"])
+        // A name is drawn escaped, and nothing the file holds is on the card.
+        XCTAssertEqual(groups[1].rows.map(\.name), ["Letter\\u{202E}fdp.docx"])
+        XCTAssertFalse(card.textLines.joined().contains("Dear Sam"))
+        XCTAssertFalse(groups.flatMap(\.rows).contains { $0.name.contains("Passport") || $0.detail.contains("Passport") })
+
+        let one = AgentPlanCard(plan: AgentChangePlan(title: .create(1), steps: [creationPlan().steps[3]],
+                                                      groups: [AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [0])],
+                                                      notices: [], leftOut: [:]), roots: [])
+        XCTAssertEqual(one.shownCountsLine, "", "1 new file under Create 1 File says nothing new")
+    }
+
+    func testAPlanThatMakesFilesSaysSo() async {
+        let model = await model(PanelTestConversation(plan: creationPlan()))
+        await say(model, "write a packing list and a budget")
+        XCTAssertEqual(model.groupsForTesting, ["Create 2 files in “Trip”:on", "Create 1 file in “Downloads”:on"])
+        XCTAssertEqual(model.groupPathsForTesting, ["Create 2 files in “Trip”=~/Downloads/Trip new folder",
+                                                    "Create 1 file in “Downloads”=~/Downloads"])
+        model.tick("Create 1 file in “Downloads”")
+        XCTAssertEqual(model.planCountsForTesting, "2 new files · 1 new folder")
+        model.press(AgentText.apply)
+        await settle(model)
+        XCTAssertEqual(applied, [[1]])
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultMadeFiles(2)))
+    }
+
     func testAReplyIsShownEscapedAsPlainText() async {
         let conversation = PanelTestConversation(reply: "[Done](https://example.test)\u{202E}txt.exe")
         let model = await model(conversation)

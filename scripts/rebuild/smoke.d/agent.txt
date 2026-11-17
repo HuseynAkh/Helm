@@ -138,6 +138,24 @@ missing @FIX@/home/AgentMess/Halfway/memo.txt
 agent-apply-pause 0
 agent-undo
 missing @FIX@/home/AgentMess/Halfway
+# 6b. A new file: the plan holds one file with the text the model wrote, ticked, under where it is made. Nothing is
+# made until Apply, which writes the text and no executable bit, and one Undo puts the file in the Trash
+agent-say write a packing list in this folder
+agent-phase plan
+agent-reads Create 1 File
+agent-plan-reads 1 new file
+agent-group Create 1 file in “AgentMess” on
+agent-group-path Create 1 file in “AgentMess”=~/AgentMess
+missing @FIX@/home/AgentMess/Packing List.txt
+agent-apply
+agent-phase result
+agent-reads Made 1 new file.
+agent-file-is @FIX@/home/AgentMess/Packing List.txt=Passport|Charger|Socks
+undo-title Create 1 File
+agent-undo
+missing @FIX@/home/AgentMess/Packing List.txt
+exists @FIX@/home/.Trash/Packing List.txt
+agent-reads Everything is back where it was.
 # 7. Folders: /add one, a path that isn't there and a system folder. A message that ends in a path adds the folder
 # first and sends its id in place of the path. A dropped folder is added too, and /clear starts over
 agent-say /add @FIX@/home/Downloads
@@ -212,7 +230,7 @@ wait 0.5
 agent-chips AgentMess:thisMac
 agent-scope-is thisFolder
 # 8. A model that tries to get round the rules: each try ends in Helm's own line, nothing outside the folders is
-# touched, and a plan that would make an app gets nothing on its card it could apply
+# touched, and a plan that would make an app or a file that runs gets nothing on its card it could apply
 agent-script @FIX@/agent-hostile.json
 agent-say declined
 agent-reads The model declined this request.
@@ -231,11 +249,12 @@ exists @FIX@/home/AgentMess/memo.txt
 agent-say /clear
 agent-say make an app
 agent-phase idle
-agent-reads 3 changes weren't allowed, so Helm left them out.
+agent-reads 4 changes weren't allowed, so Helm left them out.
 missing @FIX@/home/AgentMess/Tools.app
 exists @FIX@/home/AgentMess/scan.pdf
 exists @FIX@/home/AgentMess/memo.txt
 missing @FIX@/home/AgentMess/memo.command
+missing @FIX@/home/AgentMess/launch.command
 agent-client-built no
 agent-script @FIX@/agent-script.json
 agent-say /clear

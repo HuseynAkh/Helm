@@ -116,11 +116,13 @@ actor AgentPlanTestScope: AgentHandleResolving {
 /// Shorthand for building proposals and reading verdicts.
 enum AgentPlanTestKit {
     static func proposal(newFolders: [(key: String, parent: String, name: String)] = [],
+                         newFiles: [(parent: String, name: String, text: String)] = [],
                          moves: [(items: [String], allIn: String, to: String)] = [],
                          copies: [(items: [String], allIn: String, to: String)] = [],
                          renames: [(item: String, name: String)] = [], trash: [String] = []) -> AgentProposedChanges {
         AgentProposedChanges(
             newFolders: newFolders.map { .init(key: $0.key, parent: $0.parent, name: $0.name) },
+            newFiles: newFiles.map { .init(parent: $0.parent, name: $0.name, text: $0.text) },
             moves: moves.map { .init(items: $0.items, allIn: $0.allIn, to: $0.to) },
             copies: copies.map { .init(items: $0.items, allIn: $0.allIn, to: $0.to) },
             renames: renames.map { .init(item: $0.item, name: $0.name) },
@@ -155,6 +157,7 @@ enum AgentPlanTestKit {
         plan.steps.map { step in
             switch step {
             case .newFolder(let key, _, let name): return "new \(key) \(name.value)"
+            case .newFile(_, let name, _): return "file \(name.value)"
             case .move(let item, _): return "move \(item.name)"
             case .copy(let item, _): return "copy \(item.name)"
             case .rename(let item, let name): return "rename \(item.name) \(name.value)"

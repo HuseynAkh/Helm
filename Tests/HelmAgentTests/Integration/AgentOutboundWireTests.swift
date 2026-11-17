@@ -119,7 +119,7 @@ final class AgentOutboundWireTests: XCTestCase {
         case 1:
             let photo = id(ofItemNamed: "photo-1.png", in: body) ?? "missing"
             let root = aliases(in: text).first ?? "missing"
-            let arguments = json(["new_folders": [["key": "n1", "parent": root, "name": "Images"]],
+            let arguments = json(["new_folders": [["key": "n1", "parent": root, "name": "Images"]], "new_files": [] as [Any],
                                   "moves": [["items": [photo], "all_in": "", "to": "n1"]],
                                   "copies": [] as [Any], "renames": [] as [Any], "trash": [] as [Any]])
             return lines(wire, text: "One folder.", calls: [OutboundCall(id: "call_1_0", name: "propose_changes", arguments: arguments)],

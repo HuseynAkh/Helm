@@ -13,6 +13,7 @@ final class ScriptedModelClientTests: XCTestCase {
         {"text": "Images go into a new Images folder.",
          "calls": [{"name": "propose_changes", "args": {
             "new_folders": [{"key": "n1", "parent": "@root", "name": "Images"}],
+            "new_files": [],
             "moves": [{"items": ["@name:a.png", "@name:b.png"], "all_in": "", "to": "n1"}],
             "copies": [], "renames": [], "trash": []}}]}]},
       {"when": "broken", "turns": [], "failure": "unreachable"},

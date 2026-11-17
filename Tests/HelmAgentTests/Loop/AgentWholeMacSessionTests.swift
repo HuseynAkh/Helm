@@ -22,8 +22,9 @@ final class AgentWholeMacSessionTests: XCTestCase {
         {"calls": [{"name": "list_folder", "args": {"folder": "@home", "depth": 2, "after": ""}},
                    {"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
         {"text": "The screenshot goes into Screenshots in Pictures.", "calls": [{"name": "propose_changes", "args": {
-           "new_folders": [], "moves": [{"items": ["@name:Screenshot 2026-11-02 at 09.15.00.png"], "all_in": "",
-           "to": "@name:Screenshots"}], "copies": [], "renames": [], "trash": []}}]}]},
+           "new_folders": [], "new_files": [],
+           "moves": [{"items": ["@name:Screenshot 2026-11-02 at 09.15.00.png"], "all_in": "", "to": "@name:Screenshots"}],
+           "copies": [], "renames": [], "trash": []}}]}]},
       {"when": "survey", "turns": [
         {"calls": [{"name": "list_folder", "args": {"folder": "@home", "depth": 2, "after": ""}},
                    {"name": "list_folder", "args": {"folder": "r3", "depth": 0, "after": ""}},

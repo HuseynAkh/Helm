@@ -104,9 +104,11 @@ public enum AgentText {
     public static func planTitleCopy(_ count: Int) -> String { "Copy \(counted(count, "Item", "Items"))" }
     public static func planTitleRename(_ count: Int) -> String { "Rename \(counted(count, "Item", "Items"))" }
     public static func planTitleTrash(_ count: Int) -> String { "Move \(counted(count, "Item", "Items")) to Trash" }
+    public static func planTitleCreate(_ count: Int) -> String { "Create \(counted(count, "File", "Files"))" }
     public static func countMoves(_ count: Int) -> String { counted(count, "move", "moves") }
     public static func countCopies(_ count: Int) -> String { counted(count, "copy", "copies") }
     public static func countNewFolders(_ count: Int) -> String { counted(count, "new folder", "new folders") }
+    public static func countNewFiles(_ count: Int) -> String { counted(count, "new file", "new files") }
     public static func countRenames(_ count: Int) -> String { counted(count, "rename", "renames") }
     public static func countTrash(_ count: Int) -> String { "\(number(count)) to Trash" }
     public static let apply = "Apply"
@@ -125,6 +127,9 @@ public enum AgentText {
         "Copy \(counted(count, "item", "items")) to “\(shown(folder))”"
     }
     public static func groupTrash(_ count: Int) -> String { "Move \(counted(count, "item", "items")) to the Trash" }
+    public static func groupNewFiles(_ count: Int, folder: String) -> String {
+        "Create \(counted(count, "file", "files")) in “\(shown(folder))”"
+    }
     public static func markGoesTo(_ place: String) -> String { "Goes to \(shown(place))" }
     public static func markLeaves(_ place: String) -> String { "Leaves \(shown(place))" }
     /// How many items a folder holds. A folder's items are counted up to `AgentLimits.holdsCap`, and a count that
@@ -132,6 +137,8 @@ public enum AgentText {
     public static func rowHolds(_ count: Int) -> String {
         count >= AgentLimits.holdsCap ? "\(number(AgentLimits.holdsCap))+ items" : counted(count, "item", "items")
     }
+    /// The size of the text a new file holds, as Helm writes sizes everywhere: "1.2 KB".
+    public static func rowSize(_ bytes: Int) -> String { ByteCountText.format(Int64(bytes)) }
     public static func noteNotAllowed(_ count: Int) -> String {
         count == 1 ? "1 change wasn't allowed, so Helm left it out." : "\(number(count)) changes weren't allowed, so Helm left them out."
     }
@@ -158,6 +165,9 @@ public enum AgentText {
     public static func applyRenaming(done: Int, total: Int, name: String) -> String {
         "Renaming \(number(done)) of \(number(total)) · \(shown(name))"
     }
+    public static func applyCreating(done: Int, total: Int, name: String) -> String {
+        "Creating \(number(done)) of \(number(total)) · \(shown(name))"
+    }
     public static func resultOrganized(items: Int, folders: Int) -> String {
         "Moved \(counted(items, "item", "items")) into \(counted(folders, "folder", "folders"))."
     }
@@ -166,6 +176,7 @@ public enum AgentText {
     public static func resultRenamed(_ count: Int) -> String { "Renamed \(counted(count, "item", "items"))." }
     public static func resultTrashed(_ count: Int) -> String { "Moved \(counted(count, "item", "items")) to the Trash." }
     public static func resultMadeFolders(_ count: Int) -> String { "Made \(counted(count, "new folder", "new folders"))." }
+    public static func resultMadeFiles(_ count: Int) -> String { "Made \(counted(count, "new file", "new files"))." }
     public static func resultPartial(done: Int, total: Int, skipped: Int) -> String {
         "\(number(done)) of \(number(total)) done, and \(number(skipped)) \(skipped == 1 ? "was" : "were") skipped."
     }

@@ -37,6 +37,7 @@ organize = {"when": "organize", "turns": [
         "new_folders": [{"key": "n1", "parent": "@root", "name": "Documents"},
                         {"key": "n2", "parent": "@root", "name": "Images"},
                         {"key": "n3", "parent": "@root", "name": "Archives"}],
+        "new_files": [],
         "moves": [{"items": names("Boarding Pass.pdf", "Lease Agreement.pdf", "Trail Map.pdf", "Packing List.txt"), "all_in": "", "to": "n1"},
                   {"items": names("Beach Day.jpg", "Concert Poster.jpg", "Studio Portrait.png"), "all_in": "", "to": "n2"},
                   {"items": names("Invoices.zip", "Photos Backup.zip"), "all_in": "", "to": "n3"}],
@@ -49,6 +50,7 @@ screenshots = {"when": "file my screenshots", "turns": [
     {"text": "Your screenshots go into Screenshots in Pictures, with the others.",
      "calls": [{"name": "propose_changes", "args": {
         "new_folders": [], "copies": [], "renames": [], "trash": [],
+        "new_files": [],
         "moves": [{"items": names("Screenshot 10.42.12.png", "Screenshot 14.20.05.png"),
                    "all_in": "", "to": "@name:Screenshots"}]}}]}]}
 # Read contents, in Documents/Scans: the names say nothing, so the model asks Helm what is inside, and files the two
@@ -61,6 +63,7 @@ sort_scans = {"when": "sort these scans", "turns": [
      "calls": [{"name": "propose_changes", "args": {
         "new_folders": [{"key": "n1", "parent": "@root", "name": "Receipts"},
                         {"key": "n2", "parent": "@root", "name": "Invoices"}],
+        "new_files": [],
         "moves": [{"items": names("IMG_1988.jpg", "IMG_2041.jpg", "IMG_2066.jpg", "IMG_2079.jpg"), "all_in": "", "to": "n1"},
                   {"items": names("Scan 2026-11-03.pdf"), "all_in": "", "to": "n2"}],
         "copies": [], "renames": [], "trash": []}}]}]}

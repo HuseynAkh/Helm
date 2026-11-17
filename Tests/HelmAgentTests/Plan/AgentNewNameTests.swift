@@ -121,4 +121,36 @@ final class AgentNewNameTests: XCTestCase {
         passes(AgentNewName.validateFolderName("New.APP", existing: "Old.app"), "New.APP")
         passes(AgentNewName.validateFolderName("New", existing: "Old.app"), "New")
     }
+
+    // MARK: New files
+
+    func testANewFileIsTextCodeOrADocumentHelmMakesFromText() {
+        for name in ["Packing List.txt", "Notes.md", "Read Me.markdown", "Budget.csv", "Scores.tsv", "data.json", "site.yaml",
+                     "index.html", "style.css", "main.swift", "tool.py", "build.sh", "query.sql", "Letter.rtf", "Report.docx",
+                     "LOUD.TXT", "Report.DOCX", "v1.2 notes.txt"] {
+            passes(AgentNewName.validateNewFileName(name), name)
+        }
+    }
+
+    func testANewFileCantBeSomethingThatRunsOpensAnAddressOrInstalls() {
+        for name in ["launch.command", "run.tool", "Shell.terminal", "Tool.app", "Do It.workflow", "script.scpt",
+                     "site.webloc", "server.inetloc", "page.url", "settings.plist", "profile.mobileconfig", "Setup.pkg",
+                     "Disk.dmg", "setup.exe", "lib.dylib", "Thing.applescript", "Quick.shortcut", "notes.txt.command"] {
+            refused(AgentNewName.validateNewFileName(name), name)
+        }
+        // Nor anything Helm doesn't write as text: pictures, PDFs, archives, other office files.
+        for name in ["photo.png", "scan.pdf", "backup.zip", "sheet.xlsx", "slides.key", "old.doc", "book.pages"] {
+            refused(AgentNewName.validateNewFileName(name), name)
+        }
+    }
+
+    func testANewFileNeedsAVisibleNameWithAnExtension() {
+        for name in [".env", ".hidden.txt", "README", "notes.", "2026.03", "a/b.txt", "~notes.txt", " notes.txt", "notes.txt ",
+                     "", "..", "note\u{202E}txt.md"] {
+            refused(AgentNewName.validateNewFileName(name), name.isEmpty ? "empty" : name)
+        }
+        XCTAssertFalse(AgentNewName.isNewFileExtension(nil))
+        XCTAssertTrue(AgentNewName.isNewFileExtension("docx"))
+        XCTAssertFalse(AgentNewName.isNewFileExtension("command"))
+    }
 }

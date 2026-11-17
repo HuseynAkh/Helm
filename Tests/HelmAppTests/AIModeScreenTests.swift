@@ -182,7 +182,7 @@ import HelmPersistence
         let keyField = try XCTUnwrap(shown.compactMap { $0 as? NSSecureTextField }.first)
         let caretInKeyField = await until { self.hasCaret(keyField) }
         XCTAssertTrue(caretInKeyField, "the caret starts in the key field")
-        XCTAssertTrue(model.linesForTesting.contains(AgentText.consent("Claude")))
+        XCTAssertTrue(model.linesForTesting.contains(AgentText.consentSetup("Claude")))
         XCTAssertTrue(model.linesForTesting.contains(AgentText.stateNoKey))
 
         // Ollama shows its state in place of the key, with Try Again and the port while it isn't running.
