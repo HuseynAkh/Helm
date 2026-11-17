@@ -30,7 +30,7 @@ public struct AnthropicMessagesAdapter: AgentWireAdapter {
         var body: [String: AgentJSON] = [
             "model": .string(model),
             "max_tokens": .number(Double(AgentWireParts.maxTokens)),
-            "messages": .array([.object(["role": .string("user"), "content": .string(ask.user)])]),
+            "messages": .array([.object(["role": .string("user"), "content": Self.content(ask.user, ask.pictures)])]),
             "output_config": .object(["format": .object(["type": .string("json_schema"), "schema": ask.schema])])
         ]
         if !ask.system.isEmpty { body["system"] = .string(ask.system) }
@@ -55,11 +55,12 @@ public struct AnthropicMessagesAdapter: AgentWireAdapter {
     public func makeReader() -> any AgentStreamReading { Reader() }
 
     /// The results first, each as a `tool_result` block, then the person's text. All of them in one message, which
-    /// is what Claude asks for after a turn with several calls.
+    /// is what Claude asks for after a turn with several calls. A result with pictures holds its JSON as a text block
+    /// and then each picture after its label.
     public func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] {
-        var content: [AgentJSON] = toolResults.map { result in
+        var content: [AgentJSON] = zip(toolResults, AgentToolResult.labeledPictures(toolResults)).map { result, pictures in
             var block: [String: AgentJSON] = ["type": .string("tool_result"), "tool_use_id": .string(result.callID),
-                                              "content": .string(result.json)]
+                                              "content": Self.content(result.json, pictures)]
             if result.isError { block["is_error"] = .bool(true) }
             return .object(block)
         }
@@ -76,6 +77,25 @@ public struct AnthropicMessagesAdapter: AgentWireAdapter {
     private static func tool(_ spec: AgentToolSpec) -> AgentJSON {
         .object(["name": .string(spec.name), "description": .string(spec.description), "input_schema": spec.schema,
                  "strict": .bool(true)])
+    }
+
+    /// Text alone as a string, as it always went; text with pictures as blocks: the text, then each picture's label
+    /// and the picture. Claude refuses an empty text block, so an empty label has none.
+    private static func content(_ text: String, _ pictures: [AgentAskPicture]) -> AgentJSON {
+        guard !pictures.isEmpty else { return .string(text) }
+        var blocks = textBlock(text)
+        for picture in pictures {
+            blocks += textBlock(picture.label)
+            blocks.append(.object(["type": .string("image"), "source": .object([
+                "type": .string("base64"), "media_type": .string(AgentWireParts.jpegType),
+                "data": .string(picture.image.jpeg.base64EncodedString())
+            ])]))
+        }
+        return .array(blocks)
+    }
+
+    private static func textBlock(_ text: String) -> [AgentJSON] {
+        text.isEmpty ? [] : [.object(["type": .string("text"), "text": .string(text)])]
     }
 
     // MARK: Reading a stream

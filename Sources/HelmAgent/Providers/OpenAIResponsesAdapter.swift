@@ -35,7 +35,8 @@ public struct OpenAIResponsesAdapter: AgentWireAdapter {
     public func structuredBody(_ ask: AgentStructuredAsk, model: String) throws -> Data {
         try AgentWireParts.check(model: model)
         var body = common(model: model, instructions: ask.system)
-        body["input"] = .array([.object(["role": .string("user"), "content": .string(ask.user)])])
+        let content: AgentJSON = ask.pictures.isEmpty ? .string(ask.user) : .array(Self.inputText(ask.user) + Self.parts(ask.pictures))
+        body["input"] = .array([.object(["role": .string("user"), "content": content])])
         body["text"] = .object(["format": .object(["type": .string("json_schema"), "name": .string(ask.schemaName),
                                                    "schema": ask.schema, "strict": .bool(true)])])
         if planUsage { body["stream"] = .bool(true) }
@@ -68,12 +69,18 @@ public struct OpenAIResponsesAdapter: AgentWireAdapter {
 
     public func makeReader() -> any AgentStreamReading { Reader(planUsage: planUsage) }
 
-    /// The results first, each as a `function_call_output` keyed by its call's `call_id`, then the person's text.
-    /// The wire has no error flag; a result that is an error says so in its own JSON.
+    /// The results first, each as a `function_call_output` keyed by its call's `call_id`, then one message with the
+    /// results' pictures, each after its label, then the person's text. The wire has no error flag; a result that is
+    /// an error says so in its own JSON.
     public func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] {
         var items: [AgentJSON] = toolResults.map { result in
             .object(["type": .string("function_call_output"), "call_id": .string(result.callID),
                      "output": .string(result.json)])
+        }
+        let pictures = AgentToolResult.labeledPictures(toolResults).flatMap { $0 }
+        if !pictures.isEmpty {
+            items.append(.object(["role": .string("user"),
+                                  "content": .array(Self.inputText(AgentWireParts.picturesIntro) + Self.parts(pictures))]))
         }
         if let text, !text.isEmpty { items.append(.object(["role": .string("user"), "content": .string(text)])) }
         return items
@@ -130,6 +137,19 @@ public struct OpenAIResponsesAdapter: AgentWireAdapter {
     private static func tool(_ spec: AgentToolSpec) -> AgentJSON {
         .object(["type": .string("function"), "name": .string(spec.name), "description": .string(spec.description),
                  "parameters": spec.schema, "strict": .bool(true)])
+    }
+
+    /// Each picture after its label, at low detail, which is enough for a picture this small.
+    private static func parts(_ pictures: [AgentAskPicture]) -> [AgentJSON] {
+        pictures.flatMap { picture in
+            inputText(picture.label) + [.object(["type": .string("input_image"),
+                                                 "image_url": .string(AgentWireParts.dataURL(picture.image)),
+                                                 "detail": .string("low")])]
+        }
+    }
+
+    private static func inputText(_ text: String) -> [AgentJSON] {
+        text.isEmpty ? [] : [.object(["type": .string("input_text"), "text": .string(text)])]
     }
 
     // MARK: Reading a stream

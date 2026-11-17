@@ -5,7 +5,8 @@ import HelmCore
 /// fixture run and a test can go through a whole request, tools and plan included, with the network denied.
 ///
 /// Its own history items are plain: a user turn is `{"role":"user","results":[…],"text":…}` and a model turn is
-/// `{"role":"model","text":…,"calls":[…]}`. Which turn of a rule comes next is read from the history it is
+/// `{"role":"model","text":…,"calls":[…]}`. A result with pictures lists each one's label and size, never its bytes.
+/// Which turn of a rule comes next is read from the history it is
 /// handed, so the client keeps no place of its own and two windows can share one.
 /// All reads and writes of what it keeps hold the lock.
 public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
@@ -18,6 +19,7 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     private var turns: [AgentTurnInput] = []
     private var asks: [AgentStructuredAsk] = []
     private var listFailure: AgentFailure?
+    private var pictureFailure: AgentFailure?
 
     public init(script: AgentScript = .builtIn, providerName: String = "Claude", destination: String = "Claude", isLocal: Bool = false) {
         self.script = script; self.providerName = providerName; self.destination = destination; self.isLocal = isLocal
@@ -37,15 +39,23 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         set { locked { listFailure = newValue } }
     }
 
+    /// When set, a turn whose history holds a picture fails with this, as a provider does for a model that can't
+    /// take pictures.
+    public var picturesFailure: AgentFailure? {
+        get { locked { pictureFailure } }
+        set { locked { pictureFailure = newValue } }
+    }
+
     /// Every model turn that was asked for, in order.
     public var sentTurns: [AgentTurnInput] { locked { turns } }
     /// Every structured question that was asked, in order.
     public var sentAsks: [AgentStructuredAsk] { locked { asks } }
 
     /// Everything a real client would have put on the wire, as one text: for each turn the system prompt, the tools
-    /// and the history, and for each structured question its two prompts and its schema. Each piece of JSON is
-    /// there as it would be sent, and every string inside it is there again as plain text, a tool result's own JSON
-    /// included, so a name or a path can be looked for however it was escaped.
+    /// and the history, and for each structured question its two prompts, its schema and its pictures. Each piece of
+    /// JSON is there as it would be sent, and every string inside it is there again as plain text, a tool result's own
+    /// JSON included, so a name or a path can be looked for however it was escaped. A picture is there as its label
+    /// and "[picture WxH]", never its bytes.
     public func allSentText() -> String {
         let (turns, asks) = locked { (self.turns, self.asks) }
         var lines: [String] = []
@@ -55,11 +65,22 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                 lines += [tool.name, tool.description]
                 Self.spell(tool.schema, into: &lines)
             }
-            for item in turn.history { Self.spell(item, into: &lines) }
+            for item in turn.history {
+                Self.spell(item, into: &lines)
+                for result in item[Keys.results]?.arrayValue ?? [] {
+                    for picture in result[Keys.pictures]?.arrayValue ?? [] {
+                        lines.append(Self.pictureWords(width: AgentWireParts.integer(picture[Keys.width]) ?? 0,
+                                                       height: AgentWireParts.integer(picture[Keys.height]) ?? 0))
+                    }
+                }
+            }
         }
         for ask in asks {
             lines += [ask.system, ask.user, ask.schemaName]
             Self.spell(ask.schema, into: &lines)
+            for picture in ask.pictures {
+                lines += [picture.label, Self.pictureWords(width: picture.image.width, height: picture.image.height)]
+            }
         }
         return lines.joined(separator: "\n")
     }
@@ -67,11 +88,16 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     // MARK: AgentModelClient
 
     public func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> {
-        let script = locked { () -> AgentScript in
+        let (script, pictureFailure) = locked { () -> (AgentScript, AgentFailure?) in
             turns.append(input)
-            return self.script
+            return (self.script, self.pictureFailure)
         }
-        let answer = Self.answer(to: input.history, script: script)
+        let answer: Result<ScriptedTurn, AgentFailure>
+        if let pictureFailure, Self.holdsPictures(input.history) {
+            answer = .failure(pictureFailure)
+        } else {
+            answer = Self.answer(to: input.history, script: script)
+        }
         return AsyncThrowingStream { continuation in
             switch answer {
             case .failure(let failure):
@@ -88,9 +114,16 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     public func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] {
         var item: [String: AgentJSON] = [Keys.role: .string(Keys.user)]
         if !toolResults.isEmpty {
-            item[Keys.results] = .array(toolResults.map { result in
-                .object([Keys.id: .string(result.callID), Keys.name: .string(result.name),
-                         Keys.json: .string(result.json), Keys.error: .bool(result.isError)])
+            item[Keys.results] = .array(zip(toolResults, AgentToolResult.labeledPictures(toolResults)).map { result, pictures in
+                var fields: [String: AgentJSON] = [Keys.id: .string(result.callID), Keys.name: .string(result.name),
+                                                   Keys.json: .string(result.json), Keys.error: .bool(result.isError)]
+                if !pictures.isEmpty {
+                    fields[Keys.pictures] = .array(pictures.map { picture in
+                        .object([Keys.label: .string(picture.label), Keys.width: .number(Double(picture.image.width)),
+                                 Keys.height: .number(Double(picture.image.height))])
+                    })
+                }
+                return .object(fields)
             })
         }
         if let text { item[Keys.text] = .string(text) }
@@ -128,6 +161,17 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     private enum Keys {
         static let role = "role", user = "user", model = "model", text = "text", results = "results"
         static let calls = "calls", id = "id", name = "name", json = "json", error = "error", args = "args"
+        static let pictures = "pictures", label = "label", width = "width", height = "height"
+    }
+
+    /// How a picture is written in the text of what was sent.
+    static func pictureWords(width: Int, height: Int) -> String { "[picture \(width)x\(height)]" }
+
+    /// A history holds a picture when one of its user turns lists one.
+    private static func holdsPictures(_ history: [AgentJSON]) -> Bool {
+        history.contains { item in
+            (item[Keys.results]?.arrayValue ?? []).contains { !($0[Keys.pictures]?.arrayValue ?? []).isEmpty }
+        }
     }
 
     private struct ScriptedTurn {
