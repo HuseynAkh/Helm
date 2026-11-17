@@ -86,14 +86,20 @@ enum AISearchPrompt {
         return lines.joined(separator: "\n")
     }
 
-    /// The user text of the look question: the request, the kind the person chose, then one JSON object an item.
-    /// Every word from a file is escaped, with the home folder's path in `homes` written as `~`. `pictured` counts the
-    /// pictures that follow for each item.
-    static func lookUser(request: String, kind: AISearchKind?, items: [AISearchLookItem], pictured: [Int: Int],
-                         homes: [String], calendar: Calendar) -> String {
+    /// The user text of the look question: the request, the kind the person chose, then the items (`lookItems`).
+    static func lookUser(request: String, kind: AISearchKind?, items: String) -> String {
         var lines = ["Request (data):", String(decoding: AgentJSON.string(AgentTextEscaper.escape(request)).data(), as: UTF8.self)]
         if let kind { lines.append("Context: " + String(decoding: AgentJSON.object(["only_kind": .string(kind.rawValue)]).data(), as: UTF8.self)) }
         lines.append("Items (data):")
+        if !items.isEmpty { lines.append(items) }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The items of the look question, one JSON object a line: all of it text Helm built from files. Every word from a
+    /// file is escaped, with the home folder's path in `homes` written as `~`. `pictured` counts the pictures that
+    /// follow for each item.
+    static func lookItems(_ items: [AISearchLookItem], pictured: [Int: Int], homes: [String], calendar: Calendar) -> String {
+        var lines: [String] = []
         for item in items {
             var fields: [String: AgentJSON] = [
                 "item": .number(Double(item.item)), "name": .string(item.name), "folder": .string(item.folder),

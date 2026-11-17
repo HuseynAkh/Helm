@@ -136,8 +136,11 @@ public struct AISearchSession: Sendable {
     /// are shown. `kind` is the one the person chose in the kind row. With `pictures`, the pictures in the items'
     /// summaries follow the question's words, each after its label ("Item 3", a video's frames "Item 3, frame 2"),
     /// `picturesPerLook` at most; without, the question is words alone and the on-device words stand in. Each file's
-    /// text has the home folder's path in `homes` written as `~`. An item that wasn't shown, or that was already
-    /// answered, is dropped, and each phrase of what was seen is cleaned (`cleaned(_:)`).
+    /// text has the home folder's path in `homes` written as `~`, and the items, all text Helm built from files, then
+    /// pass Helm's check on what it sends (`AgentOutboundCheck`) for each of `homes`: items that still hold the path in
+    /// any spelling aren't sent, and the question fails as unreadable. The person's own request isn't checked, as a
+    /// path typed in the panel isn't. An item that wasn't shown, or that was already answered, is dropped, and each
+    /// phrase of what was seen is cleaned (`cleaned(_:)`).
     public func look(request: String, kind: AISearchKind?, items: [AISearchLookItem], homes: [String],
                      pictures: Bool) async throws -> [AISearchLook] {
         let request = Self.trimmed(request)
@@ -145,10 +148,11 @@ public struct AISearchSession: Sendable {
         let attached = pictures ? Self.pictures(of: shown) : []
         var counts: [Int: Int] = [:]
         for picture in attached { counts[picture.item, default: 0] += 1 }
+        let itemsText = AISearchPrompt.lookItems(shown, pictured: counts, homes: homes, calendar: calendar)
+        guard homes.allSatisfy({ AgentOutboundCheck.helmTextIsClean(itemsText, home: $0) }) else { throw AgentFailure.unreadable }
         let ask = AgentStructuredAsk(
             system: AISearchPrompt.lookSystem,
-            user: AISearchPrompt.lookUser(request: request, kind: kind, items: shown, pictured: counts, homes: homes,
-                                          calendar: calendar),
+            user: AISearchPrompt.lookUser(request: request, kind: kind, items: itemsText),
             schemaName: AISearchSchemas.lookName, schema: AISearchSchemas.look, pictures: attached.map(\.picture))
         let reply = try await answer(to: ask, seconds: Self.lookSeconds(isLocal: client.isLocal))
         let numbers = Set(shown.map(\.item))
