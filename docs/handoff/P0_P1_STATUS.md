@@ -5,7 +5,7 @@ This is an audit of code and scripted checks, not human acceptance. It was done 
 
 Rows that Mac run 3 (2026-11-09 and 10) changed were updated by hand: P-021, P-026, P-064, P-184, P-188, P-189, P-035, P-197, P-225 to P-228, P-268 and P-306, and the evidence for P-002, P-200 and P-295. P-139, P-171 and P-238, built in Mac run 2, were brought up to date at the same time.
 
-Mac run 4 (2026-11-12 and 13) added AI mode, which no row here covers; [`MAC_RUN_4.md`](MAC_RUN_4.md) has what was built and checked. It changed two rows by hand: P-046 and P-243, since the header's Grid and List segments became one view button and the spark joined the header. Run 5 (2026-11-15 to 17) built Huseyn's next list for AI mode and the step-by-step onboarding; [`MAC_RUN_5.md`](MAC_RUN_5.md) has it.
+Mac run 4 (2026-11-12 and 13) added AI mode, which no row here covers; [`MAC_RUN_4.md`](MAC_RUN_4.md) has what was built and checked. It changed two rows by hand: P-046 and P-243, since the header's Grid and List segments became one view button and the spark joined the header. Run 5 (2026-11-15 to 17) built Huseyn's next list for AI mode and the step-by-step onboarding; [`MAC_RUN_5.md`](MAC_RUN_5.md) has it. Run 6 (2026-11-17) has the model look inside files, gives the plain search the kind row and lets a plan make new files; [`MAC_RUN_6.md`](MAC_RUN_6.md) has it.
 
 ## Summary
 

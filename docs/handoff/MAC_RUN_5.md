@@ -1,6 +1,6 @@
 # Mac run 5
 
-**Status: Huseyn's list for AI mode is built: This Folder / Whole Mac, Read contents, the file type row in AI search, the panel's resize and new style, and the trefoil mark. The onboarding is now one window, step by step, with AI mode as a step. It was all checked on fixtures with a scripted model and invisible windows. No real provider, key, cloud folder or server was used, so the list under "Needs Huseyn's Mac" is not verified. The consent wording for Read contents waits for Huseyn. Nothing was pushed.**
+**Status: Huseyn's list for AI mode is built: This Folder / Whole Mac, Read contents, the file type row in AI search, the panel's resize and new style, and the trefoil mark. The onboarding is now one window, step by step, with AI mode as a step. It was all checked on fixtures with a scripted model and invisible windows. No real provider, key, cloud folder or server was used, so the list under "Needs Huseyn's Mac" is not verified. The consent wording for Read contents waits for Huseyn. Nothing was pushed. Run 6 changed what Read contents sends and the wording: see [`MAC_RUN_6.md`](MAC_RUN_6.md).**
 
 Run on 2026-11-15 to 17. The work was merged on `agentic/next` and then moved onto `handoff/mac-fixups` on this Mac. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-5-2026-11-15-to-17).
 
