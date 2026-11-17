@@ -39,13 +39,19 @@ Helm shows the plan before anything happens. Each group of changes has a tick an
 
 Every new thread starts in **This Folder**: the folder on show, plus any you add. Switch the folders row to **Whole Mac** and AI mode can look through your home folder, iCloud Drive, your cloud folders and your disks, and propose moving files to where they belong. It never sees system folders, your Library or other apps' data. The thread's first line then says so.
 
-<img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two folders, a PDF, two receipt photos, two screenshots and a note. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder and disks to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-whole-mac-dark.png">
+  <img src="docs/images/ai-whole-mac-light.png" alt="The Desktop in the grid with two folders, a PDF, two receipt photos, two screenshots and a note. The AI panel, widened, has Whole Mac on, a Whole Mac chip beside the Desktop chip, and the line Sends your requests and file names from your home folder and disks to Claude, never file contents. Asked to file my screenshots, it plans Move 2 items to “Screenshots”, going to ~/Pictures/Screenshots">
+</picture>
 
 ### Read contents
 
 Names don't always say what a file is. Turn on **Read contents** under the composer and Helm reads inside files on your Mac: the first lines of text files and PDFs, and what pictures and a few frames of a video show, with any text in them. The model gets those short summaries, never the files, so it can file a scan by what it says. Read contents is off in every new thread, and turning it on or off starts the thread over.
 
-<img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: four receipt photos named IMG_1988.jpg, IMG_2041.jpg, IMG_2066.jpg and IMG_2079.jpg, and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and short summaries of file contents to Claude. After Sent 12 names and 6 summaries to Claude, the reply names the four receipts and the invoice, and the plan moves 4 items to a new Receipts folder and 1 to a new Invoices folder">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-contents-dark.png">
+  <img src="docs/images/ai-contents-light.png" alt="Documents › Scans in the grid: four receipt photos named IMG_1988.jpg, IMG_2041.jpg, IMG_2066.jpg and IMG_2079.jpg, and two scanned PDFs. In the AI panel Read contents is on, and the first line says it sends your requests, file names and short summaries of file contents to Claude. After Sent 12 names and 6 summaries to Claude, the reply names the four receipts and the invoice, and the plan moves 4 items to a new Receipts folder and 1 to a new Invoices folder">
+</picture>
 
 ### Find with AI
 

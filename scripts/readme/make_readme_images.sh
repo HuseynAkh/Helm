@@ -5,8 +5,8 @@
 # the smoke it's kept off the network. AI mode answers from a scripted model (agent-script.json and
 # agent-receipts.json beside the home), so no request goes to any provider.
 # usage: bash scripts/readme/make_readme_images.sh [scratch-path]
-# The run stays in the background: its windows are invisible and never take the screen. HELM_README_FOREGROUND=1
-# brings Helm to the front first, so the window buttons are drawn in colour.
+# The run stays in the background: its windows are invisible and never take the screen. Each capture still draws its
+# window as the window in front, window buttons in colour and accents on (the steps' active-look).
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 scratch="${1:-/tmp/build-helm-readme}"
@@ -19,8 +19,6 @@ python3 - "$fix" "$root" <<'PY'
 import os, sys
 fix, root = sys.argv[1], sys.argv[2]
 steps = open('scripts/readme/readme_shots.txt', encoding='utf-8').read()
-if not os.environ.get('HELM_README_FOREGROUND'):
-    steps = '\n'.join(line for line in steps.split('\n') if line.strip() != 'activate') + '\n'
 steps = steps.replace('@FIX@', fix).replace('@SHOTS@', os.path.join(root, 'shots'))
 open(os.path.join(root, 'steps.txt'), 'w', encoding='utf-8').write(steps)
 PY
@@ -117,7 +115,9 @@ frame ai-plan-dark 760 18 crop=900,52,340,548
 frame ai-undo-light 760 18 crop=900,52,340,548
 frame ai-undo-dark 760 18 crop=900,52,340,548
 frame ai-whole-mac-light 1600
+frame ai-whole-mac-dark 1600
 frame ai-contents-light 1600
+frame ai-contents-dark 1600
 frame ai-search-light 1600
 frame ai-search-dark 1600
 frame onboarding-ai-light 900 16

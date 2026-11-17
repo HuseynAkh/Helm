@@ -294,7 +294,7 @@ import Quartz
             await wait(seconds: 0.3)
             guard let view = app.settingsWindowForTesting?.contentView?.superview,
                   let image = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, step, "no window"); return }
-            view.cacheDisplay(in: view.bounds, to: image)
+            await SmokeActiveLook.drawingInFront([view.window]) { view.cacheDisplay(in: view.bounds, to: image) }
             try? image.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: bits[1]))
             check(FileManager.default.fileExists(atPath: bits[1]), step)
             app.settingsWindowForTesting?.close()
@@ -391,7 +391,9 @@ import Quartz
             await wait(seconds: 0.6)
             let target = content.superview ?? content
             guard let image = target.bitmapImageRepForCachingDisplay(in: target.bounds) else { check(false, step, "no image"); return }
-            target.cacheDisplay(in: target.bounds, to: image)
+            await SmokeActiveLook.drawingInFront([window.window, target.window]) {
+                target.cacheDisplay(in: target.bounds, to: image)
+            }
             let data = image.representation(using: .png, properties: [:])
             try? data?.write(to: URL(fileURLWithPath: argument))
             window.closeViewOptionsForTesting()
@@ -402,8 +404,10 @@ import Quartz
             guard let content = window.window?.contentView?.superview, let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
                 check(false, step, "no view"); return
             }
-            content.cacheDisplay(in: content.bounds, to: image)
-            let data = withMaterials(image, of: content).representation(using: .png, properties: [:])
+            let data = await SmokeActiveLook.drawingInFront([window.window]) { () -> Data? in
+                content.cacheDisplay(in: content.bounds, to: image)
+                return withMaterials(image, of: content).representation(using: .png, properties: [:])
+            }
             try? data?.write(to: URL(fileURLWithPath: argument))
             check(data != nil, step)
         default:

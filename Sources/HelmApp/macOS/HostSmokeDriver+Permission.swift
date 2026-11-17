@@ -139,7 +139,10 @@ extension HostSmokeDriver {
             check(app.onboardingForTesting?.model.statusLine == argument, step, app.onboardingForTesting?.model.statusLine ?? "closed")
         case "onboarding-shot":
             await wait(seconds: 0.3)
-            check(app.onboardingForTesting?.captureForTesting(to: URL(fileURLWithPath: argument)) == true, step)
+            let onboarding = app.onboardingForTesting
+            check(await SmokeActiveLook.drawingInFront([onboarding?.window]) {
+                onboarding?.captureForTesting(to: URL(fileURLWithPath: argument)) == true
+            }, step)
         case "setting-is":
             // setting-is <key> <true|false>
             let bits = argument.split(separator: " ").map(String.init)

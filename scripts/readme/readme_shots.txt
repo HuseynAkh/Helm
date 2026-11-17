@@ -5,7 +5,9 @@ windows 1
 free-space hidden
 # One size for every window picture, so they keep the same proportions down the page
 window-size 1240 760
-activate
+# Each picture draws its window as the window in front: window buttons in colour, the accent on Apply, Continue and
+# the switches. The run itself stays in the background
+active-look on
 app-icon docs/brand/logo-variants/variant-4-isometric.png
 setting-is aiModeEnabled false
 # A bookmark, a starred file and a few things opened lately, as on a Mac in use
@@ -62,9 +64,8 @@ search-type invoice
 wait 3
 screenshot @SHOTS@/search-dark.png
 search-key escape
-# AI mode, after Recent's picture so Recent shows none of its folders. The plan, the result and AI search are taken
-# in light and dark, for the README's pairs. The Whole Mac and Read contents pictures stay light only: a capture draws
-# the empty composer's placeholder in light-mode grey on the dark field (docs/images/ai-panel-dark.png shows it).
+# AI mode, after Recent's picture so Recent shows none of its folders. The plan, the result, Whole Mac, Read contents
+# and AI search are taken in light and dark, for the README's pairs.
 # The AI Mode screen, switched on with a stand-in key, which the screen never draws
 appearance dark
 go @FIX@/home/Downloads
@@ -142,6 +143,11 @@ agent-group Move 2 items to “Screenshots” on
 agent-group-path Move 2 items to “Screenshots”=~/Pictures/Screenshots
 wait 1
 screenshot @SHOTS@/ai-whole-mac-light.png
+appearance dark
+wait 1.5
+screenshot @SHOTS@/ai-whole-mac-dark.png
+appearance light
+wait 1
 agent-press Cancel
 exists @FIX@/home/Desktop/Screenshot 14.20.05.png
 agent-scope thisFolder
@@ -160,6 +166,11 @@ agent-reads and 6 summaries to Claude.
 agent-group Move 4 items to “Receipts” on
 wait 1
 screenshot @SHOTS@/ai-contents-light.png
+appearance dark
+wait 1.5
+screenshot @SHOTS@/ai-contents-dark.png
+appearance light
+wait 1
 agent-press Cancel
 missing @FIX@/home/Documents/Scans/Receipts
 agent-say /clear
