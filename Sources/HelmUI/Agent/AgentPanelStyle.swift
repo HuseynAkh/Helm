@@ -49,6 +49,19 @@ enum AgentPanelStyle {
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
         }
     }
+
+    /// A system colour as the plain light or dark appearance has it, for a view drawn in `appearance`. Over the
+    /// window's material AppKit hands views a vibrant appearance, whose greys are opaque and made to be blended with
+    /// what lies behind: drawn plainly, as a text view's own drawing and an image are, they came out dark grey on the
+    /// dark field. The plain appearance's are see-through white or black, which read on the field as they are.
+    /// Increase Contrast keeps its own, stronger greys.
+    static func plain(_ color: NSColor, for appearance: NSAppearance) -> NSColor {
+        let name = appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua,
+                                               .accessibilityHighContrastDarkAqua]) ?? .aqua
+        var resolved = color
+        NSAppearance(named: name)?.performAsCurrentDrawingAppearance { resolved = NSColor(cgColor: color.cgColor) ?? color }
+        return resolved
+    }
 }
 
 /// A grouped box behind a card: rounded, filled and edged as System Settings draws its rows.

@@ -130,7 +130,8 @@ extension HostSmokeDriver {
                 path = String(argument[..<space])
                 points = CGFloat(number)
             }
-            check(captureTop(of: window, points: points, to: path), step)
+            let taken = await SmokeActiveLook.drawingInFront([window.window]) { captureTop(of: window, points: points, to: path) }
+            check(taken, step)
         case "window-edges-native":
             check(edgeProblems(window).isEmpty, step, edgeProblems(window).joined(separator: "; "))
         case "view-options":

@@ -150,5 +150,63 @@ import HelmCore
         let linked = (0..<(text.string as NSString).length).contains { text.textStorage?.attribute(.link, at: $0, effectiveRange: nil) != nil }
         XCTAssertFalse(linked, "no part of it became a link")
     }
+
+    /// The empty composer's hint reads on its field: light ink on the dark field and dark ink on the light one, over
+    /// the window's material too, where AppKit hands the composer a vibrant appearance. That appearance's placeholder
+    /// grey is an opaque mid grey made for blending, and drawn as the hint is it came out dark on the dark field.
+    func testTheHintReadsOnTheFieldInLightAndDark() throws {
+        for window in [NSAppearance.Name.darkAqua, .aqua] {
+            for overMaterial in [true, false] {
+                let ink = try hintInk(window: window, overMaterial: overMaterial)
+                let label = "\(window.rawValue)\(overMaterial ? " over the material" : "")"
+                if window == .darkAqua {
+                    XCTAssertGreaterThan(ink.brightness, 0.8, "\(label): the hint is too dark to read on the field")
+                } else {
+                    XCTAssertLessThan(ink.brightness, 0.2, "\(label): the hint is too light to read on the field")
+                }
+                XCTAssertGreaterThan(ink.alpha, 0.3, "\(label): the hint is too faint")
+                XCTAssertLessThan(ink.alpha, 0.9, "\(label): the hint is as strong as typed text")
+            }
+        }
+    }
+
+    /// The hint's ink as the empty composer draws it in a window of the given appearance, straight in the window or
+    /// over a material as in the panel: how bright it is on average and how opaque at most, over the pixels it drew.
+    private func hintInk(window appearance: NSAppearance.Name, overMaterial: Bool) throws -> (brightness: CGFloat, alpha: CGFloat) {
+        let frame = NSRect(x: 0, y: 0, width: 340, height: 80)
+        let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.appearance = NSAppearance(named: appearance)
+        let composer = AgentComposerView(frame: frame)
+        if overMaterial {
+            let material = NSVisualEffectView(frame: frame)
+            material.material = .sidebar
+            material.addSubview(composer)
+            window.contentView = material
+        } else {
+            window.contentView = composer
+        }
+        composer.layoutSubtreeIfNeeded()
+        let text = composer.textView
+        XCTAssertTrue(text.string.isEmpty)
+        if overMaterial {
+            let vibrant = text.effectiveAppearance.bestMatch(from: [.vibrantDark, .vibrantLight, .aqua, .darkAqua])
+            XCTAssertTrue(vibrant == .vibrantDark || vibrant == .vibrantLight, "not drawn in a vibrant appearance")
+        }
+        let rep = try XCTUnwrap(text.bitmapImageRepForCachingDisplay(in: text.bounds))
+        text.cacheDisplay(in: text.bounds, to: rep)
+        var brightness: CGFloat = 0, alpha: CGFloat = 0, count: CGFloat = 0
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), color.alphaComponent > 0.1 else { continue }
+                brightness += (color.redComponent + color.greenComponent + color.blueComponent) / 3
+                alpha = max(alpha, color.alphaComponent)
+                count += 1
+            }
+        }
+        XCTAssertGreaterThan(count, 20, "no hint was drawn")
+        return (count > 0 ? brightness / count : 0, alpha)
+    }
 }
 #endif

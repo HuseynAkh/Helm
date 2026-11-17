@@ -4,7 +4,7 @@ import HelmCore
 import HelmUI
 
 /// Smoke verbs for the README's pictures (scripts/readme/make_readme_images.sh). They only change how a scripted
-/// window looks: its size, whether it's in front, and the free space its status bar names.
+/// window looks: its size, whether it's drawn as the window in front, and the free space its status bar names.
 extension HostSmokeDriver {
     static func performReadmeVerb(_ verb: String, _ argument: String, step: String,
                                   window: BrowserWindowController, app: AppController) async -> Bool {
@@ -31,12 +31,11 @@ extension HostSmokeDriver {
             await wait(seconds: 0.5)
             check(abs(frameWindow.frame.width - size.width) < 1 && abs(frameWindow.frame.height - size.height) < 1, step,
                   "\(frameWindow.frame.size)")
-        case "activate":
-            // Brings the window to the front as the key window, so its window buttons are drawn in colour. A scripted
-            // run otherwise never comes to the front (HelmApplication).
-            (NSApp as? HelmApplication)?.activateForScript()
-            window.window?.makeKeyAndOrderFront(nil)
-            await wait(seconds: 0.6)
+        case "active-look":
+            // active-look <on|off>: each capture draws its window as the key and main window, as it looks in front,
+            // while the run stays in the background (SmokeActiveLook). Only a scripted fixture run may turn it on.
+            guard argument == "on" || argument == "off" else { check(false, step, "usage: active-look <on|off>"); return true }
+            check(SmokeActiveLook.set(argument == "on", for: app), step, "not a scripted fixture run")
         default:
             return false
         }

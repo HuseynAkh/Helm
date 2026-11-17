@@ -32,8 +32,10 @@ import HelmUI
     override func activate(ignoringOtherApps flag: Bool) {
         if !staysInBackground { super.activate(ignoringOtherApps: flag) }
     }
-    /// Comes to the front even in a scripted run, for a step that means to, such as the README's pictures.
-    func activateForScript() { super.activate(ignoringOtherApps: true) }
+    /// While a README picture is taken with the active look, Helm answers that it's active, as it is in front, so
+    /// AppKit draws the window as the front one (SmokeActiveLook). It never becomes active, and only a scripted
+    /// fixture run can turn that look on.
+    override var isActive: Bool { SmokeActiveLook.isCapturing || super.isActive }
 }
 
 /// The Settings › General › Default File Viewer switches, run from the command line with no window, so either
