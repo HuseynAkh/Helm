@@ -7,8 +7,9 @@ import HelmCore
 ///     r3 server shared no_trash read_only not_responding. 12 items are selected in r1. Last plan: applied 210, skipped 4.
 ///
 /// It names roots by alias and kind, never by a folder's name, so no name from the disk is ever outside a tool
-/// result. A provider's name comes from the fixed list of `StorageClassifier.knownProviders`. Flags appear only when
-/// they are true. It is one line, so a model reading the person's words after it can tell where it ends.
+/// result. A provider's name comes from the fixed list of `StorageClassifier.knownProviders`. In Whole Mac the home
+/// folder's root carries the word `home`. Flags appear only when they are true. It is one line, so a model reading
+/// the person's words after it can tell where it ends.
 public enum AgentContextNote {
     /// `selectedRoot` is the alias of the root that holds the selection.
     public static func make(roots: [AgentScopeRoot], selectedCount: Int, selectedRoot: String?, lastPlan: AgentPlanOutcome?) -> String {
@@ -34,6 +35,8 @@ public enum AgentContextNote {
 
     /// What every note starts with.
     static let mark = "[Helm]"
+    /// The word on the home folder's root in Whole Mac.
+    static let homeWord = "home"
 
     private static func describe(_ root: AgentScopeRoot, holdsCloudOnly: Bool) -> String {
         let facts = root.storage
@@ -42,6 +45,7 @@ public enum AgentContextNote {
             let provider = StorageClassifier.knownProviders.first { $0 == facts.name } ?? "cloud folder"
             words.append("\"\(provider)\"")
         }
+        if root.isWholeMac, root.modelName == AgentScopeGate.homeName { words.append(homeWord) }
         if root.isTabFolder { words.append("(on show)") }
         if facts.syncs { words.append("syncs") }
         switch facts.shared {

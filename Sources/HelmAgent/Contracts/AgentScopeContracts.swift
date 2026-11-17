@@ -16,13 +16,21 @@ public struct AgentScopeRoot: Hashable, Sendable, Identifiable {
     public let identity: FileObjectIdentity?
     public var storage: StorageFacts
     public let isTabFolder: Bool
+    /// One of the places Whole Mac adds: the home folder, iCloud Drive, a cloud folder or a disk. It doesn't count
+    /// toward the seven added folders, and the switch, not a close button, takes it away.
+    public let isWholeMac: Bool
     public var id: String { alias }
     public init(alias: String, path: String, label: String, modelName: String, identity: FileObjectIdentity?,
-                storage: StorageFacts, isTabFolder: Bool) {
+                storage: StorageFacts, isTabFolder: Bool, isWholeMac: Bool = false) {
         self.alias = alias; self.path = path; self.label = label; self.modelName = modelName
-        self.identity = identity; self.storage = storage; self.isTabFolder = isTabFolder
+        self.identity = identity; self.storage = storage; self.isTabFolder = isTabFolder; self.isWholeMac = isWholeMac
     }
 }
+
+/// How far a thread looks. This Folder is the folder on show and the folders the person added; Whole Mac adds the
+/// home folder, iCloud Drive, the cloud folders in the home's Library and the disks in the Volumes folder, under the
+/// same rules. A new thread starts in This Folder.
+public enum AgentScopeMode: String, Sendable, CaseIterable { case thisFolder, wholeMac }
 
 /// Why a folder can't be one AI mode works in.
 public enum AgentScopeRefusal: String, Error, Sendable { case notFound, notAFolder, system, hidden, insidePackage, full, badText, notResponding }

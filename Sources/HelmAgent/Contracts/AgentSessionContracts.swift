@@ -140,4 +140,15 @@ public protocol AgentConversing: AnyObject, Sendable {
     func clear() async
     /// What happens outside a request, such as the thread starting over after the provider changed.
     var notices: AsyncStream<AgentNotice> { get }
+    /// This Folder or Whole Mac, for the thread as it is now.
+    func scopeMode() async -> AgentScopeMode
+    /// Switches the thread to This Folder or Whole Mac. A switch starts the thread over, as a change of provider
+    /// does, so names listed under one are never sent under the other.
+    func setScopeMode(_ mode: AgentScopeMode) async
+}
+
+/// A conversation that knows only This Folder: the switch does nothing there.
+public extension AgentConversing {
+    func scopeMode() async -> AgentScopeMode { .thisFolder }
+    func setScopeMode(_ mode: AgentScopeMode) async {}
 }

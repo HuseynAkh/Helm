@@ -57,6 +57,8 @@ Two more values can only be made by initializers that check what they are given.
 4. `propose_changes` is decoded exactly (`AgentProposedChanges.decodeStrictly`) and checked into an `AgentChangePlan`. Helm builds everything on the plan's card from the checked steps: the title, the counts, the groups and the notes (`Contracts/AgentPlanShape.swift`). A group that removes something, or puts files where other people or other devices see them, carries a guard and starts unticked.
 5. Nothing changes until the person presses Apply. The conversation hands the plan over once, for its own id and ticks (`beginApply`), and HelmUI runs it through the operation engine, so Undo, the Trash and Keep Both all hold.
 
+A thread works in This Folder or Whole Mac (`AgentScopeMode`), and every new thread starts in This Folder. Whole Mac adds the home folder, iCloud Drive, each folder of the home's `Library/CloudStorage` and each disk the app reports mounted as roots of their own (`AgentScope.setMode`), each let in by `AgentScopeGate` as a folder the person names is: the allow list, no Library or other apps' data, dot names left out, links never followed, and Desktop, Documents and Downloads listed by name and never entered from the home folder. A disk is named for the model by its kind, the home folder as "Home", and the note marks it `home`. The request goes with `AgentPrompt.wholeMac`. Switching starts the thread over, as a change of provider does.
+
 ## AI mode on and off
 
 `AgentRuntime` starts off. While it is off, `client()` answers `.off`, `makeSession()` answers nil and nothing is built. Turning it on builds nothing either: the client is made the first time it is needed, for a provider with an address, a model, and a key where the provider needs one. Turning it off shuts the client down, which forgets the key it had cached, and stops and clears every conversation. Every check of a provider is reported to `checked` with the models it listed, or nil, and the app keeps the lists for the panel's model menu. `relistLocal` asks Ollama or LM Studio for its models again through a client of its own, and asks no other provider.
@@ -106,7 +108,7 @@ The stand-ins are part of the module, not of a test target, because a fixture ru
 
 - The first rule whose `when` is in the person's message answers it, without regard to case. `*` is in every message. Helm's own note about the folders, on lines that start with `[Helm]`, is not part of the message.
 - Each of a rule's turns is one model turn of the request. Which turn is next is read from the history, so the client keeps no place of its own.
-- `@root` is the folder marked "(on show)" in Helm's note. `@name:<file>` is the id that a tool result gave the item of that name, so a script doesn't depend on how ids are numbered. A mark that can't be filled in is left as it is, and the tool refuses it.
+- `@root` is the folder marked "(on show)" in Helm's note, and `@home` the one marked `home` while Whole Mac is on. `@name:<file>` is the id that a tool result gave the item of that name, so a script doesn't depend on how ids are numbered. A mark that can't be filled in is left as it is, and the tool refuses it.
 - `stop` may be `refusal` or `max_tokens`. `failure` is an `AgentFailure` by its raw value, and the request fails with it once the rule's turns are used up.
 - `searchPlan` and `searchRank` answer AI search's two questions. Without one, that question fails.
 
