@@ -3,7 +3,8 @@ import AppKit
 import XCTest
 @testable import HelmUI
 
-/// Helm's spark: one shape, drawn in code, that renders without a window and tells lit from unlit.
+/// Helm's mark of AI mode, the trefoil: one looping line drawn in code, that renders without a window, tells lit from
+/// unlit, and passes under itself with a clear gap at each of its three crossings.
 @MainActor final class SparkMarkTests: XCTestCase {
     /// Draws an image into a bitmap of its own, with no window or screen, in the given appearance.
     private func render(_ image: NSImage, pixels: Int = 48, appearance: NSAppearance.Name = .aqua) -> NSBitmapImageRep? {
@@ -33,9 +34,12 @@ import XCTest
             let image = SparkMark.image(size: 48, lit: lit)
             XCTAssertEqual(image.size, NSSize(width: 48, height: 48))
             let bitmap = try XCTUnwrap(render(image))
-            // The centre is filled (the label colour is 85% black), and the corners, outside the four points, are clear.
-            XCTAssertGreaterThan(color(bitmap, 24, 24)?.alphaComponent ?? 0, 0.8, "lit \(lit)")
-            for (x, y) in [(1, 1), (46, 1), (1, 46), (46, 46), (8, 8), (39, 39)] {
+            // The top loop's tip and the two lower loops' feet are inked (the label colour is 85% black). The corners,
+            // the hole in the top loop and the knot's open centre are clear.
+            for (x, y) in [(24, 6), (10, 41), (37, 41)] {
+                XCTAssertGreaterThan(color(bitmap, x, y)?.alphaComponent ?? 0, 0.8, "lit \(lit) at \(x), \(y)")
+            }
+            for (x, y) in [(1, 1), (46, 1), (1, 46), (46, 46), (6, 6), (41, 6), (24, 14), (24, 29)] {
                 XCTAssertLessThan(color(bitmap, x, y)?.alphaComponent ?? 1, 0.05, "lit \(lit) at \(x), \(y)")
             }
         }
@@ -49,11 +53,11 @@ import XCTest
         let plain = try XCTUnwrap(render(unlit))
         let glowing = try XCTUnwrap(render(lit))
         XCTAssertNotEqual(pixels(plain), pixels(glowing))
-        // Unlit it's the label colour, grey; lit, it runs from amber at the top towards violet at the bottom.
-        let middle = try XCTUnwrap(color(plain, 24, 24))
-        XCTAssertEqual(middle.redComponent, middle.blueComponent, accuracy: 0.05)
-        let top = try XCTUnwrap(color(glowing, 24, 14))
-        let bottom = try XCTUnwrap(color(glowing, 24, 33))
+        // Unlit it's the label colour, grey; lit, it runs from amber at the top loop towards violet at the lower two.
+        let tip = try XCTUnwrap(color(plain, 24, 6))
+        XCTAssertEqual(tip.redComponent, tip.blueComponent, accuracy: 0.05)
+        let top = try XCTUnwrap(color(glowing, 24, 6))
+        let bottom = try XCTUnwrap(color(glowing, 10, 41))
         XCTAssertGreaterThan(top.alphaComponent, 0.9)
         XCTAssertGreaterThan(bottom.alphaComponent, 0.9)
         XCTAssertGreaterThan(top.redComponent, top.blueComponent + 0.4, "amber at the top")
@@ -70,24 +74,79 @@ import XCTest
         XCTAssertGreaterThan(colours[2].blueComponent, colours[2].redComponent, "violet")
     }
 
-    func testThePathHasFourPointsOnTheEdgesMiddles() {
+    func testThePathIsOneLineLoopingThreeTimesRoundAnOpenCentre() {
         let rect = CGRect(x: 10, y: 20, width: 40, height: 40)
         let path = SparkMark.path(in: rect)
-        XCTAssertEqual(path.boundingBox.minX, rect.minX, accuracy: 0.01)
-        XCTAssertEqual(path.boundingBox.maxX, rect.maxX, accuracy: 0.01)
-        XCTAssertEqual(path.boundingBox.minY, rect.minY, accuracy: 0.01)
-        XCTAssertEqual(path.boundingBox.maxY, rect.maxY, accuracy: 0.01)
-        XCTAssertTrue(path.contains(CGPoint(x: rect.midX, y: rect.midY)))
-        // Each point reaches its edge's middle.
-        for tip in [CGPoint(x: rect.midX, y: rect.maxY - 1), CGPoint(x: rect.midX, y: rect.minY + 1),
-                    CGPoint(x: rect.minX + 1, y: rect.midY), CGPoint(x: rect.maxX - 1, y: rect.midY)] {
-            XCTAssertTrue(path.contains(tip), "\(tip)")
+        // As wide as the rect, and a little less tall: the knot is wider than it is high.
+        XCTAssertEqual(path.boundingBox.minX, rect.minX, accuracy: 0.05)
+        XCTAssertEqual(path.boundingBox.maxX, rect.maxX, accuracy: 0.05)
+        XCTAssertGreaterThan(path.boundingBox.minY, rect.minY)
+        XCTAssertLessThan(path.boundingBox.maxY, rect.maxY)
+        XCTAssertEqual(path.boundingBox.midY, rect.midY, accuracy: 0.05)
+        // The centre is open, and so is the top loop's hole; the line runs through the top loop's tip.
+        XCTAssertFalse(path.contains(CGPoint(x: rect.midX, y: rect.midY - 2)))
+        XCTAssertFalse(path.contains(CGPoint(x: rect.midX, y: rect.midY + 10)))
+        XCTAssertTrue(path.contains(CGPoint(x: rect.midX, y: path.boundingBox.maxY - 1)))
+        // Three crossings, the trefoil's: one under the centre and two either side of it, mirror images, and at each
+        // the line passes over once and under once.
+        let crossings = SparkMark.knot.crossings
+        XCTAssertEqual(crossings.count, 3)
+        let points = crossings.map(\.point).sorted { $0.x < $1.x }
+        guard points.count == 3 else { return }
+        XCTAssertEqual(points[1].x, 0, accuracy: 0.01)
+        XCTAssertLessThan(points[1].y, -0.5)
+        XCTAssertEqual(points[0].x, -points[2].x, accuracy: 0.01)
+        XCTAssertEqual(points[0].y, points[2].y, accuracy: 0.01)
+        for crossing in crossings { XCTAssertGreaterThan(abs(crossing.over - crossing.under), 0.1) }
+    }
+
+    func testTheLinePassesUnderItselfThroughAClearGap() throws {
+        // At 64 points, drawn at 2x: each crossing is inked by the strand on top, and the strand underneath is cut
+        // either side of it, clear through.
+        let bitmap = try XCTUnwrap(render(SparkMark.image(size: 64, lit: true), pixels: 128))
+        let sites = SparkMark.crossingsForTesting(in: CGRect(x: 0, y: 0, width: 64, height: 64))
+        XCTAssertEqual(sites.count, 3)
+        for site in sites {
+            let crossing = color(bitmap, Int(site.crossing.x * 2), Int((64 - site.crossing.y) * 2))
+            let gap = color(bitmap, Int(site.gap.x * 2), Int((64 - site.gap.y) * 2))
+            XCTAssertGreaterThan(crossing?.alphaComponent ?? 0, 0.95, "\(site.crossing)")
+            XCTAssertLessThan(gap?.alphaComponent ?? 1, 0.1, "\(site.gap)")
         }
-        // The sides curve in: the middle of each corner's diagonal is outside the spark.
-        for corner in [CGPoint(x: rect.minX + 10, y: rect.minY + 10), CGPoint(x: rect.maxX - 10, y: rect.maxY - 10),
-                       CGPoint(x: rect.minX + 10, y: rect.maxY - 10), CGPoint(x: rect.maxX - 10, y: rect.minY + 10)] {
-            XCTAssertFalse(path.contains(corner), "\(corner)")
+    }
+
+    func testTheSmallestMarkKeepsItsLoopsOpen() throws {
+        // The status bar's 10-point mark at 2x: down its middle, the top loop's tip, its hole, the line across it,
+        // the open centre, the lower crossing, and clear again below.
+        let bitmap = try XCTUnwrap(render(SparkMark.image(size: 10, lit: false), pixels: 20))
+        let column = (0..<20).map { color(bitmap, 10, $0)?.alphaComponent ?? 0 }
+        let inked = column.map { $0 > 0.5 }
+        var runs: [Bool] = []
+        for value in inked where runs.last != value { runs.append(value) }
+        XCTAssertEqual(runs, [false, true, false, true, false, true, false], "\(column)")
+        XCTAssertLessThan(SparkMark.weight(ink: 10 * (1 - 2 * SparkMark.inset)), 1.05, "about a point wide")
+    }
+
+    func testAnImageShownLargerIsWeighedForTheSizeItsShownAt() throws {
+        // Settings' toolbar shows its 18-point tab image at about 29 points. Drawn there at 2x, its line is as heavy
+        // as a 29-point mark's, not as an 18-point mark's line scaled up.
+        func ink(_ image: NSImage) throws -> CGFloat {
+            let bitmap = try XCTUnwrap(render(image, pixels: 58))
+            var total: CGFloat = 0
+            for y in 0..<58 { for x in 0..<58 { total += color(bitmap, x, y)?.alphaComponent ?? 0 } }
+            return total
         }
+        let shown = try ink(SparkMark.image(size: 18, lit: false))
+        let native = try ink(SparkMark.image(size: 29, lit: false))
+        XCTAssertEqual(shown / native, 1, accuracy: 0.03)
+        XCTAssertEqual(SparkMark.shownScale(of: try XCTUnwrap(scaledContext(2))), 1, "A Retina screen at the image's size")
+        XCTAssertEqual(SparkMark.shownScale(of: try XCTUnwrap(scaledContext(1))), 1, "A 1x screen at the image's size")
+        XCTAssertEqual(SparkMark.shownScale(of: try XCTUnwrap(scaledContext(3.2))), 1.6, accuracy: 0.001)
+    }
+    private func scaledContext(_ scale: CGFloat) -> CGContext? {
+        let context = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        context?.scaleBy(x: scale, y: scale)
+        return context
     }
 
     func testTheShimmerTurnsTheGradient() throws {
