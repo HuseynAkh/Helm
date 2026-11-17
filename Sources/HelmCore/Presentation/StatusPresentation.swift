@@ -36,9 +36,12 @@ public struct StatusPresentation: Sendable {
     public let activity: StatusActivity
     /// Search results are counted as results, so the bar doesn't read as the folder's own contents.
     public let isSearch: Bool
+    /// The kind a search is kept to, in the words that end the line: "12 results  •  Photos". Nil for any kind.
+    public let searchKind: String?
     public init(itemCount: Int, selectedCount: Int = 0, selectedBytes: Int64? = nil,
-                freeBytes: Int64? = nil, activity: StatusActivity = .idle, isSearch: Bool = false) {
+                freeBytes: Int64? = nil, activity: StatusActivity = .idle, isSearch: Bool = false, searchKind: String? = nil) {
         self.isSearch = isSearch
+        self.searchKind = isSearch ? searchKind : nil
         self.itemCount = max(0, itemCount)
         self.selectedCount = min(max(0, selectedCount), max(0, itemCount))
         self.selectedBytes = selectedBytes
@@ -75,6 +78,7 @@ extension StatusText {
         if let capacity = value.freeBytes, capacity >= 0 {
             parts.append("\(bytes.string(from: capacity)) free")
         }
+        if let kind = value.searchKind, !kind.isEmpty { parts.append(kind) }
         return parts.joined(separator: "  •  ")
     }
 }
