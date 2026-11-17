@@ -46,7 +46,7 @@ Two more values can only be made by initializers that check what they are given.
 | `Loop/` | The conversation: the prompt, the note Helm writes about the folders, the turns of a request |
 | `Plan/` | Checking what a model proposed: names, places, and what must be left out |
 | `Suggest/` | The three suggestions, worked out from counts with no model asked |
-| `Search/` | The two questions AI search asks a model, and their schemas |
+| `Search/` | The questions AI search asks a model (plan, look, rank), and their schemas |
 | `Scripted/` | A model that answers from a script, a disk in memory and a conversation with no model, for tests and fixture runs |
 
 ## How a request goes
@@ -58,6 +58,8 @@ Two more values can only be made by initializers that check what they are given.
 5. Nothing changes until the person presses Apply. The conversation hands the plan over once, for its own id and ticks (`beginApply`), and HelmUI runs it through the operation engine, so Undo, the Trash and Keep Both all hold.
 
 Read contents is the person's switch beside the composer. On, the session holds their `AgentContentPermit`, the thread starts over, the model is also offered `read_contents`, and the prompt ends with `AgentPrompt.readContents`; a new thread starts with it off. `read_contents` checks each id as a plan's are and hands the plain files that are on this Mac to `AgentContentReading`, with the permit. The reader lives in HelmUI (`Contents/AgentContentReader.swift`), outside this module: it reads on this Mac with PDFKit, Vision and AVFoundation and answers short summaries, which go to the model escaped, with the home folder's path written as `~`, and marked as untrusted data. This module still names no way to open a file.
+
+AI search (`Search/`) asks up to three questions, none with a tool. The plan turns the request into typed queries that HelmUI runs on the Mac; the ranking orders rows of names, folders, kinds, rounded sizes and dates. With the search's own Read contents switch on, a look question comes between them: HelmUI reads the files the queries found or describe on this Mac and shows the model the best of them, `AgentContentLimits.looksPerQuestion` items a question, each with its row facts, a document's first lines and pages, the words found on this Mac in a picture, a video or a scan, and the small pictures Helm made (`AgentStructuredAsk.pictures`, labelled "Item 3" or "Item 3, frame 2"). The model answers which items fit and a short phrase of what it saw; `AISearchSession.look` keeps only items it was shown, each once, and cleans each phrase to plain text of 80 characters. File text is escaped, with the home folder's path written as `~`, and the prompt names it untrusted data. A provider that turns a question with pictures away as a bad request is asked again in words alone, and HelmUI sends no more pictures until AI mode or the provider changes.
 
 A thread works in This Folder or Whole Mac (`AgentScopeMode`), and every new thread starts in This Folder. Whole Mac adds the home folder, iCloud Drive, each folder of the home's `Library/CloudStorage` and each disk the app reports mounted as roots of their own (`AgentScope.setMode`), each let in by `AgentScopeGate` as a folder the person names is: the allow list, no Library or other apps' data, dot names left out, links never followed, and Desktop, Documents and Downloads listed by name and never entered from the home folder. A disk is named for the model by its kind, the home folder as "Home", and the note marks it `home`. The request goes with `AgentPrompt.wholeMac`. Switching starts the thread over, as a change of provider does.
 
@@ -112,7 +114,8 @@ The stand-ins are part of the module, not of a test target, because a fixture ru
 - Each of a rule's turns is one model turn of the request. Which turn is next is read from the history, so the client keeps no place of its own.
 - `@root` is the folder marked "(on show)" in Helm's note, and `@home` the one marked `home` while Whole Mac is on. `@name:<file>` is the id that a tool result gave the item of that name, so a script doesn't depend on how ids are numbered. A mark that can't be filled in is left as it is, and the tool refuses it.
 - `stop` may be `refusal` or `max_tokens`. `failure` is an `AgentFailure` by its raw value, and the request fails with it once the rule's turns are used up.
-- `searchPlan` and `searchRank` answer AI search's two questions. Without one, that question fails.
+- `searchPlan` and `searchRank` answer AI search's plan and ranking. Without one, that question fails.
+- `searchLooks` answers AI search's look: the first rule whose `when` is in the request says which items, by file name, fit (`fits`, each with what was `seen`) and which don't (`misses`); the rest go unjudged. With no such rule the look fails. `picturesFailure` is an `AgentFailure` the look fails with while it carries pictures.
 
 The client keeps everything it was sent. `allSentText()` gives it back as one text, with every string inside the JSON spelled out again, so a test can show that a path or an account's name never left the app.
 

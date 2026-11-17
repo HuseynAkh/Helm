@@ -3,17 +3,19 @@ import HelmCore
 
 /// The words that say why a result matched, and how a request was read, built only from facts Helm holds.
 ///
-/// A model answers with reason codes and never with words, so nothing here repeats a phrase it wrote. Every word of
-/// a query is a single token by the time it gets here (`AISearchQuery.clamped`), a word looked for inside files is
-/// one the person typed, and every word and name passes `AgentTextEscaper`, so a line can't hold hidden characters.
-/// A code Helm can't back with a fact is dropped, and no line names a path.
+/// A model ranking rows answers with reason codes and never with words, so nothing here repeats a phrase it wrote
+/// there. The one phrase of a model's a line holds is what it said it saw in a file it looked at, after "Seen: ",
+/// cleaned to plain text of 80 characters by `AISearchSession`. Every word of a query is a single token by the time it
+/// gets here (`AISearchQuery.clamped`), a word looked for inside files is one the person typed, and every word, name
+/// and phrase passes `AgentTextEscaper`, so a line can't hold hidden characters. A code Helm can't back with a fact
+/// is dropped, and no line names a path.
 public enum SearchReasonBuilder {
     /// The most facts one reason line holds.
     public static let factsPerLine = 2
 
     /// The reason line for one result: the first two codes Helm can back, in the order given, or nil when it can
     /// back none. `query` is the planned query that found the item, if one did. `sighting` is what Read contents found
-    /// inside the picture or video that answered the query's words, which the content fact then names.
+    /// inside the file (`seen(_:)`), which the content fact then names.
     public static func reason(codes: [SearchReasonCode], entry: FileEntry, query: AISearchQuery?, scopeRoot: URL?,
                               calendar: Calendar, locale: Locale, sighting: AISearchSighting? = nil) -> SearchReason? {
         var used: [SearchReasonCode] = []
@@ -88,6 +90,7 @@ public enum SearchReasonBuilder {
     static let shows = "Shows: "
     static let textInImage = "Text in image: "
     static let textInVideo = "Text in video: "
+    static let seenByModel = "Seen: "
     static let nameHas = "Name has "
     static let inFolder = "In "
 
@@ -173,13 +176,22 @@ public enum SearchReasonBuilder {
         }
     }
 
-    /// What a picture or a video showed or held: "Shows: dog, beach", "Text in image: “invoice”", or both. The things
-    /// shown are the classifier's words and the text words are the person's own.
+    /// What a file showed or held: "Shows: dog, beach", "Text in image: “invoice”", or both, from what was read on this
+    /// Mac; or "Seen: a red kite over the beach" for a file a model looked at and said fits. The things shown are the
+    /// classifier's words, the text words are the person's own, and the phrase seen is the model's, cleaned to plain
+    /// text and escaped here.
     public static func seen(_ sighting: AISearchSighting) -> String? {
+        if let phrase = sighting.seen, !phrase.isEmpty { return seenByModel + escaped(phrase) }
         var parts: [String] = []
         if !sighting.labels.isEmpty { parts.append(shows + sighting.labels.prefix(3).map(escaped).joined(separator: ", ")) }
         if let word = sighting.textWords.first {
-            parts.append((sighting.medium == .image ? textInImage : textInVideo) + quoted(word))
+            let lead: String
+            switch sighting.medium {
+            case .image: lead = textInImage
+            case .video: lead = textInVideo
+            case .document: lead = mentions
+            }
+            parts.append(lead + quoted(word))
         }
         return parts.isEmpty ? nil : parts.joined(separator: separator)
     }

@@ -17,8 +17,9 @@ import HelmCore
 /// spark goes off, as it does when the search closes.
 ///
 /// The row's trailing end holds the Read contents switch, in a run that can read inside files. On, it hands the
-/// runner the person's permit, and Return then also looks inside pictures and videos on this Mac. Like the kind, it
-/// lasts for the search: it goes off, and what was read is forgotten, whenever the spark goes off.
+/// runner the person's permit, and Return then also reads inside files on this Mac and has the model look at the
+/// best of them. Like the kind, it lasts for the search: it goes off, and what was read is forgotten, whenever the
+/// spark goes off.
 extension BrowserWindowController {
     /// Installs the window's AI search runner, and keeps the spark in step with the tab and with AI mode.
     func installAISearch() {
@@ -26,7 +27,11 @@ extension BrowserWindowController {
         effects.aiSearch = runner
         let runtime = dependencies.agent.runtime
         let watch = AISearchWatch(runtime: runtime)
-        watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in self?.followAISearchReadiness() }
+        watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in
+            // AI mode, the provider or the model changed: a look may carry pictures again.
+            self?.aiSearchRunner?.runtimeChanged()
+            self?.followAISearchReadiness()
+        }
         watch.storeToken = store.snapshots.subscribe { [weak self] _ in self?.followAISearchReadiness() }
         runner.watch = watch
         watch.shown = (isAISearchAvailable, false)

@@ -97,8 +97,9 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         return [.object(item)]
     }
 
-    /// The script's search plan for a question named "search_plan" and its ranking for "search_rank". A question of
-    /// any other name, or one the script has no answer for, fails as unreadable.
+    /// The script's search plan for a question named "search_plan", its ranking for "search_rank", and for
+    /// "search_look" the answer of its first look rule for the request (`look(_:script:)`). A question of any other
+    /// name, or one the script has no answer for, fails as unreadable. Each question is kept with its pictures.
     public func structured(_ ask: AgentStructuredAsk) async throws -> Data {
         let script = locked { () -> AgentScript in
             asks.append(ask)
@@ -108,6 +109,7 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         switch ask.schemaName {
         case Self.searchPlanName: answer = script.searchPlan
         case Self.searchRankName: answer = script.searchRank
+        case Self.searchLookName: answer = try Self.look(ask, script: script)
         default: answer = nil
         }
         guard let answer else { throw AgentFailure.unreadable }
@@ -124,6 +126,30 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
 
     static let searchPlanName = "search_plan"
     static let searchRankName = "search_rank"
+    static let searchLookName = "search_look"
+
+    /// The answer to a look question: the first look rule whose `when` is in the request judges the items shown by
+    /// their names, as written or as escaped. Nil when no rule is for this request. A rule's `picturesFailure` is
+    /// thrown while the question carries pictures.
+    private static func look(_ ask: AgentStructuredAsk, script: AgentScript) throws -> AgentJSON? {
+        let lines = ask.user.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let start = lines.firstIndex(of: "Request (data):"), lines.indices.contains(start + 1),
+              let request = (try? AgentJSON(data: Data(lines[start + 1].utf8)))?.stringValue?.lowercased(),
+              let rule = script.searchLooks.first(where: { $0.when == "*" || request.contains($0.when.lowercased()) }) else { return nil }
+        if !ask.pictures.isEmpty, let failure = rule.picturesFailure.flatMap(AgentFailure.init(rawValue:)) { throw failure }
+        func named(_ name: String, _ shown: String) -> Bool { shown == name || shown == AgentTextEscaper.escape(name) }
+        var judged: [AgentJSON] = []
+        for line in lines where line.hasPrefix("{") {
+            guard let item = AgentJSON(jsonText: line), case .number(let number)? = item["item"],
+                  let name = item["name"]?.stringValue else { continue }
+            if let fit = rule.fits.first(where: { named($0.name, name) }) {
+                judged.append(.object(["item": .number(number), "fits": .bool(true), "seen": .string(fit.seen)]))
+            } else if rule.misses.contains(where: { named($0, name) }) {
+                judged.append(.object(["item": .number(number), "fits": .bool(false), "seen": .string("")]))
+            }
+        }
+        return .object(["items": .array(judged)])
+    }
 
     private enum Keys {
         static let role = "role", user = "user", model = "model", text = "text", results = "results"

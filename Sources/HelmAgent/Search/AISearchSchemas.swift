@@ -1,9 +1,9 @@
 import Foundation
 import HelmCore
 
-/// The two questions an AI search asks a model, as JSON schemas, and how their answers become Helm's own values.
+/// The three questions an AI search asks a model, as JSON schemas, and how their answers become Helm's own values.
 ///
-/// Both schemas take only typed fields: every property is required, no object takes a property it doesn't list,
+/// Every schema takes only typed fields: every property is required, no object takes a property it doesn't list,
 /// and "nothing" is an empty array, an empty string or 0. Answers are read tolerantly, since a model may wrap its
 /// JSON in words or leave a field out, and whatever doesn't fit is dropped rather than guessed at. Limits are kept
 /// by the session after reading, never trusted to the schema.
@@ -12,11 +12,16 @@ public enum AISearchSchemas {
     public static let planName = "search_plan"
     /// The name of the second question, which orders the rows found.
     public static let rankName = "search_rank"
+    /// The name of the look question, which says which of the files shown match.
+    public static let lookName = "search_look"
 
     /// The most queries read from one answer. The session keeps fewer.
     static let queriesRead = 12
     /// The most ranked rows read from one answer.
     static let rowsRead = 200
+    /// The most items read from one look's answer, and the longest phrase of what was seen that is read at all.
+    static let looksRead = 200
+    static let seenRead = 2_000
 
     public static let plan: AgentJSON = record(required: ["sort", "queries"], [
         "sort": choice(AISearchSort.allNames),
@@ -28,6 +33,14 @@ public enum AISearchSchemas {
             "row": .object(["type": .string("integer")]),
             "why": list(of: choice(SearchReasonCode.allCases.map(\.rawValue)))
         ]), "Up to 20 rows from the list, best first.")
+    ])
+
+    public static let look: AgentJSON = record(required: ["items"], [
+        "items": list(of: record(required: ["item", "fits", "seen"], [
+            "item": .object(["type": .string("integer")]),
+            "fits": .object(["type": .string("boolean")]),
+            "seen": text("What the item shows or says that matters to the request, in at most 80 characters.")
+        ]), "One entry for each item judged, by its number.")
     ])
 
     private static let query: AgentJSON = record(required: [
@@ -76,6 +89,21 @@ public enum AISearchSchemas {
                 codes.append(code)
             }
             return AISearchVerdict(row: Int(row), why: codes)
+        }
+    }
+
+    /// What a look's answer says of each item, in its order, before the session checks it: a number that isn't a
+    /// whole number, or a `fits` that isn't true or false, drops the entry, and a missing phrase is empty. Throws
+    /// `AgentFailure.unreadable` when there is no list of items.
+    public static func looks(from answer: Data) throws -> [AISearchLook] {
+        guard case .object(let members) = try json(in: answer), case .array(let items)? = members["items"] else {
+            throw AgentFailure.unreadable
+        }
+        return items.prefix(looksRead).compactMap { item -> AISearchLook? in
+            guard case .object(let fields) = item, let number = fields["item"].flatMap(\.whole), number > 0,
+                  number <= Int64(Int32.max), case .bool(let fits)? = fields["fits"] else { return nil }
+            let seen = fields["seen"].flatMap(\.text).map { String($0.prefix(seenRead)) } ?? ""
+            return AISearchLook(item: Int(number), fits: fits, seen: seen)
         }
     }
 
