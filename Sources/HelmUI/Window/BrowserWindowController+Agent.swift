@@ -52,10 +52,15 @@ extension BrowserWindowController {
     public var agentPanelModelForTesting: AgentPanelModel? { agentPanelHost.model }
     /// How wide the AI panel is: what it shows while open, and zero while shut.
     public var agentPanelWidthForTesting: CGFloat { agentPanelHost.isOpen ? agentPanelHost.frame.width : 0 }
-    /// A drag of the AI panel's leading edge, `distance` points towards the leading side (negative goes back).
-    public func dragAgentPanelEdgeForTesting(by distance: CGFloat) { agentPanelHost.dragEdgeForTesting(by: distance) }
-    /// A double click on the AI panel's leading edge.
-    public func doubleClickAgentPanelEdgeForTesting() { agentPanelHost.doubleClickEdgeForTesting() }
+    /// A drag of the AI panel's leading edge, `distance` points towards the leading side (negative goes back), as a
+    /// person makes one: a press, moves and a release sent to the window. False when the press missed the edge.
+    @discardableResult public func dragAgentPanelEdgeForTesting(by distance: CGFloat) -> Bool {
+        agentPanelHost.sendEdgeDragForTesting(by: distance)
+    }
+    /// A double click on the AI panel's leading edge, sent to the window as two clicks. False when either missed it.
+    @discardableResult public func doubleClickAgentPanelEdgeForTesting() -> Bool {
+        agentPanelHost.sendEdgeDragForTesting(by: 0) && agentPanelHost.sendEdgeDragForTesting(by: 0, clicks: 2)
+    }
     /// The model's name under the composer, and "menu" or "plain" for whether a press on it shows the model menu.
     public var agentModelNameForTesting: String {
         let shown = agentPanelHost.modelNameForTesting

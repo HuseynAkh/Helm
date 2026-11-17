@@ -308,8 +308,9 @@ struct AgentPlanCard: Equatable {
     }
 }
 
-/// The card in the thread: the plan's title and counts, at most three notes, each group with its tick and its full
-/// list, and Cancel and Apply. Apply answers a click; Command-Return in the composer is the only key that presses it.
+/// The card in the thread, as a grouped box: the plan's title and counts with at most three notes, then each group
+/// on a row of its own with its tick and its full list, then Cancel and Apply. Apply answers a click; Command-Return
+/// in the composer is the only key that presses it.
 struct AgentPlanCardView: View {
     let card: AgentPlanCard
     let toggle: (Int) -> Void
@@ -318,37 +319,43 @@ struct AgentPlanCardView: View {
     let cancel: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: card.title).font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: card.title).font(.system(size: AgentPanelStyle.body, weight: .semibold))
                 if !card.shownCountsLine.isEmpty {
-                    Text(verbatim: card.shownCountsLine).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(verbatim: card.shownCountsLine).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
+                }
+                ForEach(Array(card.notes.enumerated()), id: \.offset) { _, note in
+                    Text(verbatim: note.text)
+                        .font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .help(note.tooltip ?? "")
+                        .padding(.top, 2)
+                }
+                if card.stage == .open, card.wasRefreshed {
+                    Text(verbatim: AgentText.planChanged).font(.system(size: AgentPanelStyle.secondary, weight: .medium))
+                        .padding(.top, 2)
                 }
             }
-            ForEach(Array(card.notes.enumerated()), id: \.offset) { _, note in
-                Text(verbatim: note.text)
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .help(note.tooltip ?? "")
-            }
-            if card.stage == .open, card.wasRefreshed {
-                Text(verbatim: AgentText.planChanged).font(.system(size: 12, weight: .medium))
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 9)
             ForEach(card.groupRows) { group in
+                AgentCardSeparator()
                 AgentPlanGroupView(group: group, isEnabled: card.stage == .open,
                                    toggle: { toggle(group.id) }, toggleOpen: { toggleOpen(group.id) })
+                    .padding(.leading, AgentPanelStyle.inset).padding(.trailing, 6).padding(.vertical, 6)
             }
             footer
         }
-        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+        .background(AgentCardBackground())
     }
 
     @ViewBuilder private var footer: some View {
         switch card.stage {
         case .open:
-            HStack {
+            AgentCardSeparator(leading: 0)
+            HStack(spacing: 8) {
                 Spacer()
                 Button(AgentText.cancel, action: cancel)
                 if !card.plan.isEmpty {
@@ -358,23 +365,32 @@ struct AgentPlanCardView: View {
                 }
             }
             .controlSize(.small)
+            .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 7)
         case .applying(let line):
+            AgentCardSeparator(leading: 0)
             HStack(spacing: 6) {
                 // The system's own spinner, which keeps still with Reduce Motion on.
                 ProgressView().controlSize(.mini)
-                Text(verbatim: line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text(verbatim: line).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
             }
+            .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 8)
         case .applied:
             EmptyView()
         case .dismissed:
-            Text(verbatim: AgentText.planDismissed).font(.system(size: 12)).foregroundStyle(.secondary)
+            AgentCardSeparator(leading: 0)
+            Text(verbatim: AgentText.planDismissed).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
+                .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 8)
         case .replaced:
-            Text(verbatim: AgentText.planReplaced).font(.system(size: 12)).foregroundStyle(.secondary)
+            AgentCardSeparator(leading: 0)
+            Text(verbatim: AgentText.planReplaced).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
+                .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 8)
         }
     }
 }
 
-/// One group of a card: its tick, its title, the mark that says why it starts unticked, and its full list.
+/// One group of a card: its tick, its title, where it goes in secondary text, the mark that says why it starts
+/// unticked, a disclosure chevron, and its full list when open.
 struct AgentPlanGroupView: View {
     let group: AgentPlanCard.GroupRow
     let isEnabled: Bool
@@ -383,25 +399,32 @@ struct AgentPlanGroupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 4) {
                 Toggle(isOn: Binding(get: { group.isOn }, set: { _ in toggle() })) {
                     // The title keeps its own line; the mark that says why it starts unticked sits under it.
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(verbatim: group.title).font(.system(size: 12)).lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: group.title).font(.system(size: AgentPanelStyle.body)).lineLimit(2)
                         if let destination = group.destination { AgentPlanPathView(path: destination) }
                         if let mark = group.mark {
                             Text(verbatim: mark)
-                                .font(.system(size: 10, weight: .medium))
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(Color.primary.opacity(0.10)))
+                                .font(.system(size: AgentPanelStyle.small, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Capsule().fill(AgentPanelStyle.chipFill(hovering: true)))
+                                .padding(.top, 1)
                         }
                     }
+                    .padding(.leading, 2)
                 }
                 .toggleStyle(.checkbox)
                 .disabled(!isEnabled)
                 Spacer(minLength: 0)
                 Button(action: toggleOpen) {
-                    Image(systemName: group.isOpen ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold))
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(group.isOpen ? 90 : 0))
+                        .frame(width: 22, height: 18)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(verbatim: group.title))
@@ -410,7 +433,7 @@ struct AgentPlanGroupView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(group.rows) { row in AgentPlanRowView(row: row) }
                 }
-                .padding(.leading, 22)
+                .padding(.leading, 22).padding(.trailing, 6)
             }
         }
     }
@@ -422,16 +445,16 @@ struct AgentPlanRowView: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(verbatim: row.name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+            Text(verbatim: row.name).font(.system(size: AgentPanelStyle.small)).lineLimit(1).truncationMode(.middle)
             if let destination = row.destination {
                 AgentPlanPathView(path: destination)
             } else if !row.detail.isEmpty {
-                Text(verbatim: row.detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(verbatim: row.detail).font(.system(size: AgentPanelStyle.small)).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.head)
             }
             Spacer(minLength: 0)
             ForEach(row.tags, id: \.self) { tag in
-                Text(verbatim: tag).font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(verbatim: tag).font(.system(size: AgentPanelStyle.small)).foregroundStyle(.secondary)
             }
         }
     }
@@ -511,7 +534,7 @@ struct AgentPlanPathView: View {
                 Text(verbatim: AgentText.pathNewFolder).lineLimit(1).fixedSize().layoutPriority(1)
             }
         }
-        .font(.system(size: 11))
+        .font(.system(size: AgentPanelStyle.small))
         .foregroundStyle(.secondary)
         .help(path.whole)
     }
