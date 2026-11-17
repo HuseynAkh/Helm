@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Takes the README's pictures (docs/images/) from a made-up home folder, so they never show anyone's real files,
-# disks or free space, and draws the spark and the banner in docs/brand. The run uses fixture folders, a private
-# pasteboard and a stand-in Trash, like the smoke, and like the smoke it's kept off the network. AI mode answers
-# from a scripted model (agent-script.json beside the home), so no request goes to any provider.
+# disks or free space, and draws AI mode's mark (the trefoil) and the banner in docs/brand. The run uses fixture
+# folders, a private pasteboard, a stand-in Trash and stand-ins for the onboarding's switches, like the smoke, and like
+# the smoke it's kept off the network. AI mode answers from a scripted model (agent-script.json and
+# agent-receipts.json beside the home), so no request goes to any provider.
 # usage: bash scripts/readme/make_readme_images.sh [scratch-path]
 # The run stays in the background: its windows are invisible and never take the screen. HELM_README_FOREGROUND=1
 # brings Helm to the front first, so the window buttons are drawn in colour.
@@ -42,19 +43,50 @@ organize = {"when": "organize", "turns": [
                   {"items": names("Beach Day.jpg", "Concert Poster.jpg", "Studio Portrait.png"), "all_in": "", "to": "n2"},
                   {"items": names("Invoices.zip", "Photos Backup.zip"), "all_in": "", "to": "n3"}],
         "copies": [], "renames": [], "trash": names("Read Me.txt")}}]}]}
+# Whole Mac, with the Desktop on show: the home folder's listing finds Pictures/Screenshots, and both screenshots on
+# the Desktop go there.
+screenshots = {"when": "file my screenshots", "turns": [
+    {"calls": [{"name": "list_folder", "args": {"folder": "@home", "depth": 2, "after": ""}},
+               {"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
+    {"text": "Your screenshots go into Screenshots in Pictures, with the others.",
+     "calls": [{"name": "propose_changes", "args": {
+        "new_folders": [], "copies": [], "renames": [], "trash": [],
+        "moves": [{"items": names("Screenshot 2026-11-08 at 10.42.12.png", "Screenshot 2026-11-12 at 14.20.05.png"),
+                   "all_in": "", "to": "@name:Screenshots"}]}}]}]}
+# Read contents, in Documents/Scans: the names say nothing, so the model asks Helm what is inside, and files the two
+# receipts and the invoice by what they say.
+scans = names("IMG_1988.jpg", "IMG_2041.jpg", "Scan 2026-11-03.pdf", "Scan 2026-11-09.pdf")
+sort_scans = {"when": "sort these scans", "turns": [
+    {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
+    {"calls": [{"name": "read_contents", "args": {"ids": scans}}]},
+    {"text": "Two photos are receipts, from Harbour Cafe and Corner Market, and one scan is an invoice from Studio Maple. The lease letter stays.",
+     "calls": [{"name": "propose_changes", "args": {
+        "new_folders": [{"key": "n1", "parent": "@root", "name": "Receipts"},
+                        {"key": "n2", "parent": "@root", "name": "Invoices"}],
+        "moves": [{"items": names("IMG_1988.jpg", "IMG_2041.jpg"), "all_in": "", "to": "n1"},
+                  {"items": names("Scan 2026-11-03.pdf"), "all_in": "", "to": "n2"}],
+        "copies": [], "renames": [], "trash": []}}]}]}
 anything = {"when": "*", "turns": [{"text": "I can organize, move and copy files in these folders."}]}
+rules = [organize, screenshots, sort_scans, anything]
+models = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 # AI search: PDFs named like an invoice from the last two months, newest first.
 today = datetime.date.today()
 plan = {"sort": "newest", "queries": [
     {"name_any": ["invoice"], "kinds": ["pdf"], "date_field": "modified",
      "date_from": (today - datetime.timedelta(days=60)).isoformat(), "date_to": today.isoformat()}]}
 rank = {"ranked": [{"row": row, "why": ["name", "kind", "date"]} for row in range(1, 4)]}
-script = {"rules": [organize, anything], "searchPlan": plan, "searchRank": rank,
-          "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]}
-with open(os.path.join(fix, 'agent-script.json'), 'w', encoding='utf-8') as handle:
-    json.dump(script, handle, ensure_ascii=False, indent=1)
+script = {"rules": rules, "searchPlan": plan, "searchRank": rank, "models": models}
+# AI search with Read contents: the word "receipt", looked for inside pictures on this Mac. Helm keeps a word to look
+# for inside files only when the person typed it.
+receipts = {"rules": rules, "models": models, "searchRank": {"ranked": []},
+            "searchPlan": {"sort": "relevance", "queries": [
+                {"content_all": ["receipt"], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
+                 "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}]}}
+for name, value in (("agent-script.json", script), ("agent-receipts.json", receipts)):
+    with open(os.path.join(fix, name), 'w', encoding='utf-8') as handle:
+        json.dump(value, handle, ensure_ascii=False, indent=1)
 PY
-# The spark and the banner, drawn from the app's own icon, which is never changed.
+# The mark and the banner, drawn from the app's own icon, which is only ever scaled.
 swift scripts/readme/make_brand.swift App/AppIcon.icns docs/brand || exit 1
 swift build --scratch-path "$scratch" --target HelmDev || exit 1
 bin="$(swift build --scratch-path "$scratch" --show-bin-path)/HelmDev"
@@ -80,20 +112,21 @@ swiftc -O scripts/readme/frame_shot.swift -o "$root/frame_shot" || exit 1
 frame() { name=$1; shift; "$root/frame_shot" "$root/shots/$name.png" "docs/images/$name.png" "$@" || exit 1; }
 frame ai-panel-dark 1600
 frame ai-panel-light 1600
-frame ai-plan-light 760 18 crop=900,52,340,448
-frame ai-undo-light 760 18 crop=900,52,340,448
-frame ai-search-dark 1280
-frame ai-mode-screen 900 16
+frame ai-plan-light 760 18 crop=900,52,340,548
+frame ai-undo-light 760 18 crop=900,52,340,548
+frame ai-whole-mac-light 1600
+frame ai-contents-light 1600
+frame ai-search-dark 1600
+frame onboarding-ai-light 900 16
+frame onboarding-access-light 900 16
 frame settings-ai-light 1000 16
 frame hero-dark 1600
 frame hero-light 1600
-frame list-light 1280
-frame recent-dark 1280
-frame search-dark 1280
+frame list-light 1600
+frame recent-dark 1600
+frame search-dark 1600
 frame header-dark 1600 14 crop=0,0,1240,52
 frame settings-sidebar-light 1000 16
-frame trash-card-light 1280
-frame setup-light 900 16
+frame trash-card-light 1600
 frame view-options-dark 600 14
-rm -f docs/images/helm-icon.png
-echo "Pictures in docs/images, the spark and the banner in docs/brand. Captures and log: $root"
+echo "Pictures in docs/images, the mark and the banner in docs/brand. Captures and log: $root"

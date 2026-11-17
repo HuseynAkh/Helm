@@ -156,7 +156,7 @@ AI mode's interface. None of it reaches the network: requests go through `HelmAg
 
 | File | What it is |
 |---|---|
-| `Chrome/SparkButton.swift`, `Agent/SparkMark.swift` | The spark at the top right, and the one four-point shape every spark in Helm draws: label colour at rest, amber, coral and violet while the panel is open |
+| `Chrome/SparkButton.swift`, `Agent/SparkMark.swift` | The AI button at the top right, and the one mark every AI control in Helm draws: a trefoil knot, one line that loops three times, over and under itself. Label colour at rest, amber, coral and violet while the panel is open. The files keep the name of the four-point spark the trefoil replaced |
 | `Chrome/ViewModeButton.swift` | One view button in place of the Grid and List segments. It shows the view you'd switch to |
 | `Agent/AgentPanelHost.swift`, `AgentPanelView.swift`, `AgentPanelModel.swift` | The panel: a column under the header with the folder chips, the thread, three suggestions and the composer. It opens at 340 points; its leading edge drags from 300 to 560 or 45% of the window, a double click puts back 340, and the width is kept in Settings. The edge's handle stays above the thread, so a press anywhere along it reaches it |
 | `Agent/AgentComposerView.swift` | The text field, with `/add` and `/clear`, rounded as Messages' is, with Send inside it. Spelling, substitution and link detection are off, so a typed path stays as typed |
@@ -164,9 +164,10 @@ AI mode's interface. None of it reaches the network: requests go through `HelmAg
 | `Agent/AgentModelMenu.swift` | The model's name under the composer: a menu of every connected provider's models when there's more than one, from the lists ai.json keeps; otherwise the name opens Settings › AI |
 | `Agent/AgentThreadViews.swift`, `AgentPlanCard.swift` | Plain-text replies, Helm's own lines, the plan card and the result card. Nothing a model writes is drawn as a link or Markdown |
 | `Agent/AgentPlanCompiler.swift`, `AgentPlanApplier.swift` | The ticked groups of a plan, turned into ordinary file operations, as one Undo |
-| `Onboarding/AIModeScreen.swift`, `Settings/AISettings.swift`, `Settings/AISetupModel.swift` | The AI Mode screen and Settings › AI, which share one model |
+| `Onboarding/AIModeScreen.swift`, `Settings/AISettings.swift`, `Settings/AISetupModel.swift` | The AI Mode screen, the onboarding's AI Mode step and Settings › AI, which share one model |
+| `Onboarding/OnboardingWindowController.swift`, `OnboardingView.swift`, `OnboardingModel.swift`, `OnboardingSteps.swift` | The onboarding: one fixed-size window, one step at a time, with Back and Continue: Welcome, Full Disk Access, Default File Viewer and the Dock, AI Mode, You're All Set. Steps already done are left out, and the step reached is kept in Settings, so macOS's Quit & Reopen after Full Disk Access carries on at the next step |
 | `Host/AISearchRunner.swift`, `AISearchPredicates.swift` | AI search: asks the model for a plan, runs its searches on this Mac, and asks it to rank the matches |
-| `Window/BrowserWindowController+Agent.swift`, `+AISearch.swift` | The window's side of the panel and of AI search. The search field's spark shows whenever AI mode is on; with no model ready, it opens the AI Mode screen |
-| `Chrome/SearchKindBar.swift` | AI search's kind row under the header, shown while the search field's spark is on: Any, Photo, Video, Document, Folder, Code, Audio or Archive. The choice keeps the name matches, the model's plan and the results to that kind, and goes back to Any when the search closes. Tab in the field reaches it; the arrows choose |
+| `Window/BrowserWindowController+Agent.swift`, `+AISearch.swift` | The window's side of the panel and of AI search. The search field's trefoil shows whenever AI mode is on; with no model ready, it opens the AI Mode screen |
+| `Chrome/SearchKindBar.swift` | AI search's kind row under the header, shown while the search field's trefoil is on: Any, Photo, Video, Document, Folder, Code, Audio or Archive. The choice keeps the name matches, the model's plan and the results to that kind, and goes back to Any when the search closes. Tab in the field reaches it; the arrows choose |
 
 The path bar is unchanged by AI mode (Huseyn, 2026-11-13). The panel's folder chip shows what kind of place the folder is. While the location is typed in, a press anywhere else in the window closes it as Escape does (`Window/BrowserWindowController+Location.swift`).

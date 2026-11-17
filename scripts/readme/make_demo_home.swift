@@ -186,6 +186,67 @@ backup.arguments = ["-c", "-k", "--keepParent", desktop.appendingPathComponent("
                     downloads.appendingPathComponent("Photos Backup.zip").path]
 try? backup.run(); backup.waitUntilExit()
 
+// MARK: Screenshots and scans
+
+// Two screenshots on the Desktop and a Screenshots folder in Pictures, for Whole Mac to file them into.
+writePNG(landscape(palettes[4].1, seed: 31, width: 1440, height: 900), to: desktop.appendingPathComponent("Screenshot 2026-11-12 at 14.20.05.png"))
+let screenshots = folder("Pictures/Screenshots")
+writePNG(landscape(palettes[0].1, seed: 33, width: 1440, height: 900), to: screenshots.appendingPathComponent("Screenshot 2026-10-21 at 16.05.33.png"))
+writePNG(landscape(palettes[3].1, seed: 35, width: 1440, height: 900), to: screenshots.appendingPathComponent("Screenshot 2026-10-28 at 09.12.47.png"))
+
+/// A phone photo of a paper receipt on a table: a printed slip, a little turned, with its shop, the word RECEIPT,
+/// a few lines and a total, in type large enough for Read contents to find on this Mac.
+func receiptPhoto(shop: String, lines: [(String, String)], total: String, table: [UInt32], tilt: CGFloat) -> CGImage {
+    let width = 1200, height = 1600
+    let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: sRGB,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    let w = CGFloat(width), h = CGFloat(height)
+    let wood = CGGradient(colorsSpace: sRGB, colors: table.map { rgb($0) } as CFArray, locations: [0, 1])!
+    ctx.drawLinearGradient(wood, start: CGPoint(x: 0, y: h), end: CGPoint(x: w, y: 0), options: [])
+    ctx.translateBy(x: w / 2, y: h / 2)
+    ctx.rotate(by: tilt * .pi / 180)
+    let paper = CGRect(x: -380, y: -620, width: 760, height: 1240)
+    ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 40, color: CGColor(gray: 0, alpha: 0.45))
+    ctx.setFillColor(rgb(0xFBFAF6)); ctx.fill(paper)
+    ctx.setShadow(offset: .zero, blur: 0, color: nil)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+    let ink = NSColor(white: 0.12, alpha: 1)
+    func centred(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ y: CGFloat) {
+        let words = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: ink])
+        words.draw(at: CGPoint(x: -words.size().width / 2, y: y))
+    }
+    func row(_ left: String, _ right: String, _ y: CGFloat, bold: Bool = false) {
+        let font = NSFont.monospacedSystemFont(ofSize: 44, weight: bold ? .bold : .regular)
+        NSAttributedString(string: left, attributes: [.font: font, .foregroundColor: ink]).draw(at: CGPoint(x: -320, y: y))
+        let price = NSAttributedString(string: right, attributes: [.font: font, .foregroundColor: ink])
+        price.draw(at: CGPoint(x: 320 - price.size().width, y: y))
+    }
+    centred(shop, 64, .bold, 470)
+    centred("RECEIPT", 84, .heavy, 330)
+    var y: CGFloat = 170
+    for (item, price) in lines { row(item, price, y); y -= 90 }
+    ctx.setFillColor(rgb(0x1F1F1F)); ctx.fill(CGRect(x: -320, y: y + 40, width: 640, height: 4))
+    row("TOTAL", total, y - 50, bold: true)
+    centred("Thank you!", 44, .medium, -560)
+    NSGraphicsContext.restoreGraphicsState()
+    return ctx.makeImage()!
+}
+
+// Scans and photos whose names don't say what they are, for Read contents: two receipts and an invoice, and a
+// letter that stays where it is. A third receipt waits on the Desktop.
+let scans = folder("Documents/Scans")
+writeJPEG(receiptPhoto(shop: "HARBOUR CAFE", lines: [("Flat white", "4.20"), ("Croissant", "3.80"), ("Soup of the day", "7.50"), ("Sparkling water", "2.90")],
+                       total: "18.40", table: [0x8A5A3C, 0x5C3A26], tilt: -4), to: scans.appendingPathComponent("IMG_2041.jpg"))
+writeJPEG(receiptPhoto(shop: "CORNER MARKET", lines: [("Lemons", "2.40"), ("Oat milk", "3.10"), ("Basil", "1.95"), ("Bread", "4.50")],
+                       total: "11.95", table: [0x6B6F73, 0x3F4246], tilt: 3), to: scans.appendingPathComponent("IMG_1988.jpg"))
+writeJPEG(receiptPhoto(shop: "TRAIL OUTFITTERS", lines: [("Rain jacket", "89.00"), ("Trail map", "6.50")],
+                       total: "95.50", table: [0x9C7A55, 0x6E5236], tilt: -2), to: desktop.appendingPathComponent("IMG_2102.jpg"))
+pdf(title: "Invoice 1047", subtitle: "Studio Maple · Due 30 November 2026", accent: 0x5E5CE6, pages: 1, chart: false,
+    to: scans.appendingPathComponent("Scan 2026-11-03.pdf"))
+pdf(title: "Lease Renewal", subtitle: "Flat 3B · From 1 January 2027", accent: 0x64D2FF, pages: 1, chart: false,
+    to: scans.appendingPathComponent("Scan 2026-11-09.pdf"))
+
 for name in ["Music", "Movies", "Library", "Templates"] { _ = folder(name) }
 
 // MARK: iCloud Drive and the Trash
@@ -215,6 +276,11 @@ let pinnedDates: [String: Date] = [
     "Documents/Product Roadmap.pdf": day(1, 11, 5),
     "Downloads/Concert Poster.jpg": day(2, 19, 30),
     "Downloads/Boarding Pass.pdf": day(3, 7, 55),
+    "Desktop/Screenshot 2026-11-08 at 10.42.12.png": day(9, 10, 42),
+    "Desktop/Screenshot 2026-11-12 at 14.20.05.png": day(5, 14, 20),
+    "Documents/Scans/IMG_2041.jpg": day(6, 12, 31),
+    "Documents/Scans/IMG_1988.jpg": day(12, 18, 4),
+    "Desktop/IMG_2102.jpg": day(3, 16, 47),
     // The fall's invoices, each dated in step with its name, for AI search's picture.
     "Documents/Invoices/Invoice November.pdf": day(2, 10, 15),
     "Documents/Invoices/Invoice October.pdf": day(25, 14, 30),

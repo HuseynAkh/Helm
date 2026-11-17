@@ -1,9 +1,10 @@
-// Draws Helm's brand pictures in docs/brand: the mark of AI mode, the trefoil, and the README's banner, which is the
-// app icon with the mark beside it. Everything is drawn here, with no image service and no network.
+// Draws Helm's brand pictures in docs/brand: the mark of AI mode, the trefoil, and the README's banner in light and
+// dark: the app icon, then the mark with "AI mode", the name and one line, as one lockup on a quiet field of the mark's
+// colours. Everything is drawn here, with no image service and no network.
 // usage: swift scripts/readme/make_brand.swift <app-icon.icns> <out-dir>
 // The mark's line, weight, gaps, shade and colours are the ones Sources/HelmUI/Agent/SparkMark.swift draws in the app
 // (the files keep the name spark, the mark it replaced). The icon is read from the app's own icon file and is never
-// changed.
+// changed: it is only scaled.
 import AppKit
 import CoreGraphics
 import Foundation
@@ -204,14 +205,12 @@ func drawSpark(in rect: CGRect, context: CGContext, pixel: CGFloat = 1) {
     context.restoreGState()
 }
 
-/// A soft glow, drawn flat as the AI mode screen draws its own, so every viewer sees the same picture.
-func drawGlow(at center: CGPoint, radius: CGFloat, strength: CGFloat, context: CGContext, scaleY: CGFloat = 0.62) {
-    let colors = [rgb(0xFFB533, 0.55 * strength), rgb(0xFA7061, 0.32 * strength), rgb(0x8F5CF5, 0.20 * strength),
-                  rgb(0x8F5CF5, 0)]
-    let gradient = CGGradient(colorsSpace: sRGB, colors: colors as CFArray, locations: [0, 0.35, 0.7, 1])!
+/// A soft wash of one colour, fading to nothing at `radius`, squashed to an ellipse by `squash`.
+func drawWash(at center: CGPoint, radius: CGFloat, color: CGColor, squash: CGFloat, context: CGContext) {
+    let gradient = CGGradient(colorsSpace: sRGB, colors: [color, color.copy(alpha: 0)!] as CFArray, locations: [0, 1])!
     context.saveGState()
     context.translateBy(x: center.x, y: center.y)
-    context.scaleBy(x: 1, y: scaleY)
+    context.scaleBy(x: 1, y: squash)
     context.drawRadialGradient(gradient, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: radius, options: [])
     context.restoreGState()
 }
@@ -290,47 +289,74 @@ guard let iconImage = icon.cgImage(forProposedRect: &iconRect, context: nil, hin
     FileHandle.standardError.write(Data("no image in \(iconURL.path)\n".utf8)); exit(1)
 }
 
-struct Look { let name: String; let background: [UInt32]; let title: NSColor; let line: NSColor; let edge: CGColor; let glow: CGFloat }
+/// One appearance of the banner: its field, the washes of the mark's colours over it, its type and its edge.
+struct Look {
+    let name: String
+    let field: [UInt32]
+    let washes: [(x: CGFloat, y: CGFloat, radius: CGFloat, color: CGColor, squash: CGFloat)]
+    let eyebrow: NSColor, title: NSColor, line: NSColor
+    let shadow: CGFloat, edge: CGColor
+}
 let looks = [
-    Look(name: "banner-light.png", background: [0xFFFFFF, 0xF4F1EC], title: NSColor(white: 0.08, alpha: 1),
-         line: NSColor(white: 0.36, alpha: 1), edge: CGColor(gray: 0, alpha: 0.08), glow: 0.75),
-    Look(name: "banner-dark.png", background: [0x17161C, 0x0B0B0F], title: NSColor(white: 0.97, alpha: 1),
-         line: NSColor(white: 0.66, alpha: 1), edge: CGColor(gray: 1, alpha: 0.10), glow: 1.0)
+    // Light: a white field that warms a little towards the bottom, with pale tints of amber, coral and violet
+    // drawn over white, so nothing mixes into grey.
+    Look(name: "banner-light.png", field: [0xFFFFFF, 0xF8F6F3],
+         washes: [(0.02, 1.02, 980, rgb(0xFFF0D4, 0.85), 0.62),
+                  (0.70, -0.10, 900, rgb(0xFFE4DE, 0.80), 0.55),
+                  (1.00, 0.70, 1000, rgb(0xEDE4FF, 0.95), 0.72)],
+         eyebrow: NSColor(white: 0.16, alpha: 1), title: NSColor(white: 0.07, alpha: 1), line: NSColor(white: 0.40, alpha: 1),
+         shadow: 0.24, edge: CGColor(gray: 0, alpha: 0.07)),
+    // Dark: a deep neutral with only violet and a trace of coral, since amber over black turns brown.
+    Look(name: "banner-dark.png", field: [0x131317, 0x09090B],
+         washes: [(0.70, -0.10, 900, rgb(0xFA7061, 0.07), 0.55),
+                  (1.00, 0.70, 1000, rgb(0x8F5CF5, 0.20), 0.72)],
+         eyebrow: NSColor(white: 0.90, alpha: 1), title: NSColor(white: 0.97, alpha: 1), line: NSColor(white: 0.64, alpha: 1),
+         shadow: 0.55, edge: CGColor(gray: 1, alpha: 0.12))
 ]
 
+/// One line of SF Pro Display: the system font at these sizes.
+func words(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, kern: CGFloat) -> NSAttributedString {
+    NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: color, .kern: kern])
+}
+
+// The lockup, centred: the unchanged icon, then one text column on a shared left edge. The mark leads the eyebrow,
+// "AI mode", as it leads AI mode's lines in the app, sized to sit on the eyebrow's type; then the name and one line.
 for look in looks {
     let width = 2400, height = 800
     let w = CGFloat(width), h = CGFloat(height)
     let context = makeContext(width: width, height: height)
-    let card = CGPath(roundedRect: CGRect(x: 0, y: 0, width: w, height: h).insetBy(dx: 2, dy: 2), cornerWidth: 56, cornerHeight: 56, transform: nil)
+    let card = CGPath(roundedRect: CGRect(x: 0, y: 0, width: w, height: h).insetBy(dx: 1, dy: 1), cornerWidth: 44, cornerHeight: 44, transform: nil)
     context.saveGState()
     context.addPath(card)
     context.clip()
-    let background = CGGradient(colorsSpace: sRGB, colors: look.background.map { rgb($0) } as CFArray, locations: [0, 1])!
-    context.drawLinearGradient(background, start: CGPoint(x: 0, y: h), end: CGPoint(x: 0, y: 0), options: [])
+    let field = CGGradient(colorsSpace: sRGB, colors: look.field.map { rgb($0) } as CFArray, locations: [0, 1])!
+    context.drawLinearGradient(field, start: CGPoint(x: 0, y: h), end: .zero, options: [])
+    for wash in look.washes {
+        drawWash(at: CGPoint(x: w * wash.x, y: h * wash.y), radius: wash.radius, color: wash.color, squash: wash.squash, context: context)
+    }
 
-    // The icon on the left, the mark beside it at its upper right, and one glow behind both.
-    let iconSize: CGFloat = 440
-    let iconFrame = CGRect(x: 230, y: (h - iconSize) / 2 - 6, width: iconSize, height: iconSize)
-    let sparkSize: CGFloat = 168
-    let sparkFrame = CGRect(x: iconFrame.maxX - 18, y: iconFrame.maxY - sparkSize * 0.62, width: sparkSize, height: sparkSize)
-    drawGlow(at: CGPoint(x: sparkFrame.midX - 40, y: sparkFrame.midY - 60), radius: 620, strength: look.glow, context: context)
+    let eyebrow = words("AI mode", size: 44, weight: .semibold, color: look.eyebrow, kern: -0.2)
+    let title = words("Helm", size: 188, weight: .semibold, color: look.title, kern: -4.8)
+    let line = words("An agentic file manager for your Mac.", size: 54, weight: .regular, color: look.line, kern: -0.4)
+    let markSide: CGFloat = 62, markGap: CGFloat = 16
+    let column = max(markSide + markGap + eyebrow.size().width, title.size().width, line.size().width)
+    let iconSide: CGFloat = 380, gutter: CGFloat = 116
+    let left = ((w - iconSide - gutter - column) / 2).rounded()
+    let iconFrame = CGRect(x: left, y: (h - iconSide) / 2 + 2, width: iconSide, height: iconSide)
     context.saveGState()
-    context.setShadow(offset: CGSize(width: 0, height: -18), blur: 44, color: CGColor(gray: 0, alpha: 0.30))
+    context.setShadow(offset: CGSize(width: 0, height: -16), blur: 46, color: CGColor(gray: 0, alpha: look.shadow))
     context.draw(iconImage, in: iconFrame)
     context.restoreGState()
-    drawSpark(in: sparkFrame, context: context)
 
-    // The name and one line under it.
+    let textX = iconFrame.maxX + gutter
+    let eyebrowY = h / 2 + 130
+    drawSpark(in: CGRect(x: textX - 4, y: eyebrowY - 7, width: markSide, height: markSide), context: context)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-    let textX = iconFrame.maxX + 230
-    let title = NSAttributedString(string: "Helm", attributes: [
-        .font: NSFont.systemFont(ofSize: 196, weight: .bold), .foregroundColor: look.title, .kern: -4])
-    title.draw(at: CGPoint(x: textX, y: h / 2 - 10))
-    let line = NSAttributedString(string: "The agentic file manager for Mac.", attributes: [
-        .font: NSFont.systemFont(ofSize: 64, weight: .regular), .foregroundColor: look.line])
-    line.draw(at: CGPoint(x: textX + 6, y: h / 2 - 110))
+    eyebrow.draw(at: CGPoint(x: textX + markSide + markGap - 4, y: eyebrowY + 2))
+    // The name's H is set back by its side bearing, so its stem lines up with the mark and the line below.
+    title.draw(at: CGPoint(x: textX - 12, y: h / 2 - 108))
+    line.draw(at: CGPoint(x: textX - 2, y: h / 2 - 198))
     NSGraphicsContext.restoreGraphicsState()
     context.restoreGState()
 
