@@ -42,6 +42,14 @@ extension AppController {
             connector = SystemServerConnector()
         }
         let scripted = options.isIsolated && !options.usesLiveAgent ? scriptedModel(home: home) : nil
+        // Whole Mac's disks: those the sidebar lists, each still let in by the folder rules. A fixture run has none,
+        // so it never looks at a real mount.
+        let mountedVolumes: @Sendable () async -> [String]
+        if options.isIsolated {
+            mountedVolumes = { [] }
+        } else {
+            mountedVolumes = { ((try? await VolumeReader().volumes()) ?? []).map(\.url.path) }
+        }
         // The home as the windows spell a folder's path (standardized, so /private/tmp reads /tmp). The folder rules
         // also hold the home's canonical path, so a folder spelled either way is found inside it.
         let parts = AgentRuntimeParts(secrets: secrets, disk: disk, home: home.standardizedFileURL.path,
@@ -49,7 +57,8 @@ extension AppController {
                                       clock: environment.clock, buildStamp: Self.buildStamp(), scripted: scripted,
                                       makeClient: scripted == nil ? AgentLiveParts.makeClient : nil,
                                       makeSession: AgentLiveParts.makeSession,
-                                      makeSignIn: options.isIsolated ? nil : AgentLiveParts.makeSignIn)
+                                      makeSignIn: options.isIsolated ? nil : AgentLiveParts.makeSignIn,
+                                      mountedVolumes: mountedVolumes)
         let isolated = options.isIsolated
         let openInBrowser: @MainActor @Sendable (URL) -> Bool = { @MainActor url in
             isolated ? false : NSWorkspace.shared.open(url)

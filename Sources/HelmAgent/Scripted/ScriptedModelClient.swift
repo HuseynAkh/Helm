@@ -192,14 +192,16 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
 
     private static let noteMark = "[Helm]"
     private static let rootMark = "@root"
+    private static let homeMark = "@home"
     private static let nameMark = "@name:"
 
-    /// A call's arguments with `@root` and `@name:<file>` filled in from the history. A mark that can't be filled
-    /// in is left as it is, which the tool then refuses as an id it never issued.
+    /// A call's arguments with `@root`, `@home` and `@name:<file>` filled in from the history. A mark that can't be
+    /// filled in is left as it is, which the tool then refuses as an id it never issued.
     private static func filled(_ json: AgentJSON, history: [AgentJSON]) -> AgentJSON {
         switch json {
         case .string(let text):
             if text == rootMark { return shownRoot(in: history).map(AgentJSON.string) ?? json }
+            if text == homeMark { return homeRoot(in: history).map(AgentJSON.string) ?? json }
             if text.hasPrefix(nameMark) { return id(ofItemNamed: String(text.dropFirst(nameMark.count)), in: history).map(AgentJSON.string) ?? json }
             return json
         case .array(let values): return .array(values.map { filled($0, history: history) })
@@ -211,13 +213,28 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     /// The alias of the folder on show, from the newest note about the folders: the one marked "(on show)", or
     /// failing that the first one listed.
     private static func shownRoot(in history: [AgentJSON]) -> String? {
+        newestFolders(in: history).flatMap { folders in
+            let shown = folders.first { $0.contains("(on show)") } ?? folders.first
+            return shown?.split(separator: " ").first.map(String.init)
+        }
+    }
+
+    /// The alias of the home folder in Whole Mac, from the newest note about the folders: the one with the word
+    /// "home". Nil while Whole Mac is off.
+    private static func homeRoot(in history: [AgentJSON]) -> String? {
+        newestFolders(in: history).flatMap { folders in
+            let home = folders.first { $0.split(separator: " ").dropFirst().contains("home") }
+            return home?.split(separator: " ").first.map(String.init)
+        }
+    }
+
+    /// Each folder of the newest note about the folders, as the note words it: "r1 this_mac (on show)".
+    private static func newestFolders(in history: [AgentJSON]) -> [String]? {
         for item in history.reversed() {
             guard let text = item[Keys.text]?.stringValue else { continue }
             for line in text.split(separator: "\n") where line.hasPrefix(noteMark) {
                 guard let start = line.range(of: "Folders:") else { continue }
-                let folders = line[start.upperBound...].split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
-                let shown = folders.first { $0.contains("(on show)") } ?? folders.first
-                if let alias = shown?.split(separator: " ").first { return String(alias) }
+                return line[start.upperBound...].split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
             }
         }
         return nil

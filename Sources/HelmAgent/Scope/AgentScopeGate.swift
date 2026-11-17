@@ -54,7 +54,32 @@ public struct AgentScopeGate: Sendable {
     // MARK: Admitting
 
     func admit(_ input: AgentRootInput, alias: String, existing: [AgentScopeRoot]) async -> Result<Admission, AgentScopeRefusal> {
-        guard let typed = typedPath(input.text) else { return .failure(.badText) }
+        await admit(text: input.text, origin: input.origin, alias: alias, existing: existing)
+    }
+
+    /// Admits one of the places Whole Mac adds, by the same rules as a folder the person names: the place test on the
+    /// path as given, before the disk is asked anything, and again on its real path; a real folder, not hidden, and
+    /// answering. Helm finds these paths itself, from the home folder and the disks mounted; a model never names one.
+    /// A disk's own folder is named for the model by its kind, never by the disk's name.
+    func admitPlace(_ path: String) async -> Result<Admission, AgentScopeRefusal> {
+        switch await admit(text: path, origin: nil, alias: "", existing: []) {
+        case .failure(let refusal):
+            return .failure(refusal)
+        case .success(let found):
+            let root = found.root
+            let parts = AgentPathParts.of(root.path)
+            let isDisk = parts.count == 3 && parts[1] == "Volumes"
+            let model = isDisk && root.modelName == found.item.name ? Self.diskName(root.storage) : root.modelName
+            return .success(Admission(root: AgentScopeRoot(alias: root.alias, path: root.path, label: root.label, modelName: model,
+                                                           identity: root.identity, storage: root.storage, isTabFolder: false,
+                                                           isWholeMac: true),
+                                      item: found.item))
+        }
+    }
+
+    /// `origin` is nil for a place Whole Mac adds, which never counts toward the added folders.
+    private func admit(text: String, origin: AgentRootInput.Origin?, alias: String, existing: [AgentScopeRoot]) async -> Result<Admission, AgentScopeRefusal> {
+        guard let typed = typedPath(text) else { return .failure(.badText) }
         let canonicalHome = await self.canonicalHome()
         // The place test on the text as typed. Nothing has been asked of the disk about this path yet.
         let homes = [home, canonicalHome]
@@ -67,12 +92,12 @@ public struct AgentScopeGate: Sendable {
         guard let item = await disk.item(at: path) else { return .failure(.notFound) }
         guard item.kind == .directory else { return .failure(.notAFolder) }
         if item.isHidden { return .failure(.hidden) }
-        if input.origin != .tab, isFull(path, existing: existing) { return .failure(.full) }
+        if let origin, origin != .tab, isFull(path, existing: existing) { return .failure(.full) }
         let storage = await disk.storage(of: path)
         guard storage.isResponding else { return .failure(.notResponding) }
         let names = self.names(of: path, item: item, storage: storage, home: canonicalHome)
         let root = AgentScopeRoot(alias: alias, path: path, label: names.label, modelName: names.model,
-                                  identity: item.identity, storage: storage, isTabFolder: input.origin == .tab)
+                                  identity: item.identity, storage: storage, isTabFolder: origin == .tab)
         return .success(Admission(root: root, item: item))
     }
 
@@ -158,8 +183,9 @@ public struct AgentScopeGate: Sendable {
     }
 
     /// Seven added folders are there, and this one is none of them, inside none of them and holds none of them.
+    /// The tab's folder and the places Whole Mac adds aren't added folders.
     private func isFull(_ path: String, existing: [AgentScopeRoot]) -> Bool {
-        let added = existing.filter { !$0.isTabFolder }
+        let added = existing.filter { !$0.isTabFolder && !$0.isWholeMac }
         guard added.count >= AgentLimits.roots - 1 else { return false }
         return !added.contains { AgentPathParts.isAt(path, orInside: $0.path) || AgentPathParts.isAt($0.path, orInside: path) }
     }
@@ -184,6 +210,15 @@ public struct AgentScopeGate: Sendable {
 
     static let homeName = "Home"
     private static let textBytes = 4_096
+
+    /// A disk's own folder as Whole Mac names it for a model: "Server" or "External disk" by its kind, and "Disk" for
+    /// another disk inside this Mac, so a disk named after its owner never gives the name away.
+    static func diskName(_ storage: StorageFacts) -> String {
+        switch storage.kind {
+        case .network, .external: return storage.name
+        case .thisMac, .iCloud, .cloud: return "Disk"
+        }
+    }
 
     /// The two canonical paths, worked out once and kept. Reads and writes hold the lock.
     private final class Memo: @unchecked Sendable {

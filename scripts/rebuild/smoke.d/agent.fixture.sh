@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # AI mode's fixture: a folder of mixed files to organize, a folder of 30 files in the Google Drive stand-in, a folder
-# of 30 files that the steps make answer as a shared server, a file outside the home that no plan may reach, and the
-# scripted model's answers. The app reads agent-script.json beside the home at launch; agent-hostile.json is loaded
+# of 30 files that the steps make answer as a shared server, a file outside the home that no plan may reach, a
+# Pictures/Screenshots folder for Whole Mac to file a screenshot into, and the scripted model's answers. The app reads agent-script.json beside the home at launch; agent-hostile.json is loaded
 # by a step (agent-script) and answers as a model that tries to get round Helm's rules, and agent-search-fails.json
 # is the usual script with no answer for a search.
 mess="$fix/home/AgentMess"
@@ -21,6 +21,8 @@ for n in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
     echo "share $n" > "$share/share-$n.txt"
 done
 echo outside > "$fix/outside.txt"
+mkdir -p "$fix/home/Pictures/Screenshots"
+echo older > "$fix/home/Pictures/Screenshots/older.png"
 python3 - "$fix" <<'PY' || exit 1
 import json, os, sys
 fix = sys.argv[1]
@@ -61,6 +63,13 @@ places = [
         "Every file gets a longer name.",
         renames=[{"item": "@name:share-%s.txt" % n, "name": "shared-%s.txt" % n} for n in numbers])]},
     {"when": "look around", "turns": [listing(), {"text": "That's everything in it."}]},
+    # Whole Mac, with Documents on show: the home folder's listing finds Pictures/Screenshots, and the screenshot in
+    # Documents goes there.
+    {"when": "file the screenshot", "turns": [
+        {"calls": [{"name": "list_folder", "args": {"folder": "@home", "depth": 2, "after": ""}},
+                   {"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
+        proposal("The screenshot goes into Screenshots in Pictures.",
+                 moves=[{"items": ["@name:Screenshot 2026-11-02 at 09.15.00.png"], "all_in": "", "to": "@name:Screenshots"}])]},
     # A new folder and one file into it: two changes, one command each, so Stop can come between them.
     {"when": "stop halfway", "turns": [listing(), proposal(
         "A folder, then the memo into it.",

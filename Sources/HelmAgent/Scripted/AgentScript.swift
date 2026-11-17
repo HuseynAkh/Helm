@@ -21,8 +21,8 @@ import Foundation
 ///
 /// The first rule whose `when` is in the person's message answers it, without regard to case; `*` is in every
 /// message. Each of a rule's turns is one model turn of the request. In a call's arguments `@root` stands for the
-/// folder on show and `@name:<file>` for the id a listing gave the item of that name, so a script doesn't depend on
-/// how ids are numbered.
+/// folder on show, `@home` for the home folder while Whole Mac is on, and `@name:<file>` for the id a listing gave the
+/// item of that name, so a script doesn't depend on how ids are numbered.
 public struct AgentScript: Codable, Equatable, Sendable {
     /// A tool call the model makes.
     public struct Call: Codable, Equatable, Sendable {

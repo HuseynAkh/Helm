@@ -17,6 +17,11 @@ import HelmCore
 /// Every limit of a request is Helm's: turns, calls, entries, plans, bad arguments and time. Text Helm builds, the
 /// context note and each tool result, is checked for the home folder's path before it is sent; one that holds it
 /// ends the request and is never sent. A thread starts over after 30 requests or 8 MB of history.
+///
+/// A thread works in This Folder or Whole Mac, and a new one starts in This Folder. Switching starts the thread over,
+/// as a change of provider does, and so does every other new thread: starting over, `/clear` and removing an added
+/// folder all come back to This Folder. A thread that reaches its length limit inside a request carries on in the
+/// scope that request was sent in. Whole Mac requests go with `AgentPrompt.wholeMac`.
 public actor AgentSession: AgentConversing {
     private let parts: AgentSessionParts
     private let validator: any AgentPlanValidating
@@ -36,13 +41,15 @@ public actor AgentSession: AgentConversing {
     private var awaitingOutcome: UUID?
     private var outcomeForNote: AgentPlanOutcome?
     private var resultHook: (@Sendable (String) -> String)?
+    private var mode: AgentScopeMode = .thisFolder
 
     public nonisolated let notices: AsyncStream<AgentNotice>
 
     public init(parts: AgentSessionParts, validator: any AgentPlanValidating) {
         self.parts = parts
         self.validator = validator
-        self.scope = AgentScope(disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder)
+        self.scope = AgentScope(disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder,
+                                mountedVolumes: parts.mountedVolumes)
         let (stream, feed) = AsyncStream.makeStream(of: AgentNotice.self)
         notices = stream
         noticeFeed = feed
@@ -60,8 +67,31 @@ public actor AgentSession: AgentConversing {
     public func removeRoot(alias: String) async {
         await stop()
         await scope.remove(alias: alias)
+        await backToThisFolder()
         resetThread()
         noticeFeed.yield(.startedOver)
+    }
+
+    // MARK: This Folder or Whole Mac
+
+    public func scopeMode() async -> AgentScopeMode { mode }
+
+    /// Switches the thread, and starts it over: a request that is running stops, every handle is retired and the
+    /// thread is dropped, so names listed under one scope are never sent under the other.
+    public func setScopeMode(_ next: AgentScopeMode) async {
+        guard next != mode else { return }
+        await stop()
+        mode = next
+        resetThread()
+        await scope.setMode(next)
+        noticeFeed.yield(.startedOver)
+    }
+
+    /// A new thread starts in This Folder.
+    private func backToThisFolder() async {
+        guard mode != .thisFolder else { return }
+        mode = .thisFolder
+        await scope.setMode(.thisFolder)
     }
 
     // MARK: Requests
@@ -89,6 +119,7 @@ public actor AgentSession: AgentConversing {
 
     public func startOver() async {
         await stop()
+        await backToThisFolder()
         await scope.startOver()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -96,6 +127,7 @@ public actor AgentSession: AgentConversing {
 
     public func clear() async {
         await stop()
+        mode = .thisFolder
         await scope.clear()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -189,7 +221,8 @@ public actor AgentSession: AgentConversing {
 
         let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits).usingListSeconds(listSeconds)
         let asksForChanges = input.asksForChanges || AgentChangeAsk.asksForChanges(input.text)
-        let sent = await turns(client: client, runner: runner, limits: limits, selected: Set(input.selectedPaths),
+        let system = mode == .wholeMac ? AgentPrompt.wholeMac : AgentPrompt.system
+        let sent = await turns(client: client, runner: runner, limits: limits, system: system, selected: Set(input.selectedPaths),
                                asksForChanges: asksForChanges, emit: emit)
         if runner.notLoaded > 0 { emit(.notice(.foldersNotLoaded(runner.notLoaded))) }
         if sent > 0 { emit(.trace(.sent(names: sent, destination: client.destination))) }
@@ -197,8 +230,8 @@ public actor AgentSession: AgentConversing {
 
     /// The model turns of one request, until the model ends its turn, a plan arrives, or something ends the request.
     /// Answers how many names went into the thread: those of a turn that was dropped never leave the app.
-    private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, selected: Set<String>,
-                       asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> Int {
+    private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, system: String,
+                       selected: Set<String>, asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> Int {
         let started = parts.clock.now()
         var counts = RequestCounts()
         /// The words of the turn that ended without a plan, while the model is asked for one.
@@ -221,7 +254,7 @@ public actor AgentSession: AgentConversing {
             emit(.status(.thinking))
             let streamed: StreamedTurn
             do {
-                let input = AgentTurnInput(system: AgentPrompt.system, tools: AgentToolCatalog.all, history: history)
+                let input = AgentTurnInput(system: system, tools: AgentToolCatalog.all, history: history)
                 streamed = try await Self.stream(client, input, replyCharacters: limits.replyCharacters, seconds: secondsLeft())
             } catch {
                 if isStopping { return ended(.notice(.stopped)) }

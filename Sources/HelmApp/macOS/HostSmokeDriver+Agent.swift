@@ -165,6 +165,16 @@ extension HostSmokeDriver {
             }
             check(window.pickAgentModelMenuRowForTesting(bits[1], under: bits[0]), step, "no such row")
             await wait(seconds: 0.5)
+        case "agent-scope":
+            // agent-scope thisFolder|wholeMac: a press of that half of the switch at the end of the folders row, then
+            // the wait for the new thread and its folders.
+            guard let model, let mode = AgentScopeMode(rawValue: argument) else { check(false, step, "usage"); return true }
+            model.chooseScope(mode)
+            let done = await until { model.scopeForTesting == argument && !model.isWaitingForTesting }
+            check(done, step, model.scopeForTesting)
+        case "agent-scope-is":
+            let reached = await until { model?.scopeForTesting == argument }
+            check(reached, step, model?.scopeForTesting ?? "no panel")
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.

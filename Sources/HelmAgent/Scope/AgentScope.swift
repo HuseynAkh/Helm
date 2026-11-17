@@ -4,8 +4,10 @@ import HelmCore
 /// One window's folders for AI mode and the handles that stand for what is in them.
 ///
 /// The roots are the folder on show in the tab, which follows the tab under a new alias each time it changes, and
-/// up to seven folders the person added. A handle is born only by listing a folder, or by the person naming a
-/// folder inside a root, and every handle is checked against the disk again before it is used.
+/// up to seven folders the person added. In Whole Mac the home folder, iCloud Drive, each cloud folder in the home's
+/// Library and each disk mounted are roots too, each let in by the gate as a folder the person names is. A handle is
+/// born only by listing a folder, or by the person naming a folder inside a root, and every handle is checked against
+/// the disk again before it is used.
 public actor AgentScope: AgentHandleResolving {
     /// What a listing found: each admitted child with the item it came from, and what was left out.
     struct ListedChildren: Sendable {
@@ -24,6 +26,12 @@ public actor AgentScope: AgentHandleResolving {
     private let table = AgentHandleTable()
     private var tabRoot: AgentScopeRoot?
     private var added: [AgentScopeRoot] = []
+    /// The places Whole Mac adds, while it is on.
+    private var wholeMac: [AgentScopeRoot] = []
+    private(set) var mode: AgentScopeMode = .thisFolder
+    /// Counts each change of mode, so a change that finishes late can't put back places a later one took away.
+    private var modeChanges = 0
+    private let mountedVolumes: @Sendable () async -> [String]
     /// Folders macOS wouldn't let Helm list in this thread. They aren't asked about again.
     private var refusedFolders: Set<String> = []
     /// Facts of each folder's place, kept for one request.
@@ -32,9 +40,12 @@ public actor AgentScope: AgentHandleResolving {
     private var holdingCloudOnly: Set<String> = []
     private var listSecondsOverride: Double?
 
-    public init(disk: any AgentDisk, home: String, supportFolder: String) {
+    /// `mountedVolumes` answers the disks mounted now, as paths, for Whole Mac.
+    public init(disk: any AgentDisk, home: String, supportFolder: String,
+                mountedVolumes: @escaping @Sendable () async -> [String] = { [] }) {
         self.disk = disk
         self.gate = AgentScopeGate(disk: disk, home: home, supportFolder: supportFolder)
+        self.mountedVolumes = mountedVolumes
     }
 
     // MARK: Folders
@@ -102,9 +113,12 @@ public actor AgentScope: AgentHandleResolving {
         Task { await table.retire(rootAlias: alias) }
     }
 
-    /// Drops the added folders and every handle. The tab's folder stays, under a new alias.
+    /// Drops the added folders, the places Whole Mac added, and every handle. The tab's folder stays, under a new
+    /// alias, and the scope is This Folder again.
     public func clear() async {
         added.removeAll()
+        dropWholeMac()
+        mode = .thisFolder
         await table.retireAll()
         forgetThread()
         if let current = tabRoot {
@@ -121,6 +135,36 @@ public actor AgentScope: AgentHandleResolving {
         await table.retireAll()
         forgetThread()
         for root in allRoots { await mintRoot(root) }
+    }
+
+    /// This Folder or Whole Mac. Either way every handle is retired, as at the start of a new thread, and the tab's
+    /// folder and the added ones keep their aliases. Whole Mac then adds its places as roots of their own: the home
+    /// folder, iCloud Drive, each folder in the home's `Library/CloudStorage` and each disk `mountedVolumes` names.
+    /// Each is let in by the gate, so the allow list, the home's Library, dot names and links hold as for any root,
+    /// and one the gate refuses is left out. This Folder takes them away.
+    public func setMode(_ next: AgentScopeMode) async {
+        modeChanges += 1
+        let change = modeChanges
+        dropWholeMac()
+        mode = next
+        await table.retireAll()
+        forgetThread()
+        for root in allRoots { await mintRoot(root) }
+        guard next == .wholeMac else { return }
+        for path in await wholeMacPlaces() {
+            guard change == modeChanges else { return }
+            guard case .success(let admission) = await gate.admitPlace(path), change == modeChanges else { continue }
+            let found = admission.root
+            if wholeMac.contains(where: { AgentPathParts.same($0.path, found.path) || ($0.identity != nil && $0.identity == found.identity) }) {
+                continue
+            }
+            let alias = await table.nextRootAlias()
+            guard change == modeChanges else { return }
+            let root = AgentScopeRoot(alias: alias, path: found.path, label: found.label, modelName: found.modelName,
+                                      identity: found.identity, storage: found.storage, isTabFolder: false, isWholeMac: true)
+            await mintRoot(root)
+            wholeMac.append(root)
+        }
     }
 
     // MARK: AgentHandleResolving
@@ -210,6 +254,7 @@ public actor AgentScope: AgentHandleResolving {
             await table.retire(rootAlias: root.alias)
             if tabRoot?.alias == root.alias { tabRoot = nil }
             added.removeAll { $0.alias == root.alias }
+            wholeMac.removeAll { $0.alias == root.alias }
         }
         return dropped
     }
@@ -276,7 +321,7 @@ public actor AgentScope: AgentHandleResolving {
 
     // MARK: Rules
 
-    private var allRoots: [AgentScopeRoot] { (tabRoot.map { [$0] } ?? []) + added }
+    private var allRoots: [AgentScopeRoot] { (tabRoot.map { [$0] } ?? []) + wholeMac + added }
 
     /// Aliases of roots that were removed or dropped. Their handles answer as retired at once, even before the
     /// table has caught up.
@@ -340,6 +385,32 @@ public actor AgentScope: AgentHandleResolving {
         let item = AgentDiskItem(path: root.path, name: root.modelName, kind: .directory, identity: root.identity)
         _ = await table.mint(rootAlias: root.alias, item: item, isRoot: true, isProtectedLeaf: false)
     }
+
+    /// The places Whole Mac works in, as paths: the home folder, iCloud Drive when it is there, each folder of the
+    /// home's CloudStorage, then each disk mounted. Only names are asked for; nothing is entered here.
+    private func wholeMacPlaces() async -> [String] {
+        let home = await gate.canonicalHome()
+        let library = AgentPathParts.child("Library", of: home)
+        var places = [home]
+        let iCloud = AgentPathParts.child("com~apple~CloudDocs", of: AgentPathParts.child("Mobile Documents", of: library))
+        if await disk.item(at: iCloud)?.kind == .directory { places.append(iCloud) }
+        let storage = await disk.list(AgentPathParts.child("CloudStorage", of: library), limit: Self.placesLimit,
+                                      idleSeconds: Self.placesSeconds)
+        places += storage.items.filter { $0.kind == .directory }.map(\.path)
+        places += await mountedVolumes().prefix(Self.placesLimit)
+        return places
+    }
+
+    /// The places Whole Mac added are dropped, and their handles answer as retired from now on.
+    private func dropWholeMac() {
+        for root in wholeMac { retiredAliases.insert(root.alias) }
+        wholeMac = []
+    }
+
+    /// At most this many cloud folders, and this many disks.
+    private static let placesLimit = 64
+    /// How long the look at the cloud folders may go without progress.
+    private static let placesSeconds = 3.0
 
     private func dropTabRoot() async {
         guard let current = tabRoot else { return }

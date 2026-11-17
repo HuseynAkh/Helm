@@ -12,6 +12,7 @@ struct AgentPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             AgentFoldersRow(model: model)
+                .withAgentScopeSwitch(model)
                 .padding(.top, AgentPanelHost.topInset)
                 .padding(.bottom, 6)
             Divider()

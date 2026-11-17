@@ -27,6 +27,12 @@ public enum AgentText {
     public static let chipReadOnly = "Read-only"
     public static let chipNotResponding = "Not responding"
     public static func chipRemove(_ name: String) -> String { "Remove “\(shown(name))”" }
+    /// The switch at the end of the folders row, and the one chip that stands for every place Whole Mac adds.
+    public static let scopeSwitchLabel = "Where AI mode looks"
+    public static let scopeThisFolder = "This Folder"
+    public static let scopeWholeMac = "Whole Mac"
+    public static let scopeSwitchHelp = "Whole Mac lets AI mode look through your home folder, cloud folders and disks."
+    public static let chipWholeMac = "Your home folder, iCloud Drive, cloud folders and disks."
 
     // MARK: Panel: suggestions
 
@@ -254,6 +260,10 @@ public enum AgentText {
     public static let aiSentence = "Ask Helm to organize, move and find files for you."
     public static func consent(_ destination: String) -> String {
         "Sends your requests and file names to \(shown(destination)), never file contents."
+    }
+    /// The consent line at the top of a thread while Whole Mac is on.
+    public static func consentWholeMac(_ destination: String) -> String {
+        "Sends your requests and file names from your home folder to \(shown(destination)), never file contents."
     }
     public static func destinationOnThisMac(_ provider: String) -> String { "\(shown(provider)) on this Mac" }
     public static let destinationNotSet = "the address you enter"

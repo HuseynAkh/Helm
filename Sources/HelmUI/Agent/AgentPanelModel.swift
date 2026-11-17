@@ -110,6 +110,10 @@ import HelmCore
     @Published private(set) var provider: Provider
     /// What the model's name under the composer offers, as the window last worked it out.
     @Published private(set) var modelMenu = AgentModelMenu.empty
+    /// This Folder or Whole Mac, for the thread on show. A new thread starts in This Folder.
+    @Published private(set) var scopeMode: AgentScopeMode = .thisFolder
+    /// The switch is changing the thread's folders. Nothing is sent until it has.
+    @Published private(set) var scopeChanging = false
 
     let session: any AgentConversing
     var actions: Actions
@@ -145,7 +149,7 @@ import HelmCore
         self.home = home
         self.provider = provider
         self.actions = actions
-        lines = [Line(id: 0, kind: .consent(AgentText.consent(provider.destination)))]
+        lines = [Line(id: 0, kind: .consent(Self.consentLine(provider.destination, .thisFolder)))]
         nextLineID = 1
         noticeTask = Task { [weak self, notices = session.notices] in
             for await notice in notices {
@@ -282,12 +286,12 @@ import HelmCore
         guard chip.removable else { return }
         work { model in
             await model.session.removeRoot(alias: chip.id)
-            await model.refreshRoots()
+            await model.followScope()
         }
     }
 
     func choose(_ suggestion: AgentSuggestion, depth: AgentOrganizeDepth) {
-        guard !requestOpen, !applying, suggestions.contains(suggestion), let root = tabRoot else { return }
+        guard !requestOpen, !applying, !scopeChanging, suggestions.contains(suggestion), let root = tabRoot else { return }
         if suggestion.runsAtOnce {
             let message = AgentSuggestions.message(for: suggestion, depth: depth, root: root.alias)
             begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths, asksForChanges: true), shown: suggestion.title)
@@ -296,6 +300,22 @@ import HelmCore
             actions.focusComposer()
         }
     }
+
+    /// The switch at the end of the folders row. Either half starts a new thread, as a change of provider does, so
+    /// names listed under one scope are never sent under the other. Never while a request, an Apply or an Undo runs.
+    public func chooseScope(_ next: AgentScopeMode) {
+        guard next != scopeMode, canChooseScope else { return }
+        scopeMode = next
+        scopeChanging = true
+        work { model in
+            await model.session.setScopeMode(next)
+            await model.followScope()
+            model.scopeChanging = false
+        }
+    }
+
+    /// Whether the switch can be pressed now.
+    var canChooseScope: Bool { !requestOpen && !applying && !undoing && !scopeChanging }
 
     func applyCard(line id: Int) {
         guard openCardIndex.map({ lines[$0].id }) == id else { return }
@@ -381,8 +401,11 @@ import HelmCore
     public var phaseForTesting: String { phase.rawValue }
     /// The conversation the panel talks to.
     public var sessionForTesting: any AgentConversing { session }
-    /// The folders row, each as "label:kind", such as "Documents:thisMac".
+    /// The folders row, each as "label:kind", such as "Documents:thisMac". The places Whole Mac adds are one chip,
+    /// "Whole Mac:thisMac".
     public var chipsForTesting: [String] { chips.map { "\($0.label):\($0.kind.rawValue)" } }
+    /// "thisFolder" or "wholeMac", as the switch shows it.
+    public var scopeForTesting: String { scopeMode.rawValue }
     /// Each chip's place line, by its label. A folder on this Mac has none.
     public var chipKindsForTesting: [String: String] {
         Dictionary(chips.map { ($0.label, $0.placeLine) }, uniquingKeysWith: { first, _ in first })
@@ -467,7 +490,7 @@ import HelmCore
     // MARK: Sending
 
     private func submit() {
-        guard !requestOpen, !applying else { return }
+        guard !requestOpen, !applying, !scopeChanging else { return }
         let typed = composerText
         switch AgentComposerIntent.parse(typed) {
         case .empty:
@@ -484,7 +507,7 @@ import HelmCore
             work { model in
                 await model.session.clear()
                 model.startOver()
-                await model.refreshRoots()
+                await model.followScope()
             }
         case .add(let path):
             setComposer("", caret: 0)
@@ -837,10 +860,40 @@ import HelmCore
         }
     }
 
+    /// One chip a folder, but the places Whole Mac adds share one chip, where the first of them is.
     private func refreshRoots() async {
         let roots = await session.roots()
-        chips = roots.map(chip)
+        var next: [Chip] = []
+        for root in roots {
+            if !root.isWholeMac {
+                next.append(chip(root))
+            } else if !next.contains(where: { $0.id == Self.wholeMacChipID }) {
+                next.append(Chip(id: Self.wholeMacChipID, label: AgentText.scopeWholeMac, kind: .thisMac, symbol: "laptopcomputer",
+                                 tooltip: AgentText.chipWholeMac, placeLine: "", marks: [], removable: false))
+            }
+        }
+        chips = next
         recomputePhase()
+    }
+
+    /// The Whole Mac chip's id, which no root's alias can be.
+    private static let wholeMacChipID = "whole-mac"
+
+    /// After a new thread: the switch shows the conversation's scope, the consent line says what it sends, and the
+    /// folders row shows its folders.
+    private func followScope() async {
+        let mode = await session.scopeMode()
+        if mode != scopeMode { scopeMode = mode }
+        if let first = lines.first, case .consent = first.kind {
+            let line = Self.consentLine(provider.destination, scopeMode)
+            if first.kind != .consent(line) { lines[0].kind = .consent(line) }
+        }
+        await refreshRoots()
+    }
+
+    /// The thread's first line: what is sent and where, and, in Whole Mac, that it comes from the home folder.
+    private static func consentLine(_ destination: String, _ mode: AgentScopeMode) -> String {
+        mode == .wholeMac ? AgentText.consentWholeMac(destination) : AgentText.consent(destination)
     }
 
     private func chip(_ root: AgentScopeRoot) -> Chip {
@@ -881,7 +934,10 @@ import HelmCore
 
     private func handle(_ notice: AgentNotice) {
         switch notice {
-        case .startedOver: startOver()
+        case .startedOver:
+            startOver()
+            // A new thread is in This Folder unless the switch made it, or a long one carried on in Whole Mac.
+            work { model in await model.followScope() }
         case .stopped: append(.helm(AgentText.noticeStopped, button: nil))
         case .limitReached: append(.helm(AgentText.failTooLarge, button: nil))
         case .foldersNotLoaded(let count): append(.helm(AgentText.noticeFoldersNotLoaded(count), button: nil))
@@ -893,7 +949,7 @@ import HelmCore
     /// A new thread: the consent line, naming where requests go now, and one line saying the old one ended. A
     /// request that is running stays on show under them.
     private func startOver() {
-        var fresh = [Line.Kind.consent(AgentText.consent(provider.destination)), .helm(AgentText.noticeStartedOver, button: nil)]
+        var fresh = [Line.Kind.consent(Self.consentLine(provider.destination, scopeMode)), .helm(AgentText.noticeStartedOver, button: nil)]
         if requestOpen, let lastShown { fresh.append(.request(lastShown)) }
         // Said once, however many parts of Helm report the same start.
         guard lines.map(\.kind) != fresh else { return }
