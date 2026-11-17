@@ -9,12 +9,17 @@ import HelmUI
 /// into Applications, never opens the welcome by itself, and never opens System Settings, copies Helm or relaunches.
 /// The same window shows the AI mode screen, which a fixture run never opens by itself either.
 ///
-/// Setup comes before anything macOS guards. While setup is owed, a launch shows the welcome checklist and holds every
-/// window back until it closes (`setUpBeforeWindows`), so macOS asks about no folder before the person has seen
-/// it. Setup is owed until it has been seen once, and again whenever another build runs: macOS treats a new build of
-/// an ad hoc signed app as a new app and forgets its folder access and Full Disk Access.
+/// Setup comes before anything macOS guards. While setup is owed, a launch shows the onboarding and holds every window
+/// back until it closes (`setUpBeforeWindows`), so macOS asks about no folder before the person has seen it, and the
+/// file windows open only once the onboarding is through. AI mode is one of its steps, not a window of its own. Setup is
+/// owed until the onboarding has been through once, again whenever another build runs (macOS treats a new build of an
+/// ad hoc signed app as a new app and forgets its folder access and Full Disk Access), and while an onboarding that was
+/// quit part way is kept: the next launch carries on from its step.
+///
+/// Helm never quits or reopens itself for a permission. Once Full Disk Access is switched on, macOS offers Quit & Reopen;
+/// Helm then quits like any app, with the onboarding's step kept, and the launch macOS starts carries on there.
 @MainActor final class AccessCoordinator {
-    /// Where launch stands with setup: not looked at yet, waiting for the checklist to close, or through.
+    /// Where launch stands with setup: not looked at yet, waiting for the onboarding to close, or through.
     enum LaunchGate { case unchecked, waiting, open }
 
     let privacy: any PrivacyAccessProviding
@@ -36,18 +41,18 @@ import HelmUI
     private var pendingRequest: OnboardingModel.Mode?
     /// What a fixture run's welcome window takes VoiceOver to be doing. A scripted run never asks the real Mac.
     var voiceOverForTesting = false
-    /// What Settings › AI and the AI mode screen show, made the first time either is needed.
+    /// What Settings › AI, the AI mode screen and the onboarding's AI step show, made the first time one is needed.
     var aiSetup: AISetupModel?
+    /// Where the onboarding's AI step gets its model: the app's, made the first time it's needed. Nil leaves the step out.
+    var aiModel: () -> AISetupModel? = { nil }
     /// What Done does once AI mode ended connected: for the window whose spark opened the AI mode screen, or else for
     /// the window in front.
     var openAgentPanel: (BrowserWindowController) -> Void = { $0.openAgentPanel() }
     /// Lets a test's background run open the AI mode screen by itself at launch, as a person's launch would.
     var opensAIIntroForTesting = false
-    /// The first launch's checklist is open: the AI mode screen waits for it to close.
-    private var aiIntroAfterWelcome: AISetupModel?
     /// Where launch stands with setup.
     private(set) var launchGate: LaunchGate = .unchecked
-    /// Everything waiting for the checklist to close before it opens a window.
+    /// Everything waiting for the onboarding to close before it opens a window.
     private var gateWaiters: [CheckedContinuation<Void, Never>] = []
     /// Lets a test's background run hold its windows back for setup, as a person's launch does.
     var gatesLaunchForTesting = false
@@ -59,13 +64,13 @@ import HelmUI
         mover = isolated ? MemoryAppMover() : SystemAppMover()
         permissions = PermissionCenter(provider: privacy)
         permissions.presentGuide = { [weak self] pane in self?.showGuide(pane) }
-        // Quit & Reopen ends Helm with the welcome still open; it mustn't open again on the next launch.
+        // Quit & Reopen ends Helm with the onboarding still open: its step is kept, and the next launch carries on there.
         termination = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.quitting() }
         }
     }
 
-    /// Helm is quitting: an open welcome counts as seen.
+    /// Helm is quitting. An open onboarding stays where it got to, for the next launch; nothing counts as seen.
     func quitting() { onboarding?.quitting() }
 
     /// Checks access before the first window draws, then again whenever Helm comes back to the front, which
@@ -95,24 +100,36 @@ import HelmUI
     /// scripted run opens its windows at once, and shows the welcome only when a step asks.
     var launchWaitsForSetup: Bool { (!isIsolated && isInteractive) || gatesLaunchForTesting }
 
-    /// Whether setup is owed: it has never been seen, or another build saw it last.
+    /// Whether setup is owed: it has never been through, an onboarding was quit part way, or another build saw it last.
     var setupOwed: Bool {
         guard let settings else { return false }
         let snapshot = settings.snapshot
-        if !snapshot.bool(.onboardingCompleted) { return true }
+        if !snapshot.bool(.onboardingCompleted) || savedProgress != nil { return true }
         guard let build = privacy.buildIdentity else { return false }
         return snapshot.string(.setupBuild) != build
     }
 
-    /// Whether a window asked for now must wait for the checklist that is on show.
+    /// How far an onboarding that was quit part way got, if one was.
+    var savedProgress: OnboardingProgress? {
+        settings.flatMap { OnboardingProgress(text: $0.snapshot.string(.setupProgress)) }
+    }
+
+    /// Keeps how far the onboarding got, or forgets it with nil.
+    private func keepProgress(_ progress: OnboardingProgress?) {
+        guard let settings else { return }
+        let text = progress?.text ?? ""
+        if settings.snapshot.string(.setupProgress) != text { settings.set(.string(text), for: .setupProgress) }
+    }
+
+    /// Whether a window asked for now must wait for the onboarding that is on show.
     var windowsWaitForSetup: Bool { launchGate == .waiting }
     /// Whether a window may open straight away: setup is through for this run, or this run doesn't wait for it.
     var windowsMayOpen: Bool { launchGate == .open || (launchGate == .unchecked && !launchWaitsForSetup) }
 
-    /// Every way to a window comes here first. When setup is owed, the welcome checklist opens, or carries on for a
-    /// copy that was just moved into Applications, and this returns once it has closed; until then nothing reads a
-    /// folder macOS guards. When nothing is owed, every row is done, or this run doesn't wait, it returns at once.
-    /// Later calls return at once too, or wait for the same checklist.
+    /// Every way to a window comes here first. When setup is owed, the onboarding opens, or carries on for a copy that
+    /// was just moved into Applications or after a quit, and this returns once it has closed; until then nothing reads a
+    /// folder macOS guards and no file window opens. When nothing is owed, or this run doesn't wait, it returns at once.
+    /// Later calls return at once too, or wait for the same onboarding.
     func setUpBeforeWindows(continuing rows: [SetupRow]? = nil) async {
         switch launchGate {
         case .open: return
@@ -129,7 +146,7 @@ import HelmUI
         await withCheckedContinuation { gateWaiters.append($0) }
     }
 
-    /// The checklist has gone, or made way: the windows waiting for it open.
+    /// The onboarding has gone: the windows waiting for it open.
     private func openGate() {
         guard launchGate != .open else { return }
         launchGate = .open
@@ -138,9 +155,9 @@ import HelmUI
         for waiter in waiting { waiter.resume() }
     }
 
-    /// Once, on the first launch, unless everything is set up already. A copy that was just moved into Applications
-    /// opens it again to carry on: with the flag the moving copy gave it, or, opened by hand, with the rows Set Up saved.
-    /// Fixture runs only show the first launch's welcome when a smoke step asks.
+    /// Once, on the first launch, unless everything is set up already, and again after a quit part way through. A copy
+    /// that was just moved into Applications opens it to carry on: with the flag the moving copy gave it, or, opened by
+    /// hand, with the rows the move saved. Fixture runs only show the first launch's onboarding when a smoke step asks.
     func showWelcomeIfNeeded(continuing rows: [SetupRow]? = nil) {
         if let rows { continueSetup(rows); return }
         // Only the copy in Applications takes them: one still on the disk image leaves them for it.
@@ -149,7 +166,7 @@ import HelmUI
         openOnFirstLaunch()
     }
 
-    /// The rows Set Up saved for the copy in Applications, if any are waiting.
+    /// The rows the move saved for the copy in Applications, if any are waiting.
     private func carriedRows() -> [SetupRow]? {
         guard let text = settings?.snapshot.string(.setupCarriedRows), !text.isEmpty else { return nil }
         return SetupRow.rows(fromFlag: text)
@@ -162,22 +179,23 @@ import HelmUI
         if settings.snapshot.string(.setupCarriedRows) != text { settings.set(.string(text), for: .setupCarriedRows) }
     }
 
-    /// The first launch's welcome, or the first launch of another build. If every row is already done there's nothing
-    /// to show, and that counts as seen.
+    /// Whether a launch's onboarding has an AI step: until the AI step or the AI mode screen has been seen once.
+    private var aiStepOwed: Bool { !(settings?.snapshot.bool(.aiIntroSeen) ?? true) }
+
+    /// A launch's onboarding: the first launch's, another build's, or one that was quit part way, which carries on from
+    /// its step. Only the steps left to do show; if none is, there's nothing to show, and that counts as through.
     func openOnFirstLaunch() {
         guard settings != nil, setupOwed else { return }
         let controller = onboarding ?? makeOnboarding()
         guard !controller.isShown else { return }
-        controller.model.begin(.setup)
-        if controller.model.nothingToDo { markWelcomeSeen(); return }
-        controller.show(.setup, activate: isInteractive)
+        if !controller.showSetup(resuming: savedProgress, includesAI: aiStepOwed, activate: isInteractive) { markWelcomeSeen() }
     }
 
     func continueSetup(_ rows: [SetupRow]) {
         guard settings != nil else { return }
         // Handed over now, so they aren't carried on twice.
         saveCarried(nil)
-        (onboarding ?? makeOnboarding()).continueSetup(rows, activate: isInteractive)
+        (onboarding ?? makeOnboarding()).continueSetup(rows, resuming: savedProgress, includesAI: aiStepOwed, activate: isInteractive)
     }
 
     func showWelcome() { present(.setup) }
@@ -185,6 +203,12 @@ import HelmUI
     /// Full Disk Access gets the guide. macOS already lists Helm under the other rows once it has asked, so those open directly.
     func showGuide(_ pane: PrivacyPane) {
         if pane == .fullDiskAccess { present(.guide) } else { permissions.open(pane) }
+    }
+
+    /// The onboarding holds the windows back and something asked for one, as a click on the Dock icon does: it comes to
+    /// the front as it is.
+    func bringSetupForward() {
+        onboarding?.bringForward(activate: isInteractive)
     }
 
     private func present(_ mode: OnboardingModel.Mode) {
@@ -197,31 +221,34 @@ import HelmUI
         // A scripted run's windows stay invisible and out of the way, this one included, from before it first shows.
         if !isInteractive { SmokeBackground.hide(controller.window) }
         if isIsolated { controller.model.isVoiceOverRunning = { [weak self] in self?.voiceOverForTesting ?? false } }
+        controller.model.aiSource = { [weak self] in self?.aiModel() }
         controller.onSeen = { [weak self] in self?.markWelcomeSeen() }
         controller.onCarry = { [weak self] rows in self?.saveCarried(rows) }
-        controller.onClosed = { [weak self] mode in self?.onboardingClosed(mode) }
+        controller.onProgress = { [weak self] progress in self?.keepProgress(progress) }
+        controller.onClosed = { [weak self] _ in self?.onboardingClosed() }
         onboarding = controller
         return controller
     }
 
-    /// The welcome opens by itself only until it's been seen, by this build: which build saw it is kept too.
+    /// The onboarding has been through, by this build: it opens by itself again only for another build. Where it got to
+    /// is forgotten, and so is the AI mode screen's launch: AI mode was one of its steps, or the person closed it first,
+    /// and nothing comes up by itself after it.
     private func markWelcomeSeen() {
         guard let settings else { return }
         if !settings.snapshot.bool(.onboardingCompleted) { settings.set(.bool(true), for: .onboardingCompleted) }
         if let build = privacy.buildIdentity, settings.snapshot.string(.setupBuild) != build {
             settings.set(.string(build), for: .setupBuild)
         }
+        keepProgress(nil)
+        if !settings.snapshot.bool(.aiIntroSeen) { settings.set(.bool(true), for: .aiIntroSeen) }
     }
 
     // MARK: The AI mode screen
 
     /// Shows the AI mode screen in the welcome window. When it ends connected, Done opens the panel: in `window`, whose
-    /// spark opened it, or else in the window in front, as after setup or at launch.
+    /// spark opened it, or else in the window in front. While the onboarding is open, it goes to its AI step instead.
     func showAIMode(_ model: AISetupModel, from window: BrowserWindowController?) {
         guard settings != nil else { return }
-        aiIntroAfterWelcome = nil
-        // The checklist makes way for the AI mode screen and counts as seen, so the windows waiting for it go ahead.
-        if launchGate == .waiting { openGate() }
         let controller = onboarding ?? makeOnboarding()
         controller.showAIMode(model, activate: isInteractive) { [weak self, weak window] connected in
             guard connected, let self else { return }
@@ -230,31 +257,39 @@ import HelmUI
         }
     }
 
-    /// Once at launch, until it has been seen: straight away for someone who set Helm up before, or when the first
-    /// launch's checklist closes. Never by itself in a fixture run or a scripted one.
+    /// For someone who set Helm up before AI mode existed and gets no onboarding at this launch: the AI mode screen,
+    /// once, and only once their window is up. A launch with an onboarding has AI mode as one of its steps, so nothing
+    /// comes up after it. Never by itself in a fixture run or a scripted one.
     func showAIIntroIfNeeded(_ model: () -> AISetupModel?) {
         guard (!isIsolated && isInteractive) || opensAIIntroForTesting, let settings,
-              !settings.snapshot.bool(.aiIntroSeen) else { return }
-        if onboarding?.isSetupShown == true {
-            aiIntroAfterWelcome = model()
-            return
-        }
-        guard settings.snapshot.bool(.onboardingCompleted), let model = model() else { return }
+              settings.snapshot.bool(.onboardingCompleted), !settings.snapshot.bool(.aiIntroSeen),
+              onboarding?.isShown != true, !windows().isEmpty, let model = model() else { return }
         showAIMode(model, from: nil)
     }
 
-    private func onboardingClosed(_ mode: OnboardingModel.Mode) {
+    private func onboardingClosed() {
         if launchGate == .waiting { openGate() }
-        guard mode == .setup, let model = aiIntroAfterWelcome else { return }
-        aiIntroAfterWelcome = nil
-        guard let settings, !settings.snapshot.bool(.aiIntroSeen) else { return }
-        showAIMode(model, from: nil)
     }
 
     /// Settings › General › Access.
     var settingsSection: AccessSettings {
         AccessSettings(permissions: permissions, setUp: { [weak self] in self?.showGuide(.fullDiskAccess) },
                        showWelcome: { [weak self] in self?.showWelcome() })
+    }
+
+    // MARK: Standing in for a relaunch
+
+    /// What macOS's Quit & Reopen does, in one process: Helm quits as it would (`quitting`, then the window goes with the
+    /// process, counting nothing), `meanwhile` runs, as macOS applies a new Full Disk Access only to the next launch,
+    /// and that launch reads Full Disk Access again and shows what setup is owed. A scripted run or a test stands in for
+    /// the relaunch with this; nothing quits.
+    func quitAndReopenForTesting(meanwhile: () -> Void = {}) async {
+        quitting()
+        onboarding?.endWithProcess()
+        onboarding = nil
+        meanwhile()
+        await permissions.refresh()
+        openOnFirstLaunch()
     }
 }
 #endif

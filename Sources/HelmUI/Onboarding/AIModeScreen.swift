@@ -6,8 +6,14 @@ import SwiftUI
 /// The AI mode screen: the welcome window's third mode, always dark. The spark sits over one soft glow, the title row
 /// is the switch, and Done is the only button. Once the switch is on it shows the provider menu with its help, the
 /// key field (or OpenAI's ChatGPT sign-in, or a local provider's state), and the line saying what is sent and to whom.
+///
+/// Embedded, it's the onboarding's AI step: the same parts in the Mac's own appearance, with no glow, no sentence (the
+/// step's header has it) and no Done. The onboarding's Continue stands in for Done, through `continueRequests`.
 struct AIModeScreen: View {
     @ObservedObject var model: AISetupModel
+    var embedded = false
+    /// Counts the onboarding's Continue presses. Each one hands over what was typed, as Done does.
+    var continueRequests = 0
     /// A key being typed. It is handed to the model on Return or Done and the field is emptied; a saved key is never
     /// put back in it.
     @State private var draftKey = ""
@@ -22,7 +28,12 @@ struct AIModeScreen: View {
     }
 
     /// The parts on show for how `model` stands now. The screen is drawn from this list.
-    static func parts(for model: AISetupModel) -> [Part] {
+    static func parts(for model: AISetupModel, embedded: Bool = false) -> [Part] {
+        let parts = screenParts(for: model)
+        return embedded ? parts.filter { $0 != .sentence && $0 != .done } : parts
+    }
+
+    private static func screenParts(for model: AISetupModel) -> [Part] {
         var parts: [Part] = [.titleRow, .sentence]
         if model.isOn {
             parts.append(.provider)
@@ -50,15 +61,19 @@ struct AIModeScreen: View {
         }
     }
 
+    /// How far the parts sit from the edges: the screen's wide margins, or the step's card.
+    private var inset: CGFloat { embedded ? 16 : 40 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            AIModeMark()
-            ForEach(Self.parts(for: model), id: \.self) { part in view(for: part) }
+            if !embedded { AIModeMark() }
+            ForEach(Self.parts(for: model, embedded: embedded), id: \.self) { part in view(for: part) }
         }
-        .frame(width: OnboardingView.width)
+        .padding(.bottom, embedded ? 14 : 0)
+        .frame(width: embedded ? nil : OnboardingView.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background(AIModeMark.background)
-        .environment(\.colorScheme, .dark)
+        .modifier(AIModeChrome(embedded: embedded))
+        .onChange(of: continueRequests) { _, _ in pressDone() }
         .onAppear {
             draftAddress = model.address
             focusKey()
@@ -82,21 +97,23 @@ struct AIModeScreen: View {
     @ViewBuilder private func view(for part: Part) -> some View {
         switch part {
         case .titleRow:
+            // Embedded, the step's header holds the title, so the switch has Settings' plain label.
+            let label = embedded ? AgentText.settingsAIMode : AgentText.aiTitle
             HStack(alignment: .center) {
-                Text(AgentText.aiTitle)
-                    .font(.system(size: 26, weight: .bold))
-                    .accessibilityAddTraits(.isHeader)
+                Text(label)
+                    .font(.system(size: embedded ? 13 : 26, weight: embedded ? .semibold : .bold))
+                    .accessibilityAddTraits(embedded ? [] : .isHeader)
                 Spacer(minLength: 12)
-                Toggle(AgentText.aiTitle, isOn: Binding(get: { model.isOn }, set: { model.setOn($0) }))
+                Toggle(label, isOn: Binding(get: { model.isOn }, set: { model.setOn($0) }))
                     .toggleStyle(.switch).labelsHidden()
-                    .accessibilityLabel(AgentText.aiTitle)
+                    .accessibilityLabel(label)
             }
-            .padding(.horizontal, 40).padding(.top, 8)
+            .padding(.horizontal, inset).padding(.top, embedded ? 14 : 8)
         case .sentence:
             Text(AgentText.aiSentence)
                 .font(.system(size: 13)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 40).padding(.top, 6).padding(.bottom, 8)
+                .padding(.horizontal, inset).padding(.top, 6).padding(.bottom, 8)
         case .provider:
             HStack(spacing: 10) {
                 Picker(AgentText.providerLabel, selection: Binding(get: { model.provider }, set: { model.choose($0) })) {
@@ -107,13 +124,13 @@ struct AIModeScreen: View {
                 .pickerStyle(.menu)
                 AIProviderHelp(model: model)
             }
-            .padding(.horizontal, 40).padding(.top, 12)
+            .padding(.horizontal, inset).padding(.top, 12)
         case .chatGPT:
             AIChatGPTSection(model: model)
-                .padding(.horizontal, 40).padding(.top, 12)
+                .padding(.horizontal, inset).padding(.top, 12)
         case .useChatGPT:
             AIUseChatGPTLink(model: model)
-                .padding(.horizontal, 40).padding(.top, 4)
+                .padding(.horizontal, inset).padding(.top, 4)
         case .address:
             VStack(alignment: .leading, spacing: 6) {
                 TextField(AgentText.addressLabel, text: $draftAddress)
@@ -121,7 +138,7 @@ struct AIModeScreen: View {
                     .onSubmit { model.setAddress(draftAddress) }
                 if let problem = model.addressProblem { AIModeLine(text: problem, isProblem: true) }
             }
-            .padding(.horizontal, 40).padding(.top, 12)
+            .padding(.horizontal, inset).padding(.top, 12)
         case .key:
             // A saved key is never drawn; the prompt says it is there, and a paste replaces it.
             SecureField(model.hasSavedKey ? AgentText.keySaved : AgentText.keyPlaceholder, text: $draftKey)
@@ -129,27 +146,27 @@ struct AIModeScreen: View {
                 .focused($keyFocused)
                 .onSubmit { model.enterKey(takeDraftKey() ?? "") }
                 .accessibilityLabel(AgentText.keyLabel)
-                .padding(.horizontal, 40).padding(.top, 12)
+                .padding(.horizontal, inset).padding(.top, 12)
         case .state:
             VStack(alignment: .leading, spacing: 4) { AIModeStateRow(model: model) }
-                .padding(.horizontal, 40).padding(.top, 8)
+                .padding(.horizontal, inset).padding(.top, 8)
         case .port:
             LabeledContent(AgentText.portLabel) {
                 TextField(AgentText.portLabel, text: $draftPort, prompt: Text(verbatim: model.port.map(String.init) ?? ""))
                     .textFieldStyle(.roundedBorder).frame(width: 90).labelsHidden()
                     .onSubmit { model.setPort(draftPort); draftPort = "" }
             }
-            .padding(.horizontal, 40).padding(.top, 8)
+            .padding(.horizontal, inset).padding(.top, 8)
         case .modelName:
             TextField(AgentText.modelPlaceholder, text: $draftModel)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { model.typeModel(draftModel) }
-                .padding(.horizontal, 40).padding(.top, 8)
+                .padding(.horizontal, inset).padding(.top, 8)
         case .consent:
             Text(verbatim: model.consentLine)
                 .font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 40).padding(.top, 12)
+                .padding(.horizontal, inset).padding(.top, 12)
         case .done:
             HStack {
                 Spacer()
@@ -193,6 +210,18 @@ struct AIModeScreen: View {
     private func focusKey() {
         guard model.isOn, model.showsKeyField else { return }
         DispatchQueue.main.async { keyFocused = true }
+    }
+}
+
+/// The AI mode screen's own look: dark, over the glow's background. Embedded in the onboarding, it takes the window's.
+private struct AIModeChrome: ViewModifier {
+    let embedded: Bool
+    func body(content: Content) -> some View {
+        if embedded {
+            content
+        } else {
+            content.background(AIModeMark.background).environment(\.colorScheme, .dark)
+        }
     }
 }
 

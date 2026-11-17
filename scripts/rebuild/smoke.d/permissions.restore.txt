@@ -3,10 +3,15 @@ onboarding-is closed
 fda-is denied
 viewer-is finder
 dock-is not-first
-# Nothing the first run set up outlives it, so the first launch's checklist opens again when asked, still with no move row
+# Nothing the first run set up outlives it, so the first launch's onboarding opens again when asked, at its welcome,
+# still with no move, and AI mode one of its steps
 setting-is onboardingCompleted false
+setup-progress none
 setup-first-launch
 onboarding-is setup
-setup-rows viewer,access
+setup-step welcome
+setup-rows none
+setup-steps welcome,access,viewer,ai,done
 onboarding close
 setting-is onboardingCompleted true
+setup-progress none

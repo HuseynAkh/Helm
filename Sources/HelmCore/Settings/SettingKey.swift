@@ -45,6 +45,10 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     /// The code signature's designated requirement of the build that last went through setup, or empty. Another build
     /// is new to macOS, which has forgotten its folder access and Full Disk Access, so setup comes first again.
     case setupBuild = "helm.setupBuild"
+    /// How far an onboarding that hasn't finished got: its step, its steps and what was done, as
+    /// "access:welcome,access,viewer,ai,done:asked", or empty. The next launch carries on there, as after macOS's
+    /// Quit & Reopen once Full Disk Access is switched on.
+    case setupProgress = "helm.setupProgress"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).
