@@ -181,6 +181,22 @@ final class AgentReadContentsTests: XCTestCase {
         XCTAssertFalse(notes.contains { $0.contains("r9 this_mac") })
     }
 
+    func testAScannedPDFSendsTheTextReadOnItsPage() async {
+        let reader = AgentRecordingContentReader { request in
+            request.name == "notes.txt"
+                ? AgentContentSummary(kind: .pdf, status: .read, pages: 1, foundText: ["HARBOUR PLUMBING", "Invoice 2026-117"])
+                : AgentContentSummary(kind: .pdf, status: .read, lines: ["Lease"], pages: 3)
+        }
+        let rig = await self.rig(reader: reader)
+        await rig.session.setReadsContents(permit)
+        _ = await AgentLoopKit.events(rig.session, "look")
+        let items = AgentLoopKit.array(contentsResult(rig), "items")
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(AgentLoopKit.array(items[1], "text_in_scan"), [.string("HARBOUR PLUMBING"), .string("Invoice 2026-117")])
+        XCTAssertEqual(AgentLoopKit.array(items[1], "first_lines"), [])
+        XCTAssertNil(AgentLoopKit.member(items[0], "text_in_scan"), "a PDF with text of its own has none")
+    }
+
     func testFilesThatArentDownloadedAreNeverOpened() async {
         let rig = await self.rig()
         rig.disk.markCloudOnly(home + "/b.png")
