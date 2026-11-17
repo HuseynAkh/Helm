@@ -42,7 +42,7 @@ Two more values can only be made by initializers that check what they are given.
 | `Providers/` | One adapter for each wire format, the model lists, the mapping from a provider's errors to `AgentFailure`, and the live client that joins an adapter to a transport |
 | `Runtime/` | `AgentRuntime`: whether AI mode is on, the chosen provider and model, and the one client. `AgentLiveParts` wires the live pieces |
 | `Scope/` | Which folders a request may use, and the handles that stand for items |
-| `Tools/` | `AgentToolCatalog` (the three tools and their schemas), `AgentToolCode`, and the code that runs a tool call |
+| `Tools/` | `AgentToolCatalog` (the three tools, `read_contents` while Read contents is on, and their schemas), `AgentToolCode`, and the code that runs a tool call |
 | `Loop/` | The conversation: the prompt, the note Helm writes about the folders, the turns of a request |
 | `Plan/` | Checking what a model proposed: names, places, and what must be left out |
 | `Suggest/` | The three suggestions, worked out from counts with no model asked |
@@ -53,9 +53,11 @@ Two more values can only be made by initializers that check what they are given.
 
 1. The person types. `AgentComposerIntent.parse` reads the text and nothing else: `/add` and a folder, `/clear`, a path or a file address alone, a server address alone, or a message. A message that holds a word shaped like a provider's key is never sent. A message may end in a path; every word that could start one is a candidate, leftmost first.
 2. The conversation (`AgentConversing`) sends the message to the model with the tools of `AgentToolCatalog`. A model names existing items by handles Helm issued (`r1`, `d7`, `f12`) and writes text only for new names. No tool takes a path or an address.
-3. `list_folder` and `find_items` answer with names and details. Nothing inside a file is ever sent. The only words a model gets when a tool goes wrong are the cases of `AgentToolCode`.
+3. `list_folder` and `find_items` answer with names and details. Nothing inside a file is read or sent, unless the person turned on Read contents for the thread (below). The only words a model gets when a tool goes wrong are the cases of `AgentToolCode`.
 4. `propose_changes` is decoded exactly (`AgentProposedChanges.decodeStrictly`) and checked into an `AgentChangePlan`. Helm builds everything on the plan's card from the checked steps: the title, the counts, the groups and the notes (`Contracts/AgentPlanShape.swift`). A group that removes something, or puts files where other people or other devices see them, carries a guard and starts unticked.
 5. Nothing changes until the person presses Apply. The conversation hands the plan over once, for its own id and ticks (`beginApply`), and HelmUI runs it through the operation engine, so Undo, the Trash and Keep Both all hold.
+
+Read contents is the person's switch beside the composer. On, the session holds their `AgentContentPermit`, the thread starts over, the model is also offered `read_contents`, and the prompt ends with `AgentPrompt.readContents`; a new thread starts with it off. `read_contents` checks each id as a plan's are and hands the plain files that are on this Mac to `AgentContentReading`, with the permit. The reader lives in HelmUI (`Contents/AgentContentReader.swift`), outside this module: it reads on this Mac with PDFKit, Vision and AVFoundation and answers short summaries, which go to the model escaped, with the home folder's path written as `~`, and marked as untrusted data. This module still names no way to open a file.
 
 A thread works in This Folder or Whole Mac (`AgentScopeMode`), and every new thread starts in This Folder. Whole Mac adds the home folder, iCloud Drive, each folder of the home's `Library/CloudStorage` and each disk the app reports mounted as roots of their own (`AgentScope.setMode`), each let in by `AgentScopeGate` as a folder the person names is: the allow list, no Library or other apps' data, dot names left out, links never followed, and Desktop, Documents and Downloads listed by name and never entered from the home folder. A disk is named for the model by its kind, the home folder as "Home", and the note marks it `home`. The request goes with `AgentPrompt.wholeMac`. Switching starts the thread over, as a change of provider does.
 

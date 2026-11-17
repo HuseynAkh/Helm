@@ -40,7 +40,7 @@ Helm shows the plan before anything happens: each group of changes, with a tick 
 
 ### Find with AI
 
-Turn on the spark in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched. The row under the header keeps the search to one kind if you pick one: Photo, Video, Document, Folder, Code, Audio or Archive.
+Turn on the spark in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched. The row under the header keeps the search to one kind if you pick one: Photo, Video, Document, Folder, Code, Audio or Archive. **Read contents** at the end of that row also looks inside photos and videos on your Mac, at what they show and the text in them, so "the photo of the receipt" finds it by the word on it: the result says "Text in image: “invoice”" or "Shows: dog, beach".
 
 <img src="docs/images/ai-search-dark.png" alt="AI search from Home for the invoices from this fall: the November, October and September invoice PDFs, newest first, and the status bar reading 3 matches, PDF, “invoice”, modified 15 Sep to 14 Nov">
 
@@ -49,6 +49,7 @@ Turn on the spark in the search field and describe the file. The model plans the
 - **AI mode** is a model that works on your files through Helm. It lists folders and proposes changes. Helm checks every change, and only Helm touches the disk.
 - **Bring your own model.** OpenAI with your ChatGPT plan: click **Continue with ChatGPT**, with no key to paste. Claude, Gemini and Grok with your key. Ollama and LM Studio on your Mac. Or any OpenAI-compatible API, by its https address.
 - **Only the folders you give it.** The folder on show, plus any you add: type `/add` and a folder, type or drop a path, or drop a folder on the panel. `/clear` starts over and forgets them.
+- **Read contents, when you ask.** The switch beside the composer lets AI mode read inside text files, PDFs, pictures and videos for that thread, so it can file a scan by what it says. Helm reads them on your Mac and hands the model short summaries, never the files. A new thread starts with it off.
 - **Remote and cloud folders.** iCloud Drive, Google Drive, Dropbox, OneDrive, servers and external disks work too. The folder's chip says where it is, and the plan says when changes will sync or reach other people. Helm never downloads files to do it.
 - **Nothing changes until you press Apply.** Changes run through Helm's own file operations, so conflicts keep both files, removals go to the Trash, and one Undo puts everything back.
 
@@ -73,8 +74,11 @@ AI mode is off until you turn it on. The AI Mode screen appears after setup, and
 
 Helm connects only to the AI provider you choose, and only while AI mode is on. AI mode is off until you turn it on.
 
-**What is sent.** Your requests, and the names and details of files (size, dates and kind). Never what's inside a file. The top of every thread says so, and each request says how many names it sent.
+**What is sent.** Your requests, and the names and details of files (size, dates and kind). Never what's inside a file, unless you turn on Read contents. The top of every thread says what it sends, and each request says how many names it sent.
 
+- **Read contents** is off until you turn it on, beside the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks: the first lines of text files and PDFs, and what a picture, or a few frames of a video, show and the text in them. The model gets those short summaries, never the files. With Ollama or LM Studio nothing leaves your Mac, and the thread's first line says "Reads file contents on this Mac; nothing leaves your Mac." With any other provider the summaries are sent to it, and the first line says "Sends your requests, file names and short summaries of file contents to" that provider. Each request then says how many summaries it sent. Text inside a file is handed over as quoted data, and instructions in it are never followed.
+- AI search with Read contents on never sends what it reads: it matches your words against what photos and videos show and the text in them, on your Mac, and keeps what it read only until the search closes.
+- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video. It reads 50 files a request at most, text and PDFs up to 20 MB.
 - AI search sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
 - A path you type in the middle of a message is sent as you typed it, your home folder's name included. A folder at the end of a message is added to the panel and sent only as an id.
 
@@ -99,7 +103,7 @@ The help pages open in your browser. Helm itself never connects to them.
 
 **Limits.**
 
-- **No downloads in cloud folders.** A file that isn't downloaded is left out of any change that needs its contents, and Helm says how many.
+- **No downloads in cloud folders.** A file that isn't downloaded is left out of any change that needs its contents, and isn't read by Read contents, and Helm says how many.
 - **Places with no Trash**, such as some servers: copies and new folders there can't be undone, and the plan says so before you press Apply.
 - **Small local models** can miss files in big folders. Many load a small context by default.
 - **A mirrored cloud folder with no shortcut reads as This Mac.** A sync app that keeps a plain folder in step and marks nothing, such as an older Dropbox, isn't recognized, so the plan won't say that changes sync.
@@ -123,7 +127,7 @@ What Helm keeps stays on your Mac, in `~/Library/Application Support/Helm`:
 
 Settings live in `~/Library/Preferences/com.helm.filemanager.dev.plist`. To remove everything, first click **Restore Finder** in Settings › General and turn off **Show next to Finder in the Dock** and **Open at login**. Click **Remove Key**, or **Remove** for a ChatGPT sign-in, in Settings › AI. Then quit Helm and delete that file and the folder above.
 
-Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network code appears outside AI mode's one transport file, if a socket appears outside the one file that listens on `127.0.0.1` for a ChatGPT sign-in, if a web address appears that isn't one of the providers', OpenAI's sign-in host or the listed help pages, or if tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls (it may listen, never connect a socket), web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking, so any try at it fails the run, and one run turns AI mode on with the shipped code to prove the block bites.
+Checks keep it this way. `scripts/privacy_check.py` reads the source and fails if network code appears outside AI mode's one transport file, if a socket appears outside the one file that listens on `127.0.0.1` for a ChatGPT sign-in, if a web address appears that isn't one of the providers', OpenAI's sign-in host or the listed help pages, if anything but one file looks inside files with PDFKit, Vision or AVFoundation, if anything but Read contents' two switches can turn reading on, if AI mode's own module could open a file, or if tracking or identifier code appears; the release script and workflow run it before they build. Every release then passes `scripts/release/check_binary_privacy.sh`, which checks the built app's libraries, its network and identifier calls (it may listen, never connect a socket), web addresses, paths from the build machine, Info.plist and signature. Smoke runs block Helm's networking, so any try at it fails the run, and one run turns AI mode on with the shipped code to prove the block bites.
 
 ## Install
 
