@@ -132,6 +132,8 @@ public enum AgentText {
     }
     public static func markGoesTo(_ place: String) -> String { "Goes to \(shown(place))" }
     public static func markLeaves(_ place: String) -> String { "Leaves \(shown(place))" }
+    /// The mark on a group of new files that are code or web pages.
+    public static let markCode = "Code: check it before you apply it"
     /// How many items a folder holds. A folder's items are counted up to `AgentLimits.holdsCap`, and a count that
     /// reached it is written with a plus.
     public static func rowHolds(_ count: Int) -> String {

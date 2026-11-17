@@ -106,6 +106,42 @@ final class AgentNewFilePlanTests: XCTestCase {
         XCTAssertEqual(plan.cardNotes, [.notAllowed(8)])
     }
 
+    func testWindowsScriptsBuildFilesAndDeviceNamesAreLeftOut() async {
+        let plan = await checked(Kit.proposal(newFiles: [
+            ("r1", "run.bat", "echo"), ("r1", "app.js", "x"), ("r1", "setup.ps1", "x"), ("r1", "page.hta", "x"),
+            ("r1", "package.json", "{}"), ("r1", "conftest.py", "x"), ("r1", "vite.config.ts", "x"),
+            ("r1", "docker-compose.yml", "x"), ("r1", "desktop.ini", "x"), ("r1", "CON.txt", "x"), ("r1", "lpt1.md", "x"),
+            ("r1", "notes.md", "ok")]))
+        XCTAssertEqual(Kit.names(plan), ["file notes.md"])
+        XCTAssertEqual(plan.leftOut, [.name_not_allowed: 11])
+        XCTAssertEqual(plan.cardNotes, [.notAllowed(11)])
+    }
+
+    // MARK: Code
+
+    func testCodeAndWebPagesStartUntickedInAGroupOfTheirOwn() async {
+        let plan = await checked(Kit.proposal(newFiles: [
+            ("r1", "notes.md", "# Notes"), ("r1", "index.html", "<p>Hi</p>"), ("r1", "Budget.csv", "a,b"),
+            ("r1", "tidy.py", "print(1)")]))
+        XCTAssertEqual(Kit.names(plan), ["file notes.md", "file index.html", "file Budget.csv", "file tidy.py"])
+        XCTAssertEqual(plan.groups, [
+            AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Work", isNew: false), steps: [0, 2]),
+            AgentPlanGroup(id: 2, kind: .newFiles(toLabel: "Work", isNew: false), steps: [1, 3], guardedBy: .code)
+        ])
+        XCTAssertEqual(plan.defaultTicked, [1], "the documents start ticked, the code doesn't")
+        XCTAssertEqual(plan.counts(ticked: plan.defaultTicked), AgentPlanCounts(newFiles: 2))
+        XCTAssertEqual(plan.title, .create(4))
+        // A new folder that code goes into first starts unticked with it, and still counts for the documents in it.
+        let site = await checked(Kit.proposal(newFolders: [("n1", "r1", "Site")],
+                                              newFiles: [("n1", "index.html", "<p>Hi</p>"), ("n1", "Read Me.txt", "Open it")]))
+        XCTAssertEqual(site.groups.map(\.guardedBy), [.code, nil])
+        XCTAssertEqual(site.groups.map(\.steps), [[0, 1], [2]])
+        XCTAssertEqual(site.counts(ticked: site.defaultTicked), AgentPlanCounts(newFiles: 1, newFolders: 1))
+        // Code is checked again before Apply as it was the first time.
+        let again = await AgentPlanValidator().recheck(plan, ticked: [1, 2], scope: scope, disk: disk)
+        XCTAssertEqual(again, .ok)
+    }
+
     func testANameAlreadyTakenKeepsBoth() async {
         let trip = await h("Trip")
         let plan = await checked(Kit.proposal(newFolders: [("n1", "r1", "Notes")], newFiles: [
@@ -169,7 +205,14 @@ final class AgentNewFilePlanTests: XCTestCase {
             let verdict = await validate(Kit.proposal(newFiles: [("r1", "bad.txt", text)]))
             XCTAssertEqual(refusal(verdict), .bad_arguments, text.debugDescription)
         }
-        let fine = "Tab\there\r\nNew page\u{0C}é 🎒 \u{202E}quoted"
+        // Nor the second set of control characters, nor a character that changes the reading order.
+        for text in ["next\u{85}line", "\u{9B}31m", "\u{80}", "\u{9F}", "\u{202A}a", "\u{202B}a", "\u{202C}", "\u{202D}a",
+                     "\u{202E}quoted", "\u{2066}a\u{2069}", "\u{2067}a", "\u{2068}a"] {
+            let verdict = await validate(Kit.proposal(newFiles: [("r1", "bad.txt", text)]))
+            XCTAssertEqual(refusal(verdict), .bad_arguments, text.debugDescription)
+        }
+        // The joiners emoji are written with stay, as do a no-break space and the letters around the set.
+        let fine = "Tab\there\r\nNew page\u{0C}é 🎒 👩\u{200D}👩\u{200D}👧 ❤\u{FE0F} a\u{200D}b \u{A0}\u{7E}\u{A1}\u{2065}\u{206A}"
         let plan = await checked(Kit.proposal(newFiles: [("r1", "fine.txt", fine)]))
         guard case .newFile(_, _, let text)? = plan.steps.first else { return XCTFail("\(plan.steps)") }
         XCTAssertEqual(text, fine)
@@ -177,7 +220,7 @@ final class AgentNewFilePlanTests: XCTestCase {
 
     // MARK: Places
 
-    func testThePlaceRulesHoldAsForNewFolders() async {
+    func testThePlaceRulesHoldAsForNewFoldersAndANewFileArrivesWhereOthersSeeIt() async {
         let share = "/Volumes/nas/Team", viewOnly = "/Volumes/ro/Docs", documents = "/home/helm/Documents"
         disk.addFolder(share)
         disk.addFolder(viewOnly)
@@ -192,13 +235,26 @@ final class AgentNewFilePlanTests: XCTestCase {
         let onShare = await checked(Kit.proposal(newFiles: [(team.alias, "minutes.md", "Agenda")]))
         XCTAssertEqual(Kit.names(onShare), ["file minutes.md"])
         XCTAssertEqual(onShare.cardNotes, [.cantUndo(place: "Team"), .shared(place: "Team")])
+        XCTAssertEqual(onShare.groups.map(\.guardedBy), [.arrives], "a new file on a server starts unticked, as a copy there does")
+        XCTAssertEqual(onShare.groups.map(\.place), ["Server"])
+        XCTAssertEqual(onShare.defaultTicked, [])
         let viewed = await checked(Kit.proposal(newFiles: [(docs.alias, "notes.txt", "x")]))
         XCTAssertTrue(viewed.steps.isEmpty)
         XCTAssertEqual(viewed.leftOut, [.read_only: 1])
         XCTAssertEqual(viewed.cardNotes, [.readOnly(place: "Docs")])
-        let synced = await checked(Kit.proposal(newFiles: [(cloud.alias, "list.txt", "x")]))
+        let synced = await checked(Kit.proposal(newFolders: [("n1", cloud.alias, "Lists")],
+                                                newFiles: [(cloud.alias, "list.txt", "x"), ("n1", "Day 1.md", "y")]))
         XCTAssertEqual(synced.cardNotes, [.syncs])
-        XCTAssertNil(synced.groups.first?.guardedBy, "a new file in iCloud Drive starts ticked, as a new folder does")
+        XCTAssertEqual(synced.groups.map(\.guardedBy), [.arrives, .arrives], "new files in iCloud Drive start unticked")
+        XCTAssertEqual(synced.groups.map(\.place), ["iCloud Drive", "iCloud Drive"])
+        XCTAssertEqual(synced.groups.map(\.steps), [[0, 2], [1]], "the new folder goes with the file made in it")
+        XCTAssertEqual(synced.defaultTicked, [])
+        // Code there arrives too: the place comes first, and its mark names it.
+        let code = await checked(Kit.proposal(newFiles: [(cloud.alias, "tidy.py", "x")]))
+        XCTAssertEqual(code.groups.map(\.guardedBy), [.arrives])
+        // An empty new folder there is still ticked: nothing in it comes from outside.
+        let folder = await checked(Kit.proposal(newFolders: [("n1", cloud.alias, "Empty")]))
+        XCTAssertEqual(folder.groups.map(\.guardedBy), [nil])
     }
 
     // MARK: Before Apply

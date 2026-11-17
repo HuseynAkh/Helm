@@ -49,7 +49,7 @@ final class AgentPlanShapeTests: XCTestCase {
             XCTAssertFalse(group.startsOn, guardedBy.rawValue)
             XCTAssertFalse(self.plan(steps: [.trash(item("x"))], groups: [group]).defaultTicked.contains(9))
         }
-        XCTAssertEqual(AgentPlanGuard.allCases, [.trash, .leaves, .arrives, .reachesOthers])
+        XCTAssertEqual(AgentPlanGuard.allCases, [.trash, .leaves, .arrives, .reachesOthers, .code])
         XCTAssertEqual(self.plan(steps: [], groups: []).defaultTicked, [])
     }
 

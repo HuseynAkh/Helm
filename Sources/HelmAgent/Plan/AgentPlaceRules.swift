@@ -7,7 +7,7 @@ import HelmCore
 ///
 /// A step is left out when it can't be done safely there (a place that can only be viewed, a Trash that isn't
 /// there, the bytes of a file that isn't downloaded). Otherwise its group may start unticked, with a mark saying
-/// why: it goes to the Trash, it leaves a place others see, or it arrives in one.
+/// why: it goes to the Trash, it leaves a place others see, or it arrives in one, as a copy or a new file does.
 public enum AgentPlaceRules {
     public struct Ruling: Equatable, Sendable {
         /// Why the step is left out of the plan. Nil when it stays.
@@ -42,7 +42,10 @@ public enum AgentPlaceRules {
         switch step {
         case .newFolder, .newFile:
             if target.isReadOnly { return viewOnly(targetName) }
-            return Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
+            var ruling = Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
+            // A new file's text comes from outside every place, so it arrives as a copy from this Mac would.
+            if case .newFile = step, arrives(from: nil, in: target) { ruling.guardedBy = .arrives; ruling.place = target.name }
+            return ruling
 
         case .rename:
             if source.isReadOnly { return viewOnly(sourceName) }
@@ -134,9 +137,10 @@ public enum AgentPlaceRules {
         Ruling(leftOut: .read_only, notices: [.readOnly(place: name)])
     }
 
-    /// Something put into `target` from another place that other devices or other people see.
-    private static func arrives(from source: StorageFacts, in target: StorageFacts) -> Bool {
-        target.placeKey != source.placeKey && target.isSeenElsewhere
+    /// Something put into `target` from another place that other devices or other people see. A new file's text
+    /// comes from no place.
+    private static func arrives(from source: StorageFacts?, in target: StorageFacts) -> Bool {
+        target.placeKey != source?.placeKey && target.isSeenElsewhere
     }
 
     /// What a change in this place reaches: everyone who uses it when sharing is known, the person's devices and

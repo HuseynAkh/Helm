@@ -43,7 +43,9 @@ public enum AgentToolCatalog {
         name: "propose_changes",
         description: "Show the person one plan of changes. Nothing changes until they press Apply. Use ids from listings. "
             + "Each item may appear once. A renamed file keeps its extension. A new file holds the whole text you write: "
-            + "plain text, Markdown, CSV, JSON, HTML or code, or .rtf and .docx, which Helm makes from the text.",
+            + "plain text, Markdown, CSV, JSON, HTML or code, or .rtf and .docx, which Helm makes from the text. HTML and "
+            + "code start unticked for the person to check; .js, Windows scripts and build files such as package.json "
+            + "are refused.",
         schema: record(required: ["new_folders", "new_files", "moves", "copies", "renames", "trash"], [
             "new_folders": list(of: record(required: ["key", "parent", "name"], [
                 "key": text("n1, n2, and so on."),

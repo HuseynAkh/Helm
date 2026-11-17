@@ -814,15 +814,54 @@ import HelmCore
         XCTAssertEqual(groups[0].rows.map(\.name), ["Trip", "Packing List.txt", "Budget.csv"])
         XCTAssertEqual(groups[0].rows.map(\.tags), [[AgentText.tagNew], ["17 bytes"], ["1.5 KB", AgentText.tagKeepsBoth]])
         XCTAssertEqual(groups[0].rows.map { $0.destination?.whole }, ["~/Downloads", "~/Downloads/Trip", "~/Downloads/Trip"])
-        // A name is drawn escaped, and nothing the file holds is on the card.
+        // A name is drawn escaped, and what a file holds is only in its row's tooltip, never in the card's lines.
         XCTAssertEqual(groups[1].rows.map(\.name), ["Letter\\u{202E}fdp.docx"])
         XCTAssertFalse(card.textLines.joined().contains("Dear Sam"))
         XCTAssertFalse(groups.flatMap(\.rows).contains { $0.name.contains("Passport") || $0.detail.contains("Passport") })
+        XCTAssertEqual(groups[0].rows.map(\.tooltip), [nil, "Passport\nCharger", String(repeating: "x", count: 600) + "\n\u{2026}"])
+        XCTAssertEqual(groups[1].rows.map(\.tooltip), ["Dear Sam"])
 
         let one = AgentPlanCard(plan: AgentChangePlan(title: .create(1), steps: [creationPlan().steps[3]],
                                                       groups: [AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [0])],
                                                       notices: [], leftOut: [:]), roots: [])
         XCTAssertEqual(one.shownCountsLine, "", "1 new file under Create 1 File says nothing new")
+    }
+
+    func testANewFilesTooltipIsItsFirstLinesEscaped() {
+        XCTAssertEqual(AgentPlanCard.previewLines, 12)
+        XCTAssertEqual(AgentPlanCard.previewCharacters, 600)
+        XCTAssertNil(AgentPlanCard.preview(of: ""))
+        XCTAssertEqual(AgentPlanCard.preview(of: "One\nTwo\n"), "One\nTwo", "a last line break adds no line")
+        XCTAssertEqual(AgentPlanCard.preview(of: "One\r\nTwo"), "One\nTwo")
+        // Twelve lines at most, then a line that says there is more.
+        let lines = (1...13).map { "Line \($0)" }
+        XCTAssertEqual(AgentPlanCard.preview(of: lines.joined(separator: "\n")), (lines.prefix(12) + ["\u{2026}"]).joined(separator: "\n"))
+        XCTAssertEqual(AgentPlanCard.preview(of: lines.prefix(12).joined(separator: "\n") + "\n"), lines.prefix(12).joined(separator: "\n"))
+        // Six hundred characters at most, counted as a plan counts them.
+        let wide = String(repeating: "🎒", count: 601)
+        XCTAssertEqual(AgentPlanCard.preview(of: wide), String(repeating: "🎒", count: 600) + "\n\u{2026}")
+        XCTAssertEqual(AgentPlanCard.preview(of: String(repeating: "a", count: 600)), String(repeating: "a", count: 600))
+        // Hidden characters show as escapes, emoji keep their joiners, and links and Markdown stay as they were typed.
+        XCTAssertEqual(AgentPlanCard.preview(of: "a\u{200B}b\u{202E}c\td\re"), "a\\u{200B}b\\u{202E}c\\u{9}d\\u{D}e")
+        XCTAssertEqual(AgentPlanCard.preview(of: "👩\u{200D}👩\u{200D}👧 [Done](https://example.test) **bold**"),
+                       "👩\u{200D}👩\u{200D}👧 [Done](https://example.test) **bold**")
+    }
+
+    func testAGroupOfNewCodeStartsUntickedWithItsMark() {
+        let root = item(downloads, kind: .directory, handle: "r1")
+        let plan = AgentChangePlan(title: .create(2), steps: [
+            .newFile(parent: .existing(root), name: name("notes.md"), text: "# Notes"),
+            .newFile(parent: .existing(root), name: name("index.html"), text: "<p>Hi</p>")
+        ], groups: [
+            AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [0]),
+            AgentPlanGroup(id: 2, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [1], guardedBy: .code)
+        ], notices: [], leftOut: [:])
+        let card = AgentPlanCard(plan: plan, roots: [], home: "/home/helm")
+        XCTAssertEqual(card.groupRows.map(\.isOn), [true, false])
+        XCTAssertEqual(card.groupRows.map(\.mark), [nil, AgentText.markCode])
+        XCTAssertEqual(card.groupRows.map(\.isOpen), [false, true], "the code's rows are in view, with their tooltips")
+        XCTAssertEqual(card.groupRows[1].rows.map(\.tooltip), ["<p>Hi</p>"])
+        XCTAssertEqual(card.countsLine, "1 new file")
     }
 
     func testAPlanThatMakesFilesSaysSo() async {

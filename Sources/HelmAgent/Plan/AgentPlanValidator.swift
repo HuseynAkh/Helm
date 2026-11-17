@@ -238,12 +238,14 @@ final class AgentPlanIntake {
     }
 
     /// Whether a new file's text is plain text: no NUL and no other control character but tab, line feed, form feed
-    /// and carriage return, and no replacement character, which is what text that wasn't valid became on its way in.
+    /// and carriage return, none of the second set of control characters (U+0080 to U+009F), none of the characters
+    /// that change the reading order of what follows them (U+202A to U+202E, U+2066 to U+2069), and no replacement
+    /// character, which is what text that wasn't valid became on its way in. The joiners emoji are written with stay.
     static func isPlainText(_ text: String) -> Bool {
         !text.unicodeScalars.contains { scalar in
             switch scalar.value {
             case 0x09, 0x0A, 0x0C, 0x0D: return false
-            case 0x00...0x1F, 0x7F, 0xFFFD: return true
+            case 0x00...0x1F, 0x7F...0x9F, 0x202A...0x202E, 0x2066...0x2069, 0xFFFD: return true
             default: return false
             }
         }
