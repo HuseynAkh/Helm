@@ -10,6 +10,7 @@ public enum SettingsSchema {
         case .newWindowLocation: return .string("current") // Where the front window is, as before.
         case .setupCarriedRows: return .string("") // Nothing to carry on with.
         case .setupBuild: return .string("") // No build has been through setup.
+        case .setupProgress: return .string("") // No onboarding under way.
         case .agentPanelWidth: return .double(340) // Points, as the panel opens the first time.
         case .gridIconSize: return .double(96)
         case .fileTextSize: return .double(14)
@@ -49,6 +50,10 @@ public enum SettingsSchema {
         case (.string, .string(let text)):
             // Row names in lower case, separated by commas.
             if key == .setupCarriedRows { return text.allSatisfy { $0 == "," || ("a"..."z").contains($0) } ? value : fallback }
+            // Step names in lower case, separated by commas and colons, and short.
+            if key == .setupProgress {
+                return text.count <= 200 && text.allSatisfy({ $0 == "," || $0 == ":" || ("a"..."z").contains($0) }) ? value : fallback
+            }
             // A code requirement in its text form: printable ASCII on one line, and never very long.
             if key == .setupBuild {
                 return text.utf8.count <= 2_048 && text.unicodeScalars.allSatisfy({ (32...126).contains($0.value) }) ? value : fallback

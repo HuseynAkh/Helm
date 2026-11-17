@@ -10,7 +10,8 @@ extension AppController {
         guard let model = aiSetupModel() else { return }
         access.showAIMode(model, from: window)
     }
-    /// Once at launch for someone who hasn't seen the AI mode screen. Never by itself in a fixture run.
+    /// Once at launch, after the first window, for someone who set Helm up before AI mode and got no onboarding now.
+    /// Everyone else meets AI mode as a step of the onboarding. Never by itself in a fixture run.
     func showAIIntroIfNeeded() {
         access.showAIIntroIfNeeded { [weak self] in self?.aiSetupModel() }
     }

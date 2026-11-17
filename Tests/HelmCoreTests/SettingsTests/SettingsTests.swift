@@ -8,8 +8,8 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 34)
-        XCTAssertEqual(SettingKey.allCases.count, 34)
+        XCTAssertEqual(snapshot.values.count, 35)
+        XCTAssertEqual(SettingKey.allCases.count, 35)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -60,6 +60,18 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(SettingsSchema.validated(.string("two\nlines"), for: .setupBuild), .string(""))
         XCTAssertEqual(SettingsSchema.validated(.string(String(repeating: "a", count: 2_049)), for: .setupBuild), .string(""))
         XCTAssertEqual(SettingsSchema.validated(.bool(true), for: .setupBuild), .string(""))
+    }
+    /// No onboarding is under way at first. How far one got is kept as step names, commas and colons, and nothing else.
+    func testTheSetupProgressKeepsStepNamesOnly() {
+        XCTAssertEqual(SettingsSnapshot().string(.setupProgress), "")
+        XCTAssertEqual(SettingKey.setupProgress.rawValue, "helm.setupProgress")
+        let saved = "access:welcome,access,viewer,ai,done:asked,moved"
+        XCTAssertEqual(SettingsSchema.validated(.string(saved), for: .setupProgress), .string(saved))
+        XCTAssertEqual(SettingsSchema.validated(.string("access; rm -rf"), for: .setupProgress), .string(""))
+        XCTAssertEqual(SettingsSchema.validated(.string("Access:welcome"), for: .setupProgress), .string(""))
+        XCTAssertEqual(SettingsSchema.validated(.string(String(repeating: "a", count: 201)), for: .setupProgress), .string(""))
+        XCTAssertEqual(SettingsSchema.validated(.bool(true), for: .setupProgress), .string(""))
+        XCTAssertTrue(SettingsSchema.appliesLive(.setupProgress))
     }
     /// AI mode is off until the person turns it on, and its screen hasn't been shown. Both take effect at once.
     func testAIModeKeysAreOffAndApplyLive() {
