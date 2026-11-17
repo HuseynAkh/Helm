@@ -49,12 +49,17 @@ public struct AISearchSession: Sendable {
     /// What to look for. Every query is clamped to the request (`AISearchQuery.clamped`), a query left with nothing
     /// to look for is dropped, and at most six are kept. When none is left, the plan is one name search for the
     /// request's own words, so a model that answers nothing useful still leaves a search to run.
-    public func plan(request: String, scopeLabel: String, today: Date, languageCode: String) async throws -> AISearchPlan {
+    ///
+    /// `kind` is the one the person chose in the kind row. The model is told it, and every query it answers is then
+    /// kept to it (`AISearchPlan.limited(to:)`), so no answer can widen the search to another kind. It is applied
+    /// after the empty queries are dropped, so a query that asked for nothing never becomes "every photo".
+    public func plan(request: String, scopeLabel: String, today: Date, languageCode: String,
+                     kind: AISearchKind? = nil) async throws -> AISearchPlan {
         let request = Self.trimmed(request)
         let ask = AgentStructuredAsk(
             system: AISearchPrompt.planSystem,
             user: AISearchPrompt.planUser(request: request, scopeLabel: scopeLabel, today: today, languageCode: languageCode,
-                                          calendar: calendar),
+                                          kind: kind, calendar: calendar),
             schemaName: AISearchSchemas.planName, schema: AISearchSchemas.plan)
         let reply = try await answer(to: ask)
         let raw = try AISearchSchemas.plan(from: reply, calendar: calendar)
@@ -64,7 +69,8 @@ public struct AISearchSession: Sendable {
             if queries.count == Self.maxQueries { break }
         }
         if queries.isEmpty { queries = [Self.ownWords(of: request)].filter { !Self.isEmpty($0) } }
-        return AISearchPlan(sort: raw.sort, queries: queries)
+        let plan = AISearchPlan(sort: raw.sort, queries: queries)
+        return kind.map { plan.limited(to: $0) } ?? plan
     }
 
     /// The rows that fit best, best first. A row that wasn't sent, or was already named, is dropped, and at most

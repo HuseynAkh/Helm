@@ -1,4 +1,5 @@
 import XCTest
+import HelmCore
 @testable import HelmAgent
 
 /// Every sentence AI mode shows, pinned word for word: curly quotes, the one-character ellipsis, the singular for
@@ -144,6 +145,22 @@ final class AgentTextTests: XCTestCase {
         ("searchFailed", AgentText.searchFailed, "AI search isn't available."),
         ("searchOnThisMac", AgentText.searchOnThisMac, "Searched what's on this Mac."),
         ("searchNamesOnly", AgentText.searchNamesOnly, "Names only here."),
+        ("searchKindRow", AgentText.searchKindRow, "File type"),
+        ("searchKindAny", AgentText.searchKindAny, "Any"),
+        ("searchKind(image)", AgentText.searchKind(.image), "Photo"),
+        ("searchKind(video)", AgentText.searchKind(.video), "Video"),
+        ("searchKind(document)", AgentText.searchKind(.document), "Document"),
+        ("searchKind(folder)", AgentText.searchKind(.folder), "Folder"),
+        ("searchKind(code)", AgentText.searchKind(.code), "Code"),
+        ("searchKind(audio)", AgentText.searchKind(.audio), "Audio"),
+        ("searchKind(archive)", AgentText.searchKind(.archive), "Archive"),
+        ("searchKindShown(image)", AgentText.searchKindShown(.image), "Photos"),
+        ("searchKindShown(video)", AgentText.searchKindShown(.video), "Videos"),
+        ("searchKindShown(document)", AgentText.searchKindShown(.document), "Documents"),
+        ("searchKindShown(folder)", AgentText.searchKindShown(.folder), "Folders"),
+        ("searchKindShown(code)", AgentText.searchKindShown(.code), "Code"),
+        ("searchKindShown(audio)", AgentText.searchKindShown(.audio), "Audio"),
+        ("searchKindShown(archive)", AgentText.searchKindShown(.archive), "Archives"),
         ("aiTitle", AgentText.aiTitle, "AI Mode"),
         ("aiSentence", AgentText.aiSentence, "Ask Helm to organize, move and find files for you."),
         ("consent", AgentText.consent("Claude"), "Sends your requests and file names to Claude, never file contents."),
@@ -213,8 +230,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 189)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 189, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 205)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 205, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
@@ -356,5 +373,21 @@ final class AgentTextTests: XCTestCase {
         XCTAssertEqual(AgentText.providerHelp(.openAI, usesChatGPT: true), AgentText.helpChatGPT)
         XCTAssertEqual(AgentText.providerHelp(.openAI, usesChatGPT: false), AgentText.helpOpenAIKey)
         XCTAssertEqual(AgentText.providerHelp(.claude, usesChatGPT: true), AgentText.helpClaude, "only OpenAI has a sign-in")
+    }
+
+    /// The kind row's words are one or two words each, and every kind the row offers has a word to choose it by and
+    /// one for the status bar's line, each its own.
+    func testTheKindRowsWordsAreShortAndEachItsOwn() {
+        let words = [AgentText.searchKindRow, AgentText.searchKindAny] + AISearchKind.searchChoices.map(AgentText.searchKind)
+            + AISearchKind.searchChoices.map(AgentText.searchKindShown)
+        for word in words {
+            XCTAssertTrue((1...2).contains(word.split(separator: " ").count), word)
+            XCTAssertFalse(word.hasSuffix("."), word)
+        }
+        let choices = [AgentText.searchKindAny] + AISearchKind.searchChoices.map(AgentText.searchKind)
+        XCTAssertEqual(choices, ["Any", "Photo", "Video", "Document", "Folder", "Code", "Audio", "Archive"])
+        XCTAssertEqual(Set(choices).count, choices.count)
+        XCTAssertEqual(Set(AISearchKind.allCases.map(AgentText.searchKind)).count, AISearchKind.allCases.count, "every kind has a word")
+        XCTAssertEqual(Set(AISearchKind.allCases.map(AgentText.searchKindShown)).count, AISearchKind.allCases.count)
     }
 }

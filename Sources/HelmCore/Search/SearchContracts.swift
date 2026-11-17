@@ -16,13 +16,16 @@ public struct SearchQuery: Sendable, Equatable {
     public var includesContents: Bool
     /// The person asked a model to help with this search. The words are still their own.
     public var usesAI: Bool
+    /// Only items of this kind, as the AI search's kind row chose it, or of a kind it covers (`AISearchKind.covers`).
+    /// Nil for any kind, as every search is while the row isn't on show.
+    public var kind: AISearchKind?
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
                 lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false,
-                usesAI: Bool = false) {
+                usesAI: Bool = false, kind: AISearchKind? = nil) {
         self.text = text; self.scope = scope; self.bookmarkPaths = bookmarkPaths
         self.homeDirectory = homeDirectory; self.lastDirectory = lastDirectory
         self.showHidden = showHidden; self.limit = limit; self.filters = filters
-        self.includesContents = includesContents; self.usesAI = usesAI
+        self.includesContents = includesContents; self.usesAI = usesAI; self.kind = kind
     }
 }
 /// Ranked metadata preserves search ordering (F-044); smaller ordinal ranks indicate stronger matches.
