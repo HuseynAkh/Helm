@@ -30,8 +30,8 @@ import HelmCore
     private var shimmerStart = Date()
     /// One full turn of the gradient, in seconds: slow enough to read as a glow rather than a spinner.
     static let shimmerPeriod: TimeInterval = 3
-    /// The spark's side. Its points stop short of the square, so at 18 its ink is about 15 points, the same as the
-    /// header's 15-point symbols beside it.
+    /// The mark's side. Its ink sits a little in from the square, so at 18 it's about 15.5 points across, the size of
+    /// the header's 15-point symbols beside it.
     static let markSize: CGFloat = 18
     /// Tests set this to stand in for the system's Increase Contrast setting.
     static var increasesContrastForTesting: Bool?
