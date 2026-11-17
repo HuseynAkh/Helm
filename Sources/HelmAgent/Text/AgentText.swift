@@ -219,7 +219,7 @@ public enum AgentText {
     }
     /// The status bar's hint while the search's Read contents switch is on too.
     public static func searchHintContents(_ destination: String) -> String {
-        "Return sends your words and matching file names to \(shown(destination)); what Helm reads inside files stays on this Mac."
+        "Return sends your words, file names and the contents of files the model looks at to \(shown(destination))."
     }
     /// The part of the status bar's line that counts pictures and videos left unread because they aren't downloaded.
     public static func searchNotDownloaded(_ count: Int) -> String { "\(number(count)) not downloaded" }

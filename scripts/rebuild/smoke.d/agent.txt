@@ -456,7 +456,7 @@ search-kinds-shown true
 search-contents-is off
 search-contents on
 search-contents-is on
-search-status-reads what Helm reads inside files stays on this Mac
+search-status-reads the contents of files the model looks at to Claude
 search invoice
 search-return
 has receipt-photo.png
