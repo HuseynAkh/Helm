@@ -145,6 +145,7 @@ final class AgentTextTests: XCTestCase {
         ("searchFailed", AgentText.searchFailed, "AI search isn't available."),
         ("searchOnThisMac", AgentText.searchOnThisMac, "Searched what's on this Mac."),
         ("searchNamesOnly", AgentText.searchNamesOnly, "Names only here."),
+        ("searchLookedAt", AgentText.searchLookedAt(48), "Looked at 48"),
         ("searchKindRow", AgentText.searchKindRow, "File type"),
         ("searchKindAny", AgentText.searchKindAny, "Any"),
         ("searchKind(image)", AgentText.searchKind(.image), "Photo"),

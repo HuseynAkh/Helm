@@ -223,6 +223,8 @@ public enum AgentText {
     }
     /// The part of the status bar's line that counts pictures and videos left unread because they aren't downloaded.
     public static func searchNotDownloaded(_ count: Int) -> String { "\(number(count)) not downloaded" }
+    /// The part of the status bar's line that counts the files the model looked inside, with Read contents on.
+    public static func searchLookedAt(_ count: Int) -> String { "Looked at \(number(count))" }
     public static let searchThinking = "Thinking…"
     public static let searchFailed = "AI search isn't available."
     public static let searchOnThisMac = "Searched what's on this Mac."

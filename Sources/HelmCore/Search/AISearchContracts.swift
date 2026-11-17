@@ -272,15 +272,20 @@ public struct AISearchPlan: Hashable, Sendable {
 /// What about a result matched. A model answers with these codes only; the words shown come from Helm.
 public enum SearchReasonCode: String, Sendable, CaseIterable { case name, content, kind, date, folder, size }
 
-/// What Read contents found in a picture or a video that answered every word a search looks for inside files: the
-/// words found in the text it holds, and the things it shows that answered a word, in the classifier's own words.
+/// What Read contents found in a file that answered a search. Read on this Mac, a picture or a video that answered
+/// every word a search looks for inside files: the words found in the text it holds, and the things it shows that
+/// answered a word, in the classifier's own words. Looked at by a model, a file it said fits, with the short phrase
+/// it gave of what the file shows or says.
 public struct AISearchSighting: Hashable, Sendable {
-    public enum Medium: String, Sendable { case image, video }
+    public enum Medium: String, Sendable { case image, video, document }
     public let medium: Medium
     public let textWords: [String]
     public let labels: [String]
-    public init(medium: Medium, textWords: [String], labels: [String]) {
-        self.medium = medium; self.textWords = textWords; self.labels = labels
+    /// What a model that looked at the file said it shows or says: plain text of 80 characters at most, as
+    /// `AISearchSession` cleaned it. Nil for what was read on this Mac alone.
+    public let seen: String?
+    public init(medium: Medium, textWords: [String], labels: [String], seen: String? = nil) {
+        self.medium = medium; self.textWords = textWords; self.labels = labels; self.seen = seen
     }
 }
 
