@@ -308,9 +308,9 @@ class ShellTests(unittest.TestCase):
         # since recognizing it needs a question macOS asks the person, so it stays off the list.
         apple = ['/usr/lib/libSystem.B.dylib', '/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation']
         reading = ['/System/Library/Frameworks/%s.framework/Versions/A/%s' % (name, name)
-                   for name in ('AVFoundation', 'CoreMedia', 'PDFKit', 'Vision')]
+                   for name in ('AVFoundation', 'PDFKit', 'Vision')]
         speech = '/System/Library/Frameworks/Speech.framework/Versions/A/Speech'
-        for libraries, line in ((apple + reading, 'ok   linked libraries: 6, all on the list'),
+        for libraries, line in ((apple + reading, 'ok   linked libraries: 5, all on the list'),
                                 (apple + reading + [speech], f"FAIL linked libraries that aren't on the list: {speech}")):
             with self.subTest(libraries[-1]), tempfile.TemporaryDirectory() as directory:
                 result = binary_check(stand_in_app(directory), tool_stand_ins(directory, libraries=libraries))
