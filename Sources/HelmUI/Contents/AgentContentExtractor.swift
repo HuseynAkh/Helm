@@ -5,22 +5,29 @@ import Darwin
 import Foundation
 import HelmCore
 import HelmFileSystem
+import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 import Vision
 
 /// The one place Helm looks inside a file, for Read contents. Everything here runs on this Mac with Apple's own
 /// frameworks: PDFKit for a PDF's text and its first page, Vision for the text in a picture and what it shows,
-/// AVFoundation for a video's length and a few of its frames, AppKit for rich text, Word and OpenDocument files and
-/// for the small pictures a model looks at. Nothing here sends anything anywhere, and the privacy check lets only this
-/// file name PDFKit, Vision and AVFoundation. Only `AgentContentReader`, which holds the person's permit, calls it.
+/// AVFoundation for a video's length and a few of its frames, ImageIO to decode a picture, and AppKit for rich text,
+/// Word and OpenDocument files and for the small pictures a model looks at. Nothing here sends anything anywhere, and
+/// the privacy check lets only this file name PDFKit, Vision and AVFoundation. Only `AgentContentReader`, which holds
+/// the person's permit, calls it.
 ///
-/// When a request asks for pictures, it makes small JPEGs (`AgentContentImage`): a picture's first frame, turned as
-/// its EXIF orientation says; each video frame it looked at; and the first page of a PDF whose pages hold next to no
-/// text, as a scan's don't. Each is drawn anew from decoded pixels, `AgentContentLimits.lookEdge` pixels at most on its
-/// longer side, and written with no metadata at all. A scanned page is read by Vision whether or not pictures are
-/// asked for, so its words are there for a model that can't take pictures. Without a request for pictures, no
-/// picture is made.
+/// A picture is decoded once, by ImageIO. Its size is read from its header first, and a picture of more than
+/// `mostPixels` is refused as too large before any of it is decoded. Otherwise one copy is made, `visionEdge` pixels at
+/// most on its longer side and turned as its EXIF orientation says; Vision reads that copy, and a model's picture is
+/// made from it. An animated picture gives its first frame.
+///
+/// When a request asks for pictures, it makes small JPEGs (`AgentContentImage`): a picture's first frame, each video
+/// frame it looked at, and the first page of a PDF whose pages hold next to no text, as a scan's don't. Each is drawn
+/// anew from decoded pixels, `AgentContentLimits.lookEdge` pixels at most on its longer side, and written with no
+/// metadata at all; ImageIO then reads it back, and one in which it finds any metadata isn't sent. A scanned page is
+/// read by Vision whether or not pictures are asked for, so its words are there for a model that can't take pictures.
+/// Without a request for pictures, no picture is made.
 ///
 /// Every byte is read by Helm itself, from a file it opened without following a link and with downloads off: a file
 /// kept in a cloud and not on this Mac is refused by macOS rather than fetched, and answers `not_downloaded`. A
@@ -56,10 +63,17 @@ enum AgentContentExtractor {
         case .image:
             guard file.length <= AgentContentLimits.imageFileBytes else { return .notRead(kind, .too_large) }
             guard let data = file.bytes(upTo: file.length) else { return .notRead(kind, .unreadable) }
-            let seen = look(at: VNImageRequestHandler(data: data, options: [:]))
-            guard let seen else { return .notRead(kind, .unreadable) }
+            let decoded: CGImage
+            switch firstFrame(of: data) {
+            case .success(let image): decoded = image
+            case .failure(let status): return .notRead(kind, status)
+            }
+            guard let seen = look(at: VNImageRequestHandler(cgImage: decoded, options: [:])) else {
+                return .notRead(kind, .unreadable)
+            }
             // A picture costs time, so it is made only while there is time left.
-            let images = request.wantsImages && DispatchTime.now() < deadline ? picture(decoding: data).map { [$0] } ?? [] : []
+            let wanted = request.wantsImages && DispatchTime.now() < deadline
+            let images = wanted ? picture(of: decoded, source: .picture).map { [$0] } ?? [] : []
             return AgentContentSummary(kind: .image, status: .read, labels: seen.labels, foundText: seen.text, images: images)
         case .video:
             return video(file, ext: ext, wantsImages: request.wantsImages, deadline: deadline)
@@ -145,12 +159,12 @@ enum AgentContentExtractor {
 
     private static let pdfPages = 20
 
-    /// A PDF page on white, turned as the page says, `scanEdge` pixels on its longer side.
+    /// A PDF page on white, turned as the page says, `visionEdge` pixels on its longer side.
     private static func drawn(_ page: PDFPage) -> CGImage? {
         let box = page.bounds(for: .cropBox)
         let size = abs(page.rotation) % 180 == 90 ? CGSize(width: box.height, height: box.width) : box.size
         guard size.width >= 1, size.height >= 1 else { return nil }
-        let scale = Double(scanEdge) / max(size.width, size.height)
+        let scale = Double(visionEdge) / max(size.width, size.height)
         guard let context = whiteContext(width: Int((size.width * scale).rounded()), height: Int((size.height * scale).rounded()))
         else { return nil }
         context.scaleBy(x: scale, y: scale)
@@ -158,10 +172,10 @@ enum AgentContentExtractor {
         return context.makeImage()
     }
 
-    /// The longer side a scanned page is drawn at for Vision. At `AgentContentLimits.lookEdge` Vision misreads print
-    /// of 10 to 12 points on a letter page; at this size it reads it, in no more time. The picture for a model is
-    /// made from this drawing at `lookEdge`.
-    private static let scanEdge = 1_600
+    /// The longer side a scanned page is drawn at, and a picture decoded at, for Vision. At
+    /// `AgentContentLimits.lookEdge` Vision misreads print of 10 to 12 points on a letter page; at this size it reads
+    /// it, in no more time. The picture for a model is made from this copy at `lookEdge`.
+    private static let visionEdge = 1_600
 
     /// The lines of `text`, each trimmed, empty ones left out, `characters` at most in all: the last is cut to fit.
     static func lines(of text: String, characters: Int) -> [String] {
@@ -178,6 +192,30 @@ enum AgentContentExtractor {
     }
 
     // MARK: Pictures
+
+    /// A picture's first frame, or its primary image when it holds several, decoded by ImageIO at `visionEdge` pixels
+    /// at most on its longer side and turned as its EXIF orientation says. Its size is read from its header first, and
+    /// a picture of more than `mostPixels` is too large and not decoded at all. The copy is drawn from the pixels,
+    /// never taken from a thumbnail stored in the file. Unreadable when ImageIO can't read its size or decode it.
+    private static func firstFrame(of data: Data) -> Result<CGImage, AgentContentStatus> {
+        let header = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, header), CGImageSourceGetCount(source) > 0 else {
+            return .failure(.unreadable)
+        }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let found = CGImageSourceCopyPropertiesAtIndex(source, index, header) as? [String: Any],
+              let width = (found[kCGImagePropertyPixelWidth as String] as? NSNumber)?.int64Value,
+              let height = (found[kCGImagePropertyPixelHeight as String] as? NSNumber)?.int64Value,
+              width > 0, height > 0 else { return .failure(.unreadable) }
+        guard width <= mostPixels / height else { return .failure(.too_large) }
+        let copy = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: visionEdge,
+                    kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, copy) else { return .failure(.unreadable) }
+        return .success(image)
+    }
+
+    /// The most pixels a picture may have to be decoded: 100 megapixels.
+    private static let mostPixels: Int64 = 100_000_000
 
     /// What a picture shows and the text in it, from Vision's on-device text recognition (accurate, with language
     /// correction) and image classification. Nil when Vision couldn't read it.
@@ -204,16 +242,9 @@ enum AgentContentExtractor {
 
     // MARK: Pictures for a model
 
-    /// A picture's first frame as a small JPEG for a model. AppKit decodes it and turns it as its EXIF orientation says.
-    /// Nil when it can't be decoded.
-    private static func picture(decoding data: Data) -> AgentContentImage? {
-        guard let image = NSBitmapImageRep(data: data)?.cgImage else { return nil }
-        return picture(of: image, source: .picture)
-    }
-
     /// `image` as a JPEG for a model: drawn anew on white in sRGB, `AgentContentLimits.lookEdge` pixels at most on its
     /// longer side and never larger than it is, and written at `lookQuality` with nothing but its pixels, so nothing of
-    /// a file's own bytes or metadata is in it.
+    /// a file's own bytes or metadata is in it. Nil when ImageIO still finds metadata in it.
     private static func picture(of image: CGImage, source: AgentContentImage.Source) -> AgentContentImage? {
         let longer = max(image.width, image.height)
         guard longer > 0 else { return nil }
@@ -225,7 +256,7 @@ enum AgentContentExtractor {
         guard let drawn = context.makeImage(),
               let written = NSBitmapImageRep(cgImage: drawn).representation(
                 using: .jpeg, properties: [.compressionFactor: AgentContentLimits.lookQuality]),
-              let jpeg = withoutMetadata(written) else { return nil }
+              let jpeg = withoutMetadata(written), hasNoMetadata(jpeg) else { return nil }
         return AgentContentImage(jpeg: jpeg, width: width, height: height, source: source)
     }
 
@@ -262,6 +293,18 @@ enum AgentContentExtractor {
             at += 2 + length
         }
         return nil
+    }
+
+    /// ImageIO finds no metadata in this JPEG: no EXIF, GPS, TIFF or IPTC dictionary, and no tag at all, XMP's
+    /// included.
+    static func hasNoMetadata(_ jpeg: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let found = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { return false }
+        let dictionaries = [kCGImagePropertyExifDictionary, kCGImagePropertyExifAuxDictionary, kCGImagePropertyGPSDictionary,
+                            kCGImagePropertyTIFFDictionary, kCGImagePropertyIPTCDictionary]
+        guard dictionaries.allSatisfy({ found[$0 as String] == nil }) else { return false }
+        let tags = CGImageSourceCopyMetadataAtIndex(source, 0, nil).flatMap { CGImageMetadataCopyTags($0) as? [Any] } ?? []
+        return tags.isEmpty
     }
 
     // MARK: Videos

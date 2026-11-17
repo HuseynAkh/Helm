@@ -13,8 +13,8 @@ import HelmTestKit
 /// frames show and say, and a file that gives orders, read as words like any other. A file that isn't downloaded, a
 /// link, a file too large, a kind Helm doesn't read and a file that changed are never read, and time runs out. When a
 /// request asks, pictures, video frames and a scanned PDF's first page give small JPEGs with no metadata; Word and
-/// OpenDocument files made here give their lines. A zip bomb and an old Word file are refused before anything is
-/// unpacked.
+/// OpenDocument files made here give their lines. A zip bomb, a picture of too many pixels and an old Word file are
+/// refused before anything is unpacked or decoded.
 final class AgentContentReaderTests: XCTestCase {
     private let permit = AgentContentPermit(switchedOnByPerson: .panel)
     private var folder: TempDirectory!
@@ -380,6 +380,62 @@ final class AgentContentReaderTests: XCTestCase {
         }
     }
 
+    // MARK: Big pictures
+
+    func testAPictureOfTooManyPixelsIsRefusedBeforeItIsDecoded() async throws {
+        // 12,000 by 12,000, 144 megapixels: 18 KB of PNG, and 576 MB once decoded.
+        let huge = solidPNG(side: 12_000)
+        XCTAssertLessThan(huge.count, 100_000)
+        try huge.write(to: folder.url.appendingPathComponent("huge.png"))
+        // 10,000 by 10,000 is at the limit, and is read from one smaller copy.
+        try solidPNG(side: 10_000).write(to: folder.url.appendingPathComponent("limit.png"))
+
+        let found = await read(["huge.png", "limit.png"], wantsImages: true)
+        // Decoded, it would be read as the one at the limit is.
+        XCTAssertEqual(found["huge.png"]?.kind, .image)
+        XCTAssertEqual(found["huge.png"]?.status, .too_large)
+        XCTAssertEqual(found["huge.png"]?.images, [])
+        XCTAssertEqual(found["limit.png"]?.status, .read)
+        let limit = try XCTUnwrap(found["limit.png"]?.images.first)
+        XCTAssertEqual([limit.width, limit.height], [512, 512])
+        try assertPlainJPEG(limit)
+    }
+
+    func testALargePictureIsTurnedUprightAndItsTextFound() async throws {
+        // 4000 by 2000 stored on its side: decoded once, upright, 800 by 1600, and drawn 256 by 512 for a model.
+        try writePhoto("wide.jpg", width: 4000, height: 2000, orientation: 6)
+        // A sign photographed at 4800 by 3200: Vision reads it in the copy it is given.
+        let width = 4800, height = 3200
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(CGColor.white)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        for (index, line) in ["HARBOUR PLUMBING", "Open Monday to Friday"].enumerated() {
+            NSAttributedString(string: line, attributes: [.font: NSFont.boldSystemFont(ofSize: 240), .foregroundColor: NSColor.black])
+                .draw(at: NSPoint(x: 300, y: height - 900 - index * 500))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(folder.url.appendingPathComponent("sign.png") as CFURL,
+                                                                         "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        let found = await read(["wide.jpg", "sign.png"], wantsImages: true)
+        let wide = try XCTUnwrap(found["wide.jpg"]?.images.first)
+        XCTAssertEqual([wide.width, wide.height], [256, 512])
+        let colors = try XCTUnwrap(NSBitmapImageRep(data: wide.jpeg))
+        XCTAssertTrue(isRed(colors.colorAt(x: 128, y: 20)), "\(String(describing: colors.colorAt(x: 128, y: 20)))")
+        XCTAssertTrue(isBlue(colors.colorAt(x: 128, y: 490)), "\(String(describing: colors.colorAt(x: 128, y: 490)))")
+        try assertPlainJPEG(wide)
+        let sign = try XCTUnwrap(found["sign.png"])
+        XCTAssertEqual(sign.status, .read)
+        XCTAssertEqual(sign.foundText, ["HARBOUR PLUMBING", "Open Monday to Friday"])
+        XCTAssertEqual(sign.images.map { [$0.width, $0.height] }, [[512, 341]])
+    }
+
     func testAJPEGLosesItsMetadata() throws {
         let source = try writePhoto("trip.jpg", width: 120, height: 80, orientation: 6)
         let plain = try XCTUnwrap(AgentContentExtractor.withoutMetadata(source))
@@ -392,6 +448,28 @@ final class AgentContentReaderTests: XCTestCase {
         XCTAssertEqual(found[kCGImagePropertyPixelWidth as String] as? Int, 120, "the pixels are all there")
         XCTAssertNil(AgentContentExtractor.withoutMetadata(Data("GIF89a".utf8)))
         XCTAssertNil(AgentContentExtractor.withoutMetadata(source.prefix(40)), "cut short")
+    }
+
+    func testAJPEGInWhichMetadataIsFoundIsNotSent() throws {
+        let photo = try writePhoto("trip.jpg", width: 120, height: 80, orientation: 6)
+        XCTAssertFalse(AgentContentExtractor.hasNoMetadata(photo))
+        XCTAssertTrue(AgentContentExtractor.hasNoMetadata(try XCTUnwrap(AgentContentExtractor.withoutMetadata(photo))))
+        // XMP alone, with no EXIF, GPS, TIFF or IPTC: found all the same, and left out.
+        let plain = try XCTUnwrap(AgentContentExtractor.withoutMetadata(photo))
+        let packet = Array(("http://ns.adobe.com/xap/1.0/\0<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF "
+            + "xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description rdf:about=\"\" "
+            + "xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\" xmp:CreatorTool=\"Pocket 7\"/></rdf:RDF></x:xmpmeta>").utf8)
+        let xmp = Data([0xFF, 0xD8, 0xFF, 0xE1, UInt8((packet.count + 2) >> 8), UInt8((packet.count + 2) & 0xFF)] + packet)
+            + plain.dropFirst(2)
+        let found = properties(of: xmp)
+        XCTAssertEqual(found[kCGImagePropertyPixelWidth as String] as? Int, 120)
+        for key in [kCGImagePropertyExifDictionary, kCGImagePropertyGPSDictionary, kCGImagePropertyTIFFDictionary,
+                    kCGImagePropertyIPTCDictionary] {
+            XCTAssertNil(found[key as String], "\(key)")
+        }
+        XCTAssertFalse(AgentContentExtractor.hasNoMetadata(xmp))
+        XCTAssertTrue(AgentContentExtractor.hasNoMetadata(try XCTUnwrap(AgentContentExtractor.withoutMetadata(xmp))))
+        XCTAssertFalse(AgentContentExtractor.hasNoMetadata(Data("not a picture".utf8)))
     }
 
     // MARK: Made here
@@ -439,6 +517,28 @@ final class AgentContentReaderTests: XCTestCase {
 
     private func put(_ bytes: inout [UInt8], at place: Int, ones width: Int) {
         put(&bytes, at: place, value: -1, width: width)
+    }
+
+    /// A black PNG this many pixels on each side, one bit a pixel, made without drawing it: every row is zeros, which
+    /// pack to almost nothing.
+    private func solidPNG(side: Int) -> Data {
+        func be(_ value: UInt32) -> [UInt8] { [24, 16, 8, 0].map { UInt8(truncatingIfNeeded: value >> UInt32($0)) } }
+        func chunk(_ kind: String, _ body: [UInt8]) -> [UInt8] {
+            let named = Array(kind.utf8) + body
+            var crc: UInt32 = 0xFFFF_FFFF
+            for byte in named {
+                crc ^= UInt32(byte)
+                for _ in 0..<8 { crc = crc & 1 == 1 ? (crc >> 1) ^ 0xEDB8_8320 : crc >> 1 }
+            }
+            return be(UInt32(body.count)) + named + be(~crc)
+        }
+        let rows = side * (1 + (side + 7) / 8)
+        let packed = (try? (Data(count: rows) as NSData).compressed(using: .zlib) as Data) ?? Data()
+        // A zlib stream: its header, the packed rows, and the Adler-32 of that many zeros.
+        let stream = [0x78, 0x01] + [UInt8](packed) + be(UInt32(rows % 65_521) << 16 | 1)
+        let header = be(UInt32(side)) + be(UInt32(side)) + [1, 0, 0, 0, 0]
+        return Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] + chunk("IHDR", header) + chunk("IDAT", stream)
+                     + chunk("IEND", []))
     }
 
     /// A photo, red on its left half and blue on its right, written as a JPEG with this EXIF orientation, a place, a

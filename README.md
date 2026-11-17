@@ -95,7 +95,7 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
 
 **What is sent.** Your requests, and the names and details of files (size, dates and kind). Never what's inside a file, unless you turn on Read contents. The top of every thread says what it sends, and each request says how many names it sent. With Whole Mac on, the names can come from anywhere in your home folder, your cloud folders and your disks, but never from your Library, hidden files or system folders.
 
-- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (PDFKit, Vision and AVFoundation), and the model gets:
+- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (ImageIO, PDFKit, Vision and AVFoundation), and the model gets:
   - **Documents:** the first 1,500 characters of text files, RTF, Word (.docx) and OpenDocument (.odt) documents and PDFs. Older Word files (.doc) aren't read.
   - **Pictures:** a small copy, 512 pixels on its longer side, made on your Mac with no location, camera or date in it.
   - **Videos:** small copies of three to five frames taken through it.
@@ -103,7 +103,7 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
   - With each picture and frame, what Apple's on-device recognition found in it: up to five things it shows, and any text.
 
   The files themselves never leave your Mac, and neither do full-size pictures. With Ollama or LM Studio nothing leaves your Mac at all, and the thread's first line says "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other provider, what Helm reads goes to it, and the first line says "Sends your requests, file names and what it reads inside files to" that provider. A model that can't take pictures gets the on-device description instead. Text and pictures from inside a file are handed over as data, and the model is told never to follow instructions in them. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
-- In the AI panel, Read contents reads 50 files a request at most and sends 24 pictures at most. It reads text and PDFs up to 20 MB, .docx and .odt files that unpack to 16 MB at most, and pictures up to 50 MB.
+- In the AI panel, Read contents reads 50 files a request at most and sends 24 pictures at most. It reads text and PDFs up to 20 MB, .docx and .odt files that unpack to 16 MB at most, and pictures up to 50 MB and 100 megapixels.
 - In AI search, Read contents first reads up to 200 candidates on your Mac. Then the model looks at the best of them, 48 at most, or 12 with a model on your Mac: their small copies and first lines are sent with the question. Helm forgets what it read when the search closes.
 - Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video.
 - AI search without Read contents sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
