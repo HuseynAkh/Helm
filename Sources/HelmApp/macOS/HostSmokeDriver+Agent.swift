@@ -142,11 +142,12 @@ extension HostSmokeDriver {
             check(width == Int(argument), step, "\(width)")
         case "agent-drag-edge":
             // agent-drag-edge <points>: a drag of the panel's leading edge that far towards the leading side, from press
-            // to release; a negative distance goes back towards the files' side.
-            window.dragAgentPanelEdgeForTesting(by: CGFloat(Double(argument) ?? 0))
+            // to release; a negative distance goes back towards the files' side. The events go to the window, which
+            // must hand the press to the edge's handle.
+            check(window.dragAgentPanelEdgeForTesting(by: CGFloat(Double(argument) ?? 0)), step, "the press missed the edge")
             await wait(seconds: 0.3)
         case "agent-edge-double-click":
-            window.doubleClickAgentPanelEdgeForTesting()
+            check(window.doubleClickAgentPanelEdgeForTesting(), step, "a click missed the edge")
             await wait(seconds: 0.3)
         case "agent-models":
             // agent-models <menu as words>|none: what the model's name under the composer offers, as

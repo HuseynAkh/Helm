@@ -182,7 +182,8 @@ import HelmCore
             hosting.sizingOptions = []
             hosting.safeAreaRegions = []
             hosting.translatesAutoresizingMaskIntoConstraints = false
-            column.addSubview(hosting)
+            // Under the edge's handle, which must stay the top view along the panel's leading edge.
+            column.addSubview(hosting, positioned: .below, relativeTo: edge)
             NSLayoutConstraint.activate([
                 hosting.topAnchor.constraint(equalTo: column.topAnchor),
                 hosting.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
@@ -377,7 +378,40 @@ import HelmCore
     var edgeFrameForTesting: NSRect { edge.frame }
     var edgeCursorForTesting: NSCursor { Edge.cursor }
 
-    /// The panel's leading edge. It shows the resize cursor, and reports a drag and a double click.
+    /// Presses along the edge go to its handle, before anything the panel shows: the thread and its scroll view are
+    /// made after the handle, and would otherwise take the press from it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if isOpen, !edge.isHiddenOrHasHiddenAncestor, let superview,
+           edge.bounds.contains(edge.convert(point, from: superview)) {
+            return edge
+        }
+        return super.hitTest(point)
+    }
+
+    /// For tests and scripted runs: a drag of the edge as a person makes one, from the middle of the handle halfway
+    /// down the panel, `distance` points towards the leading side (negative goes back). The press, four moves and
+    /// the release are sent to the window, which hands them to whatever its hit-testing finds there. The second
+    /// click of a double click has `clicks` 2. False when the window gave the press to something other than the handle.
+    @discardableResult func sendEdgeDragForTesting(by distance: CGFloat, clicks: Int = 1) -> Bool {
+        guard let window, isOpen else { return false }
+        let start = convert(NSPoint(x: Edge.thickness / 2, y: bounds.midY), to: nil)
+        let stamp = ProcessInfo.processInfo.systemUptime
+        func mouse(_ type: NSEvent.EventType, _ index: Int, x: CGFloat) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: start.y), modifierFlags: [],
+                               timestamp: stamp + Double(index) * 0.01, windowNumber: window.windowNumber, context: nil,
+                               eventNumber: index, clickCount: clicks, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        let pressed = edge.presses
+        if let down = mouse(.leftMouseDown, 0, x: start.x) { window.sendEvent(down) }
+        for step in 1...4 {
+            if let drag = mouse(.leftMouseDragged, step, x: start.x - distance * CGFloat(step) / 4) { window.sendEvent(drag) }
+        }
+        if let up = mouse(.leftMouseUp, 5, x: start.x - distance) { window.sendEvent(up) }
+        return edge.presses > pressed
+    }
+
+    /// The panel's leading edge. It shows the resize cursor, and reports a drag and a double click. A drag is
+    /// measured from the events' own places in the window, which stays put while the panel's edge moves.
     @MainActor private final class Edge: NSView {
         static let thickness: CGFloat = 6
         static var cursor: NSCursor {
@@ -388,31 +422,40 @@ import HelmCore
         var moved: (CGFloat) -> Void = { _ in }
         var ended: () -> Void = {}
         var reset: () -> Void = {}
-        /// Where the pointer was on the screen when the drag began.
+        /// Where the pointer was in the window when the drag began.
         private var startX: CGFloat?
+        /// How many presses the handle has had, for tests that check a press reached it.
+        private(set) var presses = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             setAccessibilityElement(false)
+            // The resize cursor wins over any cursor the panel's own views set under the handle.
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeInActiveApp, .inVisibleRect],
+                                           owner: self, userInfo: nil))
         }
         required init?(coder: NSCoder) { nil }
 
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func resetCursorRects() { addCursorRect(bounds, cursor: Self.cursor) }
+        override func cursorUpdate(with event: NSEvent) { Self.cursor.set() }
 
         override func mouseDown(with event: NSEvent) {
+            presses += 1
             if event.clickCount >= 2 {
                 startX = nil
                 reset()
                 return
             }
-            startX = NSEvent.mouseLocation.x
+            startX = event.locationInWindow.x
             began()
         }
         override func mouseDragged(with event: NSEvent) {
             guard let startX else { return }
-            moved(startX - NSEvent.mouseLocation.x)
+            // At a limit the pointer runs on past the handle, and the cursor stays the resize cursor until the release.
+            Self.cursor.set()
+            moved(startX - event.locationInWindow.x)
         }
         override func mouseUp(with event: NSEvent) {
             guard startX != nil else { return }
