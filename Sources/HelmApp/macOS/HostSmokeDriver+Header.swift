@@ -15,7 +15,7 @@ extension HostSmokeDriver {
             await wait(seconds: 0.1)
             check(window.searchTextForTesting == argument, step, window.searchTextForTesting)
         case "search-key":
-            // down, escape or return, pressed in the search field.
+            // down, escape, return or tab, pressed in the search field.
             check(window.searchFieldKeyForTesting(argument), step, "the search field hasn't got the caret")
             await wait(seconds: 0.4)
         case "focus-files":
@@ -23,7 +23,7 @@ extension HostSmokeDriver {
             window.focusFilesForTesting()
             await wait(seconds: 0.2)
         case "focus-is":
-            // files, search, path, sidebar, window or other.
+            // files, search, kinds (the AI search's kind row), path, sidebar, window or other.
             check(window.focusOwnerForTesting == argument, step, window.focusOwnerForTesting)
         case "search-shown":
             check(window.isSearchingForTesting == (argument == "true"), step, "\(window.isSearchingForTesting)")

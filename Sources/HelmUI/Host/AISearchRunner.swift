@@ -27,7 +27,10 @@ import HelmSearch
     static var fanOutAnswersForTesting: ((AISearchQuery) -> [URL])?
 
     /// The search field's spark is on: Return asks the model. Off at launch and whenever the search closes.
-    var isOn = false
+    var isOn = false { didSet { if !isOn { kind = nil } } }
+    /// The kind row's choice, nil for Any. The row shows only while the spark is on, so the choice goes back to Any
+    /// whenever the spark goes off, as it does when the search closes.
+    var kind: AISearchKind?
     /// What the window listens to so the spark follows the search and AI mode.
     var watch: AISearchWatch?
 
@@ -90,7 +93,8 @@ import HelmSearch
         let plan: AISearchPlan
         do {
             plan = try await session.plan(request: query.text, scopeLabel: label, today: dependencies.clock.now(),
-                                          languageCode: Locale.current.language.languageCode?.identifier ?? "en")
+                                          languageCode: Locale.current.language.languageCode?.identifier ?? "en",
+                                          kind: query.kind)
         } catch {
             guard !Task.isCancelled else { return }
             // The name matches stay on show, and Return again tries again.
@@ -98,7 +102,7 @@ import HelmSearch
             return
         }
         guard !Task.isCancelled else { return }
-        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text)
+        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind)
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
@@ -136,9 +140,12 @@ import HelmSearch
         var reasons: [ItemID: SearchReason] = [:]
         for entry in order { reasons[entry.id] = queryReason(entry) }
         // A word a model chose for a name, a folder or an extension is shown only when the person typed it or a
-        // result bears it. A query left with nothing to show has no line.
+        // result bears it. A query left with nothing to show has no line. The kind the person chose is named once,
+        // at the end of the status bar's line, so a query that asks for just that kind doesn't say it again.
         func shown(_ planned: AISearchQuery) -> AISearchQuery {
-            SearchReasonBuilder.backed(planned, request: query.text, results: order, scopeRoot: scopeRoot)
+            var backed = SearchReasonBuilder.backed(planned, request: query.text, results: order, scopeRoot: scopeRoot)
+            if let kind = query.kind, backed.kinds == [kind] { backed.kinds = [] }
+            return backed
         }
         let queriesRead = queries.map { SearchReasonBuilder.readAs(count: nil, query: shown($0), calendar: calendar, locale: locale) }
             .filter { !$0.isEmpty }
@@ -168,9 +175,11 @@ import HelmSearch
             // A failed ranking leaves the merged list, with the queries' reasons.
         }
         guard !Task.isCancelled else { return }
-        // How the request was read, from the strictest query; with no query left, the count alone.
-        let readAs = SearchReasonBuilder.readAs(count: order.count, query: shown(queries.first ?? AISearchQuery()), calendar: calendar,
+        // How the request was read, from the strictest query; with no query left, the count alone. The kind the
+        // person chose ends it: "12 matches · “beach” · Photos".
+        var readAs = SearchReasonBuilder.readAs(count: order.count, query: shown(queries.first ?? AISearchQuery()), calendar: calendar,
                                                 locale: locale)
+        if let kind = query.kind { readAs += " · " + AgentText.searchKindShown(kind) }
         delivery.assist(SearchAssist(phase: .done, reasons: reasons, readAs: readAs, queriesRead: queriesRead, coverage: coverage))
     }
 
@@ -308,7 +317,15 @@ import HelmSearch
 
     /// The plan's queries for this place. Where only names can be searched, words inside files are dropped, never
     /// broadened, and a query left with nothing to look for goes. None left: the request's own words, by name.
-    static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String) -> [AISearchQuery] {
+    /// With a kind chosen in the kind row, every query that runs is kept to it, whichever way it was made.
+    static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String,
+                        kind: AISearchKind? = nil) -> [AISearchQuery] {
+        let kept = placeQueries(planned, coverage: coverage, request: request)
+        guard let kind else { return kept }
+        return AISearchPlan(sort: .relevance, queries: kept).limited(to: kind).queries
+    }
+
+    private static func placeQueries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String) -> [AISearchQuery] {
         guard coverage == .namesOnly else { return planned }
         var kept: [AISearchQuery] = []
         for var query in planned {

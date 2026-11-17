@@ -12,6 +12,13 @@ public enum AISearchMatcher {
         AISearchKind.of(typeIdentifier: entry.contentTypeIdentifier, extension: entry.url.pathExtension, kind: entry.kind)
     }
 
+    /// Whether `entry` is of `kind`, or of a kind `kind` covers, as the kind row's filter asks. An item the table has
+    /// no word for, such as a link, is of none.
+    public static func isOf(_ kind: AISearchKind, _ entry: FileEntry) -> Bool {
+        guard let found = self.kind(of: entry) else { return false }
+        return kind.covers(found)
+    }
+
     /// Whether `entry` answers `query`.
     ///
     /// `scopeRoot` is the folder searched, when there is one: the item must be inside it, and the folder words are

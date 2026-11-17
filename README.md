@@ -40,7 +40,7 @@ Helm shows the plan before anything happens: each group of changes, with a tick 
 
 ### Find with AI
 
-Turn on the spark in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
+Turn on the spark in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched. The row under the header keeps the search to one kind if you pick one: Photo, Video, Document, Folder, Code, Audio or Archive.
 
 <img src="docs/images/ai-search-dark.png" alt="AI search from Home for the invoices from this fall: the November, October and September invoice PDFs, newest first, and the status bar reading 3 matches, PDF, “invoice”, modified 15 Sep to 14 Nov">
 

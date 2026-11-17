@@ -86,7 +86,7 @@ extension BrowserWindowController {
         guard !spark.isHiddenOrHasHiddenAncestor, spark.isEnabled else { return }
         spark.performClick(nil)
     }
-    /// Who has the keys: files, search, path, sidebar, window or other.
+    /// Who has the keys: files, search, kinds (the AI search's kind row), path, sidebar, window or other.
     public var focusOwnerForTesting: String {
         guard let window else { return "none" }
         let responder = window.firstResponder
@@ -94,6 +94,7 @@ extension BrowserWindowController {
         if agentPanelHost.holdsKeys { return "assistant" }
         if let files = contentKeyResponder, responder === files { return "files" }
         if header.isSearchFieldEditing { return "search" }
+        if header.kindBar.hasKeys { return "kinds" }
         if pathBar.isEditingLocation, responder is NSTextView { return "path" }
         if let view = responder as? NSView, view.isDescendant(of: sidebar.view) { return "sidebar" }
         return "other"
@@ -111,13 +112,14 @@ extension BrowserWindowController {
         editor.string = text
         editor.didChangeText()
     }
-    /// A key for the search field's editor, by name: down, escape or return. False if the field hasn't the caret.
+    /// A key for the search field's editor, by name: down, escape, return or tab. False if the field hasn't the caret.
     public func searchFieldKeyForTesting(_ name: String) -> Bool {
         guard header.isSearchFieldEditing, let editor = window?.firstResponder as? NSTextView else { return false }
         switch name {
         case "down": editor.doCommand(by: #selector(NSResponder.moveDown(_:)))
         case "escape": editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
         case "return": editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        case "tab": editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
         default: return false
         }
         return true

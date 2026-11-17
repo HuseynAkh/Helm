@@ -18,8 +18,7 @@ enum AISearchPredicates {
         }
         // Words inside files are matched as Spotlight and Finder match them: each word as the start of a word.
         parts += query.contentAll.compactMap { word in clean(word).map { like(textContentKey, "\($0)*") } }
-        let kinds = query.kinds.flatMap(\.typeIdentifiers)
-        if let kind = or(kinds.map { compare(contentTypeTreeKey, .equalTo, $0, options: []) }) { parts.append(kind) }
+        if let kind = kinds(query.kinds) { parts.append(kind) }
         if let ext = or(query.extensions.compactMap { word in clean(word).map { like(NSMetadataItemFSNameKey, "*.\($0)") } }) {
             parts.append(ext)
         }
@@ -33,6 +32,12 @@ enum AISearchPredicates {
         // A query that asks for nothing Spotlight can check finds nothing here; the walk and the baseline still run.
         guard !parts.isEmpty else { return NSPredicate(value: false) }
         return parts.count == 1 ? parts[0] : NSCompoundPredicate(andPredicateWithSubpredicates: parts)
+    }
+
+    /// Items of any of `kinds`, read from the type tree Spotlight keeps for each item: a planned query's kinds, and the
+    /// kind row's choice under the plain search. Nil for no kind.
+    static func kinds(_ kinds: [AISearchKind]) -> NSPredicate? {
+        or(kinds.flatMap(\.typeIdentifiers).map { compare(contentTypeTreeKey, .equalTo, $0, options: []) })
     }
 
     // MARK: Parts

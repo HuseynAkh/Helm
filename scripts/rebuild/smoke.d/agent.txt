@@ -290,6 +290,40 @@ agent-script @FIX@/agent-script.json
 search-key escape
 search-shown false
 search-ai-is off
+# The kind row shows only while the spark is on, at Any. Photo keeps the name matches and the model's plan to
+# pictures, and the status bar names it; another kind searches the words again by name. Tab takes the keys to the
+# row, where the arrows choose, and the row is back at Any once the search closes
+search-kinds-shown false
+search-ai on
+search-kinds-shown true
+search-kind-is Any
+search-kind Photo
+search-kind-is Photo
+search to
+has photo-1.png
+lacks todo.txt
+search-return
+search-status-reads 2 matches · “to” · Photos
+has photo-2.jpg
+lacks todo.txt
+search-kind Document
+has todo.txt
+lacks photo-1.png
+search-key tab
+focus-is kinds
+search-kind-key right
+search-kind-is Folder
+search-kind-key escape
+focus-is search
+search-key escape
+search-shown false
+search-ai-is off
+search-kinds-shown false
+search-ai on
+search-kind-is Any
+search-key escape
+search-shown false
+search-ai-is off
 go @FIX@/home/AgentPlaces/Share
 wait 0.5
 search-ai on

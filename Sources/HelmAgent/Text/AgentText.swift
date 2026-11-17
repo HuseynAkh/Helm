@@ -207,6 +207,46 @@ public enum AgentText {
     public static let searchFailed = "AI search isn't available."
     public static let searchOnThisMac = "Searched what's on this Mac."
     public static let searchNamesOnly = "Names only here."
+    /// The kind row under the header while AI search is on: its VoiceOver label, then its first choice.
+    public static let searchKindRow = "File type"
+    public static let searchKindAny = "Any"
+    /// A choice in the kind row, and the word VoiceOver reads for it. The row offers `AISearchKind.searchChoices`;
+    /// the other kinds have a word too, so every kind has one.
+    public static func searchKind(_ kind: AISearchKind) -> String {
+        switch kind {
+        case .image: return "Photo"
+        case .video: return "Video"
+        case .document: return "Document"
+        case .folder: return "Folder"
+        case .code: return "Code"
+        case .audio: return "Audio"
+        case .archive: return "Archive"
+        case .pdf: return "PDF"
+        case .text: return "Text"
+        case .spreadsheet: return "Spreadsheet"
+        case .presentation: return "Presentation"
+        case .app: return "App"
+        case .font: return "Font"
+        }
+    }
+    /// The chosen kind as the status bar's line names it at its end: "12 matches · “beach” · Photos".
+    public static func searchKindShown(_ kind: AISearchKind) -> String {
+        switch kind {
+        case .image: return "Photos"
+        case .video: return "Videos"
+        case .document: return "Documents"
+        case .folder: return "Folders"
+        case .code: return "Code"
+        case .audio: return "Audio"
+        case .archive: return "Archives"
+        case .pdf: return "PDFs"
+        case .text: return "Text"
+        case .spreadsheet: return "Spreadsheets"
+        case .presentation: return "Presentations"
+        case .app: return "Apps"
+        case .font: return "Fonts"
+        }
+    }
 
     // MARK: AI mode screen
 
