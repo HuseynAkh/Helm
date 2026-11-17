@@ -75,6 +75,10 @@ public struct AgentLimits: Equatable, Sendable {
     public static let bulkShared = 25
     /// How deep new folders may nest inside each other in one plan.
     public static let newFolderLevels = 4
+    /// New files in one plan, and the characters (Unicode scalars) of one new file's text and of all of them.
+    public static let newFiles = 20
+    public static let newFileCharacters = 100_000
+    public static let newFilesCharacters = 500_000
     public static let callIDCharacters = 128
     /// A folder's items are counted up to here. The card writes "1,000+" for a folder that reaches it.
     public static let holdsCap = 1_000

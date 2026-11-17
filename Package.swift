@@ -43,8 +43,10 @@ targets += [
         "HelmPersistence", "HelmOperations", "HelmSearch", "HelmAgent"],
         exclude: ["README.md", "Part3-README.md", "Content/README.md",
                   "Sheets/README.md", "ViewOptions/README.md"]),
+    // Fixtures/Contents holds the made-up files Read contents is tested on (scripts/rebuild/make_content_fixtures.swift).
     .testTarget(name: "HelmUITests", dependencies: ["HelmUI", "HelmCore",
-        "HelmOperations", "HelmSearch", "HelmAgent", "HelmTestKit"], exclude: ["PortableRunner"])
+        "HelmOperations", "HelmSearch", "HelmAgent", "HelmTestKit"], exclude: ["PortableRunner"],
+        resources: [.copy("Fixtures")])
 ]
 products += [.library(name: "HelmApp", targets: ["HelmApp"])]
 targets += [

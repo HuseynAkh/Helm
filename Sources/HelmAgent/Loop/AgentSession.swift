@@ -9,9 +9,29 @@ import HelmCore
 /// held back until the person decides, so the model is never told something that didn't happen. The held results
 /// are the first thing in the next request, with the plan's outcome, or "pending" while its card is still open.
 ///
+/// A request that asks for changes, a suggestion's or a typed one that `AgentChangeAsk` reads as one, ends in a plan
+/// when it can: when the model ends its turn with words and no plan, Helm sends `AgentPrompt.planNow` once, inside
+/// the request's own turns and time, and the words wait. They are shown only if the next turn brings neither words
+/// nor a plan.
+///
 /// Every limit of a request is Helm's: turns, calls, entries, plans, bad arguments and time. Text Helm builds, the
 /// context note and each tool result, is checked for the home folder's path before it is sent; one that holds it
 /// ends the request and is never sent. A thread starts over after 30 requests or 8 MB of history.
+///
+/// A thread works in This Folder or Whole Mac, and a new one starts in This Folder. Switching starts the thread over,
+/// as a change of provider does, and so does every other new thread: starting over, `/clear` and removing an added
+/// folder all come back to This Folder. A thread that reaches its length limit inside a request carries on in the
+/// scope that request was sent in. Whole Mac requests go with `AgentPrompt.wholeMac`.
+///
+/// Read contents works the same way: the person's switch turns it on for the thread, with their permit, and either
+/// way starts the thread over, so its tools and prompt never change inside a thread. A new thread starts with it off,
+/// and a thread that reaches its length limit carries on with it as it was. While it is on, and only then, the
+/// model is offered `read_contents`, the prompt ends with `AgentPrompt.readContents`, and the reader is asked for
+/// summaries; while it is off nothing is ever read.
+///
+/// Pictures from `read_contents` go to the model with their results. A provider that refuses a turn as a bad request
+/// while the thread holds pictures is sent the same turn once more with every picture taken out of the thread, and
+/// the thread sends no more of them; a new thread tries pictures again.
 public actor AgentSession: AgentConversing {
     private let parts: AgentSessionParts
     private let validator: any AgentPlanValidating
@@ -31,13 +51,21 @@ public actor AgentSession: AgentConversing {
     private var awaitingOutcome: UUID?
     private var outcomeForNote: AgentPlanOutcome?
     private var resultHook: (@Sendable (String) -> String)?
+    private var mode: AgentScopeMode = .thisFolder
+    /// The person's permit while Read contents is on for the thread.
+    private var contentPermit: AgentContentPermit?
+    /// The user turns in the history that hold pictures, so each can be put back without them.
+    private var pictureTurns: [PictureTurn] = []
+    /// The provider refused a turn of this thread that held pictures, so the thread sends none.
+    private var picturesRefused = false
 
     public nonisolated let notices: AsyncStream<AgentNotice>
 
     public init(parts: AgentSessionParts, validator: any AgentPlanValidating) {
         self.parts = parts
         self.validator = validator
-        self.scope = AgentScope(disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder)
+        self.scope = AgentScope(disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder,
+                                mountedVolumes: parts.mountedVolumes)
         let (stream, feed) = AsyncStream.makeStream(of: AgentNotice.self)
         notices = stream
         noticeFeed = feed
@@ -55,8 +83,48 @@ public actor AgentSession: AgentConversing {
     public func removeRoot(alias: String) async {
         await stop()
         await scope.remove(alias: alias)
+        await backToThisFolder()
+        contentPermit = nil
         resetThread()
         noticeFeed.yield(.startedOver)
+    }
+
+    // MARK: This Folder or Whole Mac
+
+    public func scopeMode() async -> AgentScopeMode { mode }
+
+    /// Switches the thread, and starts it over: a request that is running stops, every handle is retired and the
+    /// thread is dropped, so names listed under one scope are never sent under the other.
+    public func setScopeMode(_ next: AgentScopeMode) async {
+        guard next != mode else { return }
+        await stop()
+        mode = next
+        resetThread()
+        await scope.setMode(next)
+        noticeFeed.yield(.startedOver)
+    }
+
+    // MARK: Read contents
+
+    public func readsContents() async -> Bool { contentPermit != nil && parts.contents != nil }
+
+    /// Turns Read contents on with the person's permit, or off with nil, and starts the thread over, as a switch of
+    /// scope does. With no reader in this run, the switch stays off.
+    public func setReadsContents(_ permit: AgentContentPermit?) async {
+        let next = parts.contents == nil ? nil : permit
+        guard (next == nil) != (contentPermit == nil) else { return }
+        await stop()
+        contentPermit = next
+        resetThread()
+        await scope.startOver()
+        noticeFeed.yield(.startedOver)
+    }
+
+    /// A new thread starts in This Folder.
+    private func backToThisFolder() async {
+        guard mode != .thisFolder else { return }
+        mode = .thisFolder
+        await scope.setMode(.thisFolder)
     }
 
     // MARK: Requests
@@ -84,6 +152,8 @@ public actor AgentSession: AgentConversing {
 
     public func startOver() async {
         await stop()
+        await backToThisFolder()
+        contentPermit = nil
         await scope.startOver()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -91,6 +161,8 @@ public actor AgentSession: AgentConversing {
 
     public func clear() async {
         await stop()
+        mode = .thisFolder
+        contentPermit = nil
         await scope.clear()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -179,42 +251,79 @@ public actor AgentSession: AgentConversing {
         guard await isClean(note) else { return emit(.failed(.unreadable)) }
         outcomeForNote = nil
         let words = String(input.text.prefix(limits.messageCharacters))
-        commit(client.userItems(text: note + "\n" + words, toolResults: takeHeldResults()))
+        commitUserTurn(client, text: note + "\n" + words, results: takeHeldResults())
         requests += 1
 
-        let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits).usingListSeconds(listSeconds)
-        let sent = await turns(client: client, runner: runner, limits: limits, selected: Set(input.selectedPaths), emit: emit)
+        var reading: AgentContentAccess?
+        if let permit = contentPermit, let reader = parts.contents {
+            let homes = [parts.home, await scope.canonicalHome()]
+            reading = AgentContentAccess(reader: reader, permit: permit, homes: homes)
+        }
+        let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits, contents: reading)
+            .usingListSeconds(listSeconds)
+        if picturesRefused { runner.stopSendingPictures() }
+        let asksForChanges = input.asksForChanges || AgentChangeAsk.asksForChanges(input.text)
+        let system = AgentPrompt.system(for: mode, readsContents: reading != nil)
+        let sent = await turns(client: client, runner: runner, limits: limits, system: system, selected: Set(input.selectedPaths),
+                               asksForChanges: asksForChanges, emit: emit)
         if runner.notLoaded > 0 { emit(.notice(.foldersNotLoaded(runner.notLoaded))) }
-        if sent > 0 { emit(.trace(.sent(names: sent, destination: client.destination))) }
+        if runner.contentsNotDownloaded > 0 { emit(.notice(.notDownloadedNotRead(runner.contentsNotDownloaded))) }
+        if let slow = runner.slowContents { emit(.notice(.notResponding(label: slow))) }
+        if sent.names > 0 || sent.summaries > 0 {
+            if sent.summaries > 0 {
+                emit(.trace(.sentWithSummaries(names: sent.names, summaries: sent.summaries, destination: client.destination)))
+            } else {
+                emit(.trace(.sent(names: sent.names, destination: client.destination)))
+            }
+        }
     }
 
     /// The model turns of one request, until the model ends its turn, a plan arrives, or something ends the request.
-    /// Answers how many names went into the thread: those of a turn that was dropped never leave the app.
-    private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, selected: Set<String>,
-                       emit: (AgentSessionEvent) -> Void) async -> Int {
+    /// Answers how many names, and how many summaries of what is inside files, went into the thread: those of a turn
+    /// that was dropped never leave the app.
+    private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, system: String,
+                       selected: Set<String>, asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> (names: Int, summaries: Int) {
         let started = parts.clock.now()
         var counts = RequestCounts()
-        func ended(_ event: AgentSessionEvent) -> Int {
+        /// The words of the turn that ended without a plan, while the model is asked for one.
+        var waitingReply: String?
+        var askedForPlan = false
+        func show(_ reply: String) {
+            waitingReply = nil
+            if !reply.isEmpty { emit(.reply(reply)) }
+        }
+        func ended(_ event: AgentSessionEvent) -> (names: Int, summaries: Int) {
+            if case .plan = event { waitingReply = nil }
+            if let waiting = waitingReply { show(waiting) }
             emit(event)
-            return counts.names
+            return (counts.names, counts.summaries)
         }
         func secondsLeft() -> Double { limits.requestSeconds - parts.clock.now().timeIntervalSince(started) }
-        for _ in 0..<max(0, limits.turns) {
+        let turnCount = max(0, limits.turns)
+        for turn in 0..<turnCount {
             if secondsLeft() < 0 { return ended(.notice(.limitReached)) }
             emit(.status(.thinking))
-            let streamed: StreamedTurn
-            do {
-                let input = AgentTurnInput(system: AgentPrompt.system, tools: AgentToolCatalog.all, history: history)
-                streamed = try await Self.stream(client, input, replyCharacters: limits.replyCharacters, seconds: secondsLeft())
-            } catch {
+            var text = "", finished: AgentTurnResult?
+            attempt: while true {
+                let streamed: StreamedTurn
+                do {
+                    let input = AgentTurnInput(system: system, tools: runner.tools, history: history)
+                    streamed = try await Self.stream(client, input, replyCharacters: limits.replyCharacters, seconds: secondsLeft())
+                } catch {
+                    if isStopping { return ended(.notice(.stopped)) }
+                    let failure = error as? AgentFailure ?? .unreadable
+                    // A model that can't take pictures gets the turn once more without them.
+                    if failure == .badRequest, dropPictures(client, runner: runner) { continue attempt }
+                    return ended(.failed(failure))
+                }
                 if isStopping { return ended(.notice(.stopped)) }
-                return ended(.failed(error as? AgentFailure ?? .unreadable))
-            }
-            if isStopping { return ended(.notice(.stopped)) }
-            let text: String, finished: AgentTurnResult?
-            switch streamed {
-            case .outOfTime: return ended(.notice(.limitReached))
-            case .done(let streamedText, let result): (text, finished) = (streamedText, result)
+                switch streamed {
+                case .outOfTime: return ended(.notice(.limitReached))
+                case .done(let streamedText, let result):
+                    if result?.stop == .failed(.badRequest), dropPictures(client, runner: runner) { continue attempt }
+                    (text, finished) = (streamedText, result)
+                }
+                break attempt
             }
             guard let result = finished else { return ended(.failed(.unreadable)) }
             switch result.stop {
@@ -225,16 +334,25 @@ public actor AgentSession: AgentConversing {
             }
             guard Self.callIDsAreReadable(result.calls) else { return ended(.failed(.unreadable)) }
             let reply = AgentReplyText.clean(text, limit: limits.replyCharacters)
-            if !reply.isEmpty { emit(.reply(reply)) }
             if result.calls.isEmpty {
                 commit(result.rawItems)
-                return counts.names
+                // Words where a plan was asked for: ask once for the plan, while a turn and time are left.
+                if asksForChanges, !askedForPlan, turn + 1 < turnCount, secondsLeft() > 0 {
+                    askedForPlan = true
+                    waitingReply = reply
+                    commitUserTurn(client, text: AgentPrompt.planNow, results: [])
+                    continue
+                }
+                show(reply.isEmpty ? waitingReply ?? "" : reply)
+                return (counts.names, counts.summaries)
             }
+            if !reply.isEmpty { show(reply) }
 
             var results: [AgentToolResult] = []
             var plan: (plan: AgentChangePlan, index: Int)?
             var ending: AgentSessionEvent?
             var names = 0
+            let summariesBefore = runner.summariesSent
             for (index, call) in result.calls.enumerated() {
                 if plan != nil || ending != nil {
                     results.append(Self.errorResult(call, .limit_reached))
@@ -266,7 +384,11 @@ public actor AgentSession: AgentConversing {
                     }
                     emit(.status(.checkingPlan))
                 }
-                let outcome = await runner.run(call, selectedPaths: selected)
+                if call.name == AgentToolRunner.readContentsName, let count = Self.idCount(call) {
+                    emit(.status(.readingContents(count: count)))
+                }
+                let outcome = await runner.run(call, selectedPaths: selected,
+                                               picturesBefore: results.reduce(0) { $0 + $1.images.count })
                 if isStopping { return ended(.notice(.stopped)) }
                 switch outcome {
                 case .plan(let proposed):
@@ -291,26 +413,28 @@ public actor AgentSession: AgentConversing {
                         if let slow = runner.slowRoot { label = slow } else { label = await quietRootLabel() }
                         ending = .notice(.notResponding(label: label))
                     }
-                case .result(let json, let count):
+                case .result(let json, let count, let images):
                     counts.badInARow = 0
                     let sent = resultHook?(json) ?? json
                     // Nothing of this turn is kept, so the thread stays one the provider can read.
                     guard await isClean(sent) else { return ended(.failed(.unreadable)) }
-                    results.append(AgentToolResult(callID: call.id, name: call.name, json: sent))
+                    results.append(AgentToolResult(callID: call.id, name: call.name, json: sent, images: images))
                     names += count
-                    if !isProposal { emit(.status(.reading(count: runner.namesSent))) }
+                    if !isProposal, call.name != AgentToolRunner.readContentsName { emit(.status(.reading(count: runner.namesSent))) }
                 }
                 if ending == nil, let slow = runner.slowRoot { ending = .notice(.notResponding(label: slow)) }
             }
 
             counts.names += names
+            counts.summaries += runner.summariesSent - summariesBefore
             if let plan {
                 commit(result.rawItems)
                 held = HeldTurn(results: results, planIndex: plan.index, planID: plan.plan.id, leftOut: plan.plan.leftOut)
                 pending = plan.plan
                 return ended(.plan(plan.plan))
             }
-            commit(result.rawItems + client.userItems(text: nil, toolResults: results))
+            commit(result.rawItems)
+            commitUserTurn(client, text: nil, results: results)
             if let ending { return ended(ending) }
         }
         return ended(.notice(.limitReached))
@@ -358,6 +482,33 @@ public actor AgentSession: AgentConversing {
         historyBytes += items.reduce(0) { $0 + $1.data().count }
     }
 
+    /// Adds one user turn: the results, then the text. A turn whose results hold pictures is remembered, so it can be
+    /// put back without them.
+    private func commitUserTurn(_ client: any AgentModelClient, text: String?, results: [AgentToolResult]) {
+        let results = picturesRefused ? results.map(AgentToolRunner.withoutPictures) : results
+        let items = client.userItems(text: text, toolResults: results)
+        if results.contains(where: { !$0.images.isEmpty }) {
+            pictureTurns.append(PictureTurn(start: history.count, count: items.count, text: text, results: results))
+        }
+        commit(items)
+    }
+
+    /// Takes every picture out of the thread: each user turn that held some is put back in its place, built again
+    /// from the same text and results without their pictures. The thread and this request's runner send no more.
+    /// False when the thread holds no pictures, so a request is never sent again for nothing.
+    private func dropPictures(_ client: any AgentModelClient, runner: AgentToolRunner) -> Bool {
+        guard !pictureTurns.isEmpty else { return false }
+        picturesRefused = true
+        runner.stopSendingPictures()
+        for turn in pictureTurns.reversed() {
+            let items = client.userItems(text: turn.text, toolResults: turn.results.map(AgentToolRunner.withoutPictures))
+            history.replaceSubrange(turn.start..<(turn.start + turn.count), with: items)
+        }
+        pictureTurns = []
+        historyBytes = history.reduce(0) { $0 + $1.data().count }
+        return true
+    }
+
     /// The held results, with the plan's own result telling how it ended, or that its card is still open.
     private func takeHeldResults() -> [AgentToolResult] {
         guard let turn = held else { return [] }
@@ -379,6 +530,8 @@ public actor AgentSession: AgentConversing {
         held = nil
         awaitingOutcome = nil
         outcomeForNote = nil
+        pictureTurns = []
+        picturesRefused = false
     }
 
     private var isStopping: Bool { slot.isStopping || Task.isCancelled }
@@ -406,8 +559,22 @@ public actor AgentSession: AgentConversing {
         var outcome: AgentPlanOutcome?
     }
 
+    /// A user turn of the history whose results hold pictures: where its items are, and what they were built from.
+    private struct PictureTurn {
+        var start: Int
+        var count: Int
+        var text: String?
+        var results: [AgentToolResult]
+    }
+
     private struct RequestCounts {
-        var calls = 0, plans = 0, badInARow = 0, oversized = 0, names = 0
+        var calls = 0, plans = 0, badInARow = 0, oversized = 0, names = 0, summaries = 0
+    }
+
+    /// How many ids a `read_contents` call asks for, for the status line while they are read.
+    private static func idCount(_ call: AgentToolCall) -> Int? {
+        guard let json = try? AgentJSON(data: call.arguments), let ids = json["ids"]?.arrayValue, !ids.isEmpty else { return nil }
+        return min(ids.count, AgentContentLimits.filesPerRequest)
     }
 
     /// A plan's result: applied with its counts, dismissed, or pending while its card is open.

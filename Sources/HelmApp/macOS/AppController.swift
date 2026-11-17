@@ -130,6 +130,9 @@ public struct LaunchOptions: Equatable, Sendable {
     var isArchiveUtilityRunning: () -> Bool
     /// Folders the fixture Trash refuses, as a place with no Trash does. Only a fixture run's Trash reads it.
     let fixtureTrashRules = FixtureTrashRules()
+    /// A fixture run's in-memory settings, when a test hands the same ones to a second launch, as the real preferences
+    /// carry over from one launch to the next. Set before `compose`.
+    var fixtureSettingsForTesting: IsolatedSettings?
 
     public init(options: LaunchOptions) {
         self.options = options
@@ -181,6 +184,8 @@ public struct LaunchOptions: Equatable, Sendable {
                 // A fixture run hands files to a stand-in: no app opens and no default app changes.
                 launcher: options.isIsolated ? MemoryAppLauncher() : SystemAppLauncher(),
                 agent: makeAgentServices(environment))
+            // The onboarding's AI step shows the same model as Settings › AI and the AI mode screen.
+            access.aiModel = { [weak self] in self?.aiSetupModel() }
             await access.start(settings: settings, fileViewer: { [weak self] in self?.fileViewerModel() },
                                windows: { [weak self] in self?.allWindows ?? [] }, front: { [weak self] in self?.frontmost() })
             if options.smokeScript != nil { SmokeBackground.start() }
@@ -194,8 +199,9 @@ public struct LaunchOptions: Equatable, Sendable {
             reportLoadFailures()
             // A launch that only passed something on to Finder stays out of the way.
             if !startedForFinder {
-                // A launch that waits for setup has shown the welcome already, before its windows.
+                // A launch that waits for setup has shown the onboarding already, before its windows, AI mode included.
                 if !access.launchWaitsForSetup { access.showWelcomeIfNeeded(continuing: options.continueSetup) }
+                // Only for someone who set Helm up before AI mode and got no onboarding now, once their window is up.
                 showAIIntroIfNeeded()
             }
             if let script = options.smokeScript { HostSmokeDriver.run(script: script, app: self) }
@@ -215,7 +221,7 @@ public struct LaunchOptions: Equatable, Sendable {
             let trash = home.appendingPathComponent(".Trash", isDirectory: true)
             let rules = fixtureTrashRules
             return try await AppEnvironment.live(directories: AppDirectories(home: home, applicationSupport: support),
-                                                 settingsStorage: IsolatedSettings(), legacyReader: NoLegacyDefaults(),
+                                                 settingsStorage: fixtureSettingsForTesting ?? IsolatedSettings(), legacyReader: NoLegacyDefaults(),
                                                  trash: { url in
                 // A place a script marked as having no Trash refuses, as a server without one does.
                 if rules.refuses(url.path) { throw FileSystemError.unsupported }
@@ -588,9 +594,11 @@ public struct LaunchOptions: Equatable, Sendable {
         if let front = frontmost() { openWindow(at: front.newWindowLocation, selecting: []) } else { openStartingWindow() }
     }
     /// A window at the folder Settings › General › New windows open names, when there's no front window to follow.
-    /// While the welcome checklist holds the windows back, it's the checklist's to close first: nothing opens.
+    /// While the onboarding holds the windows back, it's the onboarding's to finish first: nothing opens, and the
+    /// onboarding comes to the front, as after a click on the Dock icon with it behind another app's window.
     private func openStartingWindow() {
-        guard let environment, !access.windowsWaitForSetup else { return }
+        guard let environment else { return }
+        guard !access.windowsWaitForSetup else { access.bringSetupForward(); return }
         guard access.windowsMayOpen else {
             // Setup was never looked at in this run, as after a launch only for Finder.
             Task { @MainActor in

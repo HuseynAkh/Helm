@@ -22,6 +22,7 @@ final class AgentOutboundTests: XCTestCase {
         {"calls": [{"name": "find_items", "args": {"folder": "@root", "name_any": ["report"], "kinds": [], "modified_from": "",
                     "modified_to": "", "min_bytes": 0, "max_bytes": 0}}]},
         {"text": "Photos go into Projects.", "calls": [{"name": "propose_changes", "args": {"new_folders": [],
+           "new_files": [],
            "moves": [{"items": ["@name:photo.png"], "all_in": "", "to": "@name:Projects"}], "copies": [], "renames": [], "trash": []}}]}]},
       {"when": "*", "turns": [{"text": "Hello."}]}]}
     """
@@ -172,5 +173,19 @@ final class AgentOutboundTests: XCTestCase {
         XCTAssertFalse(AgentOutboundCheck.helmTextIsClean(home.replacingOccurrences(of: "/", with: "\\/"), home: home + "/"))
         XCTAssertTrue(AgentOutboundCheck.helmTextIsClean("anything", home: "/"))
         XCTAssertTrue(AgentOutboundCheck.helmTextIsClean(marker, home: home), "the last part alone is a name, not the path")
+        // Any case, either Unicode form, percent-encoded as in a file URL, and with JSON's escaped slashes.
+        let zoe = "/Users/Zo\u{EB} Doe"
+        XCTAssertFalse(AgentOutboundCheck.helmTextIsClean("x /USERS/ZOE\u{308} DOE/a", home: zoe))
+        XCTAssertFalse(AgentOutboundCheck.helmTextIsClean("x /users/zo\u{EB} doe", home: "/Users/Zoe\u{308} Doe/"))
+        XCTAssertFalse(AgentOutboundCheck.helmTextIsClean("file:///Users/Zoe%CC%88%20Doe/a.txt", home: zoe))
+        XCTAssertFalse(AgentOutboundCheck.helmTextIsClean("x \\/users\\/zo%c3%ab%20doe", home: zoe))
+        XCTAssertTrue(AgentOutboundCheck.helmTextIsClean("Home / Zo\u{EB} Doe / a.txt", home: zoe), "Helm's own words for a folder")
+        let spellings = AgentOutboundCheck.homeSpellings(zoe)
+        XCTAssertEqual(Set(spellings), ["file:///Users/Zoe%CC%88%20Doe", "file:///Users/Zo%C3%AB%20Doe", "file:///Users/Zo\u{EB} Doe",
+                                        "/Users/Zoe%CC%88%20Doe", "/Users/Zo%C3%AB%20Doe", "/Users/Zo\u{EB} Doe"])
+        XCTAssertEqual(spellings.count, 6)
+        XCTAssertEqual(spellings.map(\.utf8.count), spellings.map(\.utf8.count).sorted(by: >), "longest first")
+        XCTAssertEqual(AgentOutboundCheck.homeSpellings("/Users/plain/"), ["file:///Users/plain", "/Users/plain"])
+        XCTAssertEqual(AgentOutboundCheck.homeSpellings("relative/home"), [])
     }
 }

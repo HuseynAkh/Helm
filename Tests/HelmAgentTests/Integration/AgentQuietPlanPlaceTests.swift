@@ -14,6 +14,7 @@ final class AgentQuietPlanPlaceTests: XCTestCase {
             {"rules": [{"when": "*", "turns": [
               {"calls": [{"name": "propose_changes", "args": {
                 "new_folders": [{"key": "n1", "parent": "@root", "name": "Images"}],
+                "new_files": [],
                 "moves": [{"items": [], "all_in": "@root", "to": "n1"}], "copies": [], "renames": [], "trash": []}}]},
               {"text": "Trying again."}]}]}
             """.utf8))

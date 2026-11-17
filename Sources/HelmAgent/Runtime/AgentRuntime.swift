@@ -11,11 +11,20 @@ public struct AgentSessionParts: Sendable {
     /// How long a listing may go without progress, in place of the usual limits. Nil except in a fixture run that
     /// asks for short waits.
     public var listSecondsOverride: @Sendable () -> Double?
+    /// The disks mounted now, as paths, for Whole Mac. Each goes through the folder rules like any other folder. None
+    /// by default, and none in a fixture run, so a test never reaches a real disk.
+    public var mountedVolumes: @Sendable () async -> [String]
+    /// What reads inside files on this Mac, for a thread with Read contents on. It lives where files may be opened,
+    /// and answers only summaries. Nil reads nothing, and the switch then offers no tool.
+    public var contents: (any AgentContentReading)?
     public init(client: @escaping @Sendable () async -> Result<any AgentModelClient, AgentFailure>,
                 disk: any AgentDisk, home: String, supportFolder: String, clock: any HelmClock,
-                listSecondsOverride: @escaping @Sendable () -> Double? = { nil }) {
+                listSecondsOverride: @escaping @Sendable () -> Double? = { nil },
+                mountedVolumes: @escaping @Sendable () async -> [String] = { [] },
+                contents: (any AgentContentReading)? = nil) {
         self.client = client; self.disk = disk; self.home = home; self.supportFolder = supportFolder
-        self.clock = clock; self.listSecondsOverride = listSecondsOverride
+        self.clock = clock; self.listSecondsOverride = listSecondsOverride; self.mountedVolumes = mountedVolumes
+        self.contents = contents
     }
 }
 
@@ -36,14 +45,21 @@ public struct AgentRuntimeParts: Sendable {
     public var makeSession: (@Sendable (AgentSessionParts) -> any AgentConversing)?
     /// Makes a ChatGPT sign-in over the key store. Nil in a fixture run, which never signs in.
     public var makeSignIn: (@Sendable (any AgentSecretStoring) -> AgentChatGPTSignIn)?
+    /// The disks mounted now, as paths, for Whole Mac. None by default, and none in a fixture run.
+    public var mountedVolumes: @Sendable () async -> [String]
+    /// What reads inside files on this Mac while a thread's Read contents switch is on. Nil reads nothing.
+    public var contents: (any AgentContentReading)?
     public init(secrets: any AgentSecretStoring, disk: any AgentDisk, home: String, supportFolder: String,
                 clock: any HelmClock, buildStamp: String, scripted: (any AgentModelClient)? = nil,
                 makeClient: (@Sendable (AgentProviderProfile, String, any AgentSecretStoring) -> any AgentLiveClient)? = nil,
                 makeSession: (@Sendable (AgentSessionParts) -> any AgentConversing)? = nil,
-                makeSignIn: (@Sendable (any AgentSecretStoring) -> AgentChatGPTSignIn)? = nil) {
+                makeSignIn: (@Sendable (any AgentSecretStoring) -> AgentChatGPTSignIn)? = nil,
+                mountedVolumes: @escaping @Sendable () async -> [String] = { [] },
+                contents: (any AgentContentReading)? = nil) {
         self.secrets = secrets; self.disk = disk; self.home = home; self.supportFolder = supportFolder
         self.clock = clock; self.buildStamp = buildStamp; self.scripted = scripted
         self.makeClient = makeClient; self.makeSession = makeSession; self.makeSignIn = makeSignIn
+        self.mountedVolumes = mountedVolumes; self.contents = contents
     }
 }
 
@@ -231,7 +247,7 @@ public enum AgentConnection: Equatable, Sendable {
         let sessionParts = AgentSessionParts(
             client: { [weak self] in await self?.client() ?? .failure(.off) },
             disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder, clock: parts.clock,
-            listSecondsOverride: { overrides.listSeconds })
+            listSecondsOverride: { overrides.listSeconds }, mountedVolumes: parts.mountedVolumes, contents: parts.contents)
         let session = parts.makeSession?(sessionParts) ?? StandInConversation()
         sessions.removeAll { $0.session == nil }
         sessions.append(WeakSession(session))
@@ -269,6 +285,9 @@ public enum AgentConnection: Equatable, Sendable {
         announce()
         return confirmed
     }
+
+    /// Whether this run can read inside files at all. The Read contents switches show only when it can.
+    public var canReadContents: Bool { parts.contents != nil }
 
     /// How many live clients were built since launch. A fixture run stays at 0.
     public private(set) var clientBuildCount = 0

@@ -83,6 +83,15 @@ extension HostSmokeDriver {
             let groups = model?.groupsForTesting ?? []
             let found = groups.contains { $0 == "\(bits[0]):on:\(bits[1])" || $0 == "\(bits[0]):off:\(bits[1])" }
             check(found, step, groups.joined(separator: " | "))
+        case "agent-group-path":
+            // agent-group-path <title>=<path>, with " new folder" at the end when the plan makes the folder
+            let paths = model?.groupPathsForTesting ?? []
+            check(paths.contains(argument), step, paths.joined(separator: " | "))
+        case "agent-open-group":
+            // The chevron of the group with this title.
+            guard let model else { check(false, step, "no panel"); return true }
+            model.toggleOpen(argument)
+            await wait(seconds: 0.1)
         case "agent-tick":
             guard let model else { check(false, step, "no panel"); return true }
             model.tick(argument)
@@ -115,6 +124,26 @@ extension HostSmokeDriver {
                 sent += conversation.sent.map(\.text).joined(separator: "\n")
             }
             check(!sent.contains(argument), step, "it was sent")
+        case "agent-sent-has":
+            // Something recorded as sent by the scripted model holds this text.
+            let sent = services.runtime.scriptedClientForTesting?.allSentText() ?? ""
+            check(sent.contains(argument), step, "it wasn't sent")
+        case "agent-contents":
+            // agent-contents on|off: a click on the Read contents switch beside the composer, when it isn't already
+            // as asked, then the wait for the new thread.
+            guard let model, argument == "on" || argument == "off" else { check(false, step, "usage"); return true }
+            if model.readsContentsForTesting != argument { window.pressAgentContentsToggleForTesting() }
+            let done = await until { model.readsContentsForTesting == argument && !model.isWaitingForTesting }
+            check(done, step, model.readsContentsForTesting)
+        case "agent-contents-is":
+            // agent-contents-is on|off|hidden: the switch beside the composer as drawn, and the thread's own state.
+            let reached = await until {
+                let drawn = window.agentContentsToggleForTesting
+                let shown = !drawn.shown ? "hidden" : drawn.on ? "on" : "off"
+                return shown == argument && (argument == "hidden" || model?.readsContentsForTesting == argument)
+            }
+            let drawn = window.agentContentsToggleForTesting
+            check(reached, step, !drawn.shown ? "hidden" : "\(drawn.on ? "on" : "off"), thread \(model?.readsContentsForTesting ?? "none")")
         case "agent-client-built":
             let built = services.runtime.clientBuildCount > 0 ? "yes" : "no"
             check(built == argument, step, built)
@@ -133,11 +162,12 @@ extension HostSmokeDriver {
             check(width == Int(argument), step, "\(width)")
         case "agent-drag-edge":
             // agent-drag-edge <points>: a drag of the panel's leading edge that far towards the leading side, from press
-            // to release; a negative distance goes back towards the files' side.
-            window.dragAgentPanelEdgeForTesting(by: CGFloat(Double(argument) ?? 0))
+            // to release; a negative distance goes back towards the files' side. The events go to the window, which
+            // must hand the press to the edge's handle.
+            check(window.dragAgentPanelEdgeForTesting(by: CGFloat(Double(argument) ?? 0)), step, "the press missed the edge")
             await wait(seconds: 0.3)
         case "agent-edge-double-click":
-            window.doubleClickAgentPanelEdgeForTesting()
+            check(window.doubleClickAgentPanelEdgeForTesting(), step, "a click missed the edge")
             await wait(seconds: 0.3)
         case "agent-models":
             // agent-models <menu as words>|none: what the model's name under the composer offers, as
@@ -156,6 +186,27 @@ extension HostSmokeDriver {
             }
             check(window.pickAgentModelMenuRowForTesting(bits[1], under: bits[0]), step, "no such row")
             await wait(seconds: 0.5)
+        case "agent-scope":
+            // agent-scope thisFolder|wholeMac: a press of that half of the switch at the end of the folders row, then
+            // the wait for the new thread and its folders.
+            guard let model, let mode = AgentScopeMode(rawValue: argument) else { check(false, step, "usage"); return true }
+            model.chooseScope(mode)
+            let done = await until { model.scopeForTesting == argument && !model.isWaitingForTesting }
+            check(done, step, model.scopeForTesting)
+        case "agent-scope-is":
+            let reached = await until { model?.scopeForTesting == argument }
+            check(reached, step, model?.scopeForTesting ?? "no panel")
+        case "agent-file-is":
+            // agent-file-is <path>=<line>|<line>: a file a plan made holds these lines, each ending in a line break,
+            // and nobody may run it.
+            let bits = argument.split(separator: "=", maxSplits: 1).map(String.init)
+            guard bits.count == 2 else { check(false, step, "usage"); return true }
+            let wanted = bits[1].split(separator: "|", omittingEmptySubsequences: false).map { $0 + "\n" }.joined()
+            let found = (try? String(contentsOfFile: bits[0], encoding: .utf8)) ?? "<unreadable>"
+            let attributes = try? FileManager.default.attributesOfItem(atPath: bits[0])
+            let mode = (attributes?[.posixPermissions] as? NSNumber)?.intValue ?? 0o777
+            let shown = found.replacingOccurrences(of: "\n", with: "|")
+            check(found == wanted && mode & 0o111 == 0, step, "\(shown) mode \(String(mode, radix: 8))")
         case "agent-fast-limits":
             // agent-fast-limits [off]: half a second for a listing, so a slow place fails fast; off puts the usual
             // limits back.

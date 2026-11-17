@@ -3,8 +3,9 @@ import AppKit
 import HelmCore
 import HelmUI
 
-/// Smoke verbs for the welcome checklist. Everything here runs against the fixture's stand-ins: the file viewer and
-/// Dock switches, the permission and the mover change nothing outside Helm, open nothing and never quit.
+/// Smoke verbs for the onboarding and its steps. Everything here runs against the fixture's stand-ins: the file viewer
+/// and Dock switches, the permission and the mover change nothing outside Helm, open nothing and never quit, and
+/// macOS's Quit & Reopen is stood in for in this one process (`setup-quit-reopen`).
 extension HostSmokeDriver {
     /// System Settings panes the stand-in had opened when `panes-mark` ran.
     private static var paneBaseline = 0
@@ -13,8 +14,41 @@ extension HostSmokeDriver {
                                  window: BrowserWindowController, app: AppController) async -> Bool {
         let model = app.onboardingForTesting?.model
         switch verb {
+        case "setup-step":
+            // setup-step welcome|access|viewer|ai|done|closed: the onboarding's step on show.
+            let shown = app.onboardingForTesting?.stepForTesting ?? "closed"
+            check(shown == argument, step, shown)
+        case "setup-steps":
+            // setup-steps <steps, in order>: the onboarding's steps, as its step indicator counts them.
+            let steps = app.onboardingForTesting.map { $0.isSetupShown ? $0.model.steps.map(\.rawValue).joined(separator: ",") : "closed" } ?? "closed"
+            check(steps == argument, step, steps)
+        case "setup-progress":
+            // setup-progress <step:steps:flags>|none: how far the onboarding got, as Settings keeps it for the next launch.
+            let kept = window.dependencies.settings.snapshot.string(.setupProgress)
+            check((kept.isEmpty ? "none" : kept) == argument, step, kept.isEmpty ? "none" : kept)
+        case "setup-quit-reopen":
+            // setup-quit-reopen granted|same: what macOS's Quit & Reopen does, stood in for in this process. Helm quits as
+            // it would, with the onboarding open; with granted, the stand-in permission turns on only then, as macOS
+            // applies Full Disk Access to the next launch; and that launch carries on. Nothing really quits.
+            guard let privacy = app.privacyForTesting else { check(false, step, "not a fixture run"); return true }
+            await app.access.quitAndReopenForTesting { if argument == "granted" { privacy.status = .granted } }
+            await wait(seconds: 0.8)
+        case "onboarding-size":
+            // onboarding-size <width>x<height>: the window's content, the same size on every step of the onboarding.
+            let size = app.onboardingForTesting?.window?.contentView?.frame.size
+            let text = size.map { "\(Int($0.width.rounded()))x\(Int($0.height.rounded()))" } ?? "closed"
+            check(text == argument, step, text)
+        case "setup-summary":
+            // setup-summary <on|off for each line of the done step, in order>
+            let lines = app.onboardingForTesting?.model.summary.map { $0.on ? "on" : "off" }.joined(separator: ",") ?? "closed"
+            check(lines == argument, step, lines)
+        case "setup-ai-reads":
+            // setup-ai-reads <text>: a line the onboarding's AI step shows contains it.
+            let onStep = app.onboardingForTesting?.stepForTesting == "ai"
+            let lines = onStep ? (app.aiSetupModelForTesting?.linesForTesting ?? []) : []
+            check(lines.contains { $0.contains(argument) }, step, lines.joined(separator: " | "))
         case "setup-rows":
-            // setup-rows viewer,access[,move]|none: the rows on show, top to bottom.
+            // setup-rows viewer|access|move|none: the rows on the step on show.
             let rows = model.map { names($0.rows) } ?? "closed"
             check(rows == argument, step, rows)
         case "setup-row":
@@ -39,11 +73,11 @@ extension HostSmokeDriver {
         case "setup-buttons":
             // setup-buttons <titles, left to right>: the footer's buttons.
             guard let model else { check(false, step, "no window"); return true }
-            let titles = ([model.secondaryTitle].compactMap { $0 } + [model.primaryTitle]).joined(separator: ",")
+            let titles = ([model.backTitle, model.secondaryTitle].compactMap { $0 } + [model.primaryTitle]).joined(separator: ",")
             check(titles == argument, step, titles)
         case "setup-first-launch":
-            // What the first launch does, which a fixture run otherwise skips: opens the checklist, unless it's been
-            // seen already or every row is done.
+            // What the first launch does, which a fixture run otherwise skips: opens the onboarding, unless it's been
+            // through already or nothing is left to do, or carries on from where a quit left it.
             app.access.openOnFirstLaunch()
             await wait(seconds: 0.6)
         case "setup-continue":
@@ -52,7 +86,7 @@ extension HostSmokeDriver {
             await wait(seconds: 0.8)
         case "setup-launch":
             // What a launch without the flag does about the welcome, as when the copy in Applications is opened by hand.
-            // A fixture run skips the first launch's welcome, so this only carries on with rows Set Up saved.
+            // A fixture run skips the first launch's onboarding, so this only carries on with rows the move saved.
             app.access.showWelcomeIfNeeded()
             await wait(seconds: 0.8)
         case "setup-build":
@@ -69,7 +103,7 @@ extension HostSmokeDriver {
             let owed = app.access.setupOwed ? "yes" : "no"
             check(owed == argument, step, owed)
         case "setup-note":
-            // setup-note <row> <words>|none: the line about folder access under that row of the checklist.
+            // setup-note <row> <words>|none: the line about folder access on that row's step.
             let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
             guard bits.count == 2, let model, let row = SetupRow(rawValue: bits[0]) else { check(false, step, "usage, or no window"); return true }
             let note = model.folderNote(row) ?? "none"

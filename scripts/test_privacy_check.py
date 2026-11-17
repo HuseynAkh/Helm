@@ -4,8 +4,8 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, DECLARED, GUARDED, LISTENER_FILES, MAY_BE_ABSENT, NETWORK_FILES,
-                           ONE_FILE, check, file_problems, layers, main)
+from privacy_check import (AGENT_UI, ALLOW, ATS_SHAPE, CONTENT_FILES, CONTENT_READER, DECLARED, GUARDED, LISTENER_FILES,
+                           MAY_BE_ABSENT, NETWORK_FILES, ONE_FILE, check, file_problems, layers, main)
 
 DTD = '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
 
@@ -58,6 +58,10 @@ PANEL_MODEL = 'Sources/HelmUI/Agent/AgentPanelModel.swift'
 WINDOW_AGENT = 'Sources/HelmUI/Window/BrowserWindowController+Agent.swift'
 # Files with no leave of their own: one in HelmAgent, one of the AI panel's, a header file and one in HelmCore.
 LOOP = 'Sources/HelmAgent/Loop/AgentSession.swift'
+RUNNER = 'Sources/HelmAgent/Tools/AgentToolRunner.swift'
+SEARCH_WINDOW = 'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift'
+CONTENTS = 'Sources/HelmCore/Contracts/AgentContents.swift'
+EXTRACTOR = 'Sources/HelmUI/Contents/AgentContentExtractor.swift'
 THREAD = 'Sources/HelmUI/Agent/AgentThreadViews.swift'
 HEADER = 'Sources/HelmUI/Chrome/HeaderBarView.swift'
 CORE = 'Sources/HelmCore/Fixture.swift'
@@ -547,6 +551,9 @@ class PrivacyCheckTests(unittest.TestCase):
             ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
             ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
             ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
+            ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
+             'return try? string.data(from: whole, documentAttributes: '
+             '[.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
             ('network-key', 'App/Info.plist', '<key>NSAppTransportSecurity</key>'),
         ])
         self.assertEqual(NETWORK_FILES, {'Sources/HelmAgent/Transport/HTTPTransport.swift'})
@@ -569,6 +576,7 @@ class PrivacyCheckTests(unittest.TestCase):
             ({panel + 'AgentPanelModel.swift'}, None),
             ({panel + 'AgentPanelModel.swift', 'Sources/HelmUI/Window/BrowserWindowController+Agent.swift'}, None),
             ({agent + 'Runtime/AgentLiveParts.swift'}, None),
+            ({panel + 'AgentPanelModel.swift', 'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift'}, None),
         ])
         self.assertEqual(GUARDED, [
             ('tickedByPerson', 'AgentApprovedPlan', {panel + 'AgentPlanCard.swift'}),
@@ -576,7 +584,11 @@ class PrivacyCheckTests(unittest.TestCase):
             ('fromPerson', 'AgentRootInput', {panel + 'AgentPanelModel.swift',
                                               'Sources/HelmUI/Window/BrowserWindowController+Agent.swift'}),
             ('liveProfile', 'HTTPTransport', {agent + 'Runtime/AgentLiveParts.swift'}),
+            ('switchedOnByPerson', 'AgentContentPermit', {panel + 'AgentPanelModel.swift',
+                                                          'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift'}),
         ])
+        self.assertEqual(CONTENT_FILES, {'Sources/HelmUI/Contents/AgentContentExtractor.swift'})
+        self.assertEqual(CONTENT_READER, 'Sources/HelmUI/Contents/AgentContentReader.swift')
         self.assertEqual(AGENT_UI, (panel, 'Sources/HelmUI/Host/AISearchRunner.swift',
                                     'Sources/HelmUI/Host/AISearchPredicates.swift',
                                     'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift'))
@@ -1161,6 +1173,8 @@ class PrivacyCheckTests(unittest.TestCase):
             'liveProfile': ('(liveProfile: profile, secrets: secrets, limits: .cloud)', 'init(liveProfile:secrets:limits:)',
                             'public init(liveProfile profile: AgentProviderProfile, secrets: any AgentSecretStoring, '
                             'limits: AgentTransportLimits) {}'),
+            'switchedOnByPerson': ('(switchedOnByPerson: .panel)', 'init(switchedOnByPerson:)',
+                                   'public init(switchedOnByPerson origin: Origin) {}'),
         }
         self.assertEqual(set(written), {label for label, _, _ in GUARDED})
         # The files that declare the initializers, every file that may call one of them, and files that do neither.
@@ -1169,7 +1183,8 @@ class PrivacyCheckTests(unittest.TestCase):
                   LIVE_PARTS, LOOP,
                   'Sources/HelmAgent/Scripted/StandInConversation.swift', 'Sources/HelmAgent/Runtime/AgentRuntime.swift', THREAD,
                   'Sources/HelmUI/Agent/AgentPlanApplier.swift', 'Sources/HelmUI/Window/BrowserWindowController.swift',
-                  'Sources/HelmApp/macOS/HostSmokeDriver+Agent.swift', CORE, 'App/main.swift']
+                  'Sources/HelmApp/macOS/HostSmokeDriver+Agent.swift', CORE, 'App/main.swift', SEARCH_WINDOW, CONTENTS,
+                  CONTENT_READER, 'Sources/HelmUI/Host/AISearchRunner.swift', 'Sources/HelmApp/macOS/AppController+Agent.swift']
         for label, kind, homes in GUARDED:
             arguments, full_name, declaration = written[label]
             self.assertTrue(homes < set(places), label)
@@ -1213,7 +1228,11 @@ class PrivacyCheckTests(unittest.TestCase):
         agent = 'Sources/HelmAgent/'
         self.assertEqual(DECLARED, {'fromPerson': agent + 'Contracts/AgentScopeContracts.swift',
                                     'typedByPerson': agent + 'Contracts/AgentSessionContracts.swift',
-                                    'liveProfile': agent + 'Transport/HTTPTransport.swift'})
+                                    'liveProfile': agent + 'Transport/HTTPTransport.swift',
+                                    'switchedOnByPerson': 'Sources/HelmCore/Contracts/AgentContents.swift'})
+        self.assertEqual(self.planted(DECLARED['switchedOnByPerson'], 'public struct AgentContentPermit: Hashable {  '
+                                      '// the label switchedOnByPerson: is allowed only in the two switches\n'
+                                      '    public init(switchedOnByPerson origin: Origin) {}\n}'), [])
         # The comments the declarations carry pass there.
         self.assertEqual(self.planted(DECLARED['fromPerson'], 'public struct AgentRootInput: Sendable {  '
                                       '// the label fromPerson: is allowed only in AgentPanelModel.swift\n'
@@ -1233,6 +1252,124 @@ class PrivacyCheckTests(unittest.TestCase):
                         fails=(LIVE_PARTS, LOOP, 'Sources/HelmAgent/Transport/SSELineReader.swift', THREAD, CORE))
 
     # Paths from the Mac that built it.
+
+    def test_only_one_file_looks_inside_files(self):
+        # The frameworks that read inside files, and their reading types, however they arrive: by their own import or
+        # through an umbrella such as Quartz.
+        for code in ['import PDFKit', 'import Vision', '@preconcurrency import AVFoundation', 'import AVKit', 'import Speech',
+                     'import VisionKit', 'internal import Vision',
+                     'import Quartz\nlet document = PDFDocument(data: data)', 'let text = page.string; let page: PDFPage? = nil',
+                     'let handler = VNImageRequestHandler(url: url)', 'let request = VNRecognizeTextRequest()',
+                     'let labels = VNClassifyImageRequest()', 'let asset = AVURLAsset(url: url)',
+                     'let frames = AVAssetImageGenerator(asset: asset)', 'let reader = try AVAssetReader(asset: asset)',
+                     'let speech = SFSpeechRecognizer()', 'typealias Page = PDFPage']:
+            self.expect('content-read', code,
+                        fails=(LOOP, RUNNER, 'Sources/HelmAgent/Scripted/MemoryAgentDisk.swift', CONTENT_READER,
+                               'Sources/HelmUI/Host/AISearchRunner.swift', 'Sources/HelmUI/Window/BrowserWindowController.swift',
+                               'Sources/HelmFileSystem/Agent/FileSystemAgentDisk.swift', CONTENTS, CORE,
+                               'Sources/HelmApp/macOS/HostSmokeDriver.swift', THREAD),
+                        passes=sorted(CONTENT_FILES))
+        # Words that only look like them.
+        for code in ['let vision = "Read contents"', 'let pdf = AISearchKind.pdf', 'import Quartz', 'let assets = 2',
+                     '// Vision reads it on this Mac']:
+            self.expect('content-read', code, passes=(LOOP, CONTENT_READER, HEADER, CORE))
+
+    def test_helm_agent_still_cant_open_a_file_to_read_its_contents(self):
+        # What a read_contents written inside AI mode's own module would need. Each way fails there by more than one
+        # rule, and the module can't import a framework that would do it.
+        for code, expected in [
+                ('let text = try String(contentsOfFile: path, encoding: .utf8)', {'agent-no-read'}),
+                ('let handle = FileHandle(forReadingAtPath: path)', {'agent-no-write'}),
+                ('let data = try Data(contentsOf: URL(fileURLWithPath: path))', {'read-url'}),
+                ('let fd = open(path, O_RDONLY); _ = read(fd, &buffer, 4096)', {'agent-no-read'}),
+                ('import PDFKit\nlet document = PDFDocument(url: URL(fileURLWithPath: path))', {'agent-no-write', 'content-read'}),
+                ('import Vision\nlet handler = VNImageRequestHandler(url: url)', {'agent-no-write', 'content-read'}),
+                ('import AVFoundation\nlet asset = AVURLAsset(url: url)', {'agent-no-write', 'content-read'}),
+                ('let summary = AgentContentExtractor.summary(of: request, deadline: .now())', {'content-read'}),
+                ('let file = AgentContentFile.open(request)', {'content-read'})]:
+            for place in (LOOP, RUNNER, 'Sources/HelmAgent/Search/AISearchSession.swift'):
+                found = rules(self.planted(place, code))
+                self.assertTrue(expected <= found, f'{place}: {code}: {found}')
+        # Asking for summaries through the protocol, with a permit it was handed, names nothing that opens a file.
+        self.assertEqual(self.planted(RUNNER, 'let found = await reading.reader.summaries(of: requests, '
+                                      'permit: reading.permit, seconds: seconds)'), [])
+
+    def test_with_the_switch_off_nothing_can_read(self):
+        # Reading takes a permit, and only the two switches may make one: not the conversation, not the tool runner,
+        # not the search runner, not the app's wiring nor a smoke step.
+        make = 'let permit = AgentContentPermit(switchedOnByPerson: .panel)'
+        self.expect('one-file', make,
+                    fails=(LOOP, RUNNER, 'Sources/HelmUI/Host/AISearchRunner.swift', CONTENT_READER, EXTRACTOR,
+                           'Sources/HelmApp/macOS/AppController+Agent.swift', 'Sources/HelmApp/macOS/HostSmokeDriver+Agent.swift',
+                           'Sources/HelmAgent/Scripted/StandInConversation.swift', CORE),
+                    passes=(PANEL_MODEL, SEARCH_WINDOW))
+        for code in ['let permit: AgentContentPermit = .init(switchedOnByPerson: .search)',
+                     'let make = AgentContentPermit.init', 'typealias Pass = AgentContentPermit']:
+            self.expect('one-file', code, fails=(LOOP, RUNNER, 'Sources/HelmUI/Host/AISearchRunner.swift'),
+                        passes=(PANEL_MODEL, SEARCH_WINDOW))
+        # The file that looks inside files is called only by the reader, which takes the permit.
+        for code in ['let summary = AgentContentExtractor.summary(of: request, deadline: deadline)',
+                     'let file = AgentContentFile.open(request)', 'let bytes = AgentContentVideoBytes(file: file, contentType: kind)']:
+            self.expect('content-read', code,
+                        fails=('Sources/HelmUI/Host/AISearchRunner.swift', PANEL_MODEL, SEARCH_WINDOW, LOOP, CORE,
+                               'Sources/HelmApp/macOS/AppController+Agent.swift'),
+                        passes=(CONTENT_READER, EXTRACTOR))
+
+    def test_rich_text_is_never_read_as_html_or_a_web_archive(self):
+        # The two types that load what they link to, however they are named, anywhere under Sources.
+        for code in ['let options = [NSAttributedString.DocumentReadingOptionKey.documentType: '
+                     'NSAttributedString.DocumentType.html]',
+                     'let read = try NSAttributedString(data: data, options: [.documentType: .html], documentAttributes: nil)',
+                     'let kind = NSAttributedString.DocumentType.webArchive',
+                     'let kind: NSAttributedString.DocumentType = .webArchive',
+                     'options[.documentType] = DocumentType . html', 'let read = [.documentType: .`html`]',
+                     'let kind = NSHTMLTextDocumentType', 'let kind = NSWebArchiveTextDocumentType',
+                     'let kind = NSAttributedString.DocumentType(rawValue: "NSHTML")', 'let kind = DocumentType("NSWebArchive")',
+                     'let kind = NSAttributedString.DocumentType.init(rawValue: name)', 'let raw = "NSHTML"',
+                     'let raw = "NSWebArchive"', '// Read as DocumentType.html when the bytes are a web page',
+                     'case "webarchive": return .webArchive']:
+            self.expect('html-document', code, fails=(CORE, HEADER, LOOP, EXTRACTOR, CONTENT_READER,
+                                                      'Sources/HelmUI/Host/AgentNewFileContents.swift'))
+        # In the file that reads documents, `.html` with its type left out, and a type made from a raw value, too.
+        # In the file that reads documents, `.html` with its type left out, and a type made from a raw value, too. That
+        # file has no use for the HTML file type either.
+        for code in ['case "htm": return .html', 'let kind: NSAttributedString.DocumentType = .init(rawValue: ext)',
+                     'let kind = UTType.html']:
+            self.expect('html-document', code, fails=[EXTRACTOR], passes=(CORE, HEADER))
+        # What only looks like them.
+        for code in ['let types = ["public.html", "public.css"]', '// never read as HTML',
+                     'let kind = NSAttributedString.DocumentType.officeOpenXML', 'case "rtf": return .rtf',
+                     'let documents = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes")',
+                     'let archive = "a web archive"', 'let html = page.htmlString', 'let status = Status(rawValue: raw)']:
+            self.expect('html-document', code, passes=(CORE, HEADER, EXTRACTOR))
+
+    def test_the_reader_names_the_type_of_each_document_it_reads(self):
+        # An attributed string made from bytes with no type would have macOS guess it, HTML included.
+        for code in ['let read = try NSAttributedString(data: data, options: [:], documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: options, documentAttributes: nil)',
+                     'let read = try NSAttributedString.init(data: data, options: [.characterEncoding: 4], '
+                     'documentAttributes: nil)',
+                     'let read: NSAttributedString = try .init(data: data, options: [:], documentAttributes: nil)',
+                     'try NSMutableAttributedString().read(from: data, options: [:], documentAttributes: nil)',
+                     'let read = try NSAttributedString(\n    data: data,\n    options: [:],\n    documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: [/* .documentType: */ :], '
+                     'documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: ["documentType": kind], '
+                     'documentAttributes: nil)']:
+            self.expect('html-document', code, fails=[EXTRACTOR], passes=(CORE, CONTENT_READER))
+        for code in ['let read = try NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], '
+                     'documentAttributes: nil)',
+                     'let read = try NSAttributedString(\n    data: data,\n    options: [\n        .documentType: type\n    ],\n'
+                     '    documentAttributes: nil)',
+                     'let read = try NSAttributedString(rtf: data, documentAttributes: nil)',
+                     'let text = NSAttributedString(string: words)', '// NSAttributedString(data:) with no type guesses it',
+                     'let handler = VNImageRequestHandler(data: data, options: [:])',
+                     'let image = CGImageSourceCreateWithData(data as CFData, nil)']:
+            self.expect('html-document', code, passes=(EXTRACTOR, CORE))
+        # The extractor as it is written.
+        extractor = Path(__file__).resolve().parent.parent / EXTRACTOR
+        self.assertNotIn('html-document', rules(self.planted(EXTRACTOR, extractor.read_text())))
 
     def test_build_paths_fail_in_strings_under_sources(self):
         for code in ['let home = "/Users/me/Documents"', 'let shared = "/Users/Shared"', 'let prefix = "/Users/"',

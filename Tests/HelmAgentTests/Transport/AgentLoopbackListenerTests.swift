@@ -5,7 +5,7 @@ import XCTest
 /// The sign-in's listener, with a client in the test process that talks to it on 127.0.0.1. Nothing leaves this Mac.
 final class AgentLoopbackListenerTests: XCTestCase {
     /// Sends `request` to 127.0.0.1:`port` and gives back what came back, up to the connection's close.
-    private func send(_ request: String, to port: Int) -> String? {
+    private func send(_ request: String, to port: Int, after delay: TimeInterval = 0) -> String? {
         let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else { return nil }
         defer { Darwin.close(descriptor) }
@@ -22,6 +22,7 @@ final class AgentLoopbackListenerTests: XCTestCase {
             }
         }
         guard joined == 0 else { return nil }
+        if delay > 0 { Thread.sleep(forTimeInterval: delay) }
         let bytes = Array(request.utf8)
         _ = bytes.withUnsafeBytes { Darwin.send(descriptor, $0.baseAddress, $0.count, 0) }
         var reply = [UInt8](), buffer = [UInt8](repeating: 0, count: 4_096)
@@ -74,6 +75,20 @@ final class AgentLoopbackListenerTests: XCTestCase {
         let after = await Task.detached { self.send(self.get("/auth/callback?state=right-state"), to: port) }.value
         XCTAssertNil(after, "the port is closed")
         XCTAssertNil(listener.boundAddressForTesting)
+    }
+
+    func testABrowserThatSendsItsRequestAMomentAfterConnectingIsAnswered() async throws {
+        // Browsers often open the connection first and write the request a little later.
+        let listener = AgentLoopbackListener()
+        let port = try listener.start()
+        let waiting = Task { try await listener.callback(path: "/auth/callback", timeout: 20) { $0["state"] == "right-state" } }
+        let reply = await Task.detached {
+            self.send(self.get("/auth/callback?code=c&state=right-state"), to: port, after: 0.5)
+        }.value
+        let page = try XCTUnwrap(reply)
+        XCTAssertTrue(page.hasPrefix("HTTP/1.1 200 OK"), page)
+        let query = try await waiting.value
+        XCTAssertEqual(query["code"], "c")
     }
 
     func testTheWaitEndsAfterItsTimeAndWhenStopped() async throws {

@@ -342,6 +342,48 @@ import HelmPersistence
         XCTAssertTrue(LaunchOptions.usage.contains("Helm --home PATH --support PATH --smoke SCRIPT"))
     }
 
+    /// The README's active look, which draws a captured window as the window in front, is off by default and only a
+    /// scripted run on fixture folders turns it on. Off, a capture changes nothing; on, it still makes nothing key and
+    /// leaves Helm in the background, and the window is put back once it's taken.
+    func testTheActiveLookIsOffUnlessAScriptedFixtureRunTurnsItOn() async throws {
+        XCTAssertFalse(SmokeActiveLook.isOn)
+        XCTAssertFalse(SmokeActiveLook.isCapturing)
+        let plain = try XCTUnwrap(LaunchOptions.parse(["Helm"]))
+        XCTAssertFalse(SmokeActiveLook.mayTurnOn(plain, inBackground: false))
+        XCTAssertFalse(SmokeActiveLook.mayTurnOn(plain, inBackground: true))
+        let fixture = try XCTUnwrap(LaunchOptions.parse(["Helm", "--home", "/tmp/home", "--support", "/tmp/support"]))
+        XCTAssertFalse(SmokeActiveLook.mayTurnOn(fixture, inBackground: true), "fixture folders without a script")
+        let scripted = try XCTUnwrap(LaunchOptions.parse(["Helm", "--home", "/tmp/home", "--support", "/tmp/support",
+                                                          "--smoke", "/tmp/steps.txt"]))
+        XCTAssertFalse(SmokeActiveLook.mayTurnOn(scripted, inBackground: false))
+        XCTAssertTrue(SmokeActiveLook.mayTurnOn(scripted, inBackground: true))
+        XCTAssertFalse(SmokeActiveLook.set(true, for: AppController(options: fixture)))
+        XCTAssertFalse(SmokeActiveLook.isOn)
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 160), styleMask: [.titled, .closable],
+                              backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        let wasActive = NSRunningApplication.current.isActive
+        let off = await SmokeActiveLook.drawingInFront([window]) { SmokeActiveLook.isCapturing }
+        XCTAssertFalse(off, "off, a capture is taken as the window is")
+
+        let run = AppController(options: scripted)
+        XCTAssertTrue(SmokeActiveLook.set(true, for: run))
+        defer { SmokeActiveLook.set(false, for: run) }
+        XCTAssertTrue(SmokeActiveLook.isOn)
+        let during = await SmokeActiveLook.drawingInFront([window]) {
+            (SmokeActiveLook.isCapturing, NSApplication.shared.keyWindow === window, NSRunningApplication.current.isActive)
+        }
+        XCTAssertTrue(during.0)
+        XCTAssertFalse(during.1, "the window became the app's key window")
+        XCTAssertEqual(during.2, wasActive, "Helm came to the front")
+        XCTAssertFalse(SmokeActiveLook.isCapturing)
+        XCTAssertFalse(window.isKeyWindow)
+        XCTAssertFalse(window.isMainWindow)
+        SmokeActiveLook.set(false, for: run)
+        XCTAssertFalse(SmokeActiveLook.isOn)
+    }
+
     // MARK: Helpers
 
     /// A window over the in-memory home with Documents and the Trash, never shown, with a pasteboard of its own.

@@ -77,6 +77,21 @@ let pictures = folder("Pictures")
 for (index, (name, palette)) in palettes.enumerated() {
     writeJPEG(landscape(palette, seed: index + 1), to: pictures.appendingPathComponent("\(name).jpg"))
 }
+// More of the same, so Pictures fills the window as a library in use does.
+let morePictures: [(String, Palette)] = [
+    ("Autumn Ridge", Palette(sky: [0xF2C38B, 0xF8DFC0, 0xFFF6E8], sun: 0xFFFBF0, hills: [0xC8693A, 0x9A4526, 0x5E2A18])),
+    ("Canyon Light", Palette(sky: [0xE8875A, 0xF4B98A, 0xFDE6CF], sun: 0xFFF4E0, hills: [0xB0502E, 0x86381F, 0x4F2013])),
+    ("Coastal Fog", Palette(sky: [0xA9B8C6, 0xD3DCE4, 0xF1F4F7], sun: 0xFFFFFF, hills: [0x7D8F9E, 0x5B6C7A, 0x384551])),
+    ("Golden Hour", Palette(sky: [0xF59E42, 0xFBC77A, 0xFFEBC2], sun: 0xFFF6D8, hills: [0xA8623A, 0x7A4228, 0x4A2617])),
+    ("Harbour at Dusk", Palette(sky: [0x1B2A4A, 0x4C5C8A, 0xE79A8A], sun: 0xFFD8C2, hills: [0x2C3A5E, 0x1E2945, 0x111A2E])),
+    ("Island Morning", Palette(sky: [0x7CD3E8, 0xBDEAF3, 0xF4FCFE], sun: 0xFFFFFF, hills: [0x3FA58C, 0x2A7D69, 0x175244])),
+    ("Misty Valley", Palette(sky: [0xB7C4B0, 0xDCE3D6, 0xF5F7F2], sun: 0xFFFFFF, hills: [0x8BA08A, 0x667D68, 0x3F5443])),
+    ("Winter Pines", Palette(sky: [0x9DB7D9, 0xD2E0F0, 0xF6F9FD], sun: 0xFFFFFF, hills: [0x6E8CAF, 0x4A6688, 0x2A3F5A])),
+]
+for (index, (name, palette)) in morePictures.enumerated() {
+    writeJPEG(landscape(palette, seed: index + 41), to: pictures.appendingPathComponent("\(name).jpg"))
+}
+for name in ["Family", "Travel 2026"] { _ = folder("Pictures/\(name)") }
 let wallpapers = folder("Pictures/Wallpapers")
 for (index, (name, palette)) in palettes.prefix(3).enumerated() {
     writeJPEG(landscape(palette, seed: index + 7, width: 2560, height: 1600), to: wallpapers.appendingPathComponent("\(name) Wide.jpg"))
@@ -156,7 +171,7 @@ write("Day 1: clear skies.\n", to: "Documents/Projects/Field Notes/Day 1.txt")
 // MARK: Desktop and Downloads
 
 let desktop = folder("Desktop")
-writePNG(landscape(palettes[1].1, seed: 13, width: 1440, height: 900), to: desktop.appendingPathComponent("Screenshot 2026-11-08 at 10.42.12.png"))
+writePNG(landscape(palettes[1].1, seed: 13, width: 1440, height: 900), to: desktop.appendingPathComponent("Screenshot 10.42.12.png"))
 _ = folder("Desktop/Moodboard")
 for (index, (_, palette)) in palettes.suffix(3).enumerated() {
     writeJPEG(landscape(palette, seed: index + 17, width: 1200, height: 1200), to: desktop.appendingPathComponent("Moodboard/Swatch \(index + 1).jpg"))
@@ -185,6 +200,77 @@ backup.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
 backup.arguments = ["-c", "-k", "--keepParent", desktop.appendingPathComponent("Moodboard").path,
                     downloads.appendingPathComponent("Photos Backup.zip").path]
 try? backup.run(); backup.waitUntilExit()
+
+// MARK: Screenshots and scans
+
+// Two screenshots on the Desktop and a Screenshots folder in Pictures, for Whole Mac to file them into.
+writePNG(landscape(palettes[4].1, seed: 31, width: 1440, height: 900), to: desktop.appendingPathComponent("Screenshot 14.20.05.png"))
+let screenshots = folder("Pictures/Screenshots")
+writePNG(landscape(palettes[0].1, seed: 33, width: 1440, height: 900), to: screenshots.appendingPathComponent("Screenshot 16.05.33.png"))
+writePNG(landscape(palettes[3].1, seed: 35, width: 1440, height: 900), to: screenshots.appendingPathComponent("Screenshot 09.12.47.png"))
+
+/// A phone photo of a paper receipt on a table: a printed slip, a little turned, with its shop, the word RECEIPT,
+/// a few lines and a total, in type large enough for Read contents to find on this Mac.
+func receiptPhoto(shop: String, lines: [(String, String)], total: String, table: [UInt32], tilt: CGFloat) -> CGImage {
+    let width = 1200, height = 1600
+    let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: sRGB,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    let w = CGFloat(width), h = CGFloat(height)
+    let wood = CGGradient(colorsSpace: sRGB, colors: table.map { rgb($0) } as CFArray, locations: [0, 1])!
+    ctx.drawLinearGradient(wood, start: CGPoint(x: 0, y: h), end: CGPoint(x: w, y: 0), options: [])
+    ctx.translateBy(x: w / 2, y: h / 2)
+    ctx.rotate(by: tilt * .pi / 180)
+    let paper = CGRect(x: -380, y: -620, width: 760, height: 1240)
+    ctx.setShadow(offset: CGSize(width: 0, height: -14), blur: 40, color: CGColor(gray: 0, alpha: 0.45))
+    ctx.setFillColor(rgb(0xFBFAF6)); ctx.fill(paper)
+    ctx.setShadow(offset: .zero, blur: 0, color: nil)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+    let ink = NSColor(white: 0.12, alpha: 1)
+    func centred(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ y: CGFloat) {
+        let words = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: size, weight: weight), .foregroundColor: ink])
+        words.draw(at: CGPoint(x: -words.size().width / 2, y: y))
+    }
+    func row(_ left: String, _ right: String, _ y: CGFloat, bold: Bool = false) {
+        let font = NSFont.monospacedSystemFont(ofSize: 44, weight: bold ? .bold : .regular)
+        NSAttributedString(string: left, attributes: [.font: font, .foregroundColor: ink]).draw(at: CGPoint(x: -320, y: y))
+        let price = NSAttributedString(string: right, attributes: [.font: font, .foregroundColor: ink])
+        price.draw(at: CGPoint(x: 320 - price.size().width, y: y))
+    }
+    centred(shop, 64, .bold, 470)
+    centred("RECEIPT", 84, .heavy, 330)
+    var y: CGFloat = 170
+    for (item, price) in lines { row(item, price, y); y -= 90 }
+    ctx.setFillColor(rgb(0x1F1F1F)); ctx.fill(CGRect(x: -320, y: y + 40, width: 640, height: 4))
+    row("TOTAL", total, y - 50, bold: true)
+    centred("Thank you!", 44, .medium, -560)
+    NSGraphicsContext.restoreGraphicsState()
+    return ctx.makeImage()!
+}
+
+// Scans and photos whose names don't say what they are, for Read contents: four receipts and an invoice, and a
+// letter that stays where it is. Two more receipts wait on the Desktop.
+let scans = folder("Documents/Scans")
+writeJPEG(receiptPhoto(shop: "HARBOUR CAFE", lines: [("Flat white", "4.20"), ("Croissant", "3.80"), ("Soup of the day", "7.50"), ("Sparkling water", "2.90")],
+                       total: "18.40", table: [0x8A5A3C, 0x5C3A26], tilt: -4), to: scans.appendingPathComponent("IMG_2041.jpg"))
+writeJPEG(receiptPhoto(shop: "CORNER MARKET", lines: [("Lemons", "2.40"), ("Oat milk", "3.10"), ("Basil", "1.95"), ("Bread", "4.50")],
+                       total: "11.95", table: [0x6B6F73, 0x3F4246], tilt: 3), to: scans.appendingPathComponent("IMG_1988.jpg"))
+writeJPEG(receiptPhoto(shop: "TRAIL OUTFITTERS", lines: [("Rain jacket", "89.00"), ("Trail map", "6.50")],
+                       total: "95.50", table: [0x9C7A55, 0x6E5236], tilt: -2), to: desktop.appendingPathComponent("IMG_2102.jpg"))
+writeJPEG(receiptPhoto(shop: "RIVERSIDE BOOKS", lines: [("Field guide", "24.00"), ("Notebook", "8.50")],
+                       total: "32.50", table: [0x7A5238, 0x4E3322], tilt: 2), to: scans.appendingPathComponent("IMG_2066.jpg"))
+writeJPEG(receiptPhoto(shop: "CITY PHARMACY", lines: [("Sunscreen", "12.90"), ("Plasters", "4.25"), ("Lip balm", "3.60")],
+                       total: "20.75", table: [0x5F6468, 0x393C40], tilt: -3), to: scans.appendingPathComponent("IMG_2079.jpg"))
+writeJPEG(receiptPhoto(shop: "MOUNTAIN DELI", lines: [("Sandwich", "9.80"), ("Lemonade", "3.40")],
+                       total: "13.20", table: [0x8E6B4C, 0x624830], tilt: 4), to: desktop.appendingPathComponent("IMG_2110.jpg"))
+pdf(title: "Concert Tickets", subtitle: "Two seats · Row F", accent: 0xBF5AF2, pages: 1, chart: false,
+    to: desktop.appendingPathComponent("Concert Tickets.pdf"))
+write("To do\n\n- Book the cabin\n- Return the library books\n", to: "Desktop/To Do.txt")
+_ = folder("Desktop/Old Projects")
+pdf(title: "Invoice 1047", subtitle: "Studio Maple · Due 30 November 2026", accent: 0x5E5CE6, pages: 1, chart: false,
+    to: scans.appendingPathComponent("Scan 2026-11-03.pdf"))
+pdf(title: "Lease Renewal", subtitle: "Flat 3B · From 1 January 2027", accent: 0x64D2FF, pages: 1, chart: false,
+    to: scans.appendingPathComponent("Scan 2026-11-09.pdf"))
 
 for name in ["Music", "Movies", "Library", "Templates"] { _ = folder(name) }
 
@@ -215,6 +301,14 @@ let pinnedDates: [String: Date] = [
     "Documents/Product Roadmap.pdf": day(1, 11, 5),
     "Downloads/Concert Poster.jpg": day(2, 19, 30),
     "Downloads/Boarding Pass.pdf": day(3, 7, 55),
+    "Desktop/Screenshot 10.42.12.png": day(9, 10, 42),
+    "Desktop/Screenshot 14.20.05.png": day(5, 14, 20),
+    "Documents/Scans/IMG_2041.jpg": day(6, 12, 31),
+    "Documents/Scans/IMG_1988.jpg": day(12, 18, 4),
+    "Desktop/IMG_2102.jpg": day(3, 16, 47),
+    "Desktop/IMG_2110.jpg": day(1, 13, 12),
+    "Documents/Scans/IMG_2066.jpg": day(8, 11, 2),
+    "Documents/Scans/IMG_2079.jpg": day(10, 17, 36),
     // The fall's invoices, each dated in step with its name, for AI search's picture.
     "Documents/Invoices/Invoice November.pdf": day(2, 10, 15),
     "Documents/Invoices/Invoice October.pdf": day(25, 14, 30),

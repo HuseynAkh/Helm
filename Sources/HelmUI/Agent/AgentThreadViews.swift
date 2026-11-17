@@ -4,7 +4,9 @@ import HelmAgent
 import HelmCore
 
 /// One entry of the thread. Every string from the model or the disk is drawn verbatim, as plain text that nothing
-/// reads for links or formatting. Helm's own lines carry the spark and a quieter style, which a reply never gets.
+/// reads for links or formatting. The person's requests sit on the trailing side in soft bubbles tinted with the
+/// accent colour; replies are plain text across the thread. Helm's own lines carry the spark and a quieter style,
+/// which a reply never gets.
 struct AgentThreadLineView: View {
     let line: AgentPanelModel.Line
     @ObservedObject var model: AgentPanelModel
@@ -14,17 +16,20 @@ struct AgentThreadLineView: View {
         case .consent(let words):
             AgentHelmLineView(words: words, button: nil, press: {})
         case .request(let words):
-            HStack {
-                Spacer(minLength: 40)
+            HStack(spacing: 0) {
+                Spacer(minLength: 44)
                 Text(verbatim: words)
-                    .font(.system(size: 12))
+                    .font(.system(size: AgentPanelStyle.body))
+                    .lineSpacing(AgentPanelStyle.bubbleLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: AgentPanelStyle.bubbleRadius, style: .continuous)
+                        .fill(AgentPanelStyle.bubbleFill))
             }
         case .reply(let words):
             Text(verbatim: words)
-                .font(.system(size: 12))
+                .font(.system(size: AgentPanelStyle.body))
+                .lineSpacing(AgentPanelStyle.replyLineSpacing)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .helm(let words, let button):
@@ -56,17 +61,18 @@ struct AgentHelmLineView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             if isLive {
                 ProgressView().controlSize(.mini)
-                    .frame(width: 10, height: 10)
+                    .frame(width: 11, height: 11)
                     .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                     .accessibilityHidden(true)
             } else {
-                Image(nsImage: SparkMark.image(size: 10, lit: false))
+                Image(nsImage: SparkMark.image(size: 11, lit: false))
                     .renderingMode(.template)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
             Text(verbatim: words)
-                .font(.system(size: 11))
+                .font(.system(size: AgentPanelStyle.secondary))
+                .lineSpacing(1)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -77,23 +83,23 @@ struct AgentHelmLineView: View {
     }
 }
 
-/// What an applied plan did, with Undo and Show.
+/// What an applied plan did, with Undo and Show, in a grouped box like the plan's.
 struct AgentOutcomeView: View {
     let outcome: AgentPanelModel.Outcome
     let undo: () -> Void
     let show: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             // Once undone, what it did is no longer so, and the line says so by going quiet.
             Text(verbatim: outcome.lines.joined(separator: "\n"))
-                .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                .font(.system(size: AgentPanelStyle.body)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(outcome.undoLine == AgentText.undoDone ? Color.secondary : Color.primary)
             if let undoLine = outcome.undoLine {
-                Text(verbatim: undoLine).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(verbatim: undoLine).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
             }
             if outcome.canUndo || !outcome.changed.isEmpty {
-                HStack {
+                HStack(spacing: 8) {
                     Spacer()
                     if !outcome.changed.isEmpty { Button(AgentText.show, action: show) }
                     if outcome.canUndo { Button(AgentText.undo, action: undo) }
@@ -101,9 +107,9 @@ struct AgentOutcomeView: View {
                 .controlSize(.small)
             }
         }
-        .padding(10)
+        .padding(.horizontal, AgentPanelStyle.inset).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+        .background(AgentCardBackground())
     }
 }
 
@@ -123,7 +129,7 @@ struct AgentFoldersRow: View {
                     AgentFolderChipView(chip: chip, remove: { model.remove(chip) })
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, AgentPanelStyle.margin)
             .background(GeometryReader { proxy in Color.clear.preference(key: AgentChipsWidthKey.self, value: proxy.size.width) })
         }
         .background(GeometryReader { proxy in Color.clear.preference(key: AgentChipsRowWidthKey.self, value: proxy.size.width) })
@@ -161,25 +167,30 @@ struct AgentChipsRowWidthKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// One folder's chip: the kind's symbol, the folder's name, and a close button on a folder the person added.
+/// One folder's chip: the kind's symbol, the folder's name, and a close button on a folder the person added, in a
+/// softly filled capsule.
 struct AgentFolderChipView: View {
     let chip: AgentPanelModel.Chip
     let remove: () -> Void
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: chip.symbol).font(.system(size: 10)).accessibilityHidden(true)
-            Text(verbatim: chip.label).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+        HStack(spacing: 5) {
+            Image(systemName: chip.symbol).font(.system(size: AgentPanelStyle.small)).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(verbatim: chip.label).font(.system(size: AgentPanelStyle.secondary)).lineLimit(1).truncationMode(.middle)
             if chip.removable {
                 Button(action: remove) {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
+                        .frame(width: 14, height: 14)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(verbatim: AgentText.chipRemove(chip.label)))
             }
         }
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(Capsule().fill(Color.primary.opacity(0.08)))
+        .padding(.leading, 9).padding(.trailing, chip.removable ? 5 : 10)
+        .frame(height: AgentPanelStyle.folderChipHeight)
+        .background(Capsule().fill(AgentPanelStyle.chipFill()))
         .help(chip.tooltip)
         .frame(maxWidth: 200)
     }
@@ -195,14 +206,14 @@ struct AgentSuggestionsRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(model.slashRows, id: \.title) { row in
                     Button(action: { model.press(row.title) }) {
-                        Text(verbatim: row.title).font(.system(size: 12, design: .monospaced))
+                        Text(verbatim: row.title).font(.system(size: AgentPanelStyle.body))
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10).frame(height: 26)
                     }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .buttonStyle(AgentChipButtonStyle())
                 }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, AgentPanelStyle.margin)
         } else if !model.suggestions.isEmpty {
             // Organize has a row of its own and Move and Copy share the next, so each title keeps its count and its
             // "to…" at the panel's fixed width.
@@ -212,12 +223,12 @@ struct AgentSuggestionsRow: View {
                     ForEach(model.suggestions.filter { $0.kind != .organize }) { chip(for: $0) }
                 }
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, AgentPanelStyle.margin)
         } else if let line = model.restingLine {
             Text(verbatim: line)
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, AgentPanelStyle.margin)
         }
     }
 
@@ -228,46 +239,44 @@ struct AgentSuggestionsRow: View {
             // Drawn as the other chips are, the same type and height. Its chevron is drawn beside the words, the same
             // on every SDK, since the plain style hides the menu's own; a press runs This Folder, and holding it
             // offers the depths.
-            Menu {
-                ForEach(AgentPanelModel.depths, id: \.title) { depth in
-                    Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
+            AgentChipLook {
+                Menu {
+                    ForEach(AgentPanelModel.depths, id: \.title) { depth in
+                        Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(verbatim: suggestion.title).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.primary)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                } primaryAction: {
+                    model.choose(suggestion, depth: .thisFolder)
                 }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(verbatim: suggestion.title).font(.system(size: 11)).foregroundStyle(.primary)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
-            } primaryAction: {
-                model.choose(suggestion, depth: .thisFolder)
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .modifier(AgentSuggestionLook())
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .modifier(AgentSuggestionLook())
         } else {
             Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
-                Text(verbatim: suggestion.title).font(.system(size: 11)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(verbatim: suggestion.title).font(.system(size: AgentPanelStyle.secondary)).lineLimit(1).minimumScaleFactor(0.8)
+                    .modifier(AgentSuggestionLook())
             }
-            .buttonStyle(.plain)
-            .modifier(AgentSuggestionLook())
+            .buttonStyle(AgentChipButtonStyle())
         }
     }
 }
 
-/// A suggestion's chip: its row's full width or an equal share of it, one height for all three, a soft fill and
-/// rounded corners.
+/// A suggestion's size: its row's full width or an equal share of it, and one height for all three.
 private struct AgentSuggestionLook: ViewModifier {
-    static let height: CGFloat = 24
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
-            .frame(height: Self.height)
-            .contentShape(Rectangle())
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.08)))
+            .frame(height: AgentPanelStyle.suggestionHeight)
     }
 }
 #endif

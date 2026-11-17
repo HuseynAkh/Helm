@@ -52,10 +52,15 @@ extension BrowserWindowController {
     public var agentPanelModelForTesting: AgentPanelModel? { agentPanelHost.model }
     /// How wide the AI panel is: what it shows while open, and zero while shut.
     public var agentPanelWidthForTesting: CGFloat { agentPanelHost.isOpen ? agentPanelHost.frame.width : 0 }
-    /// A drag of the AI panel's leading edge, `distance` points towards the leading side (negative goes back).
-    public func dragAgentPanelEdgeForTesting(by distance: CGFloat) { agentPanelHost.dragEdgeForTesting(by: distance) }
-    /// A double click on the AI panel's leading edge.
-    public func doubleClickAgentPanelEdgeForTesting() { agentPanelHost.doubleClickEdgeForTesting() }
+    /// A drag of the AI panel's leading edge, `distance` points towards the leading side (negative goes back), as a
+    /// person makes one: a press, moves and a release sent to the window. False when the press missed the edge.
+    @discardableResult public func dragAgentPanelEdgeForTesting(by distance: CGFloat) -> Bool {
+        agentPanelHost.sendEdgeDragForTesting(by: distance)
+    }
+    /// A double click on the AI panel's leading edge, sent to the window as two clicks. False when either missed it.
+    @discardableResult public func doubleClickAgentPanelEdgeForTesting() -> Bool {
+        agentPanelHost.sendEdgeDragForTesting(by: 0) && agentPanelHost.sendEdgeDragForTesting(by: 0, clicks: 2)
+    }
     /// The model's name under the composer, and "menu" or "plain" for whether a press on it shows the model menu.
     public var agentModelNameForTesting: String {
         let shown = agentPanelHost.modelNameForTesting
@@ -65,6 +70,10 @@ extension BrowserWindowController {
     @discardableResult public func pickAgentModelMenuRowForTesting(_ title: String, under provider: String? = nil) -> Bool {
         agentPanelHost.pickModelMenuRowForTesting(title, under: provider)
     }
+    /// The Read contents switch beside the composer, as drawn: whether it shows, is on and can be pressed.
+    public var agentContentsToggleForTesting: (shown: Bool, on: Bool, enabled: Bool) { agentPanelHost.contentsToggleForTesting }
+    /// A click on the Read contents switch beside the composer, as a person makes it.
+    public func pressAgentContentsToggleForTesting() { agentPanelHost.pressContentsToggleForTesting() }
     /// The rows of the menu under the composer, by title. Empty while the name is a plain name.
     public var agentModelMenuTitlesForTesting: [String] { agentPanelHost.modelMenuTitlesForTesting }
 
@@ -83,7 +92,8 @@ extension BrowserWindowController {
         actions.giveKeysBack = { [weak self] in self?.focusContent() }
         actions.focusComposer = { [weak self] in self?.agentPanelHost.focusComposer() }
         actions.phaseChanged = { [weak self] _ in self?.agentPanelHost.updateSpark() }
-        return AgentPanelModel(session: session, home: dependencies.home.path, provider: provider, actions: actions)
+        return AgentPanelModel(session: session, home: dependencies.home.path, provider: provider, actions: actions,
+                               offersReadContents: dependencies.agent.runtime.canReadContents)
     }
 
     /// What the model's name under the composer offers, from what ai.json keeps and which keys are saved. Nothing is
@@ -122,8 +132,8 @@ extension BrowserWindowController {
 
     /// The model requests go to, while one is ready.
     var agentProvider: AgentPanelModel.Provider? {
-        guard case .ready(let provider, let destination, let model, _) = dependencies.agent.runtime.state else { return nil }
-        return AgentPanelModel.Provider(name: provider, destination: destination, model: model)
+        guard case .ready(let provider, let destination, let model, let isLocal) = dependencies.agent.runtime.state else { return nil }
+        return AgentPanelModel.Provider(name: provider, destination: destination, model: model, isLocal: isLocal)
     }
 
     /// What the tab in front shows. Recent, the Trash and search results show no folder.

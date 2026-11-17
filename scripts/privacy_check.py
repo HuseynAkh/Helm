@@ -19,6 +19,11 @@ Some rules hold in one place only, or everywhere but one place:
 - Sources/HelmAgent is the module that reaches a model provider, so it names no way to change, open or
   look up a file, or to start a tool. It learns about the disk through HelmCore's AgentDisk alone.
 - The files that draw a model's text draw it plain: no Markdown, no links, nothing that opens or shares.
+- Read contents looks inside files on this Mac, in CONTENT_FILES alone: only there may PDFKit, Vision,
+  AVFoundation or Speech be imported, or their reading types be named. Only CONTENT_READER, which takes the person's
+  permit, calls into it, and only the AI panel's model and the window's AI search may make that permit.
+- Rich text is never read as HTML or a web archive, which load what they link to: no file names those document
+  types, and CONTENT_FILES names the type of each attributed string it makes from bytes, so none is guessed.
 - ONE_FILE and GUARDED list what only a file or two may say: the keychain calls, the call that shows a
   key, and the labels of the initializers that only those files may call. The file that declares such an
   initializer, in DECLARED, may name its label in a comment.
@@ -57,7 +62,12 @@ LIVE_PARTS = AGENT + 'Runtime/AgentLiveParts.swift'
 PLAN_CARD = 'Sources/HelmUI/Agent/AgentPlanCard.swift'
 PANEL_MODEL = 'Sources/HelmUI/Agent/AgentPanelModel.swift'
 WINDOW_AGENT = 'Sources/HelmUI/Window/BrowserWindowController+Agent.swift'
+SEARCH_WINDOW = 'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift'
 INFO_PLIST = 'App/Info.plist'
+# Read contents: the permit's declaration, the reader that takes it, and the one file that looks inside files.
+CONTENTS = 'Sources/HelmCore/Contracts/AgentContents.swift'
+CONTENT_READER = 'Sources/HelmUI/Contents/AgentContentReader.swift'
+CONTENT_FILES = {'Sources/HelmUI/Contents/AgentContentExtractor.swift'}
 
 # The files that may name a URL session. They are let off `url-session` and nothing else, and each must exist
 # while Sources/HelmAgent does.
@@ -70,7 +80,8 @@ AGENT_UI = ('Sources/HelmUI/Agent/', 'Sources/HelmUI/Host/AISearchRunner.swift',
             'Sources/HelmUI/Host/AISearchPredicates.swift', 'Sources/HelmUI/Window/BrowserWindowController+AISearch.swift')
 # The declaring file of each guarded initializer, whose comments may name its label (section GUARDED below).
 DECLARED = {'fromPerson': AGENT + 'Contracts/AgentScopeContracts.swift',
-            'typedByPerson': AGENT + 'Contracts/AgentSessionContracts.swift', 'liveProfile': TRANSPORT}
+            'typedByPerson': AGENT + 'Contracts/AgentSessionContracts.swift', 'liveProfile': TRANSPORT,
+            'switchedOnByPerson': CONTENTS}
 # What App/Info.plist may hold under NSAppTransportSecurity, if it has that key at all: plain http to this Mac,
 # which is how a local model is reached.
 ATS_SHAPE = {'NSAllowsLocalNetworking': True}
@@ -187,8 +198,29 @@ NETWORK_KEY = (r'com\.apple\.security\.network\.(?:client|server)|com\.apple\.de
                r'|NSBonjourServices|NSLocalNetworkUsageDescription|NSUserActivityTypes|CFBundleURLTypes|SUFeedURL'
                r'|SUPublicEDKey|SUEnableAutomaticChecks')
 WRITES = "AI mode's module: a way to change a file or start a tool"
+INSIDE = 'Read contents: a way to look inside a file, outside the one file that does it'
 READS = "AI mode's module: a way to open or look up a file"
 PLAIN = 'AI panel and AI search: text drawn as more than plain text, or a way to open or share'
+HTML_TYPES = 'rich text read as HTML or a web archive, which load what they link to'
+UNTYPED = 'Read contents: rich text made from bytes without naming its document type'
+
+# An attributed string made from bytes: its initializer, by name or as a bare `.init`, or `read(from:)`.
+FROM_BYTES = re.compile(r'(?:\bNS(?:Mutable)?AttributedString\s*(?:\.\s*init\s*)?|(?<![\w.)\]?!])\.\s*init\s*'
+                        r'|\.\s*read\s*)\(\s*(?:data|from)\s*:')
+
+
+def untyped_documents(code):
+    """Each attributed string made from bytes whose call doesn't name `.documentType` in its options, so the reader
+    guesses the type from the bytes, HTML included. Options handed over in a variable name no type here, so they fail
+    too."""
+    for match in FROM_BYTES.finditer(code):
+        depth, index = 1, match.end()
+        while index < len(code) and depth:
+            depth += 1 if code[index] in '([{' else -1 if code[index] in ')]}' else 0
+            index += 1
+        call = code[match.start():index]
+        if not re.search(r'\.\s*documentType\s*:', call):
+            yield match.start(), call
 
 # (id, what it finds, pattern, files it reads), then where it looks when that isn't everywhere, then what it
 # matches against when that isn't the raw text: `code` or `strings`, as layers() returns them, or a tuple of views
@@ -360,6 +392,28 @@ RULES = [
     ('agent-no-read', READS, bare(READ_CALLS, r'\s+'), SWIFT, inside(AGENT), 'code'),
     ('agent-no-read', READS, c_references(READ_CALLS), SWIFT, inside(AGENT), 'code'),
 
+    # Read contents. The frameworks that look inside files, and the types of theirs that read a file, belong to one
+    # file, so nothing else in Helm can read a PDF's text, look at a picture or decode a video, even through an
+    # umbrella import such as Quartz. AI mode's own module can't import them at all.
+    ('content-read', INSIDE, IMPORT + r'(?:PDFKit|Vision|VisionKit|AVFoundation|AVKit|Speech)\b'
+     r'|\b(?:PDFDocument|PDFPage|VN[A-Z]\w*|AVAsset\w*|AVURLAsset|SFSpeech\w*)\b', SWIFT, outside(*CONTENT_FILES), BOTH),
+    # That file is reached only through the reader, which reads nothing without the person's permit.
+    ('content-read', INSIDE, r'\bAgentContent(?:Extractor|File|VideoBytes)\b', SWIFT,
+     outside(*CONTENT_FILES, CONTENT_READER), BOTH),
+    # NSAttributedString reads HTML and web archives by loading what they link to, pictures and style sheets from the
+    # web included. No file names those two document types: by name, as a value whose type is left out, by their old
+    # constants or their raw values, or made from a string.
+    ('html-document', HTML_TYPES,
+     r'\bDocumentType\s*\.\s*`?(?:html|webArchive)\b|\bdocumentType\s*:\s*\.\s*`?(?:html|webArchive)\b|\bwebArchive\b'
+     r'|\bNS(?:HTML|WebArchive)TextDocumentType\b|\bDocumentType\s*(?:\.\s*init\s*)?\(', SWIFT, inside('Sources/'), BOTH),
+    ('html-document', HTML_TYPES, r'\bNS(?:HTML|WebArchive)\b', SWIFT, inside('Sources/'), 'strings'),
+    # In the file that reads documents, `.html` with its type left out is that type too, and a type made from a raw
+    # value could be.
+    ('html-document', HTML_TYPES, r'\.\s*`?(?:html|webArchive)\b|(?<![\w.)\]?!])\.\s*init\s*\(\s*rawValue\s*:', SWIFT,
+     inside(*CONTENT_FILES), 'code'),
+    # There, each attributed string made from bytes names the type it reads them as.
+    ('html-document', UNTYPED, untyped_documents, SWIFT, inside(*CONTENT_FILES), 'code'),
+
     # A string handed to Text as a key is read as Markdown, and its links can be clicked. A key can be made by
     # name or by a literal's own initializer. Link detection may only be turned off, by `= false` and nothing more.
     # A link attribute, text checking, HTML and the Services menu are other ways to make a link or to send text away;
@@ -402,6 +456,8 @@ GUARDED = [
     ('typedByPerson', 'AgentPersonInput', {PANEL_MODEL}),
     ('fromPerson', 'AgentRootInput', {PANEL_MODEL, WINDOW_AGENT}),
     ('liveProfile', 'HTTPTransport', {LIVE_PARTS}),
+    # Read contents' permit: only the switch beside the AI panel's composer and the one in AI search's kind row.
+    ('switchedOnByPerson', 'AgentContentPermit', {PANEL_MODEL, SEARCH_WINDOW}),
 ]
 ONE_FILE += [(r'\b' + label + r'`?\s*:|\b' + made + r'\s*\.\s*(?:init|self)\b'
               r'|\btypealias\s+\w+\s*=\s*(?:\w+\s*\.\s*)*' + made + r'\b', homes, None) for label, made, homes in GUARDED]
@@ -458,6 +514,10 @@ ALLOW = [
     ('web-address', HELP_LINKS, 'static let grokKey = "https://docs.x.ai/docs/quickstart"'),
     ('web-address', HELP_LINKS, 'static let ollamaStart = "https://docs.ollama.com/quickstart"'),
     ('web-address', HELP_LINKS, 'static let lmStudioServer = "https://lmstudio.ai/docs/developer/core/server"'),
+    # A Word file an AI panel plan makes: NSAttributedString writes the text as a .docx in memory. It is the same
+    # spelling as a session's load from an address, and reads nothing.
+    ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
+     'return try? string.data(from: whole, documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
     # Plain http to a model on this Mac. transport_security() holds what is under the key to ATS_SHAPE.
     ATS_KEY,
 ]

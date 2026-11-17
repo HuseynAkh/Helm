@@ -10,6 +10,16 @@ import HelmCore
 /// at launch, goes off when the search closes or AI mode stops being ready, and while it is on, typing still searches
 /// names at once and only Return asks the model. The runner it installs does the searching; the window shows how it
 /// went in the status bar and each result's reason as its tooltip.
+///
+/// The kind row under the header is the search's, spark on or off (`headerSearchKindChanged`): its kind limits every
+/// search, typed or sent, and the plan a model answers. Choosing another kind searches the words again by name, and
+/// Return asks the model again; nothing is sent by the choice itself. Turning the spark on or off keeps the kind; it
+/// goes back to Any when the search closes.
+///
+/// While the spark is on, the row's trailing end holds the Read contents switch, in a run that can read inside files.
+/// On, it hands the runner the person's permit, and Return then also reads inside files on this Mac and has the model
+/// look at the best of them. It lasts while the spark does: it goes off, and what was read is forgotten, whenever the
+/// spark goes off, as it does when the search closes.
 extension BrowserWindowController {
     /// Installs the window's AI search runner, and keeps the spark in step with the tab and with AI mode.
     func installAISearch() {
@@ -17,11 +27,26 @@ extension BrowserWindowController {
         effects.aiSearch = runner
         let runtime = dependencies.agent.runtime
         let watch = AISearchWatch(runtime: runtime)
-        watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in self?.followAISearchReadiness() }
+        watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in
+            // AI mode, the provider or the model changed: a look may carry pictures again.
+            self?.aiSearchRunner?.runtimeChanged()
+            self?.followAISearchReadiness()
+        }
         watch.storeToken = store.snapshots.subscribe { [weak self] _ in self?.followAISearchReadiness() }
         runner.watch = watch
         watch.shown = (isAISearchAvailable, false)
         header.setAISearch(available: isAISearchAvailable, on: false)
+        header.kindBar.onContents = { [weak self] on in self?.chooseAISearchContents(on) }
+    }
+
+    /// The kind row's Read contents switch. Nothing is sent or read by the press itself; Return then reads.
+    func chooseAISearchContents(_ on: Bool) {
+        guard let runner = aiSearchRunner, runner.isOn, dependencies.agent.contents != nil else {
+            header.kindBar.showContents(offered: false, on: false)
+            return
+        }
+        runner.contentPermit = on ? AgentContentPermit(switchedOnByPerson: .search) : nil
+        showAISearchState()
     }
 
     /// Return in the search field. With the spark on and a model ready, the words are sent; otherwise nothing
@@ -77,7 +102,7 @@ extension BrowserWindowController {
             }
         }
         guard runner.isOn, tab.id == activeTabID else { return nil }
-        return AISearchStatus(text: AgentText.searchHint(destination))
+        return AISearchStatus(text: runner.readsContents ? AgentText.searchHintContents(destination) : AgentText.searchHint(destination))
     }
 
     /// "Find with AI" on the no-results page: the spark goes on and the same words are sent at once. While no model
@@ -119,6 +144,8 @@ extension BrowserWindowController {
         let shown = (available: isAISearchAvailable, on: aiSearchRunner?.isOn ?? false)
         aiSearchRunner?.watch?.shown = shown
         header.setAISearch(available: shown.available, on: shown.on)
+        // The kind row shows with the search, and keeps its choice; the Read contents switch at its end, with the spark.
+        header.kindBar.showContents(offered: shown.on && dependencies.agent.contents != nil, on: aiSearchRunner?.readsContents ?? false)
         if let tab = activeTab { renderStatus(tab) }
     }
 
@@ -151,6 +178,15 @@ extension BrowserWindowController {
         return nil
     }
     public var aiSearchStatusForTesting: AISearchStatus? { activeTab.flatMap { aiSearchStatus(for: $0) } }
+    /// The Read contents switch at the end of the kind row: whether it shows and whether it is on.
+    public var aiSearchContentsForTesting: (shown: Bool, on: Bool) {
+        let shown = header.kindBar.contentsForTesting
+        return (shown.shown && !header.kindBar.isHidden, aiSearchRunner?.readsContents ?? false)
+    }
+    /// A click on the kind row's Read contents switch, as a person makes it. False while it doesn't show.
+    @discardableResult public func clickAISearchContentsForTesting() -> Bool { header.kindBar.clickContentsForTesting() }
+    /// How many pictures and videos this search session has read inside.
+    public var aiSearchContentsReadForTesting: Int { aiSearchRunner?.memo.count ?? 0 }
 }
 
 /// What the window's AI search listens to. The runtime outlives the window, so its subscription ends with this.

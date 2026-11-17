@@ -101,6 +101,45 @@ final class AISearchSessionTests: XCTestCase {
         XCTAssertEqual(planned.sizeMaxBytes, 0, "a size below zero means none")
     }
 
+    // MARK: A kind chosen in the kind row
+
+    func testAChosenKindIsSentAndNoAnswerCanWidenIt() async throws {
+        let model = try client(plan: plan([
+            query("name_any = [\"beach\"]; kinds = [\"video\"]"),
+            query("name_any = [\"beach\"]; extensions = [\"pdf\", \"jpg\"]"),
+            query("name_any = [\"sea\"]; kinds = [\"image\", \"document\"]")
+        ]))
+        let session = AISearchSession(client: model, calendar: calendar)
+        let result = try await session.plan(request: "beach photos", scopeLabel: "Pictures", today: today, languageCode: "en",
+                                            kind: .image)
+        XCTAssertEqual(result.queries, [AISearchQuery(nameAny: ["beach"], kinds: [.image]),
+                                        AISearchQuery(nameAny: ["beach"], kinds: [.image], extensions: ["jpg"]),
+                                        AISearchQuery(nameAny: ["sea"], kinds: [.image])])
+        let ask = try XCTUnwrap(model.sentAsks.first)
+        XCTAssertTrue(ask.user.contains("\"only_kind\":\"image\""), ask.user)
+        XCTAssertTrue(ask.system.contains("only_kind"), "the model is told what only_kind means")
+    }
+
+    func testWithNoKindChosenThePlanIsTheModelsAndNoKindIsSent() async throws {
+        let model = try client(plan: plan([query("name_any = [\"beach\"]; kinds = [\"video\"]")]))
+        let session = AISearchSession(client: model, calendar: calendar)
+        let result = try await session.plan(request: "beach", scopeLabel: "Pictures", today: today, languageCode: "en")
+        XCTAssertEqual(result.queries, [AISearchQuery(nameAny: ["beach"], kinds: [.video])])
+        XCTAssertFalse(try XCTUnwrap(model.sentAsks.first).user.contains("only_kind"))
+    }
+
+    func testTheFallbackIsKeptToTheKindAndAnEmptyQueryNeverBecomesEveryItemOfIt() async throws {
+        // A query that asks for nothing is dropped before the kind is applied, so it can't become "every photo".
+        let model = try client(plan: plan([query("name_any = [\"has space\"]")]))
+        let session = AISearchSession(client: model, calendar: calendar)
+        let result = try await session.plan(request: "tax return", scopeLabel: "Documents", today: today, languageCode: "en",
+                                            kind: .document)
+        XCTAssertEqual(result.queries, [AISearchQuery(nameAny: ["tax", "return"], kinds: [.document])])
+        let none = try await AISearchSession(client: try client(plan: plan([])), calendar: calendar)
+            .plan(request: "x", scopeLabel: "Home", today: today, languageCode: "en", kind: .audio)
+        XCTAssertEqual(none.queries, [], "a request with no word to look for still has nothing to run")
+    }
+
     func testAnUnreadableAnswerOrNoAnswerFails() async throws {
         let session = AISearchSession(client: try client(), calendar: calendar)
         do {

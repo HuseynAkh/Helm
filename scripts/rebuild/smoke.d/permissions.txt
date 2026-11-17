@@ -222,187 +222,361 @@ screenshot @SHOTS@/empty-folder-light.png
 appearance dark
 screenshot @SHOTS@/empty-folder-dark.png
 appearance light
-# The welcome window: one screen with a short checklist. Opening it isn't seeing it
+# The onboarding: one window, one step at a time, every step the same size: welcome, Full Disk Access, the default file
+# viewer and the Dock, AI mode, then done. Opening it isn't going through it
 setting onboardingCompleted false
+setting aiIntroSeen false
 viewer-is finder
 dock-is not-first
 fda-is denied
+setting-is aiModeEnabled false
 panes-mark
 onboarding open
 onboarding-is setup
+setup-step welcome
+setup-steps welcome,access,viewer,ai,done
+setup-rows none
+setup-buttons Continue
+setup-progress welcome:welcome,access,viewer,ai,done:
 setting-is onboardingCompleted false
-setup-rows viewer,access
-setup-checked viewer,access
-setup-row viewer pending
-setup-row access pending
-setup-buttons Not Now,Set Up
-onboarding-shot @SHOTS@/setup-fresh-light.png
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-1-welcome-light.png
 appearance dark
-onboarding-shot @SHOTS@/setup-fresh-dark.png
+onboarding-shot @SHOTS@/onboarding-1-welcome-dark.png
 appearance light
-# Not Now closes it and changes nothing, but counts as seen
-onboarding-press Not Now
-onboarding-is closed
-setting-is onboardingCompleted true
-viewer-is finder
-dock-is not-first
+# Continue goes to Full Disk Access, which changes nothing until its own button
+onboarding-press Continue
+setup-step access
+setup-rows access
+setup-row access pending
+setup-checked none
+setup-note access Without it, macOS asks about Desktop, Documents and Downloads.
+setup-buttons Back,Continue
+onboarding-announced Full Disk Access. Step 2 of 5.
 panes-opened 0
-# So does the close button
-setting onboardingCompleted false
-onboarding open
-setup-check viewer off
-onboarding close
-onboarding-is closed
-setting-is onboardingCompleted true
-viewer-is finder
-panes-opened 0
-# A row that's unchecked is left alone; ticking it again puts it back. Reopening starts with every box ticked
-setting onboardingCompleted false
-onboarding open
-setup-checked viewer,access
-setup-check viewer off
-setup-checked access
-setup-check viewer on
-setup-checked viewer,access
-# Set Up does every checked row: Helm becomes the file viewer, goes first in the Dock, and System Settings opens
-# at Full Disk Access with Helm's icon to drag into its list
-onboarding-press Set Up
-setting-is onboardingCompleted true
-viewer-is helm
-dock-is first
-setup-row viewer done
-setup-checked access
-setup-row access waiting
+setup-progress access:welcome,access,viewer,ai,done:
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-2-access-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-2-access-dark.png
+appearance light
+# Back and Continue move between the steps
+onboarding-press Back
+setup-step welcome
+onboarding-press Continue
+setup-step access
+# Its button opens System Settings at Full Disk Access, with Helm's icon to drag, and says macOS will ask to reopen Helm
+onboarding-press Open System Settings
 opened-pane Privacy_AllFiles
 panes-opened 1
-setup-buttons Done
+setup-row access waiting
 onboarding-reads Waiting for Full Disk Access
-onboarding-shot @SHOTS@/setup-waiting-light.png
+setup-progress access:welcome,access,viewer,ai,done:asked
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-3-access-waiting-light.png
 appearance dark
-onboarding-shot @SHOTS@/setup-waiting-dark.png
+onboarding-shot @SHOTS@/onboarding-3-access-waiting-dark.png
 appearance light
-# It waits for Full Disk Access, floating over System Settings only for a person, never in a scripted run
+# It floats over System Settings only for a person, never in a scripted run
 onboarding-frontmost com.apple.systempreferences
 onboarding-level normal
 onboarding-frontmost none
-wait 1
+# macOS's Quit & Reopen once Helm is switched on: Helm quits with the onboarding open, and nothing counts as seen. The
+# launch macOS starts reads Full Disk Access, now on, and carries on at the next step, before anything else. Helm never
+# quits or reopens itself: the mover was never asked
+setup-quit-reopen granted
+setting-is onboardingCompleted false
 onboarding-is setup
-# Access arrives: a check mark, a moment to see it, and the window closes by itself. VoiceOver hears both
-fda granted
+setup-step viewer
+setup-steps welcome,access,viewer,ai,done
+setup-progress viewer:welcome,access,viewer,ai,done:
+fda-is granted
+setup-moves 0
+setup-relaunched none
+panes-opened 1
+# Back shows Full Disk Access on, with its check mark and no button
+onboarding-press Back
+setup-step access
 setup-row access done
-onboarding-announced Full Disk Access is on. Everything you chose is set up.
-onboarding-is setup
+setup-note access none
+onboarding-shot @SHOTS@/onboarding-4-access-on-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-4-access-on-dark.png
+appearance light
+onboarding-press Continue
+# The default file viewer: one box, ticked. Continue does it: Helm becomes the file viewer, goes first in the Dock, and
+# the next step comes by itself once the check mark has shown
+setup-step viewer
+setup-rows viewer
+setup-checked viewer
+setup-row viewer pending
+setup-buttons Back,Continue
+onboarding-shot @SHOTS@/onboarding-5-viewer-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-5-viewer-dark.png
+appearance light
+onboarding-press Continue
+viewer-is helm
+dock-is first
+setup-row viewer done
+onboarding-announced Helm now opens instead of Finder.
 wait 2
+# AI mode is a step of the onboarding, in the same window and the Mac's own appearance: the AI Mode screen's switch,
+# then its providers, help and consent line, with Not Now and Continue
+setup-step ai
+setup-buttons Back,Not Now,Continue
+setting-is aiModeEnabled false
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-6-ai-off-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-6-ai-off-dark.png
+appearance light
+onboarding-press AI mode
+setting-is aiModeEnabled true
+# Gemini, which has no key saved by the steps before these
+ai-provider gemini
+ai-state-is noKey
+setup-ai-reads Sends your requests and file names to Gemini; file contents only while Read contents is on. Helm has no servers and collects nothing.
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-7-ai-on-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-7-ai-on-dark.png
+appearance light
+# OpenAI shows Continue with ChatGPT and its help
+ai-provider openAI
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-8-ai-chatgpt-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-8-ai-chatgpt-dark.png
+appearance light
+# The tallest, Other, with its address field, still fits the same window
+ai-provider other
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-9-ai-other-light.png
+ai-provider gemini
+# Continue with no key stays, as Done does on the AI Mode screen. With a key it's connected, and Continue goes on
+onboarding-press Continue
+setup-step ai
+ai-key test-key-for-the-smoke-run
+ai-state-is connected
+setup-ai-reads Connected
+onboarding-press Continue
+setup-step done
+setting-is aiModeEnabled true
+# Done says what's on, and the file windows stay as they were until Get Started
+setup-summary on,on,on
+setup-buttons Back,Get Started
+setting-is onboardingCompleted false
+onboarding-size 540x560
+onboarding-shot @SHOTS@/onboarding-10-done-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-10-done-dark.png
+appearance light
+# Get Started: the onboarding is through, and nothing comes up after it, the AI mode screen included
+onboarding-press Get Started
 onboarding-is closed
-# With every row done, the first launch doesn't open the window at all, and that counts as seen
+setting-is onboardingCompleted true
+setting-is aiIntroSeen true
+setup-progress none
+setup-first-launch
+onboarding-is closed
+ai-screen-is closed
+# Help › Set Up Helm… goes through every step again with how each stands. Not Now on the AI step leaves AI mode off
+help-menu Set Up Helm…
+onboarding-is setup
+setup-step welcome
+setup-steps welcome,access,viewer,ai,done
+onboarding-press Continue
+setup-step access
+setup-row access done
+setup-buttons Back,Continue
+onboarding-press Continue
+setup-step viewer
+setup-row viewer done
+setup-checked none
+onboarding-press Continue
+setup-step ai
+setup-ai-reads Connected
+onboarding-press Not Now
+setup-step done
+setting-is aiModeEnabled false
+setup-summary on,on,off
+onboarding-press Get Started
+onboarding-is closed
+# Back to Finder, no access, AI mode off and Claude, through the same switches Settings uses
+file-viewer finder
+first-in-dock false
+fda denied
+setting aiModeEnabled false
+ai-provider claude
+# Closing it part way is going through it: the AI step it never reached changes nothing, and nothing pops up after
+setting onboardingCompleted false
+setting aiIntroSeen false
+panes-mark
+onboarding open
+onboarding-press Continue
+setup-step access
+onboarding close
+onboarding-is closed
+setting-is onboardingCompleted true
+setting-is aiIntroSeen true
+setup-progress none
+viewer-is finder
+panes-opened 0
+# The AI switch turned on and never answered: closing leaves AI mode off, as closing the AI Mode screen does
+onboarding open
+onboarding-press Continue
+onboarding-press Continue
+setup-check viewer off
+onboarding-press Continue
+setup-step ai
+onboarding-press AI mode
+setting-is aiModeEnabled true
+onboarding close
+setting-is aiModeEnabled false
+viewer-is finder
+# A quit for any other reason keeps the step too: the next launch carries on there, here the AI step
+setting onboardingCompleted false
+onboarding open
+onboarding-press Continue
+onboarding-press Continue
+setup-check viewer off
+onboarding-press Continue
+setup-step ai
+setup-quit-reopen same
+onboarding-is setup
+setup-step ai
+setting-is onboardingCompleted false
+setup-progress ai:welcome,access,viewer,ai,done:
+onboarding close
+setting-is onboardingCompleted true
+setting aiModeEnabled false
+# The first launch opens the onboarding while something is left to do. Quitting with it open keeps its step, here
+# the welcome, and counts nothing as seen
+setting onboardingCompleted false
+setup-first-launch
+onboarding-is setup
+setup-step welcome
+setup-steps welcome,access,viewer,done
+onboarding-quitting
+setting-is onboardingCompleted false
+setup-progress welcome:welcome,access,viewer,done:
+onboarding close
+setting-is onboardingCompleted true
+setup-progress none
+# With everything done and AI mode seen, the first launch doesn't open the window at all, and that counts as through
+file-viewer helm
+first-in-dock true
+fda granted
 setting onboardingCompleted false
 setup-first-launch
 onboarding-is closed
 setting-is onboardingCompleted true
-# Help › Set Up Helm… opens it any time with live status: every row done shows only its check mark
-help-menu Set Up Helm…
-onboarding-is setup
-setup-rows viewer,access
-setup-row viewer done
-setup-row access done
-setup-checked none
-setup-buttons Done
-onboarding-shot @SHOTS@/setup-done-light.png
-appearance dark
-onboarding-shot @SHOTS@/setup-done-dark.png
-appearance light
-onboarding-press Done
-onboarding-is closed
-# Back to Finder and no access, through the same switches Settings uses
 file-viewer finder
 first-in-dock false
 fda denied
-# Helm in Applications already shows no move row. One running from a disk image does, through a stand-in mover
+# Access that turns on while the step waits shows its check mark, then the next step comes by itself
 onboarding open
-setup-rows viewer,access
+onboarding-press Continue
+onboarding-press Open System Settings
+fda granted
+setup-row access done
+onboarding-announced Full Disk Access is on.
+setup-step access
+wait 2
+setup-step viewer
+setup-moves 0
+onboarding close
+fda denied
+# Asked for again just as it was about to move on, it stays until the person goes on
+onboarding open
+onboarding-press Continue
+onboarding-press Open System Settings
+fda granted
+help-menu Set Up Helm…
+wait 2
+setup-step access
+onboarding close
+fda denied
+# With VoiceOver on, it says Full Disk Access is on and waits for the person to go on
+setup-voiceover on
+onboarding open
+onboarding-press Continue
+onboarding-press Open System Settings
+fda granted
+onboarding-announced Full Disk Access is on.
+wait 2
+setup-step access
+onboarding-press Continue
+setup-step viewer
+onboarding close
+setup-voiceover off
+fda denied
+viewer-is finder
+dock-is not-first
+# Helm in Applications shows no move. One running from a disk image shows it on the welcome step, through a stand-in mover
+help-menu Set Up Helm…
+setup-rows none
+onboarding close
 setup-preview move
-setup-rows viewer,access,move
-setup-checked viewer,access,move
-setup-unavailable none
+onboarding open
+setup-step welcome
+setup-rows move
+setup-checked move
 setup-row move pending
-setup-buttons Not Now,Set Up
-onboarding-shot @SHOTS@/setup-move-light.png
-appearance dark
-onboarding-shot @SHOTS@/setup-move-dark.png
-appearance light
-# From a disk image, Use Helm instead of Finder goes only with the move: the Dock would lose Helm once it's ejected.
-# Ticking the move again brings the choice back
-setup-check move off
-setup-unavailable viewer
-setup-checked access
-onboarding-shot @SHOTS@/setup-move-unticked.png
-setup-check move on
 setup-unavailable none
-setup-checked viewer,access,move
-# The same from macOS's temporary copy of a download
-setup-preview translocated
-setup-check move off
-setup-unavailable viewer
-setup-check move on
-setup-preview move
-# The move goes first, and this copy leaves everything else to the copy it reopens, so the file viewer and the Dock
-# point at Applications. The rows are saved for that copy before anything quits
+onboarding-shot @SHOTS@/onboarding-11-welcome-move-light.png
+appearance dark
+onboarding-shot @SHOTS@/onboarding-11-welcome-move-dark.png
+appearance light
+# Continue moves Helm first. The copy is asked to carry on after the welcome, with the rows saved for it before anything
+# quits. This is Helm's only quit of its own, for the move and never for a permission
 panes-mark
-onboarding-press Set Up
+onboarding-press Continue
 setup-moves 1
-setup-relaunched viewer,access,move
-setup-carried viewer,access,move
+setup-relaunched move
+setup-carried move
 viewer-is finder
 dock-is not-first
 panes-opened 0
 # The stand-in never quits, as when saving fails and the person cancels the quit: no endless spinner, but what to do
+setup-step welcome
 setup-row move failed
-setup-buttons Not Now,Set Up
+setup-buttons Continue
 onboarding-announced Move to Applications didn’t work. Couldn’t reopen from /Applications, so quit Helm and open it there.
-onboarding-shot @SHOTS@/setup-move-not-reopened.png
+onboarding-shot @SHOTS@/onboarding-12-move-not-reopened.png
 # Trying again only reopens the copy already made
-onboarding-press Set Up
+onboarding-press Continue
 setup-moves 1
-setup-relaunched viewer,access,move
+setup-relaunched move
 setup-row move failed
+# Without the move, from a disk image, Use Helm instead of Finder can't be done: the Dock would lose Helm once it's ejected
+setup-check move off
+onboarding-press Continue
+setup-step access
+onboarding-press Continue
+setup-step viewer
+setup-unavailable viewer
+setup-checked none
+onboarding-shot @SHOTS@/onboarding-13-viewer-needs-move.png
 onboarding close
 setup-preview none
-# That copy, opened by hand without the flag, still carries on with the saved rows, once
+# That copy, opened by hand without the flag, carries on after the welcome, once
 setup-launch
 onboarding-is setup
-setup-rows viewer,access,move
-setup-row move done
-setup-row viewer done
-setup-row access waiting
+setup-step access
 setup-carried none
-viewer-is helm
-dock-is first
-panes-opened 1
+onboarding-press Back
+setup-step welcome
+setup-rows move
+setup-row move done
 onboarding close
 setup-launch
 onboarding-is closed
-file-viewer finder
-first-in-dock false
-# The reopened copy shows the window again and carries on: moved, the file viewer and Dock, then Full Disk Access
-panes-mark
-setup-continue viewer,access,move
+# The reopened copy, with the flag, carries on after the welcome too
+setup-continue move
 onboarding-is setup
-setup-rows viewer,access,move
-setup-row move done
-setup-row viewer done
-setup-row access waiting
-viewer-is helm
-dock-is first
-panes-opened 1
-onboarding close
-file-viewer finder
-first-in-dock false
-# The first launch opens the checklist while something is left to do. Quitting with it open counts as seen
-setting onboardingCompleted false
-setup-first-launch
-onboarding-is setup
-onboarding-quitting
-setting-is onboardingCompleted true
+setup-step access
 onboarding close
 # The guide on its own isn't the welcome
 setting onboardingCompleted false
@@ -420,12 +594,13 @@ onboarding close
 help-menu Full Disk Access…
 onboarding-is guide
 onboarding close
-# Asking for the guide while the checklist is open keeps the checklist, which has the same row. That row now shows
-# Helm's icon and its own Open System Settings button, which changes nothing else
+# Asking for the guide while the onboarding is open goes to its Full Disk Access step, with Helm's icon to drag. Its
+# button opens System Settings and changes nothing else
 help-menu Set Up Helm…
-setup-row access pending
+setup-step welcome
 help-menu Full Disk Access…
 onboarding-is setup
+setup-step access
 panes-mark
 onboarding-press Open System Settings
 panes-opened 1
@@ -433,7 +608,7 @@ opened-pane Privacy_AllFiles
 setup-row access waiting
 viewer-is finder
 dock-is not-first
-setup-buttons Not Now,Set Up
+setup-buttons Back,Continue
 onboarding close
 # The same from a card's Grant Access…
 help-menu Set Up Helm…
@@ -441,8 +616,8 @@ fixture-chmod 000 @FIX@/home/Library/Containers/com.example.notes
 go @FIX@/home/Library/Containers/com.example.notes
 card-press Grant Access…
 onboarding-is setup
-setup-buttons Not Now,Set Up
-onboarding-shot @SHOTS@/setup-access-asked.png
+setup-step access
+onboarding-shot @SHOTS@/onboarding-access-asked.png
 panes-mark
 onboarding-press Open System Settings
 panes-opened 1
@@ -450,7 +625,7 @@ viewer-is finder
 dock-is not-first
 fixture-chmod 755 @FIX@/home/Library/Containers/com.example.notes
 onboarding close
-# The guide waiting on System Settings becomes the checklist still waiting, with its icon and button
+# The guide waiting on System Settings becomes the onboarding's Full Disk Access step, still waiting
 help-menu Full Disk Access…
 onboarding-is guide
 panes-mark
@@ -458,40 +633,12 @@ onboarding-press Open System Settings
 setup-row access waiting
 help-menu Set Up Helm…
 onboarding-is setup
+setup-step access
 setup-row access waiting
-setup-checked viewer,access
-setup-buttons Not Now,Set Up
 onboarding-reads Waiting for Full Disk Access
 onboarding-press Open System Settings
 panes-opened 2
 onboarding close
-# Asked for again just as it was about to close by itself, it stays until it's closed
-onboarding open
-setup-check viewer off
-onboarding-press Set Up
-setup-row access waiting
-fda granted
-setup-row access done
-help-menu Set Up Helm…
-wait 2
-onboarding-is setup
-onboarding close
-fda denied
-# With VoiceOver on, the window says everything is set up and waits for the person to close it
-setup-voiceover on
-onboarding open
-setup-check viewer off
-onboarding-press Set Up
-fda granted
-onboarding-announced Full Disk Access is on. Everything you chose is set up.
-wait 2
-onboarding-is setup
-onboarding-press Done
-onboarding-is closed
-setup-voiceover off
-fda denied
-viewer-is finder
-dock-is not-first
 go @FIX@/home/Documents
 # Settings › General shows the Access section, and its buttons open the guide and the welcome
 settings-access setup

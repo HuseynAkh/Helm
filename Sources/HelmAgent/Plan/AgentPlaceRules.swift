@@ -7,7 +7,7 @@ import HelmCore
 ///
 /// A step is left out when it can't be done safely there (a place that can only be viewed, a Trash that isn't
 /// there, the bytes of a file that isn't downloaded). Otherwise its group may start unticked, with a mark saying
-/// why: it goes to the Trash, it leaves a place others see, or it arrives in one.
+/// why: it goes to the Trash, it leaves a place others see, or it arrives in one, as a copy or a new file does.
 public enum AgentPlaceRules {
     public struct Ruling: Equatable, Sendable {
         /// Why the step is left out of the plan. Nil when it stays.
@@ -25,10 +25,10 @@ public enum AgentPlaceRules {
     }
 
     /// The ruling for one step. `source` holds the facts of the item's own folder (a file's parent; a folder
-    /// itself), or for a new folder the folder it is made in. `destination` holds the facts of the folder a move or
-    /// a copy goes into. `holdsDataless` says the item is a file that isn't downloaded, or a folder that holds one.
-    /// `names` are what the notes call the two places, such as the label of the folder the person added; without
-    /// them a note names the kind of place.
+    /// itself), or for a new folder or a new file the folder it is made in. `destination` holds the facts of the
+    /// folder a move or a copy goes into. `holdsDataless` says the item is a file that isn't downloaded, or a folder
+    /// that holds one. `names` are what the notes call the two places, such as the label of the folder the person
+    /// added; without them a note names the kind of place.
     ///
     /// The bulk guard, for many changes in a place others share, needs the whole plan and is decided afterwards by
     /// `bulkGuarded`.
@@ -40,9 +40,12 @@ public enum AgentPlaceRules {
         // A place that doesn't answer can't be checked, so nothing there is planned.
         if !source.isResponding || !target.isResponding { return Ruling(leftOut: .not_responding) }
         switch step {
-        case .newFolder:
+        case .newFolder, .newFile:
             if target.isReadOnly { return viewOnly(targetName) }
-            return Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
+            var ruling = Ruling(notices: undoNotice(madeIn: target, named: targetName) + reachNotices(target, named: targetName))
+            // A new file's text comes from outside every place, so it arrives as a copy from this Mac would.
+            if case .newFile = step, arrives(from: nil, in: target) { ruling.guardedBy = .arrives; ruling.place = target.name }
+            return ruling
 
         case .rename:
             if source.isReadOnly { return viewOnly(sourceName) }
@@ -94,7 +97,7 @@ public enum AgentPlaceRules {
         case .move:
             let target = destination ?? source
             return target.placeKey != source.placeKey || target.volumeRoot != source.volumeRoot
-        case .newFolder, .rename, .trash: return false
+        case .newFolder, .newFile, .rename, .trash: return false
         }
     }
 
@@ -134,9 +137,10 @@ public enum AgentPlaceRules {
         Ruling(leftOut: .read_only, notices: [.readOnly(place: name)])
     }
 
-    /// Something put into `target` from another place that other devices or other people see.
-    private static func arrives(from source: StorageFacts, in target: StorageFacts) -> Bool {
-        target.placeKey != source.placeKey && target.isSeenElsewhere
+    /// Something put into `target` from another place that other devices or other people see. A new file's text
+    /// comes from no place.
+    private static func arrives(from source: StorageFacts?, in target: StorageFacts) -> Bool {
+        target.placeKey != source?.placeKey && target.isSeenElsewhere
     }
 
     /// What a change in this place reaches: everyone who uses it when sharing is known, the person's devices and

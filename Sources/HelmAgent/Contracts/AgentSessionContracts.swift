@@ -7,8 +7,11 @@ public struct AgentPersonInput: Sendable {
     public let text: String
     /// The tab's selection. It marks items as selected in listings and is never sent as paths.
     public let selectedPaths: [String]
-    public init(typedByPerson text: String, selectedPaths: [String]) {
-        self.text = text; self.selectedPaths = selectedPaths
+    /// The message came from a suggestion that changes things, such as Organize, so it is answered with a plan. A
+    /// typed message is read for this by `AgentChangeAsk`.
+    public let asksForChanges: Bool
+    public init(typedByPerson text: String, selectedPaths: [String], asksForChanges: Bool = false) {
+        self.text = text; self.selectedPaths = selectedPaths; self.asksForChanges = asksForChanges
     }
 }
 
@@ -100,15 +103,20 @@ public enum AgentComposerIntent: Equatable, Sendable {
 /// How a plan ended.
 public enum AgentPlanOutcome: Equatable, Sendable { case applied(done: Int, skipped: Int), dismissed }
 
-/// What a request is doing right now.
-public enum AgentStatus: Equatable, Sendable { case reading(count: Int), thinking, checkingPlan, stopping }
+/// What a request is doing right now. `readingContents` counts the files Read contents is reading inside.
+public enum AgentStatus: Equatable, Sendable { case reading(count: Int), readingContents(count: Int), thinking, checkingPlan, stopping }
 
-/// What left the app for a request: how many names, and to whom.
-public enum AgentTrace: Equatable, Sendable { case sent(names: Int, destination: String) }
+/// What left the app for a request: how many names, how many summaries of what is inside files, and to whom.
+public enum AgentTrace: Equatable, Sendable {
+    case sent(names: Int, destination: String)
+    case sentWithSummaries(names: Int, summaries: Int, destination: String)
+}
 
-/// One of Helm's own lines in a thread.
+/// One of Helm's own lines in a thread. `notDownloadedNotRead` counts files Read contents left alone because they
+/// aren't on this Mac.
 public enum AgentNotice: Equatable, Sendable {
     case startedOver, stopped, limitReached, foldersNotLoaded(Int), notResponding(label: String), disconnected(label: String)
+    case notDownloadedNotRead(Int)
 }
 
 /// What a request sends back while it runs. `.finished` is always last.
@@ -137,4 +145,22 @@ public protocol AgentConversing: AnyObject, Sendable {
     func clear() async
     /// What happens outside a request, such as the thread starting over after the provider changed.
     var notices: AsyncStream<AgentNotice> { get }
+    /// This Folder or Whole Mac, for the thread as it is now.
+    func scopeMode() async -> AgentScopeMode
+    /// Switches the thread to This Folder or Whole Mac. A switch starts the thread over, as a change of provider
+    /// does, so names listed under one are never sent under the other.
+    func setScopeMode(_ mode: AgentScopeMode) async
+    /// Whether Read contents is on for the thread as it is now.
+    func readsContents() async -> Bool
+    /// Turns Read contents on, with the person's permit, or off, with nil. Either starts the thread over, so the
+    /// tools and the prompt stay the same for the life of a thread. A new thread starts with it off.
+    func setReadsContents(_ permit: AgentContentPermit?) async
+}
+
+/// A conversation that knows only This Folder and reads no file: the switches do nothing there.
+public extension AgentConversing {
+    func scopeMode() async -> AgentScopeMode { .thisFolder }
+    func setScopeMode(_ mode: AgentScopeMode) async {}
+    func readsContents() async -> Bool { false }
+    func setReadsContents(_ permit: AgentContentPermit?) async {}
 }

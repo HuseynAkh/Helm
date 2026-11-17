@@ -35,8 +35,12 @@ note. Availability is a caller-supplied snapshot, not synchronous filesystem I/O
 the reducer. Home itself is the fallback, even if temporarily inaccessible.
 
 Setup comes before anything macOS guards. `AccessCoordinator.setUpBeforeWindows` shows the
-welcome checklist and returns once it closes, whenever setup has never been seen or another
-build saw it last (the code signature's designated requirement is kept in `helm.setupBuild`).
+onboarding (welcome, Full Disk Access, the default file viewer and the Dock, AI mode, done) and
+returns once it's through, whenever it has never been through, another build saw it last (the code
+signature's designated requirement is kept in `helm.setupBuild`), or one was quit part way: its step
+is kept in `helm.setupProgress` as it goes, so after macOS's Quit & Reopen the next launch carries on
+at the next step. Helm never quits or reopens itself for a permission; only the move to Applications
+reopens the copy it made. Nothing opens by itself after the onboarding.
 Every way to a window waits there first: the launch, before it reads the restored tabs or the
 folders asked for; requests after a launch only for Finder; and New Window. The sidebar's
 drives start reading with the first window. Fixture and scripted runs never wait.
@@ -123,8 +127,8 @@ metadata. macOS frame restoration behaviour still requires hosted verification.
 
 ## AI mode's services
 
-`AppController+Agent.swift` makes one `AgentServices` for the app, shared by every window, Settings › AI and the
-AI mode screen. A real launch keeps keys in the login keychain (`KeychainSecretStore`), reads the home folder through
+`AppController+Agent.swift` makes one `AgentServices` for the app, shared by every window, Settings › AI, the
+onboarding's AI Mode step and the AI mode screen. A real launch keeps keys in the login keychain (`KeychainSecretStore`), reads the home folder through
 `FileSystemAgentDisk` with `SystemStorageFactsReader`, hands a server address to macOS through `SystemServerConnector`,
 and makes its model client with `AgentLiveParts.makeClient`. A fixture run (`--home`, `--support`) keeps keys in
 memory, uses stand-in place facts, a connector that opens nothing and the scripted model, so no live client can be

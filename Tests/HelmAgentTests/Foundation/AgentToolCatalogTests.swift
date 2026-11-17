@@ -28,14 +28,18 @@ final class AgentToolCatalogTests: XCTestCase {
         "min_bytes": {"type": "integer", "description": "0 for none."},
         "max_bytes": {"type": "integer", "description": "0 for none."}}}},
      {"name": "propose_changes",
-      "description": "Show the person one plan of changes. Nothing changes until they press Apply. Use ids from listings. Each item may appear once. A renamed file keeps its extension.",
+      "description": "Show the person one plan of changes. Nothing changes until they press Apply. Use ids from listings. Each item may appear once. A renamed file keeps its extension. A new file holds the whole text you write: plain text, Markdown, CSV, JSON, HTML or code, or .rtf and .docx, which Helm makes from the text. HTML and code start unticked for the person to check; .js, Windows scripts and build files such as package.json are refused.",
       "schema": {"type": "object", "additionalProperties": false,
-       "required": ["new_folders", "moves", "copies", "renames", "trash"],
+       "required": ["new_folders", "new_files", "moves", "copies", "renames", "trash"],
        "properties": {
         "new_folders": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["key", "parent", "name"],
           "properties": {"key": {"type": "string", "description": "n1, n2, and so on."},
                          "parent": {"type": "string", "description": "A folder id, or an earlier key."},
                          "name": {"type": "string", "description": "One folder name, no slashes and no extension."}}}},
+        "new_files": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["parent", "name", "text"],
+          "properties": {"parent": {"type": "string", "description": "A folder id, or a new-folder key."},
+                         "name": {"type": "string", "description": "One file name with its extension, such as Notes.md or Budget.csv."},
+                         "text": {"type": "string", "description": "Everything the file holds, as plain text."}}}},
         "moves": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["items", "all_in", "to"],
           "properties": {"items": {"type": "array", "items": {"type": "string"}},
                          "all_in": {"type": "string", "description": "A folder id, to take everything directly inside it; otherwise empty."},
@@ -56,7 +60,8 @@ final class AgentToolCatalogTests: XCTestCase {
 
     func testThereAreThreeToolsInOrder() {
         XCTAssertEqual(AgentToolCatalog.all.map(\.name), ["list_folder", "find_items", "propose_changes"])
-        XCTAssertEqual(AgentToolCatalog.names, ["list_folder", "find_items", "propose_changes"])
+        // read_contents is a fourth, offered only while Read contents is on.
+        XCTAssertEqual(AgentToolCatalog.names, ["list_folder", "find_items", "propose_changes", "read_contents"])
     }
 
     func testTheSchemasAreTheFixedOnes() throws {
@@ -91,7 +96,8 @@ final class AgentToolCatalogTests: XCTestCase {
     }
 
     func testNoToolTakesAPathOrAnAddress() {
-        // Items are named by ids Helm issued. The only free text is a new name, a name to look for and a date.
+        // Items are named by ids Helm issued. The only free text is a new name, a new file's text, a name to look for
+        // and a date.
         let words = AgentToolCatalog.all.map { String(decoding: $0.schema.data(), as: UTF8.self).lowercased() }.joined()
         for banned in ["path", "url", "address", "command", "shell", "content"] {
             XCTAssertFalse(words.contains(banned), banned)

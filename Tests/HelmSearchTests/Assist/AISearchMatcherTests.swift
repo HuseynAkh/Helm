@@ -110,4 +110,39 @@ final class AISearchMatcherTests: XCTestCase {
         XCTAssertFalse(matches(file("invoice.pdf", size: 90_000), query))
         XCTAssertFalse(matches(file("receipt.pdf", size: 900), query))
     }
+
+    // MARK: The kind row's filter
+
+    /// The filter every search runs while a kind is chosen: Photo is pictures, Document takes in PDF, text,
+    /// spreadsheets and presentations, Folder is folders, and an item the table has no word for is of no kind.
+    func testTheKindRowsFilter() {
+        let cases: [(AISearchKind, admitted: [FileEntry], refused: [FileEntry])] = [
+            (.image, [file("beach.jpg"), file("IMG_0001.HEIC"), file("scan", type: "public.png")],
+             [file("beach.pdf"), file("beach.mov"), file("Beach", kind: .directory), file("beach.psd.zip")]),
+            (.video, [file("clip.mov"), file("clip.mp4")], [file("clip.jpg"), file("clip.mp3")]),
+            (.document, [file("a.pdf"), file("a.txt"), file("a.xlsx"), file("a.key"), file("a.docx"), file("a.md")],
+             [file("a.png"), file("a.swift"), file("a.zip"), file("Docs", kind: .directory)]),
+            (.folder, [file("Holiday", kind: .directory)], [file("Holiday.zip"), file("Helm.app", kind: .package), file("a.txt")]),
+            (.code, [file("main.swift"), file("tool.py"), file("page.html")], [file("notes.txt"), file("data.json")]),
+            (.audio, [file("song.mp3"), file("memo.m4a"), file("take.wav")], [file("song.mp4"), file("song.txt")]),
+            (.archive, [file("backup.zip"), file("disk.dmg"), file("logs.tar.gz")], [file("backup.txt"), file("Backup", kind: .directory)])
+        ]
+        for (kind, admitted, refused) in cases {
+            for entry in admitted { XCTAssertTrue(AISearchMatcher.isOf(kind, entry), "\(kind.rawValue): \(entry.name)") }
+            for entry in refused { XCTAssertFalse(AISearchMatcher.isOf(kind, entry), "\(kind.rawValue): \(entry.name)") }
+        }
+        for kind in AISearchKind.searchChoices {
+            XCTAssertFalse(AISearchMatcher.isOf(kind, file("link", kind: .symlinkToFile)), "a link is of no kind")
+            XCTAssertFalse(AISearchMatcher.isOf(kind, file("unknown.xyz123")), "nor is a file the table doesn't know")
+        }
+    }
+
+    /// A planned query kept to a chosen kind matches nothing of another kind, whatever its words.
+    func testAQueryKeptToAKindMatchesThatKindAlone() {
+        let query = AISearchQuery(nameAny: ["beach"], kinds: [.video], extensions: ["pdf"]).limited(to: .image)
+        XCTAssertTrue(matches(file("beach.jpg"), query))
+        XCTAssertFalse(matches(file("beach.mov"), query))
+        XCTAssertFalse(matches(file("beach.pdf"), query))
+        XCTAssertFalse(matches(file("sunset.jpg"), query), "the words still count")
+    }
 }

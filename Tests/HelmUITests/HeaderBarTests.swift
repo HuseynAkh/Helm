@@ -751,6 +751,41 @@ import HelmCore
         XCTAssertEqual(header.searchButton.toolTip, "Search (⌘F)")
     }
 
+    func testTheKindRowComesWithTheSearchFieldSparkOrNoSparkAndEachSearchStartsAtAny() {
+        let header = HeaderBarView()
+        let spy = HeaderSpy()
+        header.delegate = spy
+        header.render(tab: tab())
+        XCTAssertTrue(header.kindBar.isHidden)
+        XCTAssertEqual(header.kindBar.heightConstraint.constant, 0)
+        header.beginSearch()
+        XCTAssertFalse(header.kindBar.isHidden, "the row comes with the field")
+        XCTAssertEqual(header.kindBar.heightConstraint.constant, SearchKindBar.height)
+        XCTAssertNil(header.searchKind)
+        XCTAssertTrue(header.kindBar.clickForTesting("Photo"))
+        XCTAssertEqual(header.searchKind, .image)
+        XCTAssertEqual(spy.kindChanges, 1, "a choice asks the window to search again")
+        XCTAssertTrue(header.kindBar.clickForTesting("Photo"))
+        XCTAssertEqual(spy.kindChanges, 1, "the choice on show again asks nothing")
+        header.setAISearch(available: true, on: true)
+        header.setAISearch(available: true, on: false)
+        XCTAssertFalse(header.kindBar.isHidden)
+        XCTAssertEqual(header.searchKind, .image, "the spark leaves the row and its choice alone")
+        header.endSearch()
+        XCTAssertTrue(header.kindBar.isHidden)
+        XCTAssertEqual(header.kindBar.heightConstraint.constant, 0)
+        XCTAssertNil(header.searchKind, "back to Any when the search closes")
+        // A tab that's searching shows its own search's kind, and showing it asks for nothing.
+        var searching = tab()
+        searching.search = SearchState(query: SearchQuery(text: "beach", scope: .currentFolder(home), bookmarkPaths: [],
+                                                          homeDirectory: home, lastDirectory: nil, showHidden: false, limit: 10,
+                                                          kind: .video))
+        header.render(tab: searching)
+        XCTAssertFalse(header.kindBar.isHidden)
+        XCTAssertEqual(header.searchKind, .video)
+        XCTAssertEqual(spy.kindChanges, 1)
+    }
+
     func testTooltipsNameTheShortcuts() {
         let header = HeaderBarView()
         header.render(tab: tab())
@@ -860,6 +895,7 @@ import HelmCore
     var dismissed = 0
     var moves = 0
     var movesToResults = true
+    var kindChanges = 0
     func headerToggleSidebar() {}
     func headerBack() {}
     func headerForward() {}
@@ -870,6 +906,7 @@ import HelmCore
     func headerSearchClosed() { closed += 1 }
     func headerSearchDismissed() { dismissed += 1 }
     func headerSearchScopeChanged() {}
+    func headerSearchKindChanged() { kindChanges += 1 }
     func headerSearchMoveToResults() -> Bool { moves += 1; return movesToResults }
     func headerToggleAIPanel() { panelToggles += 1 }
     func headerSearchSubmitted(_ text: String) { submitted.append(text) }

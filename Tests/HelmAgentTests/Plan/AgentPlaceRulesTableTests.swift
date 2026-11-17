@@ -108,6 +108,29 @@ final class AgentPlaceRulesTableTests: XCTestCase {
         XCTAssertEqual(rule(.newFolder(key: "n1", parent: into, name: newName), mac, mac).notices, [])
     }
 
+    func testANewFileIsRuledAsANewFolderIsAndArrivesWhereOthersSeeIt() {
+        let made = AgentPlanStep.newFile(parent: into, name: ValidFileName("Notes.md")!, text: "Hi")
+        XCTAssertEqual(rule(made, readOnly, readOnly), AgentPlaceRules.Ruling(leftOut: .read_only, notices: [.readOnly(place: "Server")]))
+        XCTAssertEqual(rule(made, serverNoTrash, serverNoTrash),
+                       AgentPlaceRules.Ruling(guardedBy: .arrives, place: "Server",
+                                              notices: [.cantUndo(place: "Server"), .shared(place: "Server")]))
+        // Its text comes from outside every place, so wherever other devices or other people see it, it arrives
+        // there unticked, as a copy from this Mac does.
+        XCTAssertEqual(rule(made, iCloud, iCloud), AgentPlaceRules.Ruling(guardedBy: .arrives, place: "iCloud Drive", notices: [.syncs]))
+        XCTAssertEqual(rule(made, iCloudShared, iCloudShared).guardedBy, .arrives)
+        XCTAssertEqual(rule(made, drive, drive),
+                       AgentPlaceRules.Ruling(guardedBy: .arrives, place: "Google Drive", notices: [.syncsMaybeShared]))
+        XCTAssertEqual(rule(made, server, server).place, "Server")
+        XCTAssertEqual(rule(.copy(file(), to: into), mac, drive).guardedBy, rule(made, drive, drive).guardedBy, "as a copy")
+        // On this Mac or an external disk it starts ticked, and an empty new folder starts ticked anywhere.
+        XCTAssertEqual(rule(made, mac, mac), AgentPlaceRules.Ruling())
+        XCTAssertNil(rule(made, disk, disk).guardedBy)
+        XCTAssertNil(rule(.newFolder(key: "n1", parent: into, name: newName), iCloud, iCloud).guardedBy)
+        XCTAssertNil(rule(.newFolder(key: "n1", parent: into, name: newName), server, server).guardedBy)
+        XCTAssertEqual(rule(made, quiet, quiet).leftOut, .not_responding)
+        XCTAssertFalse(AgentPlaceRules.needsBytes(made, source: drive, destination: drive))
+    }
+
     func testAMoveOutOfAPlaceOthersSeeLeavesIt() {
         XCTAssertEqual(rule(.move(file(), to: into), iCloud, mac),
                        AgentPlaceRules.Ruling(guardedBy: .leaves, place: "iCloud Drive", notices: [.syncs]))

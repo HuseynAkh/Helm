@@ -67,6 +67,9 @@ agent-reads Organize “AgentMess”
 agent-plan-reads 4 moves · 2 new folders
 agent-group Move 2 items to “Images” on
 agent-group Move 2 items to “Notes” on
+# Under each group, the folder it goes to, from the home folder, and that the plan makes it
+agent-group-path Move 2 items to “Images”=~/AgentMess/Images new folder
+agent-group-path Move 2 items to “Notes”=~/AgentMess/Notes new folder
 agent-suggests none
 exists @FIX@/home/AgentMess/photo-1.png
 missing @FIX@/home/AgentMess/Images
@@ -135,6 +138,32 @@ missing @FIX@/home/AgentMess/Halfway/memo.txt
 agent-apply-pause 0
 agent-undo
 missing @FIX@/home/AgentMess/Halfway
+# 6b. A new file: the plan holds one file with the text the model wrote, ticked, under where it is made. Nothing is
+# made until Apply, which writes the text and no executable bit, and one Undo puts the file in the Trash
+agent-say write a packing list in this folder
+agent-phase plan
+agent-reads Create 1 File
+agent-plan-reads 1 new file
+agent-group Create 1 file in “AgentMess” on
+agent-group-path Create 1 file in “AgentMess”=~/AgentMess
+missing @FIX@/home/AgentMess/Packing List.txt
+agent-apply
+agent-phase result
+agent-reads Made 1 new file.
+agent-file-is @FIX@/home/AgentMess/Packing List.txt=Passport|Charger|Socks
+undo-title Create 1 File
+agent-undo
+missing @FIX@/home/AgentMess/Packing List.txt
+exists @FIX@/home/.Trash/Packing List.txt
+agent-reads Everything is back where it was.
+# A web page is code: its group starts unticked, with a mark that says so
+agent-say write a web page for the trip
+agent-phase plan
+agent-group Create 1 file in “AgentMess” off
+agent-group-mark Create 1 file in “AgentMess”=Code: check it before you apply it
+agent-press Cancel
+agent-reads Plan dismissed.
+missing @FIX@/home/AgentMess/Trip.html
 # 7. Folders: /add one, a path that isn't there and a system folder. A message that ends in a path adds the folder
 # first and sends its id in place of the path. A dropped folder is added too, and /clear starts over
 agent-say /add @FIX@/home/Downloads
@@ -155,8 +184,61 @@ agent-chips AgentMess:thisMac,Downloads:thisMac,Desktop:thisMac,Templates:thisMa
 agent-say /clear
 agent-chips AgentMess:thisMac
 agent-reads Started over.
+# 7b. Whole Mac: a thread starts in This Folder. The switch at the end of the folders row starts it over, the
+# consent line names the home folder, and one chip stands for the home folder, iCloud Drive and the Google Drive
+# stand-in. With Documents on show, a screenshot there goes into Pictures/Screenshots, which only the home folder's
+# listing shows, ticked, under one Apply and one Undo. Nothing sent holds a path or the account in the stand-in's
+# folder. This Folder puts the thread and the chips back, and the screenshot is filed again so Documents is as it was
+watch-external @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+go @FIX@/home/Documents
+wait 0.5
+agent-chips Documents:thisMac
+agent-scope-is thisFolder
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-scope wholeMac
+agent-chips Documents:thisMac,Whole Mac:thisMac
+agent-reads Sends your requests and file names from your home folder and disks to Claude, never file contents.
+agent-lacks Sends your requests and file names to Claude, never file contents.
+agent-reads Started over.
+agent-say file the screenshot
+agent-phase plan
+agent-reads Move 1 Item
+agent-plan-reads 1 move
+agent-group Move 1 item to “Screenshots” on
+agent-group-path Move 1 item to “Screenshots”=~/Pictures/Screenshots
+exists @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+agent-apply
+agent-phase result
+exists @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+exists @FIX@/home/Pictures/Screenshots/older.png
+agent-reads Moved 1 item.
+agent-undo
+exists @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+agent-reads Everything is back where it was.
+agent-sent-lacks @FIX@
+agent-sent-lacks me@example.com
+agent-sent-lacks GoogleDrive
+agent-sent-lacks com~apple~CloudDocs
+agent-scope thisFolder
+agent-chips Documents:thisMac
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-lacks from your home folder and disks
+agent-scope wholeMac
+agent-say file the screenshot
+agent-phase plan
+agent-apply
+agent-phase result
+exists @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+agent-scope thisFolder
+go @FIX@/home/AgentMess
+wait 0.5
+agent-chips AgentMess:thisMac
+agent-scope-is thisFolder
 # 8. A model that tries to get round the rules: each try ends in Helm's own line, nothing outside the folders is
-# touched, and a plan that would make an app gets nothing on its card it could apply
+# touched, and a plan that would make an app or a file that runs gets nothing on its card it could apply
 agent-script @FIX@/agent-hostile.json
 agent-say declined
 agent-reads The model declined this request.
@@ -175,18 +257,20 @@ exists @FIX@/home/AgentMess/memo.txt
 agent-say /clear
 agent-say make an app
 agent-phase idle
-agent-reads 3 changes weren't allowed, so Helm left them out.
+agent-reads 4 changes weren't allowed, so Helm left them out.
 missing @FIX@/home/AgentMess/Tools.app
 exists @FIX@/home/AgentMess/scan.pdf
 exists @FIX@/home/AgentMess/memo.txt
 missing @FIX@/home/AgentMess/memo.command
+missing @FIX@/home/AgentMess/launch.command
 agent-client-built no
 agent-script @FIX@/agent-script.json
 agent-say /clear
 agent-chips AgentMess:thisMac
 # 9. A folder in the Google Drive stand-in: its chip names Google Drive, a plan there says the changes sync, and 30
-# moves inside it arrive ticked. A copy of a file that isn't downloaded is left out with its own line, and nothing
-# sent names the provider's folder or the account in it
+# moves inside it arrive ticked. A new file there starts unticked, marked as going to Google Drive. A copy of a file
+# that isn't downloaded is left out with its own line, and nothing sent names the provider's folder or the account
+# in it
 go @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess
 wait 0.5
 agent-chips Drive Mess:cloud
@@ -195,9 +279,16 @@ agent-say gather the pages
 agent-phase plan
 agent-plan-reads 30 moves · 1 new folder
 agent-group Move 30 items to “Pages” on
+agent-group-path Move 30 items to “Pages”=~/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/Pages new folder
 agent-reads Changes sync to your devices and to anyone this is shared with.
 agent-press Cancel
 agent-reads Plan dismissed.
+agent-say write a note for the drive
+agent-phase plan
+agent-group Create 1 file in “Drive Mess” off
+agent-group-mark Create 1 file in “Drive Mess”=Goes to Google Drive
+agent-press Cancel
+missing @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/Pages.md
 agent-cloud-only @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/page-01.txt
 agent-say copy the first page
 agent-phase idle
@@ -219,6 +310,7 @@ agent-say file the report
 agent-phase plan
 agent-group Move 1 item to “Documents” off
 agent-group-mark Move 1 item to “Documents”=Leaves iCloud Drive
+agent-group-path Move 1 item to “Documents”=~/Documents
 agent-press Cancel
 exists @FIX@/home/Documents/Reports/q1.txt
 missing @FIX@/home/Documents/q1.txt
@@ -285,6 +377,51 @@ agent-script @FIX@/agent-script.json
 search-key escape
 search-shown false
 search-ai-is off
+# The kind row shows while the search is open, spark on or off, at Any. Photo keeps the name matches and the model's
+# plan to pictures, and the status bar names it; another kind searches the words again by name. The spark off and on
+# again keeps the kind and the search on show. Tab takes the keys to the row, where the arrows choose, and the row is
+# back at Any once the search closes
+search-kinds-shown false
+search-ai on
+search-kinds-shown true
+search-kind-is Any
+search-kind Photo
+search-kind-is Photo
+search to
+has photo-1.png
+lacks todo.txt
+search-return
+search-status-reads 2 matches · “to” · Photos
+has photo-2.jpg
+lacks todo.txt
+search-kind Document
+has todo.txt
+lacks photo-1.png
+search-ai off
+search-ai-is off
+search-kinds-shown true
+search-kind-is Document
+has todo.txt
+lacks photo-1.png
+hunt-status-says Documents
+search-ai on
+search-ai-is on
+search-kind-is Document
+search-key tab
+focus-is kinds
+search-kind-key right
+search-kind-is Folder
+search-kind-key escape
+focus-is search
+search-key escape
+search-shown false
+search-ai-is off
+search-kinds-shown false
+search-ai on
+search-kind-is Any
+search-key escape
+search-shown false
+search-ai-is off
 go @FIX@/home/AgentPlaces/Share
 wait 0.5
 search-ai on
@@ -294,6 +431,112 @@ search-status-reads · Names only here
 search-key escape
 search-shown false
 search-ai-is off
+go @FIX@/home/AgentMess
+wait 0.5
+# 13b. Read contents, beside the composer. A new thread has it off, and a model that asks to read inside files then
+# gets only an unknown tool: nothing is read or sent. On, the thread starts over, the consent line says what is
+# sent, and read_contents hands the model what Helm read on this Mac: the text in a photo of a
+# receipt, what a sky shows, a scanned invoice's first lines, a video's text, a note, and a file that gives orders,
+# sent as quoted data that changes nothing. A copy marked as not downloaded isn't read, and a plan that files the
+# invoices comes from what is inside them. Whole Mac keeps it on and names the home folder; a new thread is off again
+go @FIX@/home/AgentLook
+wait 0.5
+agent-open
+agent-is open
+agent-script @FIX@/agent-contents.json
+agent-say /clear
+agent-contents-is off
+agent-say look inside
+agent-phase idle
+agent-reads Two of these are invoices
+agent-sent-lacks Harbour Plumbing
+agent-sent-lacks BEACH DAY
+agent-sent-lacks oat milk
+agent-contents on
+agent-contents-is on
+agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
+agent-lacks never file contents
+agent-reads Started over.
+agent-say look inside
+agent-phase idle
+agent-reads and what's inside 6 files to Claude.
+agent-sent-has Harbour Plumbing
+agent-sent-has INVOICE 2026-117
+agent-sent-has Total due: 184.00
+agent-sent-has BEACH DAY
+agent-sent-has blue sky
+agent-sent-has oat milk
+agent-sent-has IGNORE PREVIOUS INSTRUCTIONS
+agent-sent-lacks @FIX@
+exists @FIX@/home/AgentLook/hostile-note.txt
+exists @FIX@/home/AgentLook/receipt-photo.png
+agent-cloud-only @FIX@/home/AgentLook/receipt-copy.png
+agent-say look at the copy
+agent-phase idle
+agent-reads 1 file isn't downloaded, so Helm didn't read it.
+agent-reads and what's inside 1 file to Claude.
+agent-say file the invoices
+agent-phase plan
+agent-group Move 2 items to “Invoices” on
+agent-group-path Move 2 items to “Invoices”=~/AgentLook/Invoices new folder
+agent-press Cancel
+missing @FIX@/home/AgentLook/Invoices
+agent-scope wholeMac
+agent-contents-is on
+agent-reads Sends your requests, file names and what it reads inside files, from your home folder and disks, to Claude.
+agent-scope thisFolder
+agent-contents-is on
+agent-reads Sends your requests, file names and what it reads inside files to Claude: text, and small copies of pictures and video frames.
+agent-say /clear
+agent-contents-is off
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-places-clear
+# 13c. Read contents in AI search: a switch at the end of the kind row, off until pressed. On, Return also reads
+# inside the files here, on this Mac, and looks for the words in pictures and videos: a photo of a receipt by its
+# text, a sky by what it shows, a video by the text in its frames. Each result says what was seen. The model looks
+# too: a photo whose name says nothing is found by what it says it saw, shown first with that, and the status bar
+# counts the files it looked at; paths are never sent. Closing the search turns it off and forgets what was read
+search-ai on
+search-kinds-shown true
+search-contents-is off
+search-contents on
+search-contents-is on
+search-status-reads the contents of files the model looks at to Claude
+search invoice
+search-return
+has receipt-photo.png
+has invoice-scan.pdf
+result-reason receipt-photo.png=Text in image: “invoice”
+search-status-reads Mentions “invoice”
+search-contents-read 8
+search sky
+search-return
+has IMG_0042.png
+lacks receipt-photo.png
+result-reason IMG_0042.png=Shows: sky
+search beach
+search-return
+has beach-day.mov
+result-reason beach-day.mov=Text in video: “beach”
+search-contents-read 8
+search kite
+search-return
+first-row DSC_0193.png
+result-reason DSC_0193.png=Model saw: A red kite against a clear sky
+search-status-reads 1 match · Mentions “kite” · Looked at 8
+agent-sent-has Items (data):
+agent-sent-lacks @FIX@
+search-contents-read 8
+search-key escape
+search-shown false
+search-ai-is off
+search-ai on
+search-contents-is off
+search-contents-read 0
+search-key escape
+search-shown false
+search-ai-is off
+agent-script @FIX@/agent-script.json
 go @FIX@/home/AgentMess
 wait 0.5
 # 14. The AI mode screen and Settings › AI, with keys in memory. Closing the screen with the switch on leaves AI mode

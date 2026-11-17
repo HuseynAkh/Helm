@@ -3,34 +3,49 @@
 onboarding-is closed
 fda denied
 setting onboardingCompleted true
+setting aiIntroSeen true
 setup-build none
 setup-owed no
 setup-built none
-# Another build: the checklist comes back, with one line about folder access under Full Disk Access
+# Another build: the onboarding comes back with the steps left to do, and the line about folder access on Full Disk Access
 setup-build build-a
 setup-owed yes
 setup-first-launch
 onboarding-is setup
-setup-rows viewer,access
+setup-step welcome
+setup-steps welcome,access,viewer,done
+onboarding-press Continue
+setup-step access
 setup-row access pending
 setup-note access Without it, macOS asks about Desktop, Documents and Downloads.
-setup-note viewer none
 onboarding-shot @SHOTS@/setup-new-build.png
-# Not Now is the person going through it: that build is kept, and it isn't asked again
-onboarding-press Not Now
+# Closing it is going through it: that build is kept, and it isn't asked again
+onboarding close
 onboarding-is closed
 setup-built build-a
 setup-owed no
 setup-first-launch
 onboarding-is closed
-# Once Full Disk Access is on, macOS asks about no folder, so the line goes
+# Quit part way, the onboarding is owed even to the build that saw it, and carries on from its step
+setup-build build-c
+setup-first-launch
+setup-step welcome
+onboarding-press Continue
+setup-step access
+onboarding-quitting
+setup-owed yes
+setup-quit-reopen same
+setup-step access
+onboarding close
+setup-built build-c
+setup-owed no
+# Once Full Disk Access is on, macOS asks about no folder, so that step is left out
 fda granted
 setup-build build-b
 setup-owed yes
 setup-first-launch
 onboarding-is setup
-setup-row access done
-setup-note access none
+setup-steps welcome,viewer,done
 onboarding close
 onboarding-is closed
 setup-built build-b

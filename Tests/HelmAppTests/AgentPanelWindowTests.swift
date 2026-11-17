@@ -195,6 +195,26 @@ import HelmTestKit
         XCTAssertEqual(controller.split.splitViewItems.last?.minimumThickness, 420, "the files' own minimum is back once shut")
     }
 
+    /// The panel sits on the sidebar's material under the sidebar's tint, and follows the window's transparency as
+    /// the sidebar does: glass with less colour as it goes up, and the plain window background once it is off.
+    func testThePanelSitsOnTheSidebarsMaterialAndFollowsTheTransparency() async throws {
+        let (controller, _, _) = try await window()
+        _ = try await open(controller)
+        let settings = controller.dependencies.settings
+        let host = controller.agentPanelHost
+        settings.set(.bool(true), for: .sidebarLiquidGlass)
+        settings.set(.double(30), for: .windowTransparency)
+        let tinted = await until(5) { host.backgroundForTesting.tint == WindowTints(percent: 30).sidebar }
+        XCTAssertTrue(tinted, "the sidebar's tint: \(host.backgroundForTesting.tint)")
+        XCTAssertEqual(host.backgroundForTesting.material, .sidebar)
+        XCTAssertEqual(host.backgroundForTesting.blending, .behindWindow)
+        settings.set(.bool(false), for: .sidebarLiquidGlass)
+        let solid = await until(5) { host.backgroundForTesting.material == .windowBackground }
+        XCTAssertTrue(solid, "transparency off")
+        XCTAssertEqual(host.backgroundForTesting.blending, .withinWindow)
+        XCTAssertEqual(host.backgroundForTesting.tint, 0)
+    }
+
     // MARK: Resizing
 
     func testThePanelsLimits() {
@@ -251,6 +271,74 @@ import HelmTestKit
         XCTAssertGreaterThanOrEqual(controller.contentContainer.frame.width, AgentPanelHost.minimumFilesWidth - 0.5,
                                     "the files keep their room")
         XCTAssertEqual(window.frame.width, 1000, accuracy: 0.5)
+    }
+
+    /// The edge as a person drags it: presses, moves and releases sent to the window, so each press goes wherever
+    /// the window's own hit-testing sends it. Presses on the line itself and a few points into the panel, beside the
+    /// folders row, the thread and the composer, all resize it.
+    func testPressesOnTheEdgeSentToTheWindowResizeThePanel() async throws {
+        let (controller, _, _) = try await window()
+        let window = try XCTUnwrap(controller.window)
+        // A window takes presses only once it is ordered in: this one is, but invisible, behind every other window
+        // and out of the way of the pointer, as a smoke run keeps its windows.
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        window.orderBack(nil)
+        window.setFrame(NSRect(x: 0, y: 0, width: 1400, height: 700), display: false)
+        controller.split.view.layoutSubtreeIfNeeded()
+        let settings = controller.dependencies.settings
+        let model = try await open(controller)
+        model.type("hello")
+        model.send()
+        _ = await until(10) { !model.isWaitingForTesting }
+        let host = controller.agentPanelHost
+        XCTAssertEqual(host.frame.width, 340)
+        var width: CGFloat = 340
+        // On the line, then a few points in: beside the folders row at the top, down the thread, and beside the
+        // composer at the bottom.
+        for (x, height) in [(0.5, 0.5), (3, 0.97), (5, 0.8), (2, 0.5), (4, 0.25), (3, 0.04)] as [(CGFloat, CGFloat)] {
+            try drag(host, from: NSPoint(x: x, y: host.bounds.height * height), by: 30)
+            width += 30
+            XCTAssertEqual(host.frame.width, width, "a drag from \(x) points in, \(Int(height * 100))% up")
+            XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), Double(width), "kept once released")
+        }
+        XCTAssertEqual(controller.contentContainer.frame.maxX, host.frame.minX, accuracy: 0.5, "the files end where it starts")
+        try drag(host, from: NSPoint(x: 3, y: host.bounds.midY), by: 300)
+        XCTAssertEqual(host.frame.width, 560, "560 at most")
+        try drag(host, from: NSPoint(x: 3, y: host.bounds.midY), by: -600)
+        XCTAssertEqual(host.frame.width, 300, "300 at least")
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 300)
+        // A double click: two presses, the second with a click count of 2.
+        try drag(host, from: NSPoint(x: 3, y: host.bounds.midY), by: 0)
+        try drag(host, from: NSPoint(x: 3, y: host.bounds.midY), by: 0, clicks: 2)
+        XCTAssertEqual(host.frame.width, 340, "a double click puts back 340")
+        XCTAssertEqual(settings.snapshot.double(.agentPanelWidth), 340)
+        XCTAssertEqual(window.frame.width, 1400, accuracy: 0.5, "a drag never changes the window")
+        XCTAssertTrue(controller.isSidebarVisibleForTesting, "or hides the sidebar")
+    }
+
+    /// A press at `point`, in the panel's coordinates, then moves `distance` points towards the leading side in four
+    /// steps and a release, each sent to the window as the window server sends it. The moves and the release are
+    /// queued first, so a view that follows the mouse in a loop of its own takes them from the queue; what is left
+    /// is sent on, as the run loop would.
+    private func drag(_ host: AgentPanelHost, from point: NSPoint, by distance: CGFloat, clicks: Int = 1) throws {
+        let window = try XCTUnwrap(host.window)
+        let start = host.convert(point, to: nil)
+        let stamp = ProcessInfo.processInfo.systemUptime
+        func mouse(_ type: NSEvent.EventType, x: CGFloat, _ index: Int) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: start.y), modifierFlags: [],
+                                             timestamp: stamp + Double(index) * 0.01, windowNumber: window.windowNumber,
+                                             context: nil, eventNumber: index, clickCount: clicks,
+                                             pressure: type == .leftMouseUp ? 0 : 1))
+        }
+        let down = try mouse(.leftMouseDown, x: start.x, 0)
+        var rest = try (1...4).map { try mouse(.leftMouseDragged, x: start.x - distance * CGFloat($0) / 4, $0) }
+        rest.append(try mouse(.leftMouseUp, x: start.x - distance, 5))
+        for event in rest { NSApp.postEvent(event, atStart: false) }
+        window.sendEvent(down)
+        while let next = NSApp.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: Date(), inMode: .default, dequeue: true) {
+            window.sendEvent(next)
+        }
     }
 
     func testTheWidthIsKeptForTheNextOpeningAndAsMuchOfItAsAWindowAllows() async throws {

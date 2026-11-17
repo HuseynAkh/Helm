@@ -58,6 +58,7 @@ public enum AgentErrorMapper {
         }
         let words = AgentErrorWords(body: body)
         for (token, status) in streamStatuses where words.hasToken(token) { return failure(status: status, words: words) }
+        if words.hasAny([], noPicturePhrases) { return .badRequest }
         return .overloaded
     }
 
@@ -131,6 +132,14 @@ public enum AgentErrorMapper {
     private static let noToolPhrases = ["does not support tools", "does not support tool", "tools are not supported",
                                         "tool calling is not supported", "tool use is not supported",
                                         "function calling is not supported"]
+    /// A model that can't take pictures, as the servers that say so word it: Ollama answers status 500 with the
+    /// first phrase, LM Studio with "Model does not support images", OpenAI with a 400 that says image input "is only
+    /// supported by certain models". Each is a request the model can't take, which Helm sends again without pictures.
+    private static let noPicturePhrases = ["missing data required for image input", "does not support image",
+                                           "doesn't support image", "do not support image", "does not support vision",
+                                           "image input is not supported", "image inputs are not supported",
+                                           "images are not supported", "vision is not supported",
+                                           "is only supported by certain models"]
     private static let tooLargeTokens: Set<String> = ["context_length_exceeded", "request_too_large"]
     private static let tooLargePhrases = ["prompt is too long", "maximum context length", "context window"]
 
@@ -142,6 +151,7 @@ public enum AgentErrorMapper {
         case 400:
             if words.hasAny(badKeyTokens, badKeyPhrases) { return .wrongKey }
             if words.hasAny([], noToolPhrases) { return .noTools }
+            if words.hasAny([], noPicturePhrases) { return .badRequest }
             if words.hasAny(tooLargeTokens, tooLargePhrases) { return .tooLarge }
             return .badRequest
         case 401, 403: return .wrongKey
@@ -150,7 +160,7 @@ public enum AgentErrorMapper {
         case 408, 504: return .timedOut
         case 413: return .tooLarge
         case 429: return .rateLimited
-        case 500...599: return .overloaded
+        case 500...599: return words.hasAny([], noPicturePhrases) ? .badRequest : .overloaded
         case 405...499: return .badRequest
         default: return .unreadable
         }

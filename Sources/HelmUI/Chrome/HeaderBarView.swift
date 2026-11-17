@@ -19,6 +19,8 @@ import HelmCore
     func headerSearchDismissed()
     /// The search moved between the folder you're in and the whole Mac.
     func headerSearchScopeChanged()
+    /// The kind row chose another kind, or Any.
+    func headerSearchKindChanged()
     /// The Down arrow in the search field moves the keys to the results. False when there's nothing to move to.
     func headerSearchMoveToResults() -> Bool
     /// The spark: shows or hides the AI panel.
@@ -44,6 +46,9 @@ extension HeaderBarDelegate {
     var home: URL?
     let pathBar = PathBarView()
     let searchField = HeaderSearchField()
+    /// The search's kind row. It belongs with the search field: it shows while the field is open, spark on or off,
+    /// and the field hands it the keys. The window lays it out, under the header and the tabs.
+    let kindBar = SearchKindBar()
     private(set) lazy var sidebarButton = FlatButton(symbol: "sidebar.leading", label: "Hide Sidebar",
         toolTip: HeaderShortcuts.tip("Hide Sidebar", .sidebar), target: self, action: #selector(toggleSidebar))
     private(set) lazy var backButton = FlatButton(symbol: "chevron.left", label: "Back",
@@ -91,6 +96,10 @@ extension HeaderBarDelegate {
         searchField.onMoveDown = { [weak self] in self?.delegate?.headerSearchMoveToResults() ?? false }
         searchField.onSubmit = { [weak self] text in self?.delegate?.headerSearchSubmitted(text) }
         searchField.onAIToggle = { [weak self] on in self?.delegate?.headerSearchAIToggled(on) }
+        searchField.onTab = { [weak self] in self?.giveKeysToKindBar() ?? false }
+        kindBar.onChoose = { [weak self] _ in self?.delegate?.headerSearchKindChanged() }
+        kindBar.onLeave = { [weak self] in self?.searchField.focus(selectingAll: false) }
+        kindBar.onResign = { [weak self] in self?.searchFieldLostFocus() }
         searchField.onScope = { [weak self] everywhere in
             self?.searchesEverywhere = everywhere
             self?.delegate?.headerSearchScopeChanged()
@@ -288,6 +297,8 @@ extension HeaderBarDelegate {
 
     /// Whether searches cover the whole Mac rather than the folder you're in (P-170). Each new search starts in the folder.
     private(set) var searchesEverywhere = false
+    /// The kind searches are kept to, the kind row's choice: nil for Any. Each new search starts at Any.
+    var searchKind: AISearchKind? { kindBar.kind }
     var searchText: String { searchField.stringValue }
     /// True while the search field has the caret.
     var isSearchFieldEditing: Bool { searchField.isEditing }
@@ -308,18 +319,24 @@ extension HeaderBarDelegate {
         isSearching = false
         searchesEverywhere = false
         searchField.stringValue = ""
+        kindBar.show(nil)
+        // Keys on the row would be left on a hidden view; the window hands them to the files.
+        if kindBar.hasKeys { window?.makeFirstResponder(nil) }
         showSearchField(false)
     }
+    /// The field and the kind row under the header come and go together.
     private func showSearchField(_ shown: Bool) {
         searchButton.isOn = shown
         searchButton.toolTip = shown ? "Close Search (Esc)" : HeaderShortcuts.tip("Search", .find)
         pathBar.isHidden = shown; searchField.isHidden = !shown
+        kindBar.setShown(shown)
     }
-    /// A search the tab is already running: its words and where it looks, without the caret.
+    /// A search the tab is already running: its words, where it looks and the kind it keeps to, without the caret.
     private func show(_ query: SearchQuery) {
         isSearching = true
         if case .thisMac = query.scope { searchesEverywhere = true } else { searchesEverywhere = false }
         searchField.stringValue = query.text
+        kindBar.show(query.kind)
         showSearchField(true)
     }
 
@@ -350,10 +367,18 @@ extension HeaderBarDelegate {
     }
 
     /// Clicking away from an empty search closes it, as Finder's toolbar search collapses. One with words stays,
-    /// in the path bar's resting fill, and so do its results.
+    /// in the path bar's resting fill, and so do its results. The kind row counts as part of the search: the keys
+    /// moving between it and the field close nothing.
     private func searchFieldLostFocus() {
-        guard isSearching, searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard isSearching, !searchField.isEditing, !kindBar.hasKeys,
+              searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         dismissSearch()
+    }
+    /// Tab in the search field: the keys go to the kind row, which shows while the field does. False leaves Tab to the
+    /// field.
+    private func giveKeysToKindBar() -> Bool {
+        guard isSearching, !kindBar.isHiddenOrHasHiddenAncestor, let window = kindBar.window else { return false }
+        return window.makeFirstResponder(kindBar)
     }
     private func dismissSearch() {
         endSearch()
@@ -398,6 +423,8 @@ extension HeaderBarDelegate {
     var onMoveDown: (() -> Bool)?
     /// Return, with the words in the field.
     var onSubmit: ((String) -> Void)?
+    /// Tab: true when something took the keys, false to leave Tab as the field has it.
+    var onTab: (() -> Bool)?
     /// The spark was pressed: true asks for AI search to go on, false for it to go off.
     var onAIToggle: ((Bool) -> Void)?
     /// Whether the field is drawn as being typed in.
@@ -569,6 +596,7 @@ extension HeaderBarDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.cancelOperation(_:)) { onCancel?(); return true }
         if selector == #selector(NSResponder.moveDown(_:)) { return onMoveDown?() ?? false }
+        if selector == #selector(NSResponder.insertTab(_:)) { return onTab?() ?? false }
         // Return keeps doing what the field does with it; the window hears about it too.
         if selector == #selector(NSResponder.insertNewline(_:)) { onSubmit?(field.stringValue) }
         return false

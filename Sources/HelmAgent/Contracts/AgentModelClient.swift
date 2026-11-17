@@ -28,9 +28,25 @@ public struct AgentToolResult: Hashable, Sendable {
     /// JSON text that Helm built.
     public let json: String
     public let isError: Bool
-    public init(callID: String, name: String, json: String, isError: Bool = false) {
-        self.callID = callID; self.name = name; self.json = json; self.isError = isError
+    /// Pictures that go with the result, in the order the JSON names them: only `read_contents` sends any. Each
+    /// adapter puts them where its provider takes pictures, after the JSON.
+    public let images: [AgentContentImage]
+    public init(callID: String, name: String, json: String, isError: Bool = false, images: [AgentContentImage] = []) {
+        self.callID = callID; self.name = name; self.json = json; self.isError = isError; self.images = images
     }
+
+    /// The same result with its pictures left out, for a model that can't take them.
+    public var withoutImages: AgentToolResult {
+        AgentToolResult(callID: callID, name: name, json: json, isError: isError)
+    }
+}
+
+/// A picture in a structured question, after the question's words, with the words that come just before it, such
+/// as "Item 3".
+public struct AgentAskPicture: Hashable, Sendable {
+    public let label: String
+    public let image: AgentContentImage
+    public init(label: String, image: AgentContentImage) { self.label = label; self.image = image }
 }
 
 /// Every way a request to a model can fail. The person sees a fixed line for each; a provider's own words are
@@ -75,8 +91,11 @@ public enum AgentModelEvent: Sendable { case text(String), toolStarted(name: Str
 public struct AgentStructuredAsk: Sendable {
     public var system: String, user: String, schemaName: String
     public var schema: AgentJSON
-    public init(system: String, user: String, schemaName: String, schema: AgentJSON) {
+    /// Pictures that follow the user's words, each after its label. Empty for a question of words alone.
+    public var pictures: [AgentAskPicture]
+    public init(system: String, user: String, schemaName: String, schema: AgentJSON, pictures: [AgentAskPicture] = []) {
         self.system = system; self.user = user; self.schemaName = schemaName; self.schema = schema
+        self.pictures = pictures
     }
 }
 

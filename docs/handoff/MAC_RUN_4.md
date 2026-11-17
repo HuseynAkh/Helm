@@ -1,8 +1,8 @@
 # Mac run 4
 
-**Status: Helm is now an agentic file manager. AI mode is built, checked on fixtures with a scripted model, and off until turned on. No real provider, key, cloud folder or server was used, and no person has tried it yet; the list under "Needs Huseyn's Mac" is all not verified. The version is 0.2. Nothing was pushed, installed or released.**
+**Status: Helm is now an agentic file manager. AI mode is built, checked on fixtures with a scripted model, and off until turned on. No real provider, key, cloud folder or server was used in these checks; the list under "Needs Huseyn's Mac" is all not verified here. The version is 0.2. At Huseyn's word it was installed on 2026-11-14 and 15, and pushed and merged into `main` as PR #4 on 2026-11-15. Nothing was released. What he found when he tried it was built in [run 5](MAC_RUN_5.md).**
 
-Run on 2026-11-12 to 14, on the branch `agentic/merge`. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-4-2026-11-12-and-13).
+Run on 2026-11-12 to 14, on the branch `agentic/merge`. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-4-2026-11-12-to-14).
 
 ## What Huseyn asked
 
@@ -25,7 +25,7 @@ Run on 2026-11-12 to 14, on the branch `agentic/merge`. Huseyn's words and the c
 - **`HelmAgent`**, a new module with no AppKit and no way to change or open a file: providers, one network transport, keys, the conversation, folder rules, plan checks, the three suggestions and AI search's planning. A source check fails if it imports more.
 - **Three wire formats:** Anthropic Messages for Claude, OpenAI Responses for OpenAI and Grok, and Chat Completions for Gemini, Ollama, LM Studio and Other. Model lists come from each provider.
 - **Keys** in the login keychain, one per provider and host. A key is never in a file, a log, a request body or a picture.
-- **The spark** in the header, Helm's own four-point mark, and **the AI panel**: a 340-point column under the header with the folder chips, the consent line, the thread, three suggestions and the composer. `/add` and `/clear`; a typed or dropped path adds a folder; a server address gets one Connect line and goes to macOS.
+- **The spark** in the header, then Helm's own four-point mark (the trefoil since run 5), and **the AI panel**: a 340-point column under the header with the folder chips, the consent line, the thread, three suggestions and the composer. `/add` and `/clear`; a typed or dropped path adds a folder; a server address gets one Connect line and goes to macOS.
 - **Plans:** the model proposes, Helm checks every step, and the card shows each group with a tick and its full list. Trash, and changes that reach a place that syncs or is shared, start unticked. Apply runs through Helm's own operations, so conflicts keep both, removals go to the Trash, and one Undo puts it all back. Stop works between two steps.
 - **Remote and cloud folders:** one classifier names the place on the chip and in the plan's notes. Every agent read and every Apply runs with macOS's downloads switched off, so nothing is fetched.
 - **AI search:** the field's spark turns it on. The model plans up to six searches, Helm runs them on the Mac and asks the model to rank the matches. Each result's tooltip says why it matched.
@@ -85,7 +85,7 @@ Each one has a default, used in this build. Huseyn can change any of them.
 | Question | Default used |
 |---|---|
 | 1. Download cloud files on request? | No. Version 0.2 never downloads. A step that needs a file that isn't downloaded is left out, with a count. A ticked "Download N files" line could come later. |
-| 2. Read inside files? | No. Only names and details are sent. A fourth tool and a Settings row are the first follow-up. |
+| 2. Read inside files? | No in this run. Run 5 built it as Read contents, off until switched on; see [`MAC_RUN_5.md`](MAC_RUN_5.md). |
 | 3. OpenAI's preselected model | `gpt-6-astra`, the vendor's stated starting point. One constant to change. |
 | 4. The About line | Settled on 2026-11-14: it reads "An agentic file manager for your Mac." |
 | 5. A separate model for search | No. AI search uses the model picked in Settings › AI. |
@@ -106,5 +106,5 @@ Each one has a default, used in this build. Huseyn can change any of them.
 
 ## Disclosures
 
-- Nothing was pushed, fetched, installed or released, and no real key or provider was used. The pictures' stand-in key lives only in the scripted run's memory.
+- During the run nothing was pushed, fetched, installed or released, and no real key or provider was used. The install (2026-11-14) and the push (2026-11-15) came afterwards, each at Huseyn's word. The pictures' stand-in key lives only in the scripted run's memory.
 - Every run used invisible windows on a made-up home folder. Helm was never brought to the front, and the installed app was never opened.

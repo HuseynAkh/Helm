@@ -99,5 +99,36 @@ final class AISearchPredicateTests: XCTestCase {
     func testAnEmptyQueryFindsNothing() {
         XCTAssertEqual(AISearchPredicates.predicate(for: AISearchQuery()).predicateFormat, NSPredicate(value: false).predicateFormat)
     }
+
+    // MARK: The kind row
+
+    /// The kind row's choice as Spotlight is asked for it: the kind's type identifiers, ORed, against each item's type
+    /// tree, as bound values.
+    func testAChosenKindIsAskedOfSpotlightByItsTypeTree() {
+        XCTAssertNil(AISearchPredicates.kinds([]))
+        for kind in AISearchKind.searchChoices {
+            guard let predicate = AISearchPredicates.kinds([kind]) else { XCTFail(kind.rawValue); continue }
+            let parts = comparisons(predicate)
+            XCTAssertEqual(Set(parts.map(\.leftExpression.keyPath)), ["kMDItemContentTypeTree"], kind.rawValue)
+            XCTAssertEqual(parts.compactMap { $0.rightExpression.constantValue as? String }, kind.typeIdentifiers, kind.rawValue)
+            XCTAssertTrue(parts.allSatisfy { $0.predicateOperatorType == .equalTo })
+        }
+        // A planned query kept to Photo asks for pictures alone, whatever kind the model named.
+        let planned = AISearchQuery(nameAny: ["beach"], kinds: [.video]).limited(to: .image)
+        let asked = comparisons(AISearchPredicates.predicate(for: planned)).filter { $0.leftExpression.keyPath == "kMDItemContentTypeTree" }
+        XCTAssertEqual(asked.compactMap { $0.rightExpression.constantValue as? String }, ["public.image"])
+    }
+
+    /// Every query that runs is kept to the chosen kind, the model's and the request's own words alike, on a server too.
+    @MainActor func testTheQueriesThatRunAreKeptToTheChosenKind() {
+        let planned = [AISearchQuery(nameAny: ["beach"], kinds: [.video]), AISearchQuery(contentAll: ["beach"])]
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "beach", kind: .image),
+                       [AISearchQuery(nameAny: ["beach"], kinds: [.image]), AISearchQuery(contentAll: ["beach"], kinds: [.image])])
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "beach"), planned, "no kind: as planned")
+        // A server searches names only; a query left with nothing falls back to the request's own words, kept too.
+        XCTAssertEqual(AISearchRunner.queries([AISearchQuery(contentAll: ["beach"])], coverage: .namesOnly, request: "beach day",
+                                              kind: .image),
+                       [AISearchQuery(nameAny: ["beach", "day"], kinds: [.image])])
+    }
 }
 #endif

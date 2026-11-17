@@ -26,6 +26,7 @@ import HelmPersistence
             {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
             {"text": "Photos and notes get folders of their own.", "calls": [{"name": "propose_changes", "args": {
               "new_folders": [{"key": "n1", "parent": "@root", "name": "Images"}, {"key": "n2", "parent": "@root", "name": "Notes"}],
+              "new_files": [],
               "moves": [{"items": ["@name:photo-1.png", "@name:photo-2.jpg"], "all_in": "", "to": "n1"},
                         {"items": ["@name:memo.txt", "@name:todo.txt"], "all_in": "", "to": "n2"}],
               "copies": [], "renames": [], "trash": []}}]}]},
@@ -143,6 +144,58 @@ import HelmPersistence
         XCTAssertFalse(sent.contains(root.lastPathComponent), "nor any part of the path above the folder")
     }
 
+    /// A request to write files: the plan makes a folder with a text file and a Word file in it, nothing exists before
+    /// Apply, Apply writes the text and no executable bit, and one Undo puts what it made in the Trash.
+    func testAFixtureRunWritesNewFilesAndUndoesThemToTheTrash() async throws {
+        let app = await composedApp()
+        let agent = try XCTUnwrap(app.agentServicesForTesting)
+        let (window, model) = try await openedOnMess(app)
+        let scripted = try XCTUnwrap(agent.runtime.scriptedClientForTesting)
+        try scripted.load(Data("""
+            {"rules": [{"when": "packing list", "turns": [
+              {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
+              {"text": "A list and a letter for the trip.", "calls": [{"name": "propose_changes", "args": {
+                "new_folders": [{"key": "n1", "parent": "@root", "name": "Trip"}],
+                "new_files": [{"parent": "n1", "name": "Packing List.txt", "text": "Passport\\nCharger\\n"},
+                              {"parent": "n1", "name": "Letter.docx", "text": "Dear Sam,\\nSee you soon."}],
+                "moves": [], "copies": [], "renames": [], "trash": []}}]}]}]}
+            """.utf8))
+
+        model.type("write a packing list and a letter")
+        model.send()
+        await settle(window, model)
+        XCTAssertEqual(model.phaseForTesting, "plan")
+        XCTAssertEqual(model.groupsForTesting, ["Create 2 files in “Trip”:on"])
+        XCTAssertEqual(model.planCountsForTesting, "2 new files · 1 new folder")
+        XCTAssertEqual(names(in: mess), ["memo.txt", "photo-1.png", "photo-2.jpg", "todo.txt"], "nothing is made before Apply")
+
+        model.press(AgentText.apply)
+        await settle(window, model)
+        XCTAssertEqual(model.phaseForTesting, "result")
+        let trip = mess.appendingPathComponent("Trip", isDirectory: true)
+        XCTAssertEqual(names(in: trip), ["Letter.docx", "Packing List.txt"])
+        XCTAssertEqual(try String(contentsOf: trip.appendingPathComponent("Packing List.txt"), encoding: .utf8), "Passport\nCharger\n")
+        let word = try NSAttributedString(data: try Data(contentsOf: trip.appendingPathComponent("Letter.docx")),
+                                          options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+                                          documentAttributes: nil)
+        XCTAssertEqual(word.string.trimmingCharacters(in: .newlines), "Dear Sam,\nSee you soon.")
+        for file in ["Letter.docx", "Packing List.txt"] {
+            let mode = try FileManager.default.attributesOfItem(atPath: trip.appendingPathComponent(file).path)[.posixPermissions] as? NSNumber
+            XCTAssertEqual((mode?.intValue ?? 0o777) & 0o111, 0, file)
+        }
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.resultMadeFiles(2)))
+        window.focusFilesForTesting()
+        XCTAssertEqual(window.undoTitleForTesting, "Create 2 Files")
+
+        model.press(AgentText.undo)
+        await settle(window, model)
+        XCTAssertEqual(names(in: mess), ["memo.txt", "photo-1.png", "photo-2.jpg", "todo.txt"], "everything it made is gone")
+        let trash = home.appendingPathComponent(".Trash", isDirectory: true)
+        XCTAssertTrue(names(in: trash).contains("Trip"), "into the Trash, never deleted: \(names(in: trash))")
+        XCTAssertTrue(model.threadTextForTesting.contains(AgentText.undoDone))
+        XCTAssertEqual(agent.runtime.clientBuildCount, 0)
+    }
+
     func testTurningAIModeOffShutsThePanelAndEndsItsConversation() async throws {
         let app = await composedApp()
         let agent = try XCTUnwrap(app.agentServicesForTesting)
@@ -221,7 +274,7 @@ import HelmPersistence
         try scripted.load(Data("""
             {"rules": [{"when": "copy", "turns": [
               {"calls": [{"name": "list_folder", "args": {"folder": "@root", "depth": 1, "after": ""}}]},
-              {"calls": [{"name": "propose_changes", "args": {"new_folders": [], "moves": [],
+              {"calls": [{"name": "propose_changes", "args": {"new_folders": [], "new_files": [], "moves": [],
                 "copies": [{"items": ["@name:clip.mov"], "all_in": "", "to": "@name:Backup"}], "renames": [], "trash": []}}]}]}]}
             """.utf8))
         // The window's commands see the clip go back to the cloud just before it is copied: after the conversation

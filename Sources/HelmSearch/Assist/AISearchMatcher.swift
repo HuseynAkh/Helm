@@ -12,6 +12,13 @@ public enum AISearchMatcher {
         AISearchKind.of(typeIdentifier: entry.contentTypeIdentifier, extension: entry.url.pathExtension, kind: entry.kind)
     }
 
+    /// Whether `entry` is of `kind`, or of a kind `kind` covers, as the kind row's filter asks. An item the table has
+    /// no word for, such as a link, is of none.
+    public static func isOf(_ kind: AISearchKind, _ entry: FileEntry) -> Bool {
+        guard let found = self.kind(of: entry) else { return false }
+        return kind.covers(found)
+    }
+
     /// Whether `entry` answers `query`.
     ///
     /// `scopeRoot` is the folder searched, when there is one: the item must be inside it, and the folder words are
@@ -43,6 +50,46 @@ public enum AISearchMatcher {
             if query.sizeMaxBytes > 0, entry.size > query.sizeMaxBytes { return false }
         }
         return true
+    }
+
+    // MARK: Inside pictures and videos
+
+    /// What a picture or a video answers of `words`, the words a query looks for inside files, from what Read
+    /// contents read in it on this Mac. Every word must be in the text it holds or be one of the things it shows;
+    /// otherwise, and for anything but a picture or a video that was read, nil.
+    public static func sighting(of words: [String], in summary: AgentContentSummary) -> AISearchSighting? {
+        guard !words.isEmpty, summary.status == .read else { return nil }
+        let medium: AISearchSighting.Medium
+        switch summary.kind {
+        case .image: medium = .image
+        case .video: medium = .video
+        case .text, .pdf, .other: return nil
+        }
+        let text = summary.foundText.joined(separator: " ")
+        let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }.prefix(AgentContentLimits.labels)
+        var textWords: [String] = [], shown: [String] = []
+        for word in words {
+            // A label that is the word itself first, so "sky" is shown as sky rather than as blue sky.
+            if let label = labels.first(where: { names($0, word, wholly: true) }) ?? labels.first(where: { names($0, word) }) {
+                if !shown.contains(label.words) { shown.append(label.words) }
+            } else if holds(text, word) {
+                textWords.append(word)
+            } else {
+                return nil
+            }
+        }
+        return AISearchSighting(medium: medium, textWords: textWords, labels: shown)
+    }
+
+    /// Whether a label names what `word` does: one of its words is the word, or the word with a plural ending, so
+    /// "dogs" finds "dog" and "sky" finds "blue_sky". `wholly` asks for the whole label to be the word.
+    static func names(_ label: AgentContentLabel, _ word: String, wholly: Bool = false) -> Bool {
+        let wanted = word.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: matchingLocale)
+        let forms: Set<String> = [wanted, wanted.hasSuffix("es") ? String(wanted.dropLast(2)) : wanted,
+                                  wanted.hasSuffix("s") ? String(wanted.dropLast()) : wanted]
+        let parts = label.identifier.lowercased().split(whereSeparator: { $0 == "_" || $0 == " " }).map(String.init)
+        if wholly { return parts.count == 1 && forms.contains(parts[0]) }
+        return parts.contains { forms.contains($0) }
     }
 
     // MARK: Parts

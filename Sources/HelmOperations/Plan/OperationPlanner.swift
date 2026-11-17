@@ -90,7 +90,8 @@ private struct PlanAssembly {
         case .rename(let pair): renames([pair])
         case .batchRename(let pairs): renames(pairs)
         case .createFolder(let parent, let name): create(parent: parent, name: name, template: nil, folder: true)
-        case .createFile(let parent, let name, let template): create(parent: parent, name: name, template: template, folder: false)
+        case .createFile(let parent, let name, let template, let contents):
+            create(parent: parent, name: name, template: template, folder: false, contents: contents)
         case .link(let sources, let directory, let alias): links(sources, in: directory, alias: alias)
         case .recovery: issues.append(.stopped)
         }
@@ -237,14 +238,15 @@ private struct PlanAssembly {
         steps.append(PlannedStep(kind: .move, source: stage, destination: target, item: item))
         if moving { steps.append(PlannedStep(kind: .trash, source: source, verificationDestination: target, item: item)) }
     }
-    mutating func create(parent: URL, name: ValidFileName, template: URL?, folder: Bool) {
+    mutating func create(parent: URL, name: ValidFileName, template: URL?, folder: Bool, contents: Data = Data()) {
         if let template {
             guard valid(template) else { return }
             if path(parent) == path(template) || path(parent).hasPrefix(path(template) + "/") { issues.append(.destinationInsideSource(parent)); return }
         }
         guard let destination = unique(name.value, parent: parent) else { return }
         steps.append(PlannedStep(kind: folder ? .createDirectory : (template == nil ? .createFile : .copy),
-                                 source: template, destination: destination, retryKeepBoth: true, collisionName: name.value))
+                                 source: template, destination: destination, contents: folder || template != nil ? Data() : contents,
+                                 retryKeepBoth: true, collisionName: name.value))
     }
     mutating func renames(_ pairs: [RenamePair]) {
         guard validateSources(pairs.map(\.source)) else { return }

@@ -310,7 +310,7 @@ EOF
 
 ## Privacy
 
-Helm connects only to the model provider you choose, and only while AI mode is on. AI mode is off until you turn it on. It sends your requests and the names and details of files, never what's inside them; with Ollama or LM Studio they stay on your Mac. Your provider's key is kept in your Mac's keychain.
+Helm connects only to the model provider you choose, and only while AI mode is on. AI mode is off until you turn it on. It sends your requests and the names and details of files. Only while Read contents is on does it read inside files and send what it reads: the text of documents, and small copies of pictures and video frames. With Ollama or LM Studio everything stays on your Mac. Helm has no servers and collects nothing. Your key or ChatGPT sign-in is kept in your Mac's keychain.
 
 There are no accounts, analytics, telemetry or update checks. What Helm keeps, such as your settings, tabs and bookmarks, stays on your Mac.
 

@@ -49,7 +49,7 @@ final class AgentToolRunnerTests: XCTestCase {
     }
 
     private func json(_ outcome: AgentToolOutcome, file: StaticString = #filePath, line: UInt = #line) -> AgentJSON? {
-        guard case .result(let text, _) = outcome else {
+        guard case .result(let text, _, _) = outcome else {
             XCTFail("not a result: \(outcome)", file: file, line: line)
             return nil
         }
@@ -398,7 +398,7 @@ final class AgentToolRunnerTests: XCTestCase {
 
     func testProposalsGoToTheValidator() async {
         let rig = await self.rig { disk in disk.addFile(home + "/a.txt") }
-        let empty = #"{"new_folders":[],"moves":[{"items":["f1"],"all_in":"","to":"d2"}],"copies":[],"renames":[],"trash":[]}"#
+        let empty = #"{"new_folders":[],"new_files":[],"moves":[{"items":["f1"],"all_in":"","to":"d2"}],"copies":[],"renames":[],"trash":[]}"#
         guard case .plan = await run(rig, "propose_changes", empty) else { return XCTFail("no plan") }
         XCTAssertEqual(rig.validator.proposed.first?.moves.first?.items, ["f1"])
 

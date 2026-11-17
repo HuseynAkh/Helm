@@ -1,0 +1,63 @@
+# A plain search kept to one kind. The kind row shows while the search is open, with no spark, at Any. A kind searches
+# the words on show again for it alone, and the status bar names it at the end of its line; Any finds every kind
+# again. Tab takes the keys to the row, where the arrows choose, and Escape gives them back. Closing the search sets
+# the row back to Any; with no words a choice searches nothing, and the next words keep to it. Works in its own tab,
+# so the tab that's saved at quit is left as it was.
+cmd newTab
+wait 0.3
+go @FIX@/home/KindCase
+wait 0.5
+search-kinds-shown false
+search-type beach
+wait 0.8
+search-mark-is magnifier
+search-kinds-shown true
+search-kind-is Any
+has beach-photo.jpg
+has beach-clip.mov
+has beach-notes.txt
+lacks other.jpg
+hunt-status-says 3 results
+hunt-status-lacks Photos
+search-kind Photo
+search-kind-is Photo
+has beach-photo.jpg
+lacks beach-clip.mov
+lacks beach-notes.txt
+lacks other.jpg
+hunt-status-says 1 result
+hunt-status-says Photos
+search-kind Video
+has beach-clip.mov
+lacks beach-photo.jpg
+hunt-status-says Videos
+search-kind Any
+has beach-photo.jpg
+has beach-notes.txt
+hunt-status-lacks Videos
+search-key tab
+focus-is kinds
+search-kind-key right
+search-kind-is Photo
+lacks beach-notes.txt
+search-kind-key escape
+focus-is search
+search-key escape
+search-shown false
+search-kinds-shown false
+search-open
+search-kinds-shown true
+search-kind-is Any
+search-kind Document
+search-shown true
+search-type beach
+wait 0.8
+has beach-notes.txt
+lacks beach-photo.jpg
+hunt-status-says Documents
+search-key escape
+search-shown false
+cmd closeTab
+wait 0.3
+location @FIX@/home/Documents
+view-is list

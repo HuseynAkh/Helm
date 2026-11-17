@@ -5,7 +5,8 @@ import HelmCore
 /// fixture run and a test can go through a whole request, tools and plan included, with the network denied.
 ///
 /// Its own history items are plain: a user turn is `{"role":"user","results":[…],"text":…}` and a model turn is
-/// `{"role":"model","text":…,"calls":[…]}`. Which turn of a rule comes next is read from the history it is
+/// `{"role":"model","text":…,"calls":[…]}`. A result with pictures lists each one's label and size, never its bytes.
+/// Which turn of a rule comes next is read from the history it is
 /// handed, so the client keeps no place of its own and two windows can share one.
 /// All reads and writes of what it keeps hold the lock.
 public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
@@ -18,6 +19,7 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     private var turns: [AgentTurnInput] = []
     private var asks: [AgentStructuredAsk] = []
     private var listFailure: AgentFailure?
+    private var pictureFailure: AgentFailure?
 
     public init(script: AgentScript = .builtIn, providerName: String = "Claude", destination: String = "Claude", isLocal: Bool = false) {
         self.script = script; self.providerName = providerName; self.destination = destination; self.isLocal = isLocal
@@ -37,15 +39,23 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         set { locked { listFailure = newValue } }
     }
 
+    /// When set, a turn whose history holds a picture fails with this, as a provider does for a model that can't
+    /// take pictures.
+    public var picturesFailure: AgentFailure? {
+        get { locked { pictureFailure } }
+        set { locked { pictureFailure = newValue } }
+    }
+
     /// Every model turn that was asked for, in order.
     public var sentTurns: [AgentTurnInput] { locked { turns } }
     /// Every structured question that was asked, in order.
     public var sentAsks: [AgentStructuredAsk] { locked { asks } }
 
     /// Everything a real client would have put on the wire, as one text: for each turn the system prompt, the tools
-    /// and the history, and for each structured question its two prompts and its schema. Each piece of JSON is
-    /// there as it would be sent, and every string inside it is there again as plain text, a tool result's own JSON
-    /// included, so a name or a path can be looked for however it was escaped.
+    /// and the history, and for each structured question its two prompts, its schema and its pictures. Each piece of
+    /// JSON is there as it would be sent, and every string inside it is there again as plain text, a tool result's own
+    /// JSON included, so a name or a path can be looked for however it was escaped. A picture is there as its label
+    /// and "[picture WxH]", never its bytes.
     public func allSentText() -> String {
         let (turns, asks) = locked { (self.turns, self.asks) }
         var lines: [String] = []
@@ -55,11 +65,22 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
                 lines += [tool.name, tool.description]
                 Self.spell(tool.schema, into: &lines)
             }
-            for item in turn.history { Self.spell(item, into: &lines) }
+            for item in turn.history {
+                Self.spell(item, into: &lines)
+                for result in item[Keys.results]?.arrayValue ?? [] {
+                    for picture in result[Keys.pictures]?.arrayValue ?? [] {
+                        lines.append(Self.pictureWords(width: AgentWireParts.integer(picture[Keys.width]) ?? 0,
+                                                       height: AgentWireParts.integer(picture[Keys.height]) ?? 0))
+                    }
+                }
+            }
         }
         for ask in asks {
             lines += [ask.system, ask.user, ask.schemaName]
             Self.spell(ask.schema, into: &lines)
+            for picture in ask.pictures {
+                lines += [picture.label, Self.pictureWords(width: picture.image.width, height: picture.image.height)]
+            }
         }
         return lines.joined(separator: "\n")
     }
@@ -67,11 +88,16 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     // MARK: AgentModelClient
 
     public func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> {
-        let script = locked { () -> AgentScript in
+        let (script, pictureFailure) = locked { () -> (AgentScript, AgentFailure?) in
             turns.append(input)
-            return self.script
+            return (self.script, self.pictureFailure)
         }
-        let answer = Self.answer(to: input.history, script: script)
+        let answer: Result<ScriptedTurn, AgentFailure>
+        if let pictureFailure, Self.holdsPictures(input.history) {
+            answer = .failure(pictureFailure)
+        } else {
+            answer = Self.answer(to: input.history, script: script)
+        }
         return AsyncThrowingStream { continuation in
             switch answer {
             case .failure(let failure):
@@ -88,17 +114,25 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     public func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] {
         var item: [String: AgentJSON] = [Keys.role: .string(Keys.user)]
         if !toolResults.isEmpty {
-            item[Keys.results] = .array(toolResults.map { result in
-                .object([Keys.id: .string(result.callID), Keys.name: .string(result.name),
-                         Keys.json: .string(result.json), Keys.error: .bool(result.isError)])
+            item[Keys.results] = .array(zip(toolResults, AgentToolResult.labeledPictures(toolResults)).map { result, pictures in
+                var fields: [String: AgentJSON] = [Keys.id: .string(result.callID), Keys.name: .string(result.name),
+                                                   Keys.json: .string(result.json), Keys.error: .bool(result.isError)]
+                if !pictures.isEmpty {
+                    fields[Keys.pictures] = .array(pictures.map { picture in
+                        .object([Keys.label: .string(picture.label), Keys.width: .number(Double(picture.image.width)),
+                                 Keys.height: .number(Double(picture.image.height))])
+                    })
+                }
+                return .object(fields)
             })
         }
         if let text { item[Keys.text] = .string(text) }
         return [.object(item)]
     }
 
-    /// The script's search plan for a question named "search_plan" and its ranking for "search_rank". A question of
-    /// any other name, or one the script has no answer for, fails as unreadable.
+    /// The script's search plan for a question named "search_plan", its ranking for "search_rank", and for
+    /// "search_look" the answer of its first look rule for the request (`look(_:script:)`). A question of any other
+    /// name, or one the script has no answer for, fails as unreadable. Each question is kept with its pictures.
     public func structured(_ ask: AgentStructuredAsk) async throws -> Data {
         let script = locked { () -> AgentScript in
             asks.append(ask)
@@ -108,6 +142,7 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
         switch ask.schemaName {
         case Self.searchPlanName: answer = script.searchPlan
         case Self.searchRankName: answer = script.searchRank
+        case Self.searchLookName: answer = try Self.look(ask, script: script)
         default: answer = nil
         }
         guard let answer else { throw AgentFailure.unreadable }
@@ -124,10 +159,45 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
 
     static let searchPlanName = "search_plan"
     static let searchRankName = "search_rank"
+    static let searchLookName = "search_look"
+
+    /// The answer to a look question: the first look rule whose `when` is in the request judges the items shown by
+    /// their names, as written or as escaped. Nil when no rule is for this request. A rule's `picturesFailure` is
+    /// thrown while the question carries pictures.
+    private static func look(_ ask: AgentStructuredAsk, script: AgentScript) throws -> AgentJSON? {
+        let lines = ask.user.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard let start = lines.firstIndex(of: "Request (data):"), lines.indices.contains(start + 1),
+              let request = (try? AgentJSON(data: Data(lines[start + 1].utf8)))?.stringValue?.lowercased(),
+              let rule = script.searchLooks.first(where: { $0.when == "*" || request.contains($0.when.lowercased()) }) else { return nil }
+        if !ask.pictures.isEmpty, let failure = rule.picturesFailure.flatMap(AgentFailure.init(rawValue:)) { throw failure }
+        func named(_ name: String, _ shown: String) -> Bool { shown == name || shown == AgentTextEscaper.escape(name) }
+        var judged: [AgentJSON] = []
+        for line in lines where line.hasPrefix("{") {
+            guard let item = AgentJSON(jsonText: line), case .number(let number)? = item["item"],
+                  let name = item["name"]?.stringValue else { continue }
+            if let fit = rule.fits.first(where: { named($0.name, name) }) {
+                judged.append(.object(["item": .number(number), "fits": .bool(true), "seen": .string(fit.seen)]))
+            } else if rule.misses.contains(where: { named($0, name) }) {
+                judged.append(.object(["item": .number(number), "fits": .bool(false), "seen": .string("")]))
+            }
+        }
+        return .object(["items": .array(judged)])
+    }
 
     private enum Keys {
         static let role = "role", user = "user", model = "model", text = "text", results = "results"
         static let calls = "calls", id = "id", name = "name", json = "json", error = "error", args = "args"
+        static let pictures = "pictures", label = "label", width = "width", height = "height"
+    }
+
+    /// How a picture is written in the text of what was sent.
+    static func pictureWords(width: Int, height: Int) -> String { "[picture \(width)x\(height)]" }
+
+    /// A history holds a picture when one of its user turns lists one.
+    private static func holdsPictures(_ history: [AgentJSON]) -> Bool {
+        history.contains { item in
+            (item[Keys.results]?.arrayValue ?? []).contains { !($0[Keys.pictures]?.arrayValue ?? []).isEmpty }
+        }
     }
 
     private struct ScriptedTurn {
@@ -138,9 +208,12 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     }
 
     /// The next model turn for a history: the rule is the first that the person's last message matches, and the
-    /// turn is the rule's next one after the model turns already taken since that message.
+    /// turn is the rule's next one after the model turns already taken since that message. Helm's ask for a plan
+    /// (`AgentPrompt.planNow`) is not a message, so the rule goes on to its next turn after it.
     private static func answer(to history: [AgentJSON], script: AgentScript) -> Result<ScriptedTurn, AgentFailure> {
-        let lastMessage = history.lastIndex { $0[Keys.role]?.stringValue == Keys.user && $0[Keys.text] != nil }
+        let lastMessage = history.lastIndex {
+            $0[Keys.role]?.stringValue == Keys.user && $0[Keys.text] != nil && $0[Keys.text]?.stringValue != AgentPrompt.planNow
+        }
         let said = lastMessage.flatMap { history[$0][Keys.text]?.stringValue } ?? ""
         let taken = history[(lastMessage ?? history.startIndex)...].filter { $0[Keys.role]?.stringValue == Keys.model }.count
         let words = message(in: said).lowercased()
@@ -189,14 +262,16 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
 
     private static let noteMark = "[Helm]"
     private static let rootMark = "@root"
+    private static let homeMark = "@home"
     private static let nameMark = "@name:"
 
-    /// A call's arguments with `@root` and `@name:<file>` filled in from the history. A mark that can't be filled
-    /// in is left as it is, which the tool then refuses as an id it never issued.
+    /// A call's arguments with `@root`, `@home` and `@name:<file>` filled in from the history. A mark that can't be
+    /// filled in is left as it is, which the tool then refuses as an id it never issued.
     private static func filled(_ json: AgentJSON, history: [AgentJSON]) -> AgentJSON {
         switch json {
         case .string(let text):
             if text == rootMark { return shownRoot(in: history).map(AgentJSON.string) ?? json }
+            if text == homeMark { return homeRoot(in: history).map(AgentJSON.string) ?? json }
             if text.hasPrefix(nameMark) { return id(ofItemNamed: String(text.dropFirst(nameMark.count)), in: history).map(AgentJSON.string) ?? json }
             return json
         case .array(let values): return .array(values.map { filled($0, history: history) })
@@ -208,13 +283,28 @@ public final class ScriptedModelClient: AgentModelClient, @unchecked Sendable {
     /// The alias of the folder on show, from the newest note about the folders: the one marked "(on show)", or
     /// failing that the first one listed.
     private static func shownRoot(in history: [AgentJSON]) -> String? {
+        newestFolders(in: history).flatMap { folders in
+            let shown = folders.first { $0.contains("(on show)") } ?? folders.first
+            return shown?.split(separator: " ").first.map(String.init)
+        }
+    }
+
+    /// The alias of the home folder in Whole Mac, from the newest note about the folders: the one with the word
+    /// "home". Nil while Whole Mac is off.
+    private static func homeRoot(in history: [AgentJSON]) -> String? {
+        newestFolders(in: history).flatMap { folders in
+            let home = folders.first { $0.split(separator: " ").dropFirst().contains("home") }
+            return home?.split(separator: " ").first.map(String.init)
+        }
+    }
+
+    /// Each folder of the newest note about the folders, as the note words it: "r1 this_mac (on show)".
+    private static func newestFolders(in history: [AgentJSON]) -> [String]? {
         for item in history.reversed() {
             guard let text = item[Keys.text]?.stringValue else { continue }
             for line in text.split(separator: "\n") where line.hasPrefix(noteMark) {
                 guard let start = line.range(of: "Folders:") else { continue }
-                let folders = line[start.upperBound...].split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
-                let shown = folders.first { $0.contains("(on show)") } ?? folders.first
-                if let alias = shown?.split(separator: " ").first { return String(alias) }
+                return line[start.upperBound...].split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
             }
         }
         return nil

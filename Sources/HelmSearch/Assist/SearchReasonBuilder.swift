@@ -3,23 +3,27 @@ import HelmCore
 
 /// The words that say why a result matched, and how a request was read, built only from facts Helm holds.
 ///
-/// A model answers with reason codes and never with words, so nothing here repeats a phrase it wrote. Every word of
-/// a query is a single token by the time it gets here (`AISearchQuery.clamped`), a word looked for inside files is
-/// one the person typed, and every word and name passes `AgentTextEscaper`, so a line can't hold hidden characters.
-/// A code Helm can't back with a fact is dropped, and no line names a path.
+/// A model ranking rows answers with reason codes and never with words, so nothing here repeats a phrase it wrote
+/// there. The one phrase of a model's a line holds is what it said it saw in a file it looked at, after "Model saw: ",
+/// cleaned to plain text of 80 characters by `AISearchSession`. Every word of a query is a single token by the time it
+/// gets here (`AISearchQuery.clamped`), a word looked for inside files is one the person typed, and every word, name
+/// and phrase passes `AgentTextEscaper`, so a line can't hold hidden characters. A code Helm can't back with a fact
+/// is dropped, and no line names a path.
 public enum SearchReasonBuilder {
     /// The most facts one reason line holds.
     public static let factsPerLine = 2
 
     /// The reason line for one result: the first two codes Helm can back, in the order given, or nil when it can
-    /// back none. `query` is the planned query that found the item, if one did.
+    /// back none. `query` is the planned query that found the item, if one did. `sighting` is what Read contents found
+    /// inside the file (`seen(_:)`), which the content fact then names.
     public static func reason(codes: [SearchReasonCode], entry: FileEntry, query: AISearchQuery?, scopeRoot: URL?,
-                              calendar: Calendar, locale: Locale) -> SearchReason? {
+                              calendar: Calendar, locale: Locale, sighting: AISearchSighting? = nil) -> SearchReason? {
         var used: [SearchReasonCode] = []
         var facts: [String] = []
         for code in codes where !used.contains(code) {
             guard facts.count < factsPerLine,
-                  let fact = fact(code, entry: entry, query: query, scopeRoot: scopeRoot, calendar: calendar, locale: locale)
+                  let fact = fact(code, entry: entry, query: query, scopeRoot: scopeRoot, calendar: calendar, locale: locale,
+                                  sighting: sighting)
             else { continue }
             used.append(code); facts.append(fact)
         }
@@ -83,6 +87,10 @@ public enum SearchReasonBuilder {
 
     static let separator = " · "
     static let mentions = "Mentions "
+    static let shows = "Shows: "
+    static let textInImage = "Text in image: "
+    static let textInVideo = "Text in video: "
+    static let seenByModel = "Model saw: "
     static let nameHas = "Name has "
     static let inFolder = "In "
 
@@ -119,13 +127,14 @@ public enum SearchReasonBuilder {
     // MARK: Facts
 
     private static func fact(_ code: SearchReasonCode, entry: FileEntry, query: AISearchQuery?, scopeRoot: URL?,
-                             calendar: Calendar, locale: Locale) -> String? {
+                             calendar: Calendar, locale: Locale, sighting: AISearchSighting? = nil) -> String? {
         switch code {
         case .name:
             guard let query, let word = (query.nameAll + query.nameAny).first(where: { AISearchMatcher.holds(entry.name, $0) })
             else { return nil }
             return nameHas + quoted(word)
         case .content:
+            if let sighting { return seen(sighting) }
             // Only a query with words from inside files found the item through them, and those words are the person's.
             guard let word = query?.contentAll.first else { return nil }
             return mentions + quoted(word)
@@ -165,6 +174,26 @@ public enum SearchReasonBuilder {
         case .none:
             return AISearchMatcher.date(.modified, of: entry).map { (.modified, $0) }
         }
+    }
+
+    /// What a file showed or held: "Shows: dog, beach", "Text in image: “invoice”", or both, from what was read on this
+    /// Mac; or "Model saw: a red kite over the beach" for a file a model looked at and said fits. The things shown are
+    /// the classifier's words and the text words are the person's own; the phrase seen is the model's, which Helm can't
+    /// check, so the line says whose it is. It is cleaned to plain text and escaped here.
+    public static func seen(_ sighting: AISearchSighting) -> String? {
+        if let phrase = sighting.seen, !phrase.isEmpty { return seenByModel + escaped(phrase) }
+        var parts: [String] = []
+        if !sighting.labels.isEmpty { parts.append(shows + sighting.labels.prefix(3).map(escaped).joined(separator: ", ")) }
+        if let word = sighting.textWords.first {
+            let lead: String
+            switch sighting.medium {
+            case .image: lead = textInImage
+            case .video: lead = textInVideo
+            case .document: lead = mentions
+            }
+            parts.append(lead + quoted(word))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: separator)
     }
 
     // MARK: Formatting

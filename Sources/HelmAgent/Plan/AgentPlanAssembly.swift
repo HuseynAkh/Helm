@@ -25,7 +25,7 @@ final class AgentPlanFacts {
 }
 
 /// Turns checked steps into Helm's own plan: place facts for every folder the steps touch, the place rules, the
-/// bulk guard, groups, names already taken, notes and the title. Both checking a new plan and looking at one again
+/// bulk guard, the guard on new code, groups, names already taken, notes and the title. Both checking a new plan and looking at one again
 /// before Apply end here, so the two can't disagree about what a plan is.
 struct AgentPlanAssembly {
     enum Failure: Error, Equatable {
@@ -116,7 +116,7 @@ struct AgentPlanAssembly {
         // it goes too: a plan never offers to make an empty folder in place of what it couldn't do.
         if tally.values.contains(where: { $0 > 0 }) {
             var used: Set<String> = []
-            for index in kept where steps[index].transferTarget != nil { used.formUnion(chart.keysAbove(index)) }
+            for index in kept where steps[index].landingTarget != nil { used.formUnion(chart.keysAbove(index)) }
             kept.removeAll { index in chart.newKey(of: index).map { !used.contains($0) } ?? false }
         }
 
@@ -126,7 +126,7 @@ struct AgentPlanAssembly {
             guard let folders = chart.folders(of: index) else { continue }
             let isFolder = steps[index].changedItem.map { $0.kind == .directory || $0.kind == .package } ?? false
             switch steps[index] {
-            case .newFolder:
+            case .newFolder, .newFile:
                 changes.append(.init(step: index, place: await facts.of(folders.source), isFolder: false))
             case .rename, .trash:
                 changes.append(.init(step: index, place: await facts.of(folders.source), isFolder: isFolder))
@@ -150,6 +150,12 @@ struct AgentPlanAssembly {
         for (index, place) in AgentPlaceRules.bulkGuarded(changes) where rulings[index]?.guardedBy == nil {
             rulings[index]?.guardedBy = .reachesOthers
             rulings[index]?.place = place
+        }
+        // A new file of code or a web page starts unticked too, when nothing above already holds it back.
+        for index in kept where rulings[index]?.guardedBy == nil {
+            if case .newFile(_, let name, _) = steps[index], AgentNewName.isNewFileCode(name.value) {
+                rulings[index]?.guardedBy = .code
+            }
         }
 
         let finalSteps = kept.map { steps[$0] }
@@ -224,6 +230,13 @@ struct AgentPlanAssembly {
                 place = "e:" + parent; folder = parent
                 name = newName.value
                 own = AgentNewName.clashKey(item.name)
+            case .newFile(let target, let newName, _):
+                switch target {
+                case .existing(let destination): place = "e:" + destination.path; folder = destination.path
+                case .new(let key): place = "n:" + key; folder = nil
+                }
+                name = newName.value
+                own = nil
             case .newFolder, .trash:
                 continue
             }
@@ -248,16 +261,16 @@ struct AgentPlanAssembly {
     // MARK: Groups
 
     private struct GroupKey: Hashable {
-        enum Kind: Int { case newFolders, renames, moves, copies, trash }
+        enum Kind: Int { case newFolders, newFiles, renames, moves, copies, trash }
         var kind: Kind
         var destination: String?
         var guardedBy: AgentPlanGuard?
         var place: String?
     }
 
-    /// One group a kind of change, destination, guard and place, in the card's order: new folders, renames, moves,
-    /// copies, the Trash. A new folder joins the group of the first step that goes into it or into a folder made
-    /// inside it; one that nothing goes into is in a group of new folders.
+    /// One group a kind of change, destination, guard and place, in the card's order: new folders, new files,
+    /// renames, moves, copies, the Trash. A new folder joins the group of the first step that goes into it or into a
+    /// folder made inside it; one that nothing goes into is in a group of new folders.
     static func groups(_ steps: [AgentPlanStep], rulings: [AgentPlaceRules.Ruling], chart: AgentPlanChart,
                        roots: [AgentScopeRoot]) -> [AgentPlanGroup] {
         var keyOf: [Int: GroupKey] = [:]
@@ -268,9 +281,13 @@ struct AgentPlanAssembly {
             case .newFolder: continue
             case .rename: keyOf[index] = GroupKey(kind: .renames, guardedBy: ruling.guardedBy, place: ruling.place)
             case .trash: keyOf[index] = GroupKey(kind: .trash, guardedBy: .trash)
-            case .move(_, let target), .copy(_, let target):
+            case .move(_, let target), .copy(_, let target), .newFile(let target, _, _):
                 let kind: GroupKey.Kind
-                if case .move = step { kind = .moves } else { kind = .copies }
+                switch step {
+                case .move: kind = .moves
+                case .copy: kind = .copies
+                default: kind = .newFiles
+                }
                 keyOf[index] = GroupKey(kind: kind, destination: AgentPlanChart.destinationKey(target),
                                         guardedBy: ruling.guardedBy, place: ruling.place)
                 for key in chart.keysAbove(index) where firstInto[key] == nil { firstInto[key] = index }
@@ -300,12 +317,16 @@ struct AgentPlanAssembly {
             case .newFolders: kind = .newFolders
             case .renames: kind = .renames
             case .trash: kind = .trash
-            case .moves, .copies:
-                let target = indexes.lazy.compactMap { steps[$0].transferTarget }.first
+            case .moves, .copies, .newFiles:
+                let target = indexes.lazy.compactMap { steps[$0].landingTarget }.first
                 let label = target.map { chart.label(of: $0, roots: roots) } ?? ""
                 let isNew: Bool
                 if case .new? = target { isNew = true } else { isNew = false }
-                kind = key.kind == .moves ? .moves(toLabel: label, isNew: isNew) : .copies(toLabel: label, isNew: isNew)
+                switch key.kind {
+                case .moves: kind = .moves(toLabel: label, isNew: isNew)
+                case .copies: kind = .copies(toLabel: label, isNew: isNew)
+                default: kind = .newFiles(toLabel: label, isNew: isNew)
+                }
             }
             return AgentPlanGroup(id: offset + 1, kind: kind, steps: indexes, guardedBy: key.guardedBy, place: key.place)
         }
@@ -332,14 +353,17 @@ struct AgentPlanAssembly {
         return notices
     }
 
-    /// The plan's name. A plan of one kind of change is named for it; moves into one folder are a move; anything
-    /// else organizes the root most of its items are in.
+    /// The plan's name. A plan of one kind of change is named for it; moves into one folder are a move, and new
+    /// files with the new folders they are made in are a creation; anything else organizes the root most of its
+    /// items are in.
     static func title(_ steps: [AgentPlanStep], chart: AgentPlanChart, roots: [AgentScopeRoot]) -> AgentPlanTitle {
         var counts = AgentPlanCounts()
         var destinations: Set<String> = []
-        for step in steps {
+        var holdingFiles: Set<String> = []
+        for (index, step) in steps.enumerated() {
             switch step {
             case .newFolder: counts.newFolders += 1
+            case .newFile: counts.newFiles += 1; holdingFiles.formUnion(chart.keysAbove(index))
             case .move(_, let target): counts.moves += 1; destinations.insert(AgentPlanChart.destinationKey(target))
             case .copy: counts.copies += 1
             case .rename: counts.renames += 1
@@ -350,6 +374,10 @@ struct AgentPlanAssembly {
             if counts.trash == steps.count { return .trash(counts.trash) }
             if counts.renames == steps.count { return .rename(counts.renames) }
             if counts.copies > 0, counts.copies + counts.newFolders == steps.count { return .copy(counts.copies) }
+            if counts.newFiles > 0, counts.newFiles + counts.newFolders == steps.count, steps.allSatisfy({ step in
+                guard case .newFolder(let key, _, _) = step else { return true }
+                return holdingFiles.contains(key)
+            }) { return .create(counts.newFiles) }
             if counts.moves > 0, counts.moves + counts.newFolders == steps.count, destinations.count == 1 {
                 let onTheWay = chart.keysAbove(destination: destinations.first ?? "")
                 if steps.allSatisfy({ step in
@@ -393,11 +421,11 @@ struct AgentPlanChart {
     }
 
     /// The folders whose facts a step is ruled by: the item's own folder (a file's parent; a folder itself), or the
-    /// folder a new one is made in; and the folder a move or a copy goes into. Nil when a new folder it needs isn't
-    /// in the plan.
+    /// folder a new folder or file is made in; and the folder a move or a copy goes into. Nil when a new folder it
+    /// needs isn't in the plan.
     func folders(of index: Int) -> (source: String, target: String?)? {
         switch steps[index] {
-        case .newFolder(_, let parent, _):
+        case .newFolder(_, let parent, _), .newFile(let parent, _, _):
             guard let anchor = anchor(of: parent) else { return nil }
             return (anchor.path, anchor.path)
         case .move(let item, let target), .copy(let item, let target):
@@ -429,7 +457,7 @@ struct AgentPlanChart {
     /// The new folders a step goes into or is made in, nearest first.
     func keysAbove(_ index: Int) -> [String] {
         switch steps[index] {
-        case .newFolder(_, let parent, _): return chain(from: parent)
+        case .newFolder(_, let parent, _), .newFile(let parent, _, _): return chain(from: parent)
         case .move(_, let target), .copy(_, let target): return chain(from: target)
         case .rename, .trash: return []
         }
@@ -454,7 +482,7 @@ struct AgentPlanChart {
     /// The root a step's item, or the folder a new one is made in, belongs to.
     func rootAlias(of index: Int) -> String? {
         switch steps[index] {
-        case .newFolder(_, let parent, _): return anchor(of: parent)?.rootAlias
+        case .newFolder(_, let parent, _), .newFile(let parent, _, _): return anchor(of: parent)?.rootAlias
         case .move(let item, _), .copy(let item, _), .rename(let item, _), .trash(let item): return item.rootAlias
         }
     }
@@ -487,18 +515,18 @@ struct AgentPlanChart {
 }
 
 extension AgentPlanStep {
-    /// The existing item a step changes. Nil for a new folder.
+    /// The existing item a step changes. Nil for a new folder or a new file.
     var changedItem: AgentPlanItem? {
         switch self {
-        case .newFolder: return nil
+        case .newFolder, .newFile: return nil
         case .move(let item, _), .copy(let item, _), .rename(let item, _), .trash(let item): return item
         }
     }
 
-    /// Where a move or a copy goes.
-    var transferTarget: AgentPlanTarget? {
+    /// Where a move or a copy goes, or where a new file is made.
+    var landingTarget: AgentPlanTarget? {
         switch self {
-        case .move(_, let target), .copy(_, let target): return target
+        case .move(_, let target), .copy(_, let target), .newFile(let target, _, _): return target
         case .newFolder, .rename, .trash: return nil
         }
     }

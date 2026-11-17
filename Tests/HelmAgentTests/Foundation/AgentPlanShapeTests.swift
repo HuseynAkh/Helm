@@ -49,7 +49,7 @@ final class AgentPlanShapeTests: XCTestCase {
             XCTAssertFalse(group.startsOn, guardedBy.rawValue)
             XCTAssertFalse(self.plan(steps: [.trash(item("x"))], groups: [group]).defaultTicked.contains(9))
         }
-        XCTAssertEqual(AgentPlanGuard.allCases, [.trash, .leaves, .arrives, .reachesOthers])
+        XCTAssertEqual(AgentPlanGuard.allCases, [.trash, .leaves, .arrives, .reachesOthers, .code])
         XCTAssertEqual(self.plan(steps: [], groups: []).defaultTicked, [])
     }
 
@@ -120,6 +120,28 @@ final class AgentPlanShapeTests: XCTestCase {
         XCTAssertEqual(AgentPlanCounts().line, "")
         XCTAssertEqual(AgentPlanCounts(moves: 214, newFolders: 6, renames: 3).total, 223)
         XCTAssertEqual(organize().counts(ticked: [1, 2]).line, "2 moves · 1 new folder · 2 renames")
+        XCTAssertEqual(AgentPlanCounts(moves: 3, newFiles: 2, newFolders: 1).line, "3 moves · 2 new files · 1 new folder")
+        XCTAssertEqual(AgentPlanCounts(newFiles: 1).line, "1 new file")
+        XCTAssertEqual(AgentPlanCounts(newFiles: 2, newFolders: 1).total, 3)
+    }
+
+    /// A new file counts in a ticked group, and so does the new folder it is made in, which is in that group too.
+    func testANewFileCountsWithTheNewFolderItIsMadeIn() {
+        let downloads = AgentPlanTarget.existing(item("Downloads", folder: true))
+        let plan = plan(steps: [
+            .newFolder(key: "n1", parent: downloads, name: name("Trip")),                       // 0
+            .newFile(parent: .new(key: "n1"), name: name("Packing List.md"), text: "- Passport"),  // 1
+            .newFile(parent: downloads, name: name("Budget.csv"), text: "Item,Cost"),             // 2
+            .move(item("a.png"), to: .new(key: "n1"))                                            // 3
+        ], groups: [
+            AgentPlanGroup(id: 1, kind: .newFiles(toLabel: "Trip", isNew: true), steps: [0, 1]),
+            AgentPlanGroup(id: 2, kind: .newFiles(toLabel: "Downloads", isNew: false), steps: [2]),
+            AgentPlanGroup(id: 3, kind: .moves(toLabel: "Trip", isNew: true), steps: [3])
+        ], title: .organize(rootLabel: "Downloads"))
+        XCTAssertEqual(plan.counts(ticked: [1, 2, 3]), AgentPlanCounts(moves: 1, newFiles: 2, newFolders: 1))
+        XCTAssertEqual(plan.counts(ticked: [2]), AgentPlanCounts(newFiles: 1))
+        XCTAssertEqual(plan.counts(ticked: [3]), AgentPlanCounts(moves: 1, newFolders: 1), "the move still needs the folder")
+        XCTAssertEqual(plan.counts(ticked: [1]), AgentPlanCounts(newFiles: 1, newFolders: 1))
     }
 
     // MARK: Words
@@ -131,6 +153,8 @@ final class AgentPlanShapeTests: XCTestCase {
         XCTAssertEqual(AgentPlanTitle.rename(30).text, "Rename 30 Items")
         XCTAssertEqual(AgentPlanTitle.trash(2).text, "Move 2 Items to Trash")
         XCTAssertEqual(AgentPlanTitle.move(1).text, "Move 1 Item")
+        XCTAssertEqual(AgentPlanTitle.create(2).text, "Create 2 Files")
+        XCTAssertEqual(AgentPlanTitle.create(1).text, "Create 1 File")
         // A folder's name can't hide anything in the Edit menu, where the title is the Undo's name.
         XCTAssertEqual(AgentPlanTitle.organize(rootLabel: "Down\u{202E}loads").text, "Organize “Down\\u{202E}loads”")
     }
@@ -221,6 +245,7 @@ final class AgentPlanShapeTests: XCTestCase {
 
     private let proposal = """
     {"new_folders": [{"key": "n1", "parent": "r1", "name": "Images"}],
+     "new_files": [{"parent": "n1", "name": "Read Me.md", "text": "Line one\\nLine two"}],
      "moves": [{"items": ["f1", "f2"], "all_in": "", "to": "n1"}],
      "copies": [{"items": [], "all_in": "d7", "to": "r2"}],
      "renames": [{"item": "f3", "name": "Invoice.pdf"}],
@@ -230,11 +255,12 @@ final class AgentPlanShapeTests: XCTestCase {
     func testAProposalIsDecodedExactly() {
         XCTAssertEqual(AgentProposedChanges.decodeStrictly(Data(proposal.utf8)), AgentProposedChanges(
             newFolders: [.init(key: "n1", parent: "r1", name: "Images")],
+            newFiles: [.init(parent: "n1", name: "Read Me.md", text: "Line one\nLine two")],
             moves: [.init(items: ["f1", "f2"], allIn: "", to: "n1")],
             copies: [.init(items: [], allIn: "d7", to: "r2")],
             renames: [.init(item: "f3", name: "Invoice.pdf")],
             trash: ["f4"]))
-        let empty = #"{"new_folders": [], "moves": [], "copies": [], "renames": [], "trash": []}"#
+        let empty = #"{"new_folders": [], "new_files": [], "moves": [], "copies": [], "renames": [], "trash": []}"#
         XCTAssertEqual(AgentProposedChanges.decodeStrictly(Data(empty.utf8)),
                        AgentProposedChanges(newFolders: [], moves: [], copies: [], renames: [], trash: []))
     }
@@ -245,6 +271,12 @@ final class AgentPlanShapeTests: XCTestCase {
         }
         refused({ $0.replacingOccurrences(of: #""trash": ["f4"]"#, with: #""trash": ["f4"], "delete": ["f5"]"#) }, "an unknown field")
         refused({ $0.replacingOccurrences(of: #", "name": "Images""#, with: "") }, "a new folder with no name")
+        refused({ $0.replacingOccurrences(of: #""new_files": [{"parent": "n1", "name": "Read Me.md", "text": "Line one\nLine two"}],"#, with: "") },
+                "no new files at all, as a proposal from before new files")
+        refused({ $0.replacingOccurrences(of: #", "text": "Line one\nLine two""#, with: "") }, "a new file with no text")
+        refused({ $0.replacingOccurrences(of: #""text": "Line one\nLine two""#, with: #""text": "x", "mode": "755""#) },
+                "an unknown field in a new file")
+        refused({ $0.replacingOccurrences(of: #""text": "Line one\nLine two""#, with: #""text": ["x"]"#) }, "a text that isn't text")
         refused({ $0.replacingOccurrences(of: #""all_in": "", "#, with: "") }, "a move with no all_in")
         refused({ $0.replacingOccurrences(of: #""to": "n1""#, with: #""to": "n1", "replace": true"#) }, "an unknown field in a move")
         refused({ $0.replacingOccurrences(of: #""item": "f3""#, with: #""item": "f3", "path": "/etc""#) }, "an unknown field in a rename")

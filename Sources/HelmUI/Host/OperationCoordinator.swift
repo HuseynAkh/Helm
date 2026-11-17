@@ -212,7 +212,7 @@ import HelmPersistence
         case .batchRename(let pairs):
             return (pairs.map(\.source), Array(Set(pairs.map { $0.source.deletingLastPathComponent() })))
         case .createFolder(let parent, _): return ([], [parent])
-        case .createFile(let parent, _, let template): return (template.map { [$0] } ?? [], [parent])
+        case .createFile(let parent, _, let template, _): return (template.map { [$0] } ?? [], [parent])
         // A link doesn't read inside what it points to, so planning looks only at the folders that get the links.
         case .link(let sources, let directory, _):
             return ([], directory.map { [$0] } ?? Array(Set(sources.map { $0.deletingLastPathComponent() })))
@@ -359,7 +359,7 @@ public enum OperationText {
         case .rename(let pair): return "Renaming “\(pair.source.lastPathComponent)”"
         case .batchRename(let pairs): return "Renaming \(pairs.count) items"
         case .createFolder(_, let name): return "Creating “\(name.value)”"
-        case .createFile(_, let name, _): return "Creating “\(name.value)”"
+        case .createFile(_, let name, _, _): return "Creating “\(name.value)”"
         case .link(let sources, _, let alias): return count(alias ? "Making an alias of" : "Making a link to", sources)
         case .recovery: return "Recovering"
         }

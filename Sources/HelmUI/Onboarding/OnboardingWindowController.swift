@@ -5,19 +5,23 @@ import HelmAgent
 import HelmCore
 import SwiftUI
 
-/// The welcome window, shown once on first launch and again from Help or Settings. As the guide it holds only the
-/// Full Disk Access row. While that row waits, Full Disk Access is checked every moment, and while System Settings is in
-/// front the window stays above it, so Helm's icon can be dragged across. In AI mode it shows the AI mode screen, dark,
-/// whose Done is the only way to leave AI mode on.
+/// The welcome window: the onboarding, step by step and every step the same size, on first launch and again from Help or
+/// Settings. As the guide it holds only the Full Disk Access row. While that row waits, Full Disk Access is checked
+/// every moment, and while System Settings is in front the window stays above it, so Helm's icon can be dragged across.
+/// On its own, it shows the AI mode screen, dark, whose Done is the only way to leave AI mode on.
+///
+/// Quitting with the onboarding open, as macOS's Quit & Reopen does once Full Disk Access is switched on, changes
+/// nothing: the step it reached is kept as it goes (`onProgress`), and the next launch carries on there.
 @MainActor public final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     public let model: OnboardingModel
-    /// Called once the checklist (not the guide on its own) has been seen: Set Up, Not Now, closing it, or Helm
-    /// quitting with it open (`quitting()`). At most once each time it opens.
+    /// Called once the onboarding (not the guide or the AI mode screen) has been through: Get Started, or the window
+    /// closed. At most once each time it opens. Quitting with it open doesn't count, so the next launch carries on.
     public var onSeen: (() -> Void)?
     /// Saves (or, with nil, clears) the rows the copy in Applications carries on with. The app keeps them in its settings.
     public var onCarry: (([SetupRow]?) -> Void)?
-    /// Called after the window closes, with the mode it was in. The app shows the AI mode screen once the first
-    /// launch's checklist has gone.
+    /// Keeps how far the onboarding got, each time it moves. The app keeps it in its settings.
+    public var onProgress: ((OnboardingProgress) -> Void)?
+    /// Called after the window closes, with the mode it was in. The windows the first launch held back open then.
     public var onClosed: ((OnboardingModel.Mode) -> Void)?
     private let host: NSHostingController<OnboardingView>
     private var counted = false
@@ -39,6 +43,8 @@ import SwiftUI
     private var closingByDone = false
     /// Done was pressed and is waiting on the model.
     private(set) var aiDoneWork: Task<Void, Never>?
+    /// The window is going because the process is, so nothing counts as seen and nothing is turned off.
+    private var ending = false
 
     public init(permissions: PermissionCenter, fileViewer: FileViewerModel?, mover: (any AppMoving)? = nil) {
         model = OnboardingModel(permissions: permissions, fileViewer: fileViewer, mover: mover)
@@ -61,6 +67,9 @@ import SwiftUI
         model.seen = { [weak self] in self?.markSeen() }
         model.changed = { [weak self] in self?.update() }
         model.carry = { [weak self] rows in self?.onCarry?(rows) }
+        model.saveProgress = { [weak self] progress in self?.onProgress?(progress) }
+        // The standard refusal, so Continue never seems to do nothing. Scripted runs stay quiet.
+        model.refused = { [weak self] in if self?.interactive == true { NSSound.beep() } }
         model.announce = { [weak self] text in self?.post(text) }
         subscription = permissions.changes.subscribe { [weak self] _ in self?.model.permissionsChanged() }
         activation = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
@@ -87,10 +96,11 @@ import SwiftUI
     required init?(coder: NSCoder) { nil }
 
     /// `activate` brings Helm forward; a scripted run leaves whatever you're doing in front. Asked for while it's open,
-    /// it keeps what it's doing: the guide turns into the checklist still waiting for Full Disk Access, and the checklist
-    /// asked for the guide shows its Full Disk Access row's icon and button. Either way it no longer closes by itself.
+    /// it keeps what it's doing: the guide turns into the onboarding at its Full Disk Access step, still waiting, and the
+    /// onboarding asked for the guide goes to that step, with Helm's icon to drag. Either way it no longer moves on or
+    /// closes by itself.
     public func show(_ mode: OnboardingModel.Mode, activate: Bool) {
-        // The AI mode screen gives way to the checklist or the guide. Leaving it so isn't Done.
+        // The AI mode screen gives way to the onboarding or the guide. Leaving it so isn't Done.
         if isOpen && model.mode == .ai {
             leaveAIMode()
             counted = false
@@ -107,20 +117,42 @@ import SwiftUI
         present(activate: activate)
     }
 
+    /// A launch's onboarding: from the step where it stopped, or the steps still to do. False, and nothing shows, when
+    /// nothing is left to do.
+    public func showSetup(resuming saved: OnboardingProgress?, includesAI: Bool, activate: Bool) -> Bool {
+        if isOpen && model.mode == .ai { leaveAIMode() }
+        start { model in
+            if let saved { model.resume(saved) } else { model.startSetup(steps: model.plannedSteps(skippingDone: true, includesAI: includesAI)) }
+        }
+        guard !model.nothingToDo else { return false }
+        present(activate: activate)
+        return true
+    }
+
+    /// Brings the open window to the front as it is, as a click on the Dock icon does while it holds the windows back.
+    public func bringForward(activate: Bool) {
+        guard isOpen else { return }
+        present(activate: activate)
+    }
+
     /// The AI mode screen, drawn from `ai`. Done closes it when the switch is off or the provider is connected, and then
     /// calls `onDone` with whether it ended connected. Closing it any other way turns AI mode off. Asked for while the
-    /// checklist is open, it takes the checklist's place, which then counts as seen.
+    /// onboarding is open, it's the onboarding's AI step instead.
     public func showAIMode(_ ai: AISetupModel, activate: Bool, onDone: @escaping (Bool) -> Void) {
+        if isOpen && model.mode == .setup {
+            model.showAIStep(ai)
+            present(activate: activate)
+            return
+        }
         if isOpen && model.mode == .ai && model.aiSetup === ai {
             aiDone = onDone
             present(activate: activate)
             return
         }
         if isOpen && model.mode == .ai { leaveAIMode() }
-        if isOpen { markSeen() }
         aiDone = onDone
-        ai.donePressed = { [weak self] key in self?.pressDone(pendingKey: key) }
         start { $0.beginAI(ai) }
+        ai.donePressed = { [weak self] key in self?.pressDone(pendingKey: key) }
         present(activate: activate)
     }
 
@@ -153,9 +185,10 @@ import SwiftUI
         model.aiSetup?.closedWithoutDone()
     }
 
-    /// The copy that was just moved into Applications reopens the checklist and carries on with what was chosen.
-    public func continueSetup(_ rows: [SetupRow], activate: Bool) {
-        start { $0.continueSetup(rows) }
+    /// The copy that was just moved into Applications opens the onboarding again and carries on after the welcome step.
+    public func continueSetup(_ rows: [SetupRow], resuming saved: OnboardingProgress? = nil, includesAI: Bool = true, activate: Bool) {
+        if isOpen && model.mode == .ai { leaveAIMode() }
+        start { $0.continueSetup(rows, resuming: saved, includesAI: includesAI) }
         present(activate: activate)
     }
 
@@ -168,12 +201,8 @@ import SwiftUI
         isOpen = true
         interactive = activate
         frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        switch model.mode {
-        case .setup: window?.title = "Welcome to Helm"
-        case .guide: window?.title = "Full Disk Access"
-        case .ai: window?.title = AgentText.aiTitle
-        }
-        // The AI mode screen is always dark; the checklist follows the Mac.
+        updateTitle()
+        // The AI mode screen is always dark; the onboarding, its AI step included, follows the Mac.
         window?.appearance = model.mode == .ai ? NSAppearance(named: .darkAqua) : nil
         // Live status: the file viewer and the Dock are read again, in case they changed while the window was away.
         model.refresh()
@@ -189,15 +218,34 @@ import SwiftUI
         Task { @MainActor [weak self] in await self?.model.permissions.refresh() }
     }
 
+    /// The window's title, which VoiceOver reads: the step's in the onboarding.
+    private func updateTitle() {
+        switch model.mode {
+        case .setup: window?.title = model.step.title
+        case .guide: window?.title = "Full Disk Access"
+        case .ai: window?.title = AgentText.aiTitle
+        }
+    }
+
     /// Open, even while Helm is hidden.
     public var isShown: Bool { isOpen }
-    /// The checklist is open, rather than the guide on its own.
+    /// The onboarding is open, rather than the guide or the AI mode screen on its own.
     public var isSetupShown: Bool { isOpen && model.mode == .setup }
 
-    /// Helm is quitting. The checklist counts as seen if it's open, so it doesn't open again on the next launch.
+    /// Helm is quitting. The onboarding is left as it is: the step it reached is kept already, so the next launch
+    /// carries on there, as after macOS's Quit & Reopen. Nothing counts as seen. The AI mode screen on its own is
+    /// left some way other than Done, so AI mode goes off.
     public func quitting() {
-        if isSetupShown { markSeen() }
         if isOpen && model.mode == .ai { leaveAIMode() }
+    }
+
+    /// The process ends with the window open, as when macOS quits Helm to reopen it: the window goes with nothing
+    /// counted as seen and nothing turned off. Scripted runs and tests stand in for the end of the process with this.
+    public func endWithProcess() {
+        guard isOpen else { return }
+        ending = true
+        close()
+        ending = false
     }
 
     private func markSeen() {
@@ -216,6 +264,7 @@ import SwiftUI
 
     /// Watches for access only while the window waits for it, and floats only while that helps.
     private func update() {
+        if model.mode == .setup { updateTitle() }
         let waiting = isOpen && model.isWaitingForAccess
         if waiting != isWatching {
             isWatching = waiting
@@ -227,7 +276,9 @@ import SwiftUI
 
     private func fit() {
         guard let window, let content = window.contentView else { return }
-        let height = ceil(host.sizeThatFits(in: NSSize(width: OnboardingView.width, height: 4000)).height)
+        // Every step of the onboarding is the same size; the guide and the AI mode screen fit what they show.
+        let height = model.mode == .setup ? OnboardingView.stepHeight
+            : ceil(host.sizeThatFits(in: NSSize(width: OnboardingView.width, height: 4000)).height)
         guard height > 0, abs(content.frame.height - height) > 0.5 || abs(content.frame.width - OnboardingView.width) > 0.5 else { return }
         // The top edge stays where it is and the bottom slides, rather than the window snapping to its new size.
         var frame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: OnboardingView.width, height: height))
@@ -247,6 +298,13 @@ import SwiftUI
 
     public func windowWillClose(_ notification: Notification) {
         let mode = model.mode
+        if ending {
+            isOpen = false
+            if isWatching { isWatching = false; model.permissions.watch(false) }
+            model.ended()
+            window?.level = .normal
+            return
+        }
         if mode == .ai && !closingByDone { leaveAIMode() }
         isOpen = false
         if isWatching { isWatching = false; model.permissions.watch(false) }
@@ -260,6 +318,8 @@ import SwiftUI
 
     /// "setup", "guide", "ai" or "closed".
     public var modeForTesting: String { isShown ? model.mode.rawValue : "closed" }
+    /// The onboarding's step on show, or "closed".
+    public var stepForTesting: String { isSetupShown ? model.step.rawValue : "closed" }
     public var levelForTesting: NSWindow.Level { window?.level ?? .normal }
     public func pressForTesting(_ title: String) -> Bool { model.press(title) }
     /// As if another app had come to the front, by its bundle identifier.

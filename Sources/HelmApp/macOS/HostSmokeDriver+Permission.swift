@@ -96,7 +96,7 @@ extension HostSmokeDriver {
             guard privacy != nil, let image = NSImage(contentsOfFile: path) else { check(false, step, "no icon"); return true }
             NSApp.applicationIconImage = image
         case "onboarding":
-            // onboarding open|guide|close: the welcome checklist, as Help › Set Up Helm… opens it, or the guide on its own.
+            // onboarding open|guide|close: the onboarding, as Help › Set Up Helm… opens it, or the guide on its own.
             switch argument {
             case "open": app.showSetup(nil)
             case "guide", "access": app.showFullDiskAccessGuide(nil)
@@ -118,7 +118,7 @@ extension HostSmokeDriver {
             if argument == "welcome" { section.showWelcome() } else { section.setUp() }
             await wait(seconds: 0.6)
         case "onboarding-quitting":
-            // What Helm does on its way out, as after Quit & Reopen: an open welcome counts as seen.
+            // What Helm does on its way out, as after Quit & Reopen: an open onboarding stays where it got to.
             app.access.quitting()
         case "onboarding-frontmost":
             // onboarding-frontmost <bundle identifier|none>: as if that app had come to the front.
@@ -133,11 +133,16 @@ extension HostSmokeDriver {
         case "onboarding-press":
             check(app.onboardingForTesting?.pressForTesting(argument) == true, step, "no such button")
             await wait(seconds: 0.6)
+            // A step's work, such as the AI step's check, is waited for.
+            await app.onboardingForTesting?.model.work?.value
         case "onboarding-reads":
             check(app.onboardingForTesting?.model.statusLine == argument, step, app.onboardingForTesting?.model.statusLine ?? "closed")
         case "onboarding-shot":
             await wait(seconds: 0.3)
-            check(app.onboardingForTesting?.captureForTesting(to: URL(fileURLWithPath: argument)) == true, step)
+            let onboarding = app.onboardingForTesting
+            check(await SmokeActiveLook.drawingInFront([onboarding?.window]) {
+                onboarding?.captureForTesting(to: URL(fileURLWithPath: argument)) == true
+            }, step)
         case "setting-is":
             // setting-is <key> <true|false>
             let bits = argument.split(separator: " ").map(String.init)

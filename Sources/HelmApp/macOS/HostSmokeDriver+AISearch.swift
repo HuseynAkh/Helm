@@ -3,14 +3,15 @@ import AppKit
 import HelmCore
 import HelmUI
 
-/// Smoke verbs for searching with a model's help: the field's toggle, Return, each result's reason and the
-/// status bar's line. They run only in a fixture run, where the model is the scripted one, and every verb that
-/// waits gives up after 10 seconds.
+/// Smoke verbs for searching with a model's help: the field's toggle, Read contents, Return, each result's reason and
+/// the status bar's line. They run only in a fixture run, where the model is the scripted one, and every verb that
+/// waits gives up after 10 seconds. The kind row's verbs are the plain search's, with the header's.
 extension HostSmokeDriver {
     static func performAISearchVerb(_ verb: String, _ argument: String, step: String,
                                     window: BrowserWindowController, app: AppController) async -> Bool {
         let verbs: Set<String> = ["search-ai", "search-ai-is", "search-return", "result-reason", "search-status-reads",
-                                  "search-queries-read", "search-mark-is"]
+                                  "search-queries-read", "search-mark-is", "search-contents", "search-contents-is",
+                                  "search-contents-read"]
         guard verbs.contains(verb) else { return false }
         guard app.options.isIsolated else { check(false, step, "not a fixture run"); return true }
         switch verb {
@@ -25,10 +26,29 @@ extension HostSmokeDriver {
         case "search-ai-is":
             let shown = window.isAISearchOnForTesting ? "on" : "off"
             check(shown == argument, step, shown)
+        case "search-contents":
+            // search-contents on|off: a click on the Read contents switch at the end of the kind row, when it isn't
+            // already as asked.
+            guard argument == "on" || argument == "off" else { check(false, step, "usage"); return true }
+            if window.aiSearchContentsForTesting.on != (argument == "on") {
+                check(window.clickAISearchContentsForTesting(), step, "the switch doesn't show")
+            }
+            await wait(seconds: 0.3)
+            check(window.aiSearchContentsForTesting.on == (argument == "on"), step, window.aiSearchContentsForTesting.on ? "on" : "off")
+        case "search-contents-is":
+            // search-contents-is on|off|hidden: the switch at the end of the kind row.
+            let state = window.aiSearchContentsForTesting
+            let shown = !state.shown ? "hidden" : state.on ? "on" : "off"
+            check(shown == argument, step, shown)
+        case "search-contents-read":
+            // search-contents-read <n>: pictures and videos this search session has read inside.
+            let count = window.aiSearchContentsReadForTesting
+            check(count == Int(argument), step, "\(count)")
         case "search-return":
-            // Return in the search field, then waits until the model has answered or failed.
+            // Return in the search field, then waits until the model has answered or failed. With Read contents on,
+            // every candidate is read on this Mac first, which takes longer.
             window.submitSearchForTesting()
-            let answered = await aiSearchWaitUntil {
+            let answered = await aiSearchWaitUntil(seconds: 30) {
                 guard let search = window.activeTab?.search, search.query.usesAI else { return false }
                 return search.assist.map { $0.phase != .thinking } ?? !search.isGathering
             }
@@ -53,10 +73,10 @@ extension HostSmokeDriver {
     }
 
     /// Waits up to 10 seconds for `condition`.
-    private static func aiSearchWaitUntil(_ condition: () -> Bool) async -> Bool {
+    private static func aiSearchWaitUntil(seconds: Double = 10, _ condition: () -> Bool) async -> Bool {
         var waited = 0.0
         while !condition() {
-            if waited >= 10 { return false }
+            if waited >= seconds { return false }
             await wait(seconds: 0.05); waited += 0.05
         }
         return true

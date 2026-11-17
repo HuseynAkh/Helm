@@ -71,7 +71,7 @@ import HelmTestKit
         XCTAssertFalse(rig.model.showsKeyField, "no key to paste")
         XCTAssertEqual(rig.model.connection, .noKey)
         XCTAssertNil(rig.model.stateLine, "the button is the call to act, not a No key line")
-        XCTAssertEqual(rig.model.consentLine, "Sends your requests and file names to OpenAI, never file contents.")
+        XCTAssertEqual(rig.model.consentLine, "Sends your requests and file names to OpenAI; file contents only while Read contents is on. Helm has no servers and collects nothing.")
         XCTAssertEqual(AIModeScreen.parts(for: rig.model), [.titleRow, .sentence, .provider, .chatGPT, .state, .consent, .done])
         XCTAssertEqual(rig.providers.asked, [], "nothing is asked before the person signs in")
 

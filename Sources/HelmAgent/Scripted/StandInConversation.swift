@@ -3,7 +3,7 @@ import HelmCore
 
 /// A conversation with no model behind it, for tests of what sits on top of one. Every message gets the same
 /// reply and, when it was given one, the same plan. Folders are taken as they are typed, with nothing looked up on
-/// a disk, and it keeps what it was sent and how each plan ended.
+/// a disk, and it keeps what it was sent and how each plan ended. Whole Mac adds one stand-in root, the home folder.
 /// All reads and writes hold the lock.
 public final class StandInConversation: AgentConversing, @unchecked Sendable {
     private let lock = NSLock()
@@ -11,6 +11,11 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     private let reply: String
     private var tabRoot: AgentScopeRoot?
     private var addedRoots: [AgentScopeRoot] = []
+    private var wholeMacRoots: [AgentScopeRoot] = []
+    private var mode: AgentScopeMode = .thisFolder
+    /// The person's permit while Read contents is on. Nothing is ever read here; the switch only starts over.
+    private var contentPermit: AgentContentPermit?
+    private let home: String
     private var aliasCount = 0
     private var usedPlans: Set<UUID> = []
     private var messages: [AgentPersonInput] = []
@@ -19,10 +24,12 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     private var ticket: AgentApplyTicket?
     private let noticeFeed: AsyncStream<AgentNotice>.Continuation
 
-    /// `plan` is what every message is answered with, after `reply` when that isn't empty.
-    public init(plan: AgentChangePlan? = nil, reply: String = "") {
+    /// `plan` is what every message is answered with, after `reply` when that isn't empty. `home` is the folder Whole
+    /// Mac adds.
+    public init(plan: AgentChangePlan? = nil, reply: String = "", home: String = "/home/helm") {
         self.plan = plan
         self.reply = reply
+        self.home = home
         let (stream, feed) = AsyncStream.makeStream(of: AgentNotice.self)
         notices = stream
         noticeFeed = feed
@@ -51,7 +58,7 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     public let notices: AsyncStream<AgentNotice>
 
     public func roots() async -> [AgentScopeRoot] {
-        locked { (tabRoot.map { [$0] } ?? []) + addedRoots }
+        locked { (tabRoot.map { [$0] } ?? []) + wholeMacRoots + addedRoots }
     }
 
     public func setTabFolder(_ input: AgentRootInput?) async -> AgentTabFolder {
@@ -86,7 +93,10 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     }
 
     public func removeRoot(alias: String) async {
-        locked { addedRoots.removeAll { $0.alias == alias } }
+        locked {
+            addedRoots.removeAll { $0.alias == alias }
+            leaveWholeMac()
+        }
         noticeFeed.yield(.startedOver)
     }
 
@@ -127,15 +137,57 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     public func stop() async {}
 
     public func startOver() async {
+        locked { leaveWholeMac() }
         noticeFeed.yield(.startedOver)
     }
 
     public func clear() async {
-        locked { addedRoots.removeAll() }
+        locked {
+            addedRoots.removeAll()
+            leaveWholeMac()
+        }
         noticeFeed.yield(.startedOver)
     }
 
+    public func scopeMode() async -> AgentScopeMode { locked { mode } }
+
+    /// Whole Mac adds the home folder as a root of its own, and This Folder takes it away. Either starts over.
+    public func setScopeMode(_ next: AgentScopeMode) async {
+        let changed = locked { () -> Bool in
+            guard next != mode else { return false }
+            mode = next
+            wholeMacRoots = []
+            if next == .wholeMac {
+                aliasCount += 1
+                wholeMacRoots = [AgentScopeRoot(alias: "r\(aliasCount)", path: home, label: "Home", modelName: "Home",
+                                                identity: nil, storage: .thisMac, isTabFolder: false, isWholeMac: true)]
+            }
+            return true
+        }
+        if changed { noticeFeed.yield(.startedOver) }
+    }
+
     // MARK: Roots
+
+    /// Read contents, as a real conversation keeps it: on with a permit, off with none, and off for a new thread. Either
+    /// way the thread starts over. Nothing is read.
+    public func readsContents() async -> Bool { locked { contentPermit != nil } }
+
+    public func setReadsContents(_ permit: AgentContentPermit?) async {
+        let changed = locked { () -> Bool in
+            guard (permit == nil) != (contentPermit == nil) else { return false }
+            contentPermit = permit
+            return true
+        }
+        if changed { noticeFeed.yield(.startedOver) }
+    }
+
+    /// A new thread starts in This Folder, with Read contents off. Called with the lock held.
+    private func leaveWholeMac() {
+        mode = .thisFolder
+        wholeMacRoots = []
+        contentPermit = nil
+    }
 
     /// A root for text taken as a path. The alias comes from a count that never goes back, so one is never used twice.
     private func makeRoot(path: String, isTabFolder: Bool) -> AgentScopeRoot {

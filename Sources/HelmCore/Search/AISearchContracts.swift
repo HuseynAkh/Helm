@@ -52,6 +52,10 @@ public enum AISearchKind: String, Sendable, CaseIterable {
         return self == .document && [.pdf, .text, .spreadsheet, .presentation].contains(other)
     }
 
+    /// The kinds the search's kind row offers after Any, in its order: Photo, Video, Document, Folder, Code, Audio
+    /// and Archive. Photo is `image`, and Document takes in the kinds `covers` gives it.
+    public static let searchChoices: [AISearchKind] = [.image, .video, .document, .folder, .code, .audio, .archive]
+
     // MARK: The table
 
     /// Extensions in lower case, without the dot. An extension appears under one kind only.
@@ -74,6 +78,10 @@ public enum AISearchKind: String, Sendable, CaseIterable {
                     "dmg", "iso", "img", "sparseimage", "pkg"]),
         (.font, ["ttf", "otf", "ttc", "otc", "woff", "woff2", "dfont"])
     ]
+
+    /// Text that reads as prose, whatever kind a search is kept to: plain text, Markdown, RTF, logs, subtitles and
+    /// TeX. The rest of `text`, such as settings in JSON or YAML, is nearer to code.
+    public static let proseExtensions: Set<String> = ["txt", "text", "md", "markdown", "rtf", "log", "srt", "tex"]
 
     /// Type identifiers in lower case, for a file whose extension the table doesn't know.
     static let identifiers: [(kind: AISearchKind, identifiers: [String])] = [
@@ -193,6 +201,20 @@ public struct AISearchQuery: Hashable, Sendable {
         return query
     }
 
+    /// The query kept to the one kind the person chose in the kind row, which nothing a model answers can widen.
+    /// Its kinds become the ones `kind` covers, or `kind` itself when it named none of those or no kind at all, and
+    /// an extension stays only when the table puts it under a kind `kind` covers. A narrower kind a model chose, such
+    /// as PDF for Document, stays. Every other field is left as it is.
+    public func limited(to kind: AISearchKind) -> AISearchQuery {
+        var query = self
+        let covered = kinds.filter { kind.covers($0) }
+        query.kinds = covered.isEmpty ? [kind] : covered
+        query.extensions = extensions.filter { ext in
+            AISearchKind.of(typeIdentifier: nil, extension: ext, kind: .regular).map { kind.covers($0) } ?? false
+        }
+        return query
+    }
+
     /// Whether `word` is one token: letters, digits and `. _ -`, with a letter or digit among them, at most 32
     /// characters, and nothing hidden. A space, a quote, a slash or a wildcard makes it not a token.
     public static func isToken(_ word: String) -> Bool {
@@ -241,10 +263,35 @@ public struct AISearchPlan: Hashable, Sendable {
     /// One to six once clamped, strictest first.
     public var queries: [AISearchQuery]
     public init(sort: AISearchSort, queries: [AISearchQuery]) { self.sort = sort; self.queries = queries }
+
+    /// The plan with every query kept to `kind` (`AISearchQuery.limited(to:)`), in order. Two queries that differ
+    /// only in what was taken away become one.
+    public func limited(to kind: AISearchKind) -> AISearchPlan {
+        var kept: [AISearchQuery] = []
+        for query in queries.map({ $0.limited(to: kind) }) where !kept.contains(query) { kept.append(query) }
+        return AISearchPlan(sort: sort, queries: kept)
+    }
 }
 
 /// What about a result matched. A model answers with these codes only; the words shown come from Helm.
 public enum SearchReasonCode: String, Sendable, CaseIterable { case name, content, kind, date, folder, size }
+
+/// What Read contents found in a file that answered a search. Read on this Mac, a picture or a video that answered
+/// every word a search looks for inside files: the words found in the text it holds, and the things it shows that
+/// answered a word, in the classifier's own words. Looked at by a model, a file it said fits, with the short phrase
+/// it gave of what the file shows or says.
+public struct AISearchSighting: Hashable, Sendable {
+    public enum Medium: String, Sendable { case image, video, document }
+    public let medium: Medium
+    public let textWords: [String]
+    public let labels: [String]
+    /// What a model that looked at the file said it shows or says: plain text of 80 characters at most, as
+    /// `AISearchSession` cleaned it. Nil for what was read on this Mac alone.
+    public let seen: String?
+    public init(medium: Medium, textWords: [String], labels: [String], seen: String? = nil) {
+        self.medium = medium; self.textWords = textWords; self.labels = labels; self.seen = seen
+    }
+}
 
 /// Why one result matched, as facts Helm can back.
 public struct SearchReason: Hashable, Sendable {

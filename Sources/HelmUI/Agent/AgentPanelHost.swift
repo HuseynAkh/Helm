@@ -9,7 +9,8 @@ import HelmCore
 /// every launch. Opening it in a window too narrow for the files first hides the sidebar, then widens the window;
 /// shutting it gives both back, unless the person has moved the sidebar or the window's edge since. Its leading edge
 /// can be dragged, from 300 points to 560 or 45% of the window, whichever is less, and a double click on it puts back
-/// 340. The width is kept in Settings for the next time the panel opens.
+/// 340. The width is kept in Settings for the next time the panel opens. It sits on the sidebar's own material, with
+/// the same tint, so it clears and fills with the window's transparency as the sidebar does.
 @MainActor final class AgentPanelHost: NSView {
     /// The width the panel opens at until its edge is dragged, and the one a double click on its edge puts back.
     static let width: CGFloat = 340, minimumFilesWidth: CGFloat = 420
@@ -44,6 +45,9 @@ import HelmCore
     private let column = NSView()
     private lazy var columnWidth: NSLayoutConstraint = column.widthAnchor.constraint(equalToConstant: Self.width)
     private let divider = NSBox()
+    /// The sidebar's material behind everything in the column, and the solid colour over it.
+    private let background = NSVisualEffectView()
+    private let tint = TintView()
     /// The leading edge's handle, over the divider: drag it to resize, double-click it to put back 340.
     private let edge = Edge()
     /// The width when the edge's drag began, while it lasts.
@@ -73,13 +77,19 @@ import HelmCore
         column.isHidden = true
         addSubview(column)
         divider.boxType = .separator
-        for view in [divider, composer] as [NSView] {
+        for view in [background, divider, composer] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             column.addSubview(view)
         }
+        tint.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(tint)
         NSLayoutConstraint.activate([
             column.topAnchor.constraint(equalTo: topAnchor), column.bottomAnchor.constraint(equalTo: bottomAnchor),
             column.leadingAnchor.constraint(equalTo: leadingAnchor), columnWidth,
+            background.topAnchor.constraint(equalTo: column.topAnchor), background.bottomAnchor.constraint(equalTo: column.bottomAnchor),
+            background.leadingAnchor.constraint(equalTo: column.leadingAnchor), background.trailingAnchor.constraint(equalTo: column.trailingAnchor),
+            tint.topAnchor.constraint(equalTo: background.topAnchor), tint.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            tint.leadingAnchor.constraint(equalTo: background.leadingAnchor), tint.trailingAnchor.constraint(equalTo: background.trailingAnchor),
             divider.topAnchor.constraint(equalTo: column.topAnchor), divider.bottomAnchor.constraint(equalTo: column.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: column.leadingAnchor), divider.widthAnchor.constraint(equalToConstant: 1),
             composer.leadingAnchor.constraint(equalTo: divider.trailingAnchor), composer.trailingAnchor.constraint(equalTo: column.trailingAnchor),
@@ -101,6 +111,20 @@ import HelmCore
             }
         }
         updateSpark()
+    }
+
+    /// The window's transparency, as the sidebar takes it: the sidebar's material behind the desktop while it is on,
+    /// with `amount` of solid colour over it, and the plain window background while it is off.
+    func setTransparent(_ transparent: Bool, tint amount: CGFloat) {
+        background.state = transparent ? .active : .inactive
+        background.material = transparent ? .sidebar : .windowBackground
+        background.blendingMode = transparent ? .behindWindow : .withinWindow
+        tint.fraction = transparent ? amount : 0
+    }
+
+    /// For tests: the material behind the panel, how it blends, and how much solid colour lies over it.
+    var backgroundForTesting: (material: NSVisualEffectView.Material, blending: NSVisualEffectView.BlendingMode, tint: CGFloat) {
+        (background.material, background.blendingMode, tint.fraction)
     }
 
     func setOpen(_ open: Bool, animated: Bool) {
@@ -160,6 +184,9 @@ import HelmCore
 
     /// The composer's text view, for tests that press keys in it.
     var composerTextViewForTesting: NSTextView { composer.textView }
+    /// The Read contents switch beside the composer: whether it shows, is on and can be pressed; and a click on it.
+    var contentsToggleForTesting: (shown: Bool, on: Bool, enabled: Bool) { composer.contentsToggleForTesting }
+    func pressContentsToggleForTesting() { composer.pressContentsToggleForTesting() }
     /// The name under the composer, and whether it shows as a menu.
     var modelNameForTesting: (name: String, isMenu: Bool) { (composer.modelNameForTesting, composer.modelNameIsMenuForTesting) }
     /// The rows of the menu under the composer, by title: section names, models and AI Settings…. Empty with no menu.
@@ -182,7 +209,8 @@ import HelmCore
             hosting.sizingOptions = []
             hosting.safeAreaRegions = []
             hosting.translatesAutoresizingMaskIntoConstraints = false
-            column.addSubview(hosting)
+            // Under the edge's handle, which must stay the top view along the panel's leading edge.
+            column.addSubview(hosting, positioned: .below, relativeTo: edge)
             NSLayoutConstraint.activate([
                 hosting.topAnchor.constraint(equalTo: column.topAnchor),
                 hosting.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
@@ -377,7 +405,40 @@ import HelmCore
     var edgeFrameForTesting: NSRect { edge.frame }
     var edgeCursorForTesting: NSCursor { Edge.cursor }
 
-    /// The panel's leading edge. It shows the resize cursor, and reports a drag and a double click.
+    /// Presses along the edge go to its handle, before anything the panel shows: the thread and its scroll view are
+    /// made after the handle, and would otherwise take the press from it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if isOpen, !edge.isHiddenOrHasHiddenAncestor, let superview,
+           edge.bounds.contains(edge.convert(point, from: superview)) {
+            return edge
+        }
+        return super.hitTest(point)
+    }
+
+    /// For tests and scripted runs: a drag of the edge as a person makes one, from the middle of the handle halfway
+    /// down the panel, `distance` points towards the leading side (negative goes back). The press, four moves and
+    /// the release are sent to the window, which hands them to whatever its hit-testing finds there. The second
+    /// click of a double click has `clicks` 2. False when the window gave the press to something other than the handle.
+    @discardableResult func sendEdgeDragForTesting(by distance: CGFloat, clicks: Int = 1) -> Bool {
+        guard let window, isOpen else { return false }
+        let start = convert(NSPoint(x: Edge.thickness / 2, y: bounds.midY), to: nil)
+        let stamp = ProcessInfo.processInfo.systemUptime
+        func mouse(_ type: NSEvent.EventType, _ index: Int, x: CGFloat) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: NSPoint(x: x, y: start.y), modifierFlags: [],
+                               timestamp: stamp + Double(index) * 0.01, windowNumber: window.windowNumber, context: nil,
+                               eventNumber: index, clickCount: clicks, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        let pressed = edge.presses
+        if let down = mouse(.leftMouseDown, 0, x: start.x) { window.sendEvent(down) }
+        for step in 1...4 {
+            if let drag = mouse(.leftMouseDragged, step, x: start.x - distance * CGFloat(step) / 4) { window.sendEvent(drag) }
+        }
+        if let up = mouse(.leftMouseUp, 5, x: start.x - distance) { window.sendEvent(up) }
+        return edge.presses > pressed
+    }
+
+    /// The panel's leading edge. It shows the resize cursor, and reports a drag and a double click. A drag is
+    /// measured from the events' own places in the window, which stays put while the panel's edge moves.
     @MainActor private final class Edge: NSView {
         static let thickness: CGFloat = 6
         static var cursor: NSCursor {
@@ -388,31 +449,40 @@ import HelmCore
         var moved: (CGFloat) -> Void = { _ in }
         var ended: () -> Void = {}
         var reset: () -> Void = {}
-        /// Where the pointer was on the screen when the drag began.
+        /// Where the pointer was in the window when the drag began.
         private var startX: CGFloat?
+        /// How many presses the handle has had, for tests that check a press reached it.
+        private(set) var presses = 0
 
         override init(frame: NSRect) {
             super.init(frame: frame)
             setAccessibilityElement(false)
+            // The resize cursor wins over any cursor the panel's own views set under the handle.
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.cursorUpdate, .activeInActiveApp, .inVisibleRect],
+                                           owner: self, userInfo: nil))
         }
         required init?(coder: NSCoder) { nil }
 
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         override func resetCursorRects() { addCursorRect(bounds, cursor: Self.cursor) }
+        override func cursorUpdate(with event: NSEvent) { Self.cursor.set() }
 
         override func mouseDown(with event: NSEvent) {
+            presses += 1
             if event.clickCount >= 2 {
                 startX = nil
                 reset()
                 return
             }
-            startX = NSEvent.mouseLocation.x
+            startX = event.locationInWindow.x
             began()
         }
         override func mouseDragged(with event: NSEvent) {
             guard let startX else { return }
-            moved(startX - NSEvent.mouseLocation.x)
+            // At a limit the pointer runs on past the handle, and the cursor stays the resize cursor until the release.
+            Self.cursor.set()
+            moved(startX - event.locationInWindow.x)
         }
         override func mouseUp(with event: NSEvent) {
             guard startX != nil else { return }

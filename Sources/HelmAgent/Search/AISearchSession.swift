@@ -23,10 +23,41 @@ public struct AISearchVerdict: Hashable, Sendable {
     public init(row: Int, why: [SearchReasonCode]) { self.row = row; self.why = why }
 }
 
-/// The two questions of an AI search: what to look for, and which of the rows found fit best.
+/// One file a model is shown in a look question, numbered from 1 within the question.
+public struct AISearchLookItem: Sendable {
+    public let item: Int
+    /// The name, escaped; the folder in Helm's words; the kind's word: as a row has them.
+    public let name: String, folder: String, kind: String
+    public let modified: Date?
+    /// What Helm read inside the file on this Mac, with the person's permit: its first lines and pages, what a picture
+    /// or a video shows and the text found in it, and the small pictures made of it. All of it is data from the file.
+    public let summary: AgentContentSummary
+    public init(item: Int, name: String, folder: String, kind: String, modified: Date?, summary: AgentContentSummary) {
+        self.item = item; self.name = name; self.folder = folder; self.kind = kind; self.modified = modified
+        self.summary = summary
+    }
+}
+
+/// What a model said of one item it looked at: whether it fits the request, and what it saw that matters.
+public struct AISearchLook: Hashable, Sendable {
+    public let item: Int
+    public let fits: Bool
+    /// Plain text of 80 characters at most once the session has read it; it may be empty.
+    public let seen: String
+    public init(item: Int, fits: Bool, seen: String) { self.item = item; self.fits = fits; self.seen = seen }
+}
+
+/// The questions of an AI search: what to look for, which of the files shown match when Read contents is on, and
+/// which of the rows found fit best.
 ///
-/// Neither question offers a tool, and each answer is read into typed values and cut down to Helm's limits before
+/// No question offers a tool, and each answer is read into typed values and cut down to Helm's limits before
 /// anything uses it. A question that gets no answer in time fails as timed out.
+///
+/// What is sent: the request and the folder searched in Helm's words for the plan; rows of names, folders, kinds,
+/// rounded sizes and dates for the ranking; and for the look, while the person's Read contents switch is on, each
+/// file's row facts with what Helm read inside it on this Mac (a document's first lines and pages, what a picture or a
+/// video shows and the text in it) and, unless the caller leaves them out, the small pictures Helm made of it. Never a
+/// path: the home folder's path in a file's text is written as `~`.
 public struct AISearchSession: Sendable {
     private let client: any AgentModelClient
     private let calendar: Calendar
@@ -45,16 +76,30 @@ public struct AISearchSession: Sendable {
     public static func maxRows(isLocal: Bool) -> Int { isLocal ? 30 : 60 }
     /// How long one question may take, in seconds.
     public static func callSeconds(isLocal: Bool) -> Double { isLocal ? 60 : 20 }
+    /// How long one look question may take, in seconds: it carries pictures.
+    public static func lookSeconds(isLocal: Bool) -> Double { isLocal ? 90 : 30 }
+    /// The most pictures one look question carries. Past it an item's later video frames are left out first.
+    static let picturesPerLook = AgentContentLimits.picturesPerRequest
+    /// The longest phrase of what was seen that is kept.
+    public static let seenCharacters = 80
 
     /// What to look for. Every query is clamped to the request (`AISearchQuery.clamped`), a query left with nothing
     /// to look for is dropped, and at most six are kept. When none is left, the plan is one name search for the
     /// request's own words, so a model that answers nothing useful still leaves a search to run.
-    public func plan(request: String, scopeLabel: String, today: Date, languageCode: String) async throws -> AISearchPlan {
+    ///
+    /// `kind` is the one the person chose in the kind row. The model is told it, and every query it answers is then
+    /// kept to it (`AISearchPlan.limited(to:)`), so no answer can widen the search to another kind. It is applied
+    /// after the empty queries are dropped, so a query that asked for nothing never becomes "every photo".
+    ///
+    /// `readsContents` is the search's Read contents switch: the model is told Helm can also look inside photos and
+    /// videos, so it may put what they show in the content words. Those words are still clamped to the request.
+    public func plan(request: String, scopeLabel: String, today: Date, languageCode: String,
+                     kind: AISearchKind? = nil, readsContents: Bool = false) async throws -> AISearchPlan {
         let request = Self.trimmed(request)
         let ask = AgentStructuredAsk(
-            system: AISearchPrompt.planSystem,
+            system: readsContents ? AISearchPrompt.planSystemReadingContents : AISearchPrompt.planSystem,
             user: AISearchPrompt.planUser(request: request, scopeLabel: scopeLabel, today: today, languageCode: languageCode,
-                                          calendar: calendar),
+                                          kind: kind, calendar: calendar),
             schemaName: AISearchSchemas.planName, schema: AISearchSchemas.plan)
         let reply = try await answer(to: ask)
         let raw = try AISearchSchemas.plan(from: reply, calendar: calendar)
@@ -64,7 +109,8 @@ public struct AISearchSession: Sendable {
             if queries.count == Self.maxQueries { break }
         }
         if queries.isEmpty { queries = [Self.ownWords(of: request)].filter { !Self.isEmpty($0) } }
-        return AISearchPlan(sort: raw.sort, queries: queries)
+        let plan = AISearchPlan(sort: raw.sort, queries: queries)
+        return kind.map { plan.limited(to: $0) } ?? plan
     }
 
     /// The rows that fit best, best first. A row that wasn't sent, or was already named, is dropped, and at most
@@ -86,12 +132,93 @@ public struct AISearchSession: Sendable {
         return kept
     }
 
+    /// Which of `items` match the request, as the model judged them, in its order: at most `looksPerQuestion` items
+    /// are shown. `kind` is the one the person chose in the kind row. With `pictures`, the pictures in the items'
+    /// summaries follow the question's words, each after its label ("Item 3", a video's frames "Item 3, frame 2"),
+    /// `picturesPerLook` at most; without, the question is words alone and the on-device words stand in. Each file's
+    /// text has the home folder's path in `homes` written as `~`, and the items, all text Helm built from files, then
+    /// pass Helm's check on what it sends (`AgentOutboundCheck`) for each of `homes`: items that still hold the path in
+    /// any spelling aren't sent, and the question fails as unreadable. The person's own request isn't checked, as a
+    /// path typed in the panel isn't. An item that wasn't shown, or that was already answered, is dropped, and each
+    /// phrase of what was seen is cleaned (`cleaned(_:)`).
+    public func look(request: String, kind: AISearchKind?, items: [AISearchLookItem], homes: [String],
+                     pictures: Bool) async throws -> [AISearchLook] {
+        let request = Self.trimmed(request)
+        let shown = Array(items.prefix(AgentContentLimits.looksPerQuestion))
+        let attached = pictures ? Self.pictures(of: shown) : []
+        var counts: [Int: Int] = [:]
+        for picture in attached { counts[picture.item, default: 0] += 1 }
+        let itemsText = AISearchPrompt.lookItems(shown, pictured: counts, homes: homes, calendar: calendar)
+        guard homes.allSatisfy({ AgentOutboundCheck.helmTextIsClean(itemsText, home: $0) }) else { throw AgentFailure.unreadable }
+        let ask = AgentStructuredAsk(
+            system: AISearchPrompt.lookSystem,
+            user: AISearchPrompt.lookUser(request: request, kind: kind, items: itemsText),
+            schemaName: AISearchSchemas.lookName, schema: AISearchSchemas.look, pictures: attached.map(\.picture))
+        let reply = try await answer(to: ask, seconds: Self.lookSeconds(isLocal: client.isLocal))
+        let numbers = Set(shown.map(\.item))
+        var answered: Set<Int> = []
+        var kept: [AISearchLook] = []
+        for look in try AISearchSchemas.looks(from: reply) where numbers.contains(look.item) && answered.insert(look.item).inserted {
+            kept.append(AISearchLook(item: look.item, fits: look.fits, seen: Self.cleaned(look.seen)))
+        }
+        return kept
+    }
+
+    /// A phrase a model wrote, as plain text: each run of spaces and line breaks one space, every control, format,
+    /// private-use or unassigned character left out, and `seenCharacters` at most, trimmed.
+    static func cleaned(_ phrase: String) -> String {
+        var kept = String.UnicodeScalarView()
+        var spaced = true
+        for scalar in phrase.unicodeScalars {
+            if scalar.properties.isWhitespace {
+                if !spaced { kept.append(" "); spaced = true }
+                continue
+            }
+            guard AgentTextEscaper.isClean(String(scalar)) else { continue }
+            kept.append(scalar)
+            spaced = false
+        }
+        let cut = String(String(kept).prefix(seenCharacters))
+        return cut.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The pictures of `items` a look question carries, in item order, each with its label: an item's first picture
+    /// before any item's second, so a long video can't crowd out the pictures after it.
+    private static func pictures(of items: [AISearchLookItem]) -> [(item: Int, picture: AgentAskPicture)] {
+        var chosen: [Int: Int] = [:]
+        var left = picturesPerLook
+        var depth = 0
+        while left > 0 {
+            var added = false
+            for item in items where left > 0 && item.summary.images.count > depth {
+                chosen[item.item, default: 0] += 1
+                left -= 1
+                added = true
+            }
+            guard added else { break }
+            depth += 1
+        }
+        var found: [(item: Int, picture: AgentAskPicture)] = []
+        for item in items {
+            var frame = 0
+            for image in item.summary.images.prefix(chosen[item.item] ?? 0) {
+                var label = "Item \(item.item)"
+                if case .frame = image.source {
+                    frame += 1
+                    label += ", frame \(frame)"
+                }
+                found.append((item.item, AgentAskPicture(label: label, image: image)))
+            }
+        }
+        return found
+    }
+
     // MARK: Parts
 
     /// Asks one question, within the time a question may take. Cancelling the caller cancels the question.
-    private func answer(to ask: AgentStructuredAsk) async throws -> Data {
+    private func answer(to ask: AgentStructuredAsk, seconds: Double? = nil) async throws -> Data {
         let client = self.client
-        let seconds = Self.callSeconds(isLocal: client.isLocal)
+        let seconds = seconds ?? Self.callSeconds(isLocal: client.isLocal)
         do {
             return try await withThrowingTaskGroup(of: Data.self) { group in
                 group.addTask { try await client.structured(ask) }

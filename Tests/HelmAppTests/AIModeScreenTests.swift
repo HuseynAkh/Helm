@@ -8,8 +8,9 @@ import HelmPersistence
 @testable import HelmUI
 
 /// The AI mode screen in a real app on a throwaway home: the welcome window's third mode, its one switch and one
-/// button, what Done and every other way out leave behind, the panel it opens for the window that asked, and when it
-/// opens by itself. The model answers from the scripted provider and keys stay in memory.
+/// button, what Done and every other way out leave behind, the panel it opens for the window that asked, the
+/// onboarding's AI step that shows its parts, and when it opens by itself, which is only for someone who set Helm up
+/// before AI mode. The model answers from the scripted provider and keys stay in memory.
 @MainActor final class AIModeScreenTests: XCTestCase {
     private var root: URL!
     private var app: AppController?
@@ -144,6 +145,7 @@ import HelmPersistence
         app.access.showWelcome()
         let welcome = try XCTUnwrap(app.onboardingForTesting)
         XCTAssertEqual(welcome.modeForTesting, "setup")
+        welcome.close()
         app.showAIModeScreen(from: nil)
         let screen = try XCTUnwrap(app.onboardingForTesting)
         XCTAssertTrue(screen === welcome, "the same window, in its third mode")
@@ -180,7 +182,7 @@ import HelmPersistence
         let keyField = try XCTUnwrap(shown.compactMap { $0 as? NSSecureTextField }.first)
         let caretInKeyField = await until { self.hasCaret(keyField) }
         XCTAssertTrue(caretInKeyField, "the caret starts in the key field")
-        XCTAssertTrue(model.linesForTesting.contains(AgentText.consent("Claude")))
+        XCTAssertTrue(model.linesForTesting.contains(AgentText.consentSetup("Claude")))
         XCTAssertTrue(model.linesForTesting.contains(AgentText.stateNoKey))
 
         // Ollama shows its state in place of the key, with Try Again and the port while it isn't running.
@@ -387,12 +389,12 @@ import HelmPersistence
         XCTAssertFalse(settings.snapshot.bool(.aiModeEnabled))
         XCTAssertTrue(settings.snapshot.bool(.aiIntroSeen))
         screen.close()
-        // Help › Set Up Helm… while it is open: the checklist takes its place.
+        // Help › Set Up Helm… while it is open: the onboarding takes its place.
         reset()
         app.access.showWelcome()
         XCTAssertEqual(screen.modeForTesting, "setup")
         XCTAssertNil(screen.model.aiSetup)
-        XCTAssertNil(screen.window?.appearance, "the checklist follows the Mac's appearance")
+        XCTAssertNil(screen.window?.appearance, "the onboarding follows the Mac's appearance")
         XCTAssertFalse(settings.snapshot.bool(.aiModeEnabled))
         XCTAssertTrue(settings.snapshot.bool(.aiIntroSeen))
     }
@@ -432,29 +434,43 @@ import HelmPersistence
         XCTAssertTrue(opened.last === window, "the only window is the one in front")
     }
 
-    func testAfterSetupDoneWhileConnectedOpensThePanelInTheFrontWindow() async throws {
+    /// The onboarding's AI step is the AI Mode screen's switch, providers, help and key, in the onboarding window and the
+    /// Mac's appearance, with the onboarding's Continue for Done. The spark asking while the onboarding is open goes to
+    /// that step. Continue, clicked, hands over the key typed and not yet entered, as Done does.
+    func testTheOnboardingsAIStepIsTheScreensPartsAndContinueHandsOverTheTypedKey() async throws {
         let app = await composedApp()
         let settings = try settings(app)
-        app.access.opensAIIntroForTesting = true
-        app.newWindow(nil)
-        XCTAssertEqual(app.allWindows.count, 2)
-        let front = try XCTUnwrap(app.frontmost())
-        let other = try XCTUnwrap(app.allWindows.first { $0 !== front })
-        // The checklist closes and the AI mode screen follows, with no window asking.
+        let window = try XCTUnwrap(app.allWindows.first)
         app.access.showWelcome()
         let screen = try XCTUnwrap(app.onboardingForTesting)
-        app.showAIIntroIfNeeded()
-        XCTAssertTrue(screen.pressForTesting("Not Now"))
-        let followed = await until { screen.modeForTesting == "ai" }
-        XCTAssertTrue(followed)
+        screen.model.finishDelay = 0
+        window.toggleAgentPanel()
+        XCTAssertEqual(screen.modeForTesting, "setup", "the onboarding stays")
+        XCTAssertEqual(screen.stepForTesting, "ai")
+        XCTAssertNil(screen.window?.appearance, "the step follows the Mac, unlike the dark screen on its own")
+        XCTAssertEqual(screen.window?.title, AgentText.aiTitle)
         let model = try XCTUnwrap(app.aiSetupModelForTesting)
-        await connect(model)
-        await pressDone(screen)
+        XCTAssertTrue(screen.model.aiSetup === model)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(controlKinds(in: screen), ["switch"], "the switch first, with Back, Not Now and Continue drawn by SwiftUI")
+        model.setOn(true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "button", "button", "key"],
+                       "the provider, its help, and the key, as on the AI Mode screen")
+        let store = try secrets(app)
+        let keyField = try XCTUnwrap(controls(in: screen).compactMap { $0 as? NSSecureTextField }.first)
+        XCTAssertTrue(type(testKey, into: keyField))
+        try await Task.sleep(nanoseconds: 200_000_000)
+        screen.model.continuePressed()
+        let movedOn = await until { screen.stepForTesting == "done" }
+        XCTAssertTrue(movedOn, "Continue took the typed key, checked it and went on")
+        XCTAssertEqual(store.accounts, ["claude|api.anthropic.com:443"])
+        XCTAssertEqual(model.connectionForTesting, "connected")
+        XCTAssertTrue(settings.snapshot.bool(.aiModeEnabled))
+        XCTAssertFalse(window.isAgentPanelOpen, "no panel opens behind the onboarding")
+        XCTAssertTrue(screen.pressForTesting("Get Started"))
         XCTAssertEqual(screen.modeForTesting, "closed")
         XCTAssertTrue(settings.snapshot.bool(.aiModeEnabled))
-        let open = await until { front.isAgentPanelOpen }
-        XCTAssertTrue(open, "Done opened the panel in the window in front")
-        XCTAssertFalse(other.isAgentPanelOpen, "and only there")
     }
 
     func testAfterSetupClosingTheScreenAnyOtherWayOpensNoPanel() async throws {
@@ -512,7 +528,7 @@ import HelmPersistence
         let app = await composedApp()
         let settings = try settings(app)
         app.access.opensAIIntroForTesting = true
-        // A first launch that hasn't been through the checklist: not yet.
+        // A first launch that hasn't been through the onboarding: not yet.
         app.showAIIntroIfNeeded()
         XCTAssertNil(app.onboardingForTesting)
         settings.set(.bool(true), for: .onboardingCompleted)
@@ -526,20 +542,25 @@ import HelmPersistence
         XCTAssertEqual(screen.modeForTesting, "closed")
     }
 
-    func testOnTheFirstLaunchItOpensWhenTheChecklistCloses() async throws {
+    /// On the first launch AI mode is a step of the onboarding, so nothing opens by itself after it, closed part way
+    /// or not.
+    func testAfterTheFirstLaunchsOnboardingNothingOpensByItself() async throws {
         let app = await composedApp()
         let settings = try settings(app)
         app.access.opensAIIntroForTesting = true
-        app.access.showWelcome()
+        app.access.openOnFirstLaunch()
         let screen = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(screen.modeForTesting, "setup")
+        XCTAssertTrue(screen.model.steps.contains(.ai))
         app.showAIIntroIfNeeded()
-        XCTAssertEqual(screen.modeForTesting, "setup", "the checklist comes first")
-        XCTAssertTrue(screen.pressForTesting("Not Now"))
-        XCTAssertTrue(settings.snapshot.bool(.onboardingCompleted))
-        let followed = await until { screen.modeForTesting == "ai" }
-        XCTAssertTrue(followed, "the AI mode screen follows the checklist")
+        XCTAssertEqual(screen.stepForTesting, "welcome", "nothing takes the onboarding's place")
+        XCTAssertTrue(screen.pressForTesting("Continue"))
         screen.close()
+        XCTAssertTrue(settings.snapshot.bool(.onboardingCompleted))
         XCTAssertTrue(settings.snapshot.bool(.aiIntroSeen))
+        app.showAIIntroIfNeeded()
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(screen.modeForTesting, "closed", "no AI mode screen after the onboarding")
     }
 
     // MARK: Settings › AI
@@ -563,7 +584,7 @@ import HelmPersistence
         XCTAssertEqual(app.agentServicesForTesting?.runtime.clientBuildCount, 0)
     }
 
-    // MARK: The checklist
+    // MARK: The onboarding
 
     func testTheChecklistHeaderReadsTheNewLine() async throws {
         let app = await composedApp()
