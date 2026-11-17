@@ -43,12 +43,7 @@ import HelmSearch
 
     /// The search field's spark is on: Return asks the model. Off at launch and whenever the search closes.
     var isOn = false {
-        didSet {
-            if !isOn {
-                kind = nil
-                contentPermit = nil
-            }
-        }
+        didSet { if !isOn { contentPermit = nil } }
     }
     /// The person's permit while the kind row's Read contents switch is on. It goes, and what was read with it, when
     /// the spark goes off, as it does when the search closes.
@@ -65,9 +60,6 @@ import HelmSearch
     func runtimeChanged() { picturesRefused = false }
     /// Whether the kind row's Read contents switch is on.
     var readsContents: Bool { contentPermit != nil }
-    /// The kind row's choice, nil for Any. The row shows only while the spark is on, so the choice goes back to Any
-    /// whenever the spark goes off, as it does when the search closes.
-    var kind: AISearchKind?
     /// What the window listens to so the spark follows the search and AI mode.
     var watch: AISearchWatch?
 

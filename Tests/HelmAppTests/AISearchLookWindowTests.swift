@@ -228,7 +228,7 @@ import HelmPersistence
         XCTAssertFalse(reader.asked(pictures: false).contains("kite.swift"), "never read for a search of any kind")
         XCTAssertFalse(reader.asked(pictures: false).contains("kite.json"))
 
-        XCTAssertTrue(controller.chooseAISearchKindForTesting("Code"))
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Code"))
         if !controller.aiSearchContentsForTesting.on { XCTAssertTrue(controller.clickAISearchContentsForTesting()) }
         let looked = client.looks.count
         controller.submitSearchForTesting()

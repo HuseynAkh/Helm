@@ -447,54 +447,140 @@ extension AISearchWindowTests {
     private var clip: URL { documents.appendingPathComponent("report-clip.mov") }
     private var choices: [String] { ["Any", "Photo", "Video", "Document", "Folder", "Code", "Audio", "Archive"] }
 
-    func testTheKindRowShowsOnlyWhileTheSparkIsOnAndGoesBackToAnyWhenTheSearchCloses() async throws {
+    /// Escape in the search field, or the Search button's close when the field hasn't the caret, and the search gone.
+    private func closeSearch(_ controller: BrowserWindowController) async -> Bool {
+        if !controller.searchFieldKeyForTesting("escape") { controller.headerSearchClosed() }
+        return await until { controller.activeTab?.search == nil && !controller.isSearchingForTesting }
+    }
+
+    func testTheKindRowShowsWhileTheSearchIsOpenSparkOnOrOffAndGoesBackToAnyWhenItCloses() async throws {
         let client = AISearchWindowClient(plan: nil, rank: nil)
-        let (off, _) = try await window(client: client, on: false)
-        off.setAISearchForTesting(true)
-        XCTAssertFalse(off.aiSearchKindRowShownForTesting, "AI mode off: no spark and no row")
-
-        let (controller, _) = try await window(client: client)
-        XCTAssertFalse(controller.aiSearchKindRowShownForTesting, "off at launch")
-        controller.typeIntoSearchForTesting("report")
-        _ = await until { controller.activeTab?.search != nil }
-        XCTAssertFalse(controller.aiSearchKindRowShownForTesting, "a plain search has no row")
-        XCTAssertNil(controller.activeTab?.search?.query.kind)
-
-        controller.setAISearchForTesting(true)
-        XCTAssertTrue(controller.aiSearchKindRowShownForTesting, "the spark brings the row")
-        XCTAssertEqual(controller.aiSearchKindChoicesForTesting, choices)
-        XCTAssertEqual(controller.aiSearchKindChosenForTesting, "Any", "Any at first")
-        let read = controller.aiSearchKindRowAccessibilityForTesting
+        // AI mode off: the field has no spark, and the row is the plain search's.
+        let (plain, _) = try await window(client: client, on: false)
+        XCTAssertFalse(plain.searchKindRowShownForTesting, "no row while the search is closed")
+        plain.typeIntoSearchForTesting("report")
+        _ = await until { plain.activeTab?.search != nil }
+        XCTAssertEqual(plain.searchFieldMarkForTesting, "magnifier")
+        XCTAssertTrue(plain.searchKindRowShownForTesting, "the open search brings the row")
+        XCTAssertEqual(plain.searchKindChoicesForTesting, choices)
+        XCTAssertEqual(plain.searchKindChosenForTesting, "Any", "Any at first")
+        let read = plain.searchKindRowAccessibilityForTesting
         XCTAssertEqual(read.role, .radioGroup)
         XCTAssertEqual(read.label, AgentText.searchKindRow)
         XCTAssertEqual(read.choices.map(\.label), choices)
         XCTAssertTrue(read.choices.allSatisfy { $0.role == .radioButton })
         XCTAssertEqual(read.choices.map(\.chosen), [true] + Array(repeating: false, count: 7), "one choice at a time")
-
-        XCTAssertTrue(controller.chooseAISearchKindForTesting("Photo"))
-        XCTAssertEqual(controller.aiSearchKindChosenForTesting, "Photo")
-        XCTAssertEqual(controller.aiSearchKindRowAccessibilityForTesting.choices.map(\.chosen),
+        XCTAssertFalse(plain.aiSearchContentsForTesting.shown, "no Read contents without the spark")
+        XCTAssertTrue(plain.chooseSearchKindForTesting("Photo"))
+        XCTAssertEqual(plain.searchKindChosenForTesting, "Photo")
+        XCTAssertEqual(plain.searchKindRowAccessibilityForTesting.choices.map(\.chosen),
                        [false, true] + Array(repeating: false, count: 6))
-        // The spark off takes the row away, and the choice with it.
-        controller.setAISearchForTesting(false)
-        XCTAssertFalse(controller.aiSearchKindRowShownForTesting)
+        let closedPlain = await closeSearch(plain)
+        XCTAssertTrue(closedPlain)
+        XCTAssertFalse(plain.searchKindRowShownForTesting, "no row once the search closes")
+        XCTAssertEqual(plain.searchKindChosenForTesting, "Any", "back to Any when the search closes")
+        plain.beginSearch()
+        XCTAssertTrue(plain.searchKindRowShownForTesting, "an empty search has the row too")
+        XCTAssertEqual(plain.searchKindChosenForTesting, "Any")
+
+        // AI mode on: the spark on or off keeps the row and its choice; Read contents comes and goes with the spark.
+        let (controller, _) = try await window(client: client)
+        controller.typeIntoSearchForTesting("report")
+        _ = await until { controller.activeTab?.search != nil }
+        XCTAssertFalse(controller.isAISearchOnForTesting, "off at launch")
+        XCTAssertTrue(controller.searchKindRowShownForTesting, "the row shows with the spark off")
+        XCTAssertFalse(controller.aiSearchContentsForTesting.shown)
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Photo"))
         controller.setAISearchForTesting(true)
-        XCTAssertEqual(controller.aiSearchKindChosenForTesting, "Any", "back to Any each time the row comes back")
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Photo", "the spark on keeps the kind")
+        controller.setAISearchForTesting(false)
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Photo", "and so does the spark off")
+        XCTAssertFalse(controller.aiSearchContentsForTesting.shown)
 
         // Closing the search turns the spark off, and the choice goes back to Any.
-        XCTAssertTrue(controller.chooseAISearchKindForTesting("Video"))
-        if !controller.searchFieldKeyForTesting("escape") { controller.headerSearchClosed() }
-        let closed = await until { controller.activeTab?.search == nil }
+        controller.setAISearchForTesting(true)
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Video"))
+        let closed = await closeSearch(controller)
         XCTAssertTrue(closed)
         await settle(0.2)
         XCTAssertFalse(controller.isAISearchOnForTesting)
-        XCTAssertFalse(controller.aiSearchKindRowShownForTesting, "no row once the search closes")
+        XCTAssertFalse(controller.searchKindRowShownForTesting, "no row once the search closes")
         controller.setAISearchForTesting(true)
-        XCTAssertTrue(controller.aiSearchKindRowShownForTesting)
-        XCTAssertEqual(controller.aiSearchKindChosenForTesting, "Any", "reset when the search closed")
-        // AI mode turning off takes the row away too.
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Any", "reset when the search closed")
+        // AI mode turning off turns the spark off; the open search keeps its row and its kind.
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Audio"))
         controller.dependencies.agent.runtime.setOn(false)
-        XCTAssertFalse(controller.aiSearchKindRowShownForTesting)
+        XCTAssertFalse(controller.isAISearchOnForTesting)
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Audio")
+    }
+
+    func testAPlainSearchKeptToAKindFindsThatKindAloneAndTheStatusBarNamesIt() async throws {
+        let client = AISearchWindowClient(plan: nil, rank: nil)
+        let (controller, memory) = try await window(client: client, on: false)
+        for url in [photo, clip] { try await memory.createFileExclusively(at: url, contents: Data([1])) }
+        let everyKind = Set(reports + ["report-photo.jpg", "report-clip.mov"])
+        controller.typeIntoSearchForTesting("report")
+        let typed = await until { controller.activeTab?.search?.query.text == "report" && controller.activeTab?.search?.isGathering == false }
+        XCTAssertTrue(typed)
+        XCTAssertNil(controller.activeTab?.search?.query.kind)
+        XCTAssertEqual(Set(names(controller)), everyKind)
+        XCTAssertFalse(controller.statusTextForTesting.contains("Photos"), controller.statusTextForTesting)
+
+        // Photo searches the words on show again, by name, for pictures alone; the status bar names it at its end.
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Photo"))
+        let photos = await until { controller.activeTab?.search?.query.kind == .image && controller.activeTab?.search?.isGathering == false }
+        XCTAssertTrue(photos)
+        XCTAssertEqual(controller.activeTab?.search?.query.usesAI, false)
+        XCTAssertEqual(names(controller), ["report-photo.jpg"])
+        let named = await until { controller.statusTextForTesting.hasSuffix("  •  Photos") }
+        XCTAssertTrue(named, controller.statusTextForTesting)
+        XCTAssertTrue(controller.statusTextForTesting.hasPrefix("1 result  •  "), controller.statusTextForTesting)
+        XCTAssertNil(controller.aiSearchStatusForTesting, "the usual line, not AI search's")
+
+        // Document takes in text files. Any finds every kind again, and the status bar drops the kind.
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Document"))
+        let documentsFound = await until {
+            controller.activeTab?.search?.query.kind == .document && controller.activeTab?.search?.isGathering == false
+        }
+        XCTAssertTrue(documentsFound)
+        XCTAssertEqual(Set(names(controller)), Set(reports))
+        let documentsNamed = await until { controller.statusTextForTesting.hasSuffix("  •  Documents") }
+        XCTAssertTrue(documentsNamed, controller.statusTextForTesting)
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Any"))
+        let any = await until { controller.activeTab?.search?.query.kind == nil && controller.activeTab?.search?.isGathering == false }
+        XCTAssertTrue(any)
+        XCTAssertEqual(Set(names(controller)), everyKind)
+        let unnamed = await until { !controller.statusTextForTesting.contains("Documents") }
+        XCTAssertTrue(unnamed, controller.statusTextForTesting)
+        XCTAssertTrue(client.asks.isEmpty, "nothing is sent")
+
+        // With no words a choice searches nothing, and the empty search stays open; the next words are kept to it.
+        let closed = await closeSearch(controller)
+        XCTAssertTrue(closed)
+        controller.beginSearch()
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Video"))
+        await settle(0.3)
+        XCTAssertNil(controller.activeTab?.search, "no words, no search")
+        XCTAssertTrue(controller.isSearchingForTesting)
+        controller.typeIntoSearchForTesting("report")
+        let videos = await until { controller.activeTab?.search?.query.kind == .video && controller.activeTab?.search?.isGathering == false }
+        XCTAssertTrue(videos)
+        XCTAssertEqual(names(controller), ["report-clip.mov"])
+
+        // Each tab's search keeps its own kind: a new tab's search starts at Any, and going back shows Video again.
+        controller.perform(.newTab)
+        let away = await until { controller.activeTab?.search == nil && !controller.isSearchingForTesting }
+        XCTAssertTrue(away)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Any")
+        controller.perform(.previousTab)
+        let back = await until { controller.isSearchingForTesting && controller.activeTab?.search?.query.kind == .video }
+        XCTAssertTrue(back)
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Video")
     }
 
     func testAChosenKindLimitsTheNameMatchesTheModelsPlanAndTheStatusLine() async throws {
@@ -507,7 +593,7 @@ extension AISearchWindowTests {
         let (controller, memory) = try await window(client: client)
         for url in [photo, clip] { try await memory.createFileExclusively(at: url, contents: Data([1])) }
         controller.setAISearchForTesting(true)
-        XCTAssertTrue(controller.chooseAISearchKindForTesting("Photo"))
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Photo"))
         controller.typeIntoSearchForTesting("report")
         let typed = await until { controller.activeTab?.search?.query.text == "report" && controller.activeTab?.search?.isGathering == false }
         XCTAssertTrue(typed)
@@ -527,7 +613,7 @@ extension AISearchWindowTests {
 
         // Another kind searches the words again by name and sends nothing; Return asks the model again.
         let asked = client.asks.count
-        XCTAssertTrue(controller.chooseAISearchKindForTesting("Document"))
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Document"))
         let documentsFound = await until {
             controller.activeTab?.search?.query.kind == .document && controller.activeTab?.search?.isGathering == false
         }
@@ -538,13 +624,25 @@ extension AISearchWindowTests {
         XCTAssertEqual(client.asks.count, asked, "a choice sends nothing")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.text, AgentText.searchHint("Claude"))
 
-        // The spark off: the row goes and the same words find every kind again.
+        // The spark off keeps the kind and the search on show; the usual status line names the kind.
+        let generation = controller.activeTab?.search?.generation
         controller.setAISearchForTesting(false)
-        let every = await until {
-            controller.activeTab?.search?.query.kind == nil && controller.activeTab?.search?.isGathering == false
-        }
-        XCTAssertTrue(every)
-        XCTAssertTrue(Set(names(controller)).isSuperset(of: Set(reports + ["report-photo.jpg", "report-clip.mov"])), "\(names(controller))")
+        await settle(0.4)
+        XCTAssertTrue(controller.searchKindRowShownForTesting)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Document")
+        XCTAssertEqual(controller.activeTab?.search?.generation, generation, "nothing is searched again")
+        XCTAssertEqual(controller.activeTab?.search?.query.kind, .document)
+        XCTAssertEqual(Set(names(controller)), Set(reports))
+        XCTAssertNil(controller.aiSearchStatusForTesting)
+        XCTAssertTrue(controller.statusTextForTesting.hasSuffix("  •  Documents"), controller.statusTextForTesting)
+        // The spark on again keeps it too, and Return asks the model for documents.
+        controller.setAISearchForTesting(true)
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Document")
+        controller.submitSearchForTesting()
+        let again = await until { controller.activeTab?.search?.query.usesAI == true && controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(again)
+        XCTAssertEqual(controller.activeTab?.search?.query.kind, .document)
+        XCTAssertTrue(client.asks.contains { $0.user.contains("\"only_kind\":\"document\"") }, "the model is told the kept kind")
     }
 
     func testTabTakesTheKeysToTheKindRowWhereArrowsChooseAndEscapeGivesThemBack() async throws {
@@ -560,21 +658,40 @@ extension AISearchWindowTests {
         for (key, chosen) in [("right", "Photo"), ("right", "Video"), ("left", "Photo"), ("left", "Any"), ("left", "Any"),
                               ("right", "Photo")] {
             XCTAssertTrue(controller.kindRowKeyForTesting(key), key)
-            XCTAssertEqual(controller.aiSearchKindChosenForTesting, chosen, key)
+            XCTAssertEqual(controller.searchKindChosenForTesting, chosen, key)
         }
         XCTAssertTrue(controller.kindRowKeyForTesting("escape"))
         XCTAssertEqual(controller.focusOwnerForTesting, "search", "Escape gives the keys back to the field")
         await settle(0.3)
         XCTAssertTrue(controller.isSearchingForTesting)
-        XCTAssertEqual(controller.aiSearchKindChosenForTesting, "Photo")
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Photo")
         XCTAssertTrue(controller.searchFieldKeyForTesting("tab"))
         XCTAssertTrue(controller.kindRowKeyForTesting("tab"))
         XCTAssertEqual(controller.focusOwnerForTesting, "search", "and so does Tab")
-        // With the spark off there's no row to go to, and Tab is the field's own.
+        // With the spark off the row is still there: Tab, the arrows and Escape work the same.
         controller.setAISearchForTesting(false)
         XCTAssertTrue(controller.searchFieldKeyForTesting("tab"))
-        XCTAssertNotEqual(controller.focusOwnerForTesting, "kinds")
-        XCTAssertFalse(controller.kindRowKeyForTesting("right"))
+        XCTAssertEqual(controller.focusOwnerForTesting, "kinds")
+        XCTAssertTrue(controller.kindRowKeyForTesting("right"))
+        XCTAssertEqual(controller.searchKindChosenForTesting, "Video")
+        XCTAssertTrue(controller.kindRowKeyForTesting("escape"))
+        XCTAssertEqual(controller.focusOwnerForTesting, "search")
+        await settle(0.3)
+        XCTAssertTrue(controller.isSearchingForTesting)
+
+        // AI mode off: the plain search's row takes the keys the same way, and closing the search hands them back.
+        let (plain, _) = try await window(client: client, on: false)
+        plain.beginSearch()
+        XCTAssertTrue(plain.searchFieldKeyForTesting("tab"))
+        XCTAssertEqual(plain.focusOwnerForTesting, "kinds")
+        XCTAssertTrue(plain.kindRowKeyForTesting("right"))
+        XCTAssertEqual(plain.searchKindChosenForTesting, "Photo")
+        plain.perform(.newTab)
+        let away = await until { !plain.isSearchingForTesting }
+        XCTAssertTrue(away)
+        await settle(0.3)
+        XCTAssertNotEqual(plain.focusOwnerForTesting, "kinds", "a closed search leaves no keys on its row")
+        XCTAssertFalse(plain.kindRowKeyForTesting("right"))
     }
 }
 

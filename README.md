@@ -225,7 +225,7 @@ In the list, a folder unfolds right where it is, with a short, smooth animation,
 
 ### Search that lets go
 
-Press ⌘F and type. Helm looks in the folder you're in, or across the whole Mac, matching names first and then what's inside files. The row under the header keeps it to one kind, such as Photo or Document. Click anywhere else and the keys go back to your files: an empty search closes, and one with words keeps its results until you go somewhere else. Each tab keeps its own search.
+Press ⌘F and type. Helm looks in the folder you're in, or across the whole Mac, matching names first and then what's inside files. The row under the header keeps a search to one kind, such as Photo or Document, and the status bar names it. Click anywhere else and the keys go back to your files: an empty search closes, and one with words keeps its results until you go somewhere else. Each tab keeps its own search.
 
 <img src="docs/images/search-dark.png" alt="Searching Home for invoice, with the results in the grid">
 
@@ -313,7 +313,7 @@ Full Disk Access isn't part of Files and Folders: it has its own entry in Privac
 | Copy as Pathname | ⌥⌘C | Empty Trash | ⇧⌘⌫ |
 | Move Items Here | ⌥⌘V | Toggle Star | ⌘D |
 
-In the AI panel, ⌘Return presses Apply and Escape stops a request or cancels a plan. In AI search, Tab takes the keys to the kind row, where the arrows choose.
+In the AI panel, ⌘Return presses Apply and Escape stops a request or cancels a plan. In a search, Tab takes the keys to the kind row, where the arrows choose.
 
 ## Build and test
 

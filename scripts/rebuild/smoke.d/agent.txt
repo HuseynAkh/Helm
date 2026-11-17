@@ -362,9 +362,10 @@ agent-script @FIX@/agent-script.json
 search-key escape
 search-shown false
 search-ai-is off
-# The kind row shows only while the spark is on, at Any. Photo keeps the name matches and the model's plan to
-# pictures, and the status bar names it; another kind searches the words again by name. Tab takes the keys to the
-# row, where the arrows choose, and the row is back at Any once the search closes
+# The kind row shows while the search is open, spark on or off, at Any. Photo keeps the name matches and the model's
+# plan to pictures, and the status bar names it; another kind searches the words again by name. The spark off and on
+# again keeps the kind and the search on show. Tab takes the keys to the row, where the arrows choose, and the row is
+# back at Any once the search closes
 search-kinds-shown false
 search-ai on
 search-kinds-shown true
@@ -381,6 +382,16 @@ lacks todo.txt
 search-kind Document
 has todo.txt
 lacks photo-1.png
+search-ai off
+search-ai-is off
+search-kinds-shown true
+search-kind-is Document
+has todo.txt
+lacks photo-1.png
+hunt-status-says Documents
+search-ai on
+search-ai-is on
+search-kind-is Document
 search-key tab
 focus-is kinds
 search-kind-key right

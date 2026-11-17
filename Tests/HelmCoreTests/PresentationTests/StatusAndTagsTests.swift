@@ -21,6 +21,21 @@ final class PresentationStatusAndTagsTests: XCTestCase {
         XCTAssertEqual(StatusText.format(.init(itemCount: 3, selectedCount: 1), selectionWording: .fraction), "1 of 3 selected")
         XCTAssertFalse(LocalizedStatusByteFormatter().string(from: .max).isEmpty)
     }
+    /// A search kept to one kind names it at the end of the line, after the free space; a folder's line names none.
+    func testASearchKeptToAKindNamesItLast() {
+        let bytes = TestStatusBytes()
+        XCTAssertEqual(StatusText.format(.init(itemCount: 12, isSearch: true, searchKind: "Photos"), bytes: bytes),
+                       "12 results  •  Photos")
+        XCTAssertEqual(StatusText.format(.init(itemCount: 3, selectedCount: 1, selectedBytes: 42, freeBytes: 100, isSearch: true,
+                                               searchKind: "Documents"), bytes: bytes),
+                       "3 results  •  1 selected  •  42B  •  100B free  •  Documents")
+        XCTAssertEqual(StatusText.format(.init(itemCount: 0, activity: .searching, isSearch: true, searchKind: "Videos"), bytes: bytes),
+                       "Searching…  •  0 results  •  Videos")
+        XCTAssertEqual(StatusText.format(.init(itemCount: 2, isSearch: true), bytes: bytes), "2 results")
+        XCTAssertEqual(StatusText.format(.init(itemCount: 2, searchKind: "Photos"), bytes: bytes), "2 items")
+        XCTAssertEqual(StatusText.format(.init(itemCount: 2, activity: .denied, isSearch: true, searchKind: "Photos"), bytes: bytes),
+                       "Permission denied")
+    }
     func testTagCodecPreservesUnknownEntries() throws {
         let raw = ["Red\n6", "Future\n99", "No suffix", "Odd\nwat", "Nested\nName\n-1", "", "Red\n6"]
         let set = TagSet(tags: raw.map { FinderTag(rawValue: $0) })

@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import HelmAgent
 import HelmCore
 import HelmFileSystem
 import HelmOperations
@@ -274,8 +275,8 @@ struct WindowTints: Equatable {
             tabStrip.topAnchor.constraint(equalTo: header.bottomAnchor),
             tabStrip.leadingAnchor.constraint(equalTo: root.leadingAnchor), tabStrip.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             stripHeight,
-            // The AI search's kind row sits over the files, as Finder's scope bar does: zero high until the search
-            // field's spark is on.
+            // The search's kind row sits over the files, as Finder's scope bar does: zero high while the search is
+            // closed.
             kindBar.topAnchor.constraint(equalTo: tabStrip.bottomAnchor),
             kindBar.leadingAnchor.constraint(equalTo: root.leadingAnchor), kindBar.trailingAnchor.constraint(equalTo: agentPanelHost.leadingAnchor),
             kindBar.heightConstraint,
@@ -476,7 +477,7 @@ struct WindowTints: Equatable {
         let shown = tab.shownExpandedIDs.isEmpty || tab.snapshot.children.isEmpty ? tab.snapshot.rootCount : tab.shownIDs.count
         shownStatus = StatusPresentation(itemCount: shown, selectedCount: selected.count,
                                          selectedBytes: hasFile ? bytes : nil, freeBytes: free, activity: activity,
-                                         isSearch: tab.search != nil)
+                                         isSearch: tab.search != nil, searchKind: tab.search?.query.kind.map(AgentText.searchKindShown))
         statusHost.rootView = StatusBarView(status: shownStatus, aiSearch: aiSearchStatus(for: tab))
     }
     /// What the status bar says now.
@@ -698,6 +699,15 @@ struct WindowTints: Equatable {
         let typed = header.searchText
         search(typed.isEmpty ? (activeTab?.search?.query.text ?? "") : typed)
     }
+    /// A choice in the kind row: the words on show are searched again by name for that kind, spark on or off. With no
+    /// words nothing is searched; the next ones are kept to it. With the spark on, Return then asks the model again.
+    func headerSearchKindChanged() {
+        let typed = header.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : header.searchText
+        guard let text = typed ?? activeTab?.search?.query.text,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        cancelPendingSearch()
+        search(text)
+    }
     /// Scripted runs: searches the whole Mac or the folder, as the scope menu does.
     public func setSearchScopeForTesting(everywhere: Bool) { header.chooseSearchScopeForTesting(everywhere: everywhere) }
     func headerSearchClosed() {
@@ -716,11 +726,11 @@ struct WindowTints: Equatable {
         // The scope pill in the search field widens it to the whole Mac, as Finder's "This Mac" does (P-170).
         let scope: SearchScope
         if let url = tab.location.mutationTarget, !header.searchesEverywhere { scope = .currentFolder(url) } else { scope = .thisMac }
-        // While the spark is on, the kind row's choice limits typed searches and the model's alike.
+        // The kind row's choice limits typed searches and the model's alike.
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
                                 limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
-                                usesAI: usesAI, kind: aiSearchKind)
+                                usesAI: usesAI, kind: header.searchKind)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

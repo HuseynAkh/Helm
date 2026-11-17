@@ -16,8 +16,8 @@ public struct SearchQuery: Sendable, Equatable {
     public var includesContents: Bool
     /// The person asked a model to help with this search. The words are still their own.
     public var usesAI: Bool
-    /// Only items of this kind, as the AI search's kind row chose it, or of a kind it covers (`AISearchKind.covers`).
-    /// Nil for any kind, as every search is while the row isn't on show.
+    /// Only items of this kind, as the search's kind row chose it, or of a kind it covers (`AISearchKind.covers`), with
+    /// a model's help or without. Nil for any kind.
     public var kind: AISearchKind?
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
                 lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false,
