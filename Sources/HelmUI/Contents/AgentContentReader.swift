@@ -3,12 +3,16 @@ import Foundation
 import HelmCore
 
 /// Read contents on this Mac: summaries of what is inside files, for the AI panel's `read_contents` tool and for AI
-/// search, made by `AgentContentExtractor` and never anywhere else. It sits beside the disk AI mode reads names from;
-/// the module that talks to a model holds it only as `AgentContentReading` and can't open a file through it, only
-/// ask for summaries with the person's permit.
+/// search, made by `AgentContentExtractor` and never anywhere else. A summary holds words: a document's first lines
+/// (text, RTF, Word, OpenDocument, PDF), and what Vision reads and sees in a picture, a video's frames and a scanned
+/// PDF's first page. When a request asks, it also holds small JPEGs made on this Mac, with no metadata, of a picture,
+/// of those frames and of that page. It sits beside the disk AI mode reads names from; the module that talks to a
+/// model holds it only as `AgentContentReading` and can't open a file through it, only ask for summaries with the
+/// person's permit.
 ///
 /// Files are read off the main thread, four at a time, each with downloads off. Whatever isn't done when the time
-/// runs out answers `not_responding`; a read that is still going is left to finish on its own and its answer dropped.
+/// runs out answers `not_responding`, pictures included; a read that is still going is left to finish on its own and
+/// its answer dropped.
 public final class AgentContentReader: AgentContentReading, @unchecked Sendable {
     private let queue: OperationQueue
 
