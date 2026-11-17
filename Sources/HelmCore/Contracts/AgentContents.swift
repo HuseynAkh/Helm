@@ -190,6 +190,7 @@ public enum AgentContentLimits {
 
     /// Rich text that is read as text: RTF.
     public static let richTextExtensions: Set<String> = ["rtf"]
-    /// Word processor files whose text Helm reads with macOS's own document reader: Word and OpenDocument text.
-    public static let wordExtensions: Set<String> = ["docx", "doc", "odt"]
+    /// Word processor files whose text Helm reads with macOS's own document reader: Word (.docx) and OpenDocument
+    /// text. Word files from before 2007 (.doc) aren't read.
+    public static let wordExtensions: Set<String> = ["docx", "odt"]
 }

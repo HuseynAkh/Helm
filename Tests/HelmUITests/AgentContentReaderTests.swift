@@ -13,7 +13,8 @@ import HelmTestKit
 /// frames show and say, and a file that gives orders, read as words like any other. A file that isn't downloaded, a
 /// link, a file too large, a kind Helm doesn't read and a file that changed are never read, and time runs out. When a
 /// request asks, pictures, video frames and a scanned PDF's first page give small JPEGs with no metadata; Word and
-/// OpenDocument files made here give their lines.
+/// OpenDocument files made here give their lines. A zip bomb and an old Word file are refused before anything is
+/// unpacked.
 final class AgentContentReaderTests: XCTestCase {
     private let permit = AgentContentPermit(switchedOnByPerson: .panel)
     private var folder: TempDirectory!
@@ -248,24 +249,135 @@ final class AgentContentReaderTests: XCTestCase {
     }
 
     func testWordFilesGiveTheirLines() async throws {
-        let words = NSMutableAttributedString(string: "Plan for the bake sale\n\n  Lemon bars  \nBanana bread\n")
-        words.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: NSRange(location: 0, length: 22))
-        let whole = NSRange(location: 0, length: words.length)
-        for (name, type) in [("plan.docx", NSAttributedString.DocumentType.officeOpenXML), ("plan.odt", .openDocument),
-                             ("plan.doc", .docFormat), ("old.doc", .rtf)] {
-            try words.data(from: whole, documentAttributes: [.documentType: type]).write(to: folder.url.appendingPathComponent(name))
-        }
-        // Not what its name says: a web page called a Word file is never read as HTML, which could fetch its picture.
+        try writeDocuments(named: "plan")
+        // Not what its name says: a web page called a Word file is never read as HTML, which could fetch its picture. It
+        // isn't a zip, so it is refused before any reader sees it.
         try Data("<!DOCTYPE html><html><body><p>Lemon bars<br>Banana bread</p><img src=\"cake.png\"></body></html>".utf8)
             .write(to: folder.url.appendingPathComponent("page.docx"))
 
-        let found = await read(["plan.docx", "plan.odt", "plan.doc", "old.doc", "page.docx"])
-        for name in ["plan.docx", "plan.odt", "plan.doc", "old.doc"] {
+        let found = await read(["plan.docx", "plan.odt", "page.docx"])
+        for name in ["plan.docx", "plan.odt"] {
             XCTAssertEqual(found[name]?.kind, .text, name)
             XCTAssertEqual(found[name]?.status, .read, name)
             XCTAssertEqual(found[name]?.lines, ["Plan for the bake sale", "Lemon bars", "Banana bread"], name)
         }
-        XCTAssertEqual(found["page.docx"]?.status, .unreadable)
+        XCTAssertEqual(found["page.docx"]?.status, .too_large)
+        XCTAssertEqual(found["page.docx"]?.lines, [])
+    }
+
+    func testOldWordFilesAreNotRead() async throws {
+        // Word 97 to 2003, and RTF saved as a .doc as older apps did: neither is opened.
+        let words = NSAttributedString(string: "Plan for the bake sale\nLemon bars\n")
+        let whole = NSRange(location: 0, length: words.length)
+        for (name, type) in [("plan.doc", NSAttributedString.DocumentType.docFormat), ("old.doc", .rtf)] {
+            try words.data(from: whole, documentAttributes: [.documentType: type]).write(to: folder.url.appendingPathComponent(name))
+        }
+        XCTAssertEqual(AgentContentLimits.kind(typeIdentifier: "com.microsoft.word.doc", extension: "doc", kind: .regular), .other)
+        XCTAssertFalse(AgentContentLimits.wordExtensions.contains("doc"))
+
+        let found = await read(["plan.doc", "old.doc"])
+        for name in ["plan.doc", "old.doc"] {
+            XCTAssertEqual(found[name]?.kind, .other, name)
+            XCTAssertEqual(found[name]?.status, .unsupported, name)
+            XCTAssertEqual(found[name]?.lines, [], name)
+        }
+    }
+
+    // MARK: Zip bombs
+
+    func testAWordFileThatUnpacksToTooMuchIsRefusedUnread() async throws {
+        try writeDocuments(named: "plan")
+        // A real bomb, as macOS writes it: 17 million letters pack into some 20 KB. Without the check, macOS's reader
+        // makes all 17 million.
+        try writeDocuments(named: "bomb", text: String(repeating: "a", count: 17_000_000))
+        // 200,000 letters: little in all, but packed some 200 to one.
+        try writeDocuments(named: "tight", text: String(repeating: "a", count: 200_000))
+        let whole = try Data(contentsOf: folder.url.appendingPathComponent("plan.docx"))
+        try whole.prefix(whole.count - 30).write(to: folder.url.appendingPathComponent("cut.docx"))
+        for (name, refusal) in [("plan.docx", nil), ("plan.odt", nil), ("bomb.docx", .tooLarge), ("bomb.odt", .tooLarge),
+                                ("tight.docx", .packedTooTightly), ("tight.odt", .packedTooTightly),
+                                ("cut.docx", .unreadable)] as [(String, AgentContentZip.Refusal?)] {
+            let data = try Data(contentsOf: folder.url.appendingPathComponent(name))
+            XCTAssertEqual(AgentContentZip.refusal(of: data), refusal, name)
+        }
+
+        let found = await read(["plan.docx", "bomb.docx", "bomb.odt", "tight.docx", "tight.odt", "cut.docx"])
+        XCTAssertEqual(found["plan.docx"]?.status, .read)
+        for name in ["bomb.docx", "bomb.odt", "tight.docx", "tight.odt", "cut.docx"] {
+            XCTAssertEqual(found[name]?.kind, .text, name)
+            XCTAssertEqual(found[name]?.status, .too_large, name)
+            XCTAssertEqual(found[name]?.lines, [], name)
+        }
+    }
+
+    func testAZipsDirectoryIsReadBeforeItIsUnpacked() {
+        let refusal = AgentContentZip.refusal(of:)
+        // Parts.
+        XCTAssertNil(refusal(madeZip(Array(repeating: (0, 0), count: AgentContentZip.mostParts))))
+        XCTAssertEqual(refusal(madeZip(Array(repeating: (0, 0), count: AgentContentZip.mostParts + 1))), .tooManyParts)
+        // What they unpack to in all: 16 parts of 1 MB, each packed 11 KB, and then one byte more.
+        let megabyte = (11 * 1024, 1024 * 1024)
+        XCTAssertNil(refusal(madeZip(Array(repeating: megabyte, count: 16))))
+        XCTAssertEqual(refusal(madeZip(Array(repeating: megabyte, count: 16) + [(1, 1)])), .tooLarge)
+        // How tightly a part is packed: 100 to one, and a few kilobytes more for a short one.
+        XCTAssertNil(refusal(madeZip([(100, 100 * 100 + AgentContentZip.slack)])))
+        XCTAssertEqual(refusal(madeZip([(100, 100 * 100 + AgentContentZip.slack + 1)])), .packedTooTightly)
+        XCTAssertNil(refusal(madeZip([(0, AgentContentZip.slack)])))
+        XCTAssertEqual(refusal(madeZip([(0, AgentContentZip.slack + 1)])), .packedTooTightly)
+        XCTAssertEqual(refusal(madeZip([(1, 1), (1_000, 2_000_000)])), .packedTooTightly)
+
+        // Zip64: a locator before the end record, a field of all ones in the end record or in a part, or a Zip64 field.
+        XCTAssertEqual(refusal(madeZip([(1, 1)], beforeEnd: [0x50, 0x4B, 0x06, 0x07] + Array(repeating: 0, count: 16))), .zip64)
+        for (place, width) in [(8, 2), (10, 2), (12, 4), (16, 4)] {
+            XCTAssertEqual(refusal(madeZip([(1, 1)]) { bytes, _, end in self.put(&bytes, at: end + place, ones: width) }), .zip64,
+                           "end record \(place)")
+        }
+        for (place, width) in [(20, 4), (24, 4), (34, 2), (42, 4)] {
+            XCTAssertEqual(refusal(madeZip([(1, 1)]) { bytes, start, _ in self.put(&bytes, at: start + place, ones: width) }), .zip64,
+                           "directory \(place)")
+        }
+        XCTAssertEqual(refusal(madeZip([(1, 1)], extra: [0x01, 0x00, 0x08, 0x00] + Array(repeating: 0, count: 8))), .zip64)
+        XCTAssertNil(refusal(madeZip([(1, 1)], extra: [0x55, 0x54, 0x05, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00])), "another field")
+
+        // A directory that can't be read.
+        let plain = madeZip([(5, 5), (5, 5)])
+        XCTAssertNil(refusal(plain))
+        XCTAssertNil(refusal(madeZip([(5, 5)], comment: Array("made by hand".utf8))))
+        for (name, bytes) in [("nothing", Data()), ("two letters", Data("PK".utf8)), ("cut short", plain.prefix(plain.count - 1)),
+                              ("more after the end", plain + Data([0])), ("text", Data(String(repeating: "x", count: 100).utf8)),
+                              ("no directory", plain.suffix(22))] {
+            XCTAssertEqual(refusal(bytes), .unreadable, name)
+        }
+        // A second end record in the comment of the first, with a directory of its own that looks harmless: a reader
+        // that took the first would unpack the bomb.
+        XCTAssertEqual(refusal(madeZip([(1, 2_000_000)])), .packedTooTightly)
+        let twoEnds = madeZip([(1, 2_000_000)], comment: Array(repeating: 0, count: 51 + 22)) { bytes, start, end in
+            var harmless = Array(bytes[start..<(start + 51)])
+            self.put(&harmless, at: 24, value: 1, width: 4)
+            bytes.replaceSubrange((end + 22)..<(end + 73), with: harmless)
+            bytes.replaceSubrange((end + 73)..<(end + 77), with: [0x50, 0x4B, 0x05, 0x06])
+            for (place, value, width) in [(8, 1, 2), (10, 1, 2), (12, 51, 4), (16, end + 22, 4)] {
+                self.put(&bytes, at: end + 73 + place, value: value, width: width)
+            }
+        }
+        XCTAssertEqual(refusal(twoEnds), .unreadable)
+        let changes: [(String, (inout [UInt8], Int, Int) -> Void)] = [
+            ("a part's signature", { bytes, start, _ in bytes[start] = 0 }),
+            ("the directory's place", { bytes, _, end in self.put(&bytes, at: end + 16, value: 1, width: 4) }),
+            ("the directory's size", { bytes, _, end in self.put(&bytes, at: end + 12, value: 1, width: 4) }),
+            ("the parts on this disk", { bytes, _, end in self.put(&bytes, at: end + 8, value: 1, width: 2) }),
+            ("fewer parts than the directory holds", { bytes, _, end in
+                self.put(&bytes, at: end + 8, value: 1, width: 2)
+                self.put(&bytes, at: end + 10, value: 1, width: 2)
+            }),
+            ("another disk", { bytes, _, end in self.put(&bytes, at: end + 4, value: 1, width: 2) }),
+            ("a part on another disk", { bytes, start, _ in self.put(&bytes, at: start + 34, value: 1, width: 2) }),
+            ("a part past the directory", { bytes, start, _ in self.put(&bytes, at: start + 42, value: 60, width: 4) }),
+            ("a name past the directory", { bytes, start, _ in self.put(&bytes, at: start + 46 + 5 + 28, value: 900, width: 2) }),
+        ]
+        for (name, change) in changes {
+            XCTAssertEqual(refusal(madeZip([(5, 5), (5, 5)], change: change)), .unreadable, name)
+        }
     }
 
     func testAJPEGLosesItsMetadata() throws {
@@ -283,6 +395,51 @@ final class AgentContentReaderTests: XCTestCase {
     }
 
     // MARK: Made here
+
+    /// `name`.docx and `name`.odt holding `text`, written by macOS: a first line in bold, an empty line, two more.
+    private func writeDocuments(named name: String, text: String? = nil) throws {
+        let words = NSMutableAttributedString(string: text ?? "Plan for the bake sale\n\n  Lemon bars  \nBanana bread\n")
+        if text == nil {
+            words.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 18), range: NSRange(location: 0, length: 22))
+        }
+        let whole = NSRange(location: 0, length: words.length)
+        for (ext, type) in [("docx", NSAttributedString.DocumentType.officeOpenXML), ("odt", .openDocument)] {
+            try words.data(from: whole, documentAttributes: [.documentType: type])
+                .write(to: folder.url.appendingPathComponent("\(name).\(ext)"))
+        }
+    }
+
+    /// A zip of parts with these sizes, as its directory gives them, each part's packed bytes all zeros. `extra` goes
+    /// in each part's directory entry, `beforeEnd` between the directory and the end record, and `change` can alter
+    /// the bytes once they are made, given where the directory and the end record start.
+    private func madeZip(_ parts: [(Int, Int)], extra: [UInt8] = [], beforeEnd: [UInt8] = [],
+                     comment: [UInt8] = [], change: (inout [UInt8], Int, Int) -> Void = { _, _, _ in }) -> Data {
+        func le(_ value: Int, _ width: Int) -> [UInt8] { (0..<width).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) } }
+        var bytes: [UInt8] = [], directory: [UInt8] = []
+        for (index, (packed, unpacked)) in parts.enumerated() {
+            let name = Array(String(format: "p%04d", index).utf8), local = bytes.count
+            bytes += [0x50, 0x4B, 0x03, 0x04] + le(20, 2) + le(0, 2) + le(8, 2) + le(0, 8) + le(packed, 4)
+            bytes += le(unpacked, 4) + le(name.count, 2) + le(0, 2) + name + [UInt8](repeating: 0, count: packed)
+            directory += [0x50, 0x4B, 0x01, 0x02] + le(20, 2) + le(20, 2) + le(0, 2) + le(8, 2) + le(0, 8)
+            directory += le(packed, 4) + le(unpacked, 4) + le(name.count, 2) + le(extra.count, 2) + le(0, 10)
+            directory += le(local, 4) + name + extra
+        }
+        let start = bytes.count
+        bytes += directory + beforeEnd
+        let end = bytes.count
+        bytes += [0x50, 0x4B, 0x05, 0x06] + le(0, 4) + le(parts.count, 2) + le(parts.count, 2) + le(directory.count, 4)
+        bytes += le(start, 4) + le(comment.count, 2) + comment
+        change(&bytes, start, end)
+        return Data(bytes)
+    }
+
+    private func put(_ bytes: inout [UInt8], at place: Int, value: Int, width: Int) {
+        for index in 0..<width { bytes[place + index] = UInt8(truncatingIfNeeded: value >> (8 * index)) }
+    }
+
+    private func put(_ bytes: inout [UInt8], at place: Int, ones width: Int) {
+        put(&bytes, at: place, value: -1, width: width)
+    }
 
     /// A photo, red on its left half and blue on its right, written as a JPEG with this EXIF orientation, a place, a
     /// camera, a date and a caption.

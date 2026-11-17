@@ -25,10 +25,13 @@ import Vision
 /// Every byte is read by Helm itself, from a file it opened without following a link and with downloads off: a file
 /// kept in a cloud and not on this Mac is refused by macOS rather than fetched, and answers `not_downloaded`. A
 /// video's bytes reach AVFoundation through a loader that reads them the same way, so AVFoundation never opens the
-/// file itself. A Word or OpenDocument file is read from those bytes by readers that take its words alone: a linked
-/// picture, a template, a field that includes another file and an XML entity are neither fetched nor opened. Speech
-/// in a video is not listened to: macOS asks the person before an app may recognize speech, which a background read
-/// can't do.
+/// file itself. A Word (.docx) or OpenDocument (.odt) file is a zip, and its directory is read first
+/// (`AgentContentZip`): one that would unpack to too much, or looks built to, is refused as too large. Then it is read
+/// from those bytes by readers that take its words alone: a linked picture, a template, a field that includes another
+/// file and an XML entity are neither fetched nor opened. Rich text is always read as the type its extension names,
+/// never as HTML or a web archive, which load what they link to. Word files from before 2007 (.doc) aren't read: their
+/// reader is old and large. Speech in a video is not listened to: macOS asks the person before an app may recognize
+/// speech, which a background read can't do.
 enum AgentContentExtractor {
     /// What one file holds, read within `deadline`.
     static func summary(of request: AgentContentRequest, deadline: DispatchTime) -> AgentContentSummary {
@@ -72,9 +75,10 @@ enum AgentContentExtractor {
     /// as HTML, which could ask for pictures from the web.
     private static func text(_ file: AgentContentFile, ext: String) -> AgentContentSummary {
         if let type = documentType(ext) {
-            guard let data = file.bytes(upTo: file.length), let words = document(data, type: type) else {
-                return .notRead(.text, .unreadable)
-            }
+            guard let data = file.bytes(upTo: file.length) else { return .notRead(.text, .unreadable) }
+            // Word and OpenDocument files are zips, whose directory says what they unpack to.
+            if type != .rtf, AgentContentZip.refusal(of: data) != nil { return .notRead(.text, .too_large) }
+            guard let words = document(data, type: type) else { return .notRead(.text, .unreadable) }
             return AgentContentSummary(kind: .text, status: .read, lines: lines(of: words, characters: AgentContentLimits.textCharacters))
         }
         guard let data = file.bytes(upTo: textBytesRead) else { return .notRead(.text, .unreadable) }
@@ -85,28 +89,21 @@ enum AgentContentExtractor {
     /// How much of a text file is read: enough for the characters kept, whatever the encoding.
     private static let textBytesRead: Int64 = 24 * 1024
 
-    /// The reader for a rich text or word processor file: RTF, Word (.docx, and .doc from Word 97 to 2003) or
-    /// OpenDocument text (`AgentContentLimits.richTextExtensions` and `wordExtensions`). Each takes the words and their
-    /// styles from the bytes alone; a file that isn't what its extension says is unreadable, never read as HTML.
+    /// The reader for a rich text or word processor file: RTF, Word (.docx) or OpenDocument text
+    /// (`AgentContentLimits.richTextExtensions` and `wordExtensions`). Each takes the words and their styles from the
+    /// bytes alone; a file that isn't what its extension says is unreadable, never read as another type.
     private static func documentType(_ ext: String) -> NSAttributedString.DocumentType? {
         switch ext {
         case "rtf": return .rtf
         case "docx": return .officeOpenXML
-        case "doc": return .docFormat
         case "odt": return .openDocument
         default: return nil
         }
     }
 
-    /// A rich text or word processor document's words. A .doc that is RTF inside, as older apps saved them, is read
-    /// as RTF.
+    /// A rich text or word processor document's words, read as `type` and nothing else.
     private static func document(_ data: Data, type: NSAttributedString.DocumentType) -> String? {
-        if let read = try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil) {
-            return read.string
-        }
-        guard type == .docFormat, data.starts(with: Data("{\\rtf".utf8)) else { return nil }
-        return (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf],
-                                        documentAttributes: nil))?.string
+        (try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil))?.string
     }
 
     /// The words of a text file's first bytes: UTF-16 when it starts with that mark, else UTF-8, else Windows Latin.
@@ -328,6 +325,73 @@ enum AgentContentExtractor {
 private func comesFirst(_ label: AgentContentLabel, _ other: AgentContentLabel) -> Bool {
     if label.confidence != other.confidence { return label.confidence > other.confidence }
     return label.identifier < other.identifier
+}
+
+/// The directory of a zip, as Word (.docx) and OpenDocument (.odt) files are, read from the bytes Helm read before
+/// any reader unpacks them. macOS's readers unpack each part to the size this directory gives and fail rather than go
+/// past it, so these sizes bound what a file can unpack to.
+enum AgentContentZip {
+    /// Why a zip is refused.
+    enum Refusal: Equatable {
+        /// Its end record or its directory can't be read, or isn't where the end record says.
+        case unreadable
+        /// A Zip64 archive, whose sizes aren't in the directory's own fields.
+        case zip64
+        /// More than `mostParts` parts.
+        case tooManyParts
+        /// Its parts unpack to more than `mostBytes` in all.
+        case tooLarge
+        /// A part unpacks to more than `mostRatio` times its packed size, and more than `slack` bytes past that.
+        case packedTooTightly
+    }
+
+    static let mostBytes = 16 * 1024 * 1024
+    static let mostParts = 2_000
+    static let mostRatio = 100
+    /// A short part packs tightly whatever it holds, so each may unpack to this many bytes past its ratio.
+    static let slack = 4 * 1024
+
+    /// Why these bytes are refused, or nil for a zip of a size Helm reads.
+    static func refusal(of data: Data) -> Refusal? {
+        data.withUnsafeBytes { refusal(of: $0) }
+    }
+
+    private static func refusal(of bytes: UnsafeRawBufferPointer) -> Refusal? {
+        func u16(_ at: Int) -> Int { Int(UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: at, as: UInt16.self))) }
+        func u32(_ at: Int) -> Int { Int(UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: at, as: UInt32.self))) }
+        // The end record is 22 bytes and a comment that ends the file. There must be one such record, and only one.
+        let ends = stride(from: bytes.count - 22, through: max(0, bytes.count - 22 - 0xFFFF), by: -1)
+            .filter { u32($0) == 0x0605_4B50 && $0 + 22 + u16($0 + 20) == bytes.count }
+        guard ends.count == 1, let end = ends.first else { return .unreadable }
+        // Zip64 keeps its sizes in a record of its own, found through a locator just before this one, and marks each
+        // field it moved there with all ones.
+        if end >= 20, u32(end - 20) == 0x0706_4B50 { return .zip64 }
+        let parts = u16(end + 10), size = u32(end + 12), start = u32(end + 16)
+        if u16(end + 8) == 0xFFFF || parts == 0xFFFF || size == 0xFFFF_FFFF || start == 0xFFFF_FFFF { return .zip64 }
+        // One disk, and the directory right before the end record.
+        guard u16(end + 4) == 0, u16(end + 6) == 0, u16(end + 8) == parts, start + size == end else { return .unreadable }
+        guard parts <= mostParts else { return .tooManyParts }
+        var at = start, unpackedInAll = 0
+        for _ in 0..<parts {
+            guard at + 46 <= end, u32(at) == 0x0201_4B50 else { return .unreadable }
+            let packed = u32(at + 20), unpacked = u32(at + 24), disk = u16(at + 34), local = u32(at + 42)
+            let extra = at + 46 + u16(at + 28), extraEnd = extra + u16(at + 30), next = extraEnd + u16(at + 32)
+            guard next <= end else { return .unreadable }
+            if packed == 0xFFFF_FFFF || unpacked == 0xFFFF_FFFF || disk == 0xFFFF || local == 0xFFFF_FFFF { return .zip64 }
+            var field = extra
+            while field + 4 <= extraEnd {
+                if u16(field) == 0x0001 { return .zip64 }
+                field += 4 + u16(field + 2)
+            }
+            // The part's packed bytes lie before the directory.
+            guard disk == 0, local + 30 + packed <= start else { return .unreadable }
+            unpackedInAll += unpacked
+            guard unpackedInAll <= mostBytes else { return .tooLarge }
+            guard unpacked <= packed * mostRatio + slack else { return .packedTooTightly }
+            at = next
+        }
+        return at == end ? nil : .unreadable
+    }
 }
 
 /// A file opened for Read contents: a plain file, opened without following a link, still the item the folder rules
