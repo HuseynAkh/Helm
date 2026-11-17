@@ -156,6 +156,14 @@ agent-undo
 missing @FIX@/home/AgentMess/Packing List.txt
 exists @FIX@/home/.Trash/Packing List.txt
 agent-reads Everything is back where it was.
+# A web page is code: its group starts unticked, with a mark that says so
+agent-say write a web page for the trip
+agent-phase plan
+agent-group Create 1 file in “AgentMess” off
+agent-group-mark Create 1 file in “AgentMess”=Code: check it before you apply it
+agent-press Cancel
+agent-reads Plan dismissed.
+missing @FIX@/home/AgentMess/Trip.html
 # 7. Folders: /add one, a path that isn't there and a system folder. A message that ends in a path adds the folder
 # first and sends its id in place of the path. A dropped folder is added too, and /clear starts over
 agent-say /add @FIX@/home/Downloads
@@ -260,8 +268,9 @@ agent-script @FIX@/agent-script.json
 agent-say /clear
 agent-chips AgentMess:thisMac
 # 9. A folder in the Google Drive stand-in: its chip names Google Drive, a plan there says the changes sync, and 30
-# moves inside it arrive ticked. A copy of a file that isn't downloaded is left out with its own line, and nothing
-# sent names the provider's folder or the account in it
+# moves inside it arrive ticked. A new file there starts unticked, marked as going to Google Drive. A copy of a file
+# that isn't downloaded is left out with its own line, and nothing sent names the provider's folder or the account
+# in it
 go @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess
 wait 0.5
 agent-chips Drive Mess:cloud
@@ -274,6 +283,12 @@ agent-group-path Move 30 items to “Pages”=~/Library/CloudStorage/GoogleDrive
 agent-reads Changes sync to your devices and to anyone this is shared with.
 agent-press Cancel
 agent-reads Plan dismissed.
+agent-say write a note for the drive
+agent-phase plan
+agent-group Create 1 file in “Drive Mess” off
+agent-group-mark Create 1 file in “Drive Mess”=Goes to Google Drive
+agent-press Cancel
+missing @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/Pages.md
 agent-cloud-only @FIX@/home/Library/CloudStorage/GoogleDrive-me@example.com/Shared/Drive Mess/page-01.txt
 agent-say copy the first page
 agent-phase idle

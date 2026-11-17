@@ -59,6 +59,9 @@ places = [
         "A copy of the first page.",
         new_folders=[{"key": "n1", "parent": "@root", "name": "Copies"}],
         copies=[{"items": ["@name:page-01.txt"], "all_in": "", "to": "n1"}])]},
+    # A new file there arrives where other devices see it, so it starts unticked.
+    {"when": "note for the drive", "turns": [listing(), proposal(
+        "A note beside the pages.", new_files=[{"parent": "@root", "name": "Pages.md", "text": "Thirty pages.\n"}])]},
     # With Documents on show and its Reports folder answering as iCloud Drive: a file out of Reports into Documents.
     {"when": "file the report", "turns": [listing(), listing("@name:Reports"), proposal(
         "The report goes into Documents.",
@@ -99,6 +102,9 @@ script = {"rules": places + [
     {"when": "packing list", "turns": [listing(), proposal(
         "A packing list for the trip.",
         new_files=[{"parent": "@root", "name": "Packing List.txt", "text": "Passport\nCharger\nSocks\n"}])]},
+    # A web page is code, so it starts unticked.
+    {"when": "web page", "turns": [listing(), proposal(
+        "A page for the trip.", new_files=[{"parent": "@root", "name": "Trip.html", "text": "<p>Trip</p>\n"}])]},
     anything], **search}
 
 # Each rule tries one thing Helm refuses. "escape" names items by path, and one of them is outside the home.
