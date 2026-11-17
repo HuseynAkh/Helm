@@ -5,7 +5,8 @@ import HelmCore
 
 /// The AI search's kind row: Any, Photo, Video, Document, Folder, Code, Audio and Archive, one chosen at a time, as
 /// Finder's search scope bar offers its places. The window shows it under the header, and under the tabs when there
-/// are several, only while the search field's spark is on; the choice is the window's.
+/// are several, only while the search field's spark is on; the choice is the window's. At its trailing end is the
+/// Read contents switch, when the run can read inside files, which the window holds too.
 ///
 /// A click chooses and leaves the caret where it was, so an empty search stays open. Tab in the search field brings
 /// the keys here: Left and Right then choose the one before or after, and Tab, Shift-Tab or Escape give the keys back
@@ -27,6 +28,9 @@ import HelmCore
     /// The keys left the row, for the search field or anywhere else. Called on the next turn of the run loop, once
     /// the new holder has them.
     var onResign: (() -> Void)?
+    /// The Read contents switch at the row's trailing end, and what a press on it asks for.
+    let contentsToggle = AgentContentsToggle(height: SearchKindChip.chipHeight, help: AgentText.readContentsSearchHelp)
+    var onContents: ((Bool) -> Void)?
 
     /// Room at the row's ends, between two choices, and either side of a choice's word: as much as there's room for,
     /// down to the least, so every choice shows whole in the narrowest window.
@@ -34,6 +38,8 @@ import HelmCore
     private static let gap: CGFloat = 2
     private static let mostPadding: CGFloat = 9
     private static let leastPadding: CGFloat = 4
+    /// The least room between the last choice and the Read contents switch.
+    private static let toggleGap: CGFloat = 12
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -54,9 +60,14 @@ import HelmCore
         separator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         addSubview(separator)
+        contentsToggle.isHidden = true
+        contentsToggle.onToggle = { [weak self] on in self?.onContents?(on) }
+        addSubview(contentsToggle)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.edge),
             row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            contentsToggle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.edge),
+            contentsToggle.centerYAnchor.constraint(equalTo: centerYAnchor),
             separator.leadingAnchor.constraint(equalTo: leadingAnchor), separator.trailingAnchor.constraint(equalTo: trailingAnchor),
             separator.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
@@ -68,6 +79,15 @@ import HelmCore
     func setShown(_ shown: Bool) {
         isHidden = !shown
         heightConstraint.constant = shown ? Self.height : 0
+    }
+
+    /// Shows the Read contents switch, when the run can read inside files, at its state, without saying it was pressed.
+    func showContents(offered: Bool, on: Bool) {
+        if contentsToggle.isHidden == offered {
+            contentsToggle.isHidden = !offered
+            fitChips(to: bounds.width)
+        }
+        contentsToggle.show(on: on, enabled: true)
     }
 
     /// Shows `kind` as the choice, without saying it was made.
@@ -95,7 +115,9 @@ import HelmCore
     private func fitChips(to width: CGFloat) {
         guard width > 0, !chips.isEmpty else { return }
         let words = chips.reduce(0) { $0 + $1.wordWidth }
-        let room = width - 2 * Self.edge - Self.gap * CGFloat(chips.count - 1) - words
+        // The switch at the end keeps its own width, and a gap before it.
+        let toggle = contentsToggle.isHidden ? 0 : contentsToggle.width + Self.toggleGap
+        let room = width - 2 * Self.edge - Self.gap * CGFloat(chips.count - 1) - words - toggle
         let padding = min(Self.mostPadding, max(Self.leastPadding, floor(room / CGFloat(2 * chips.count))))
         for chip in chips { chip.padding = padding }
     }
@@ -148,6 +170,14 @@ import HelmCore
 
     // MARK: Test support
 
+    /// Whether the Read contents switch shows, and whether it is on.
+    var contentsForTesting: (shown: Bool, on: Bool) { (!contentsToggle.isHidden, contentsToggle.isOn) }
+    /// A click on the Read contents switch. False while it doesn't show.
+    @discardableResult func clickContentsForTesting() -> Bool {
+        guard !contentsToggle.isHidden else { return false }
+        contentsToggle.performClick(nil)
+        return true
+    }
     /// The words of the choices, in order.
     var wordsForTesting: [String] { chips.map(\.word) }
     /// A click on the choice with these words. False when there's none.

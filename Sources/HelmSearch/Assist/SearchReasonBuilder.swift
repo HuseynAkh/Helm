@@ -12,14 +12,16 @@ public enum SearchReasonBuilder {
     public static let factsPerLine = 2
 
     /// The reason line for one result: the first two codes Helm can back, in the order given, or nil when it can
-    /// back none. `query` is the planned query that found the item, if one did.
+    /// back none. `query` is the planned query that found the item, if one did. `sighting` is what Read contents found
+    /// inside the picture or video that answered the query's words, which the content fact then names.
     public static func reason(codes: [SearchReasonCode], entry: FileEntry, query: AISearchQuery?, scopeRoot: URL?,
-                              calendar: Calendar, locale: Locale) -> SearchReason? {
+                              calendar: Calendar, locale: Locale, sighting: AISearchSighting? = nil) -> SearchReason? {
         var used: [SearchReasonCode] = []
         var facts: [String] = []
         for code in codes where !used.contains(code) {
             guard facts.count < factsPerLine,
-                  let fact = fact(code, entry: entry, query: query, scopeRoot: scopeRoot, calendar: calendar, locale: locale)
+                  let fact = fact(code, entry: entry, query: query, scopeRoot: scopeRoot, calendar: calendar, locale: locale,
+                                  sighting: sighting)
             else { continue }
             used.append(code); facts.append(fact)
         }
@@ -83,6 +85,9 @@ public enum SearchReasonBuilder {
 
     static let separator = " · "
     static let mentions = "Mentions "
+    static let shows = "Shows: "
+    static let textInImage = "Text in image: "
+    static let textInVideo = "Text in video: "
     static let nameHas = "Name has "
     static let inFolder = "In "
 
@@ -119,13 +124,14 @@ public enum SearchReasonBuilder {
     // MARK: Facts
 
     private static func fact(_ code: SearchReasonCode, entry: FileEntry, query: AISearchQuery?, scopeRoot: URL?,
-                             calendar: Calendar, locale: Locale) -> String? {
+                             calendar: Calendar, locale: Locale, sighting: AISearchSighting? = nil) -> String? {
         switch code {
         case .name:
             guard let query, let word = (query.nameAll + query.nameAny).first(where: { AISearchMatcher.holds(entry.name, $0) })
             else { return nil }
             return nameHas + quoted(word)
         case .content:
+            if let sighting { return seen(sighting) }
             // Only a query with words from inside files found the item through them, and those words are the person's.
             guard let word = query?.contentAll.first else { return nil }
             return mentions + quoted(word)
@@ -165,6 +171,17 @@ public enum SearchReasonBuilder {
         case .none:
             return AISearchMatcher.date(.modified, of: entry).map { (.modified, $0) }
         }
+    }
+
+    /// What a picture or a video showed or held: "Shows: dog, beach", "Text in image: “invoice”", or both. The things
+    /// shown are the classifier's words and the text words are the person's own.
+    public static func seen(_ sighting: AISearchSighting) -> String? {
+        var parts: [String] = []
+        if !sighting.labels.isEmpty { parts.append(shows + sighting.labels.prefix(3).map(escaped).joined(separator: ", ")) }
+        if let word = sighting.textWords.first {
+            parts.append((sighting.medium == .image ? textInImage : textInVideo) + quoted(word))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: separator)
     }
 
     // MARK: Formatting

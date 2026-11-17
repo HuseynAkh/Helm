@@ -15,6 +15,10 @@ import HelmCore
 /// sent, and the plan a model answers. Choosing another kind searches the words again by name, and Return asks the
 /// model again; nothing is sent by the choice itself. The row goes, and the choice goes back to Any, whenever the
 /// spark goes off, as it does when the search closes.
+///
+/// The row's trailing end holds the Read contents switch, in a run that can read inside files. On, it hands the
+/// runner the person's permit, and Return then also looks inside pictures and videos on this Mac. Like the kind, it
+/// lasts for the search: it goes off, and what was read is forgotten, whenever the spark goes off.
 extension BrowserWindowController {
     /// Installs the window's AI search runner, and keeps the spark in step with the tab and with AI mode.
     func installAISearch() {
@@ -28,6 +32,17 @@ extension BrowserWindowController {
         watch.shown = (isAISearchAvailable, false)
         header.setAISearch(available: isAISearchAvailable, on: false)
         header.kindBar.onChoose = { [weak self] kind in self?.chooseAISearchKind(kind) }
+        header.kindBar.onContents = { [weak self] on in self?.chooseAISearchContents(on) }
+    }
+
+    /// The kind row's Read contents switch. Nothing is sent or read by the press itself; Return then reads.
+    func chooseAISearchContents(_ on: Bool) {
+        guard let runner = aiSearchRunner, runner.isOn, dependencies.agent.contents != nil else {
+            header.kindBar.showContents(offered: false, on: false)
+            return
+        }
+        runner.contentPermit = on ? AgentContentPermit(switchedOnByPerson: .search) : nil
+        showAISearchState()
     }
 
     /// Return in the search field. With the spark on and a model ready, the words are sent; otherwise nothing
@@ -108,7 +123,7 @@ extension BrowserWindowController {
             }
         }
         guard runner.isOn, tab.id == activeTabID else { return nil }
-        return AISearchStatus(text: AgentText.searchHint(destination))
+        return AISearchStatus(text: runner.readsContents ? AgentText.searchHintContents(destination) : AgentText.searchHint(destination))
     }
 
     /// "Find with AI" on the no-results page: the spark goes on and the same words are sent at once. While no model
@@ -159,6 +174,7 @@ extension BrowserWindowController {
         header.setAISearch(available: shown.available, on: shown.on)
         // The kind row shows with the spark on, at the runner's choice: Any each time it comes back.
         header.kindBar.show(shown.on ? aiSearchRunner?.kind : nil)
+        header.kindBar.showContents(offered: shown.on && dependencies.agent.contents != nil, on: aiSearchRunner?.readsContents ?? false)
         header.kindBar.setShown(shown.on)
         if let tab = activeTab { renderStatus(tab) }
     }
@@ -203,6 +219,15 @@ extension BrowserWindowController {
     }
     /// A click on the kind row's choice with these words, as a person makes it. False when the row has none.
     @discardableResult public func chooseAISearchKindForTesting(_ word: String) -> Bool { header.kindBar.clickForTesting(word) }
+    /// The Read contents switch at the end of the kind row: whether it shows and whether it is on.
+    public var aiSearchContentsForTesting: (shown: Bool, on: Bool) {
+        let shown = header.kindBar.contentsForTesting
+        return (shown.shown && !header.kindBar.isHidden, aiSearchRunner?.readsContents ?? false)
+    }
+    /// A click on the kind row's Read contents switch, as a person makes it. False while it doesn't show.
+    @discardableResult public func clickAISearchContentsForTesting() -> Bool { header.kindBar.clickContentsForTesting() }
+    /// How many pictures and videos this search session has read inside.
+    public var aiSearchContentsReadForTesting: Int { aiSearchRunner?.memo.count ?? 0 }
     /// A key pressed while the kind row has the keys: left, right, tab or escape. False when it hasn't them.
     @discardableResult public func kindRowKeyForTesting(_ name: String) -> Bool {
         guard header.kindBar.hasKeys else { return false }

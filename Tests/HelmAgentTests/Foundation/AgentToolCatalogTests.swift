@@ -56,7 +56,8 @@ final class AgentToolCatalogTests: XCTestCase {
 
     func testThereAreThreeToolsInOrder() {
         XCTAssertEqual(AgentToolCatalog.all.map(\.name), ["list_folder", "find_items", "propose_changes"])
-        XCTAssertEqual(AgentToolCatalog.names, ["list_folder", "find_items", "propose_changes"])
+        // read_contents is a fourth, offered only while Read contents is on.
+        XCTAssertEqual(AgentToolCatalog.names, ["list_folder", "find_items", "propose_changes", "read_contents"])
     }
 
     func testTheSchemasAreTheFixedOnes() throws {

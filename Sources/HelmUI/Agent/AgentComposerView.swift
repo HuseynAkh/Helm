@@ -5,7 +5,8 @@ import HelmAgent
 import HelmCore
 
 /// The panel's composer, pinned to its bottom: a rounded field holding a plain text view of one to five lines and
-/// Send at its trailing end, as Messages draws its field, then the model's name in quiet secondary text under it.
+/// Send at its trailing end, as Messages draws its field, then the model's name in quiet secondary text under it,
+/// and at the trailing end of that line the Read contents switch, when this run can read inside files.
 /// Send shows an arrow in the accent colour and becomes Stop while a request or an Apply runs; its title, which
 /// VoiceOver reads and its tooltip shows, says which. With more than one model to choose
 /// from, the name is a compact menu of every connected provider's models, the current one ticked, then AI Settings…;
@@ -17,6 +18,8 @@ import HelmCore
     private let box = NSView()
     private let modelButton = NSButton(title: "", target: nil, action: nil)
     private let sendButton = NSButton(title: AgentText.send, target: nil, action: nil)
+    /// The Read contents switch, under the field at its trailing end.
+    let contentsToggle = AgentContentsToggle(height: 20, help: AgentText.readContentsHelp)
     private var boxHeight: NSLayoutConstraint?
     private var watch: AnyCancellable?
     private weak var model: AgentPanelModel?
@@ -111,7 +114,9 @@ import HelmCore
         sendButton.target = self
         sendButton.action = #selector(pressSend)
 
-        for view in [box, modelButton] as [NSView] {
+        contentsToggle.onToggle = { [weak self] on in self?.model?.chooseReadsContents(on) }
+        contentsToggle.isHidden = true
+        for view in [box, modelButton, contentsToggle] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -136,10 +141,13 @@ import HelmCore
             sendButton.heightAnchor.constraint(equalToConstant: Self.sendSize),
             sendButton.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -5),
             sendButton.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -5),
-            modelButton.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 5),
+            modelButton.topAnchor.constraint(equalTo: box.bottomAnchor, constant: 6),
             modelButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: margin + 6),
-            modelButton.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -margin),
-            modelButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8)
+            modelButton.trailingAnchor.constraint(lessThanOrEqualTo: contentsToggle.leadingAnchor, constant: -8),
+            modelButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
+            // Level with the model's name, at the field's trailing edge.
+            contentsToggle.centerYAnchor.constraint(equalTo: modelButton.centerYAnchor),
+            contentsToggle.trailingAnchor.constraint(equalTo: box.trailingAnchor)
         ])
         // A long model name gives way, and never widens the panel.
         modelButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -204,6 +212,8 @@ import HelmCore
             paintSend()
         }
         textView.needsDisplay = true
+        contentsToggle.isHidden = !model.offersReadContents
+        contentsToggle.show(on: model.readsContents, enabled: model.canChooseScope)
         // The model's id, or the provider's name when it has none, as the disk's and the model's words are: escaped.
         let name = AgentTextEscaper.escape(model.provider.model.isEmpty ? model.provider.name : model.provider.model)
         let asMenu = model.modelMenu.isMenu
@@ -282,6 +292,12 @@ import HelmCore
         guard let model else { return }
         if model.showsStop { model.press(AgentText.stop) } else { model.send() }
     }
+
+    /// For tests: the Read contents switch as it is drawn, whether it shows, is on and can be pressed, and a press on it.
+    var contentsToggleForTesting: (shown: Bool, on: Bool, enabled: Bool) {
+        (!contentsToggle.isHidden, contentsToggle.isOn, contentsToggle.isEnabled)
+    }
+    func pressContentsToggleForTesting() { contentsToggle.performClick(nil) }
 
     /// For tests: the name under the composer, whether it shows as a menu, and a press on it.
     var modelNameForTesting: String { modelButton.attributedTitle.string }

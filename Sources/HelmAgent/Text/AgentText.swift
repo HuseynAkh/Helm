@@ -68,11 +68,16 @@ public enum AgentText {
     // MARK: Panel: status, trace and notices
 
     public static func statusReading(_ count: Int) -> String { "Reading \(counted(count, "name", "names"))…" }
+    public static func statusReadingContents(_ count: Int) -> String { "Reading inside \(counted(count, "file", "files"))…" }
     public static let statusThinking = "Thinking…"
     public static let statusCheckingPlan = "Checking the plan…"
     public static let statusStopping = "Stopping…"
     public static func traceSent(names count: Int, destination: String) -> String {
         "Sent \(counted(count, "name", "names")) to \(shown(destination))."
+    }
+    /// The trace line of a request that also sent summaries of what is inside files.
+    public static func traceSentSummaries(names: Int, summaries: Int, destination: String) -> String {
+        "Sent \(counted(names, "name", "names")) and \(counted(summaries, "summary", "summaries")) to \(shown(destination))."
     }
     public static let noticeStopped = "Stopped."
     public static let noticeStartedOver = "Started over."
@@ -80,6 +85,9 @@ public enum AgentText {
         count == 1 ? "1 folder isn't loaded, so Helm skipped it." : "\(number(count)) folders aren't loaded, so Helm skipped them."
     }
     public static func noticeNotResponding(_ name: String) -> String { "“\(shown(name))” isn't responding." }
+    public static func noticeNotDownloadedNotRead(_ count: Int) -> String {
+        count == 1 ? "1 file isn't downloaded, so Helm didn't read it." : "\(number(count)) files aren't downloaded, so Helm didn't read them."
+    }
     public static func noticeDisconnected(_ name: String) -> String { "“\(shown(name))” was disconnected." }
     public static func addAdded(_ name: String) -> String { "Added “\(shown(name))”." }
     public static func addAlready(_ name: String) -> String { "“\(shown(name))” is already added." }
@@ -209,6 +217,12 @@ public enum AgentText {
     public static func searchHint(_ destination: String) -> String {
         "Return sends your words and matching file names to \(shown(destination))."
     }
+    /// The status bar's hint while the search's Read contents switch is on too.
+    public static func searchHintContents(_ destination: String) -> String {
+        "Return sends your words and matching file names to \(shown(destination)); what Helm reads inside files stays on this Mac."
+    }
+    /// The part of the status bar's line that counts pictures and videos left unread because they aren't downloaded.
+    public static func searchNotDownloaded(_ count: Int) -> String { "\(number(count)) not downloaded" }
     public static let searchThinking = "Thinking…"
     public static let searchFailed = "AI search isn't available."
     public static let searchOnThisMac = "Searched what's on this Mac."
@@ -266,6 +280,27 @@ public enum AgentText {
         "Sends your requests and file names from your home folder to \(shown(destination)), never file contents."
     }
     public static func destinationOnThisMac(_ provider: String) -> String { "\(shown(provider)) on this Mac" }
+
+    // MARK: Read contents
+
+    /// The switch beside the composer and at the end of AI search's kind row: its words and VoiceOver label.
+    public static let readContents = "Read contents"
+    /// The panel switch's tooltip.
+    public static let readContentsHelp = "Lets AI mode read inside text files, PDFs, pictures and videos, on this Mac, for this thread."
+    /// The search switch's tooltip.
+    public static let readContentsSearchHelp = "Looks inside documents, photos and videos on this Mac to find matches, for this search."
+    /// The consent line at the top of a thread while Read contents is on, for a model on this Mac.
+    public static let consentContentsOnThisMac = "Reads file contents on this Mac; nothing leaves your Mac."
+    /// The same, for a model elsewhere.
+    public static func consentContents(_ destination: String) -> String {
+        "Sends your requests, file names and short summaries of file contents to \(shown(destination))."
+    }
+    /// With Whole Mac on too, for a model on this Mac.
+    public static let consentContentsWholeMacOnThisMac = "Reads file names and contents from your home folder on this Mac; nothing leaves your Mac."
+    /// With Whole Mac on too, for a model elsewhere.
+    public static func consentContentsWholeMac(_ destination: String) -> String {
+        "Sends your requests, file names and short summaries of file contents from your home folder to \(shown(destination))."
+    }
     public static let destinationNotSet = "the address you enter"
     public static let providerLabel = "Provider"
     public static let keyLabel = "Key"

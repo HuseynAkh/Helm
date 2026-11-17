@@ -13,6 +13,8 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
     private var addedRoots: [AgentScopeRoot] = []
     private var wholeMacRoots: [AgentScopeRoot] = []
     private var mode: AgentScopeMode = .thisFolder
+    /// The person's permit while Read contents is on. Nothing is ever read here; the switch only starts over.
+    private var contentPermit: AgentContentPermit?
     private let home: String
     private var aliasCount = 0
     private var usedPlans: Set<UUID> = []
@@ -167,10 +169,24 @@ public final class StandInConversation: AgentConversing, @unchecked Sendable {
 
     // MARK: Roots
 
-    /// A new thread starts in This Folder. Called with the lock held.
+    /// Read contents, as a real conversation keeps it: on with a permit, off with none, and off for a new thread. Either
+    /// way the thread starts over. Nothing is read.
+    public func readsContents() async -> Bool { locked { contentPermit != nil } }
+
+    public func setReadsContents(_ permit: AgentContentPermit?) async {
+        let changed = locked { () -> Bool in
+            guard (permit == nil) != (contentPermit == nil) else { return false }
+            contentPermit = permit
+            return true
+        }
+        if changed { noticeFeed.yield(.startedOver) }
+    }
+
+    /// A new thread starts in This Folder, with Read contents off. Called with the lock held.
     private func leaveWholeMac() {
         mode = .thisFolder
         wholeMacRoots = []
+        contentPermit = nil
     }
 
     /// A root for text taken as a path. The alias comes from a count that never goes back, so one is never used twice.

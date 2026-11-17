@@ -124,6 +124,26 @@ extension HostSmokeDriver {
                 sent += conversation.sent.map(\.text).joined(separator: "\n")
             }
             check(!sent.contains(argument), step, "it was sent")
+        case "agent-sent-has":
+            // Something recorded as sent by the scripted model holds this text.
+            let sent = services.runtime.scriptedClientForTesting?.allSentText() ?? ""
+            check(sent.contains(argument), step, "it wasn't sent")
+        case "agent-contents":
+            // agent-contents on|off: a click on the Read contents switch beside the composer, when it isn't already
+            // as asked, then the wait for the new thread.
+            guard let model, argument == "on" || argument == "off" else { check(false, step, "usage"); return true }
+            if model.readsContentsForTesting != argument { window.pressAgentContentsToggleForTesting() }
+            let done = await until { model.readsContentsForTesting == argument && !model.isWaitingForTesting }
+            check(done, step, model.readsContentsForTesting)
+        case "agent-contents-is":
+            // agent-contents-is on|off|hidden: the switch beside the composer as drawn, and the thread's own state.
+            let reached = await until {
+                let drawn = window.agentContentsToggleForTesting
+                let shown = !drawn.shown ? "hidden" : drawn.on ? "on" : "off"
+                return shown == argument && (argument == "hidden" || model?.readsContentsForTesting == argument)
+            }
+            let drawn = window.agentContentsToggleForTesting
+            check(reached, step, !drawn.shown ? "hidden" : "\(drawn.on ? "on" : "off"), thread \(model?.readsContentsForTesting ?? "none")")
         case "agent-client-built":
             let built = services.runtime.clientBuildCount > 0 ? "yes" : "no"
             check(built == argument, step, built)

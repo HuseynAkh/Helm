@@ -22,6 +22,12 @@ import HelmCore
 /// as a change of provider does, and so does every other new thread: starting over, `/clear` and removing an added
 /// folder all come back to This Folder. A thread that reaches its length limit inside a request carries on in the
 /// scope that request was sent in. Whole Mac requests go with `AgentPrompt.wholeMac`.
+///
+/// Read contents works the same way: the person's switch turns it on for the thread, with their permit, and either
+/// way starts the thread over, so its tools and prompt never change inside a thread. A new thread starts with it off,
+/// and a thread that reaches its length limit carries on with it as it was. While it is on, and only then, the
+/// model is offered `read_contents`, the prompt ends with `AgentPrompt.readContents`, and the reader is asked for
+/// summaries; while it is off nothing is ever read.
 public actor AgentSession: AgentConversing {
     private let parts: AgentSessionParts
     private let validator: any AgentPlanValidating
@@ -42,6 +48,8 @@ public actor AgentSession: AgentConversing {
     private var outcomeForNote: AgentPlanOutcome?
     private var resultHook: (@Sendable (String) -> String)?
     private var mode: AgentScopeMode = .thisFolder
+    /// The person's permit while Read contents is on for the thread.
+    private var contentPermit: AgentContentPermit?
 
     public nonisolated let notices: AsyncStream<AgentNotice>
 
@@ -68,6 +76,7 @@ public actor AgentSession: AgentConversing {
         await stop()
         await scope.remove(alias: alias)
         await backToThisFolder()
+        contentPermit = nil
         resetThread()
         noticeFeed.yield(.startedOver)
     }
@@ -84,6 +93,22 @@ public actor AgentSession: AgentConversing {
         mode = next
         resetThread()
         await scope.setMode(next)
+        noticeFeed.yield(.startedOver)
+    }
+
+    // MARK: Read contents
+
+    public func readsContents() async -> Bool { contentPermit != nil && parts.contents != nil }
+
+    /// Turns Read contents on with the person's permit, or off with nil, and starts the thread over, as a switch of
+    /// scope does. With no reader in this run, the switch stays off.
+    public func setReadsContents(_ permit: AgentContentPermit?) async {
+        let next = parts.contents == nil ? nil : permit
+        guard (next == nil) != (contentPermit == nil) else { return }
+        await stop()
+        contentPermit = next
+        resetThread()
+        await scope.startOver()
         noticeFeed.yield(.startedOver)
     }
 
@@ -120,6 +145,7 @@ public actor AgentSession: AgentConversing {
     public func startOver() async {
         await stop()
         await backToThisFolder()
+        contentPermit = nil
         await scope.startOver()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -128,6 +154,7 @@ public actor AgentSession: AgentConversing {
     public func clear() async {
         await stop()
         mode = .thisFolder
+        contentPermit = nil
         await scope.clear()
         resetThread()
         noticeFeed.yield(.startedOver)
@@ -219,19 +246,34 @@ public actor AgentSession: AgentConversing {
         commit(client.userItems(text: note + "\n" + words, toolResults: takeHeldResults()))
         requests += 1
 
-        let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits).usingListSeconds(listSeconds)
+        var reading: AgentContentAccess?
+        if let permit = contentPermit, let reader = parts.contents {
+            let homes = [parts.home, await scope.canonicalHome()]
+            reading = AgentContentAccess(reader: reader, permit: permit, homes: homes)
+        }
+        let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits, contents: reading)
+            .usingListSeconds(listSeconds)
         let asksForChanges = input.asksForChanges || AgentChangeAsk.asksForChanges(input.text)
-        let system = mode == .wholeMac ? AgentPrompt.wholeMac : AgentPrompt.system
+        let system = AgentPrompt.system(for: mode, readsContents: reading != nil)
         let sent = await turns(client: client, runner: runner, limits: limits, system: system, selected: Set(input.selectedPaths),
                                asksForChanges: asksForChanges, emit: emit)
         if runner.notLoaded > 0 { emit(.notice(.foldersNotLoaded(runner.notLoaded))) }
-        if sent > 0 { emit(.trace(.sent(names: sent, destination: client.destination))) }
+        if runner.contentsNotDownloaded > 0 { emit(.notice(.notDownloadedNotRead(runner.contentsNotDownloaded))) }
+        if let slow = runner.slowContents { emit(.notice(.notResponding(label: slow))) }
+        if sent.names > 0 || sent.summaries > 0 {
+            if sent.summaries > 0 {
+                emit(.trace(.sentWithSummaries(names: sent.names, summaries: sent.summaries, destination: client.destination)))
+            } else {
+                emit(.trace(.sent(names: sent.names, destination: client.destination)))
+            }
+        }
     }
 
     /// The model turns of one request, until the model ends its turn, a plan arrives, or something ends the request.
-    /// Answers how many names went into the thread: those of a turn that was dropped never leave the app.
+    /// Answers how many names, and how many summaries of what is inside files, went into the thread: those of a turn
+    /// that was dropped never leave the app.
     private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, system: String,
-                       selected: Set<String>, asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> Int {
+                       selected: Set<String>, asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> (names: Int, summaries: Int) {
         let started = parts.clock.now()
         var counts = RequestCounts()
         /// The words of the turn that ended without a plan, while the model is asked for one.
@@ -241,11 +283,11 @@ public actor AgentSession: AgentConversing {
             waitingReply = nil
             if !reply.isEmpty { emit(.reply(reply)) }
         }
-        func ended(_ event: AgentSessionEvent) -> Int {
+        func ended(_ event: AgentSessionEvent) -> (names: Int, summaries: Int) {
             if case .plan = event { waitingReply = nil }
             if let waiting = waitingReply { show(waiting) }
             emit(event)
-            return counts.names
+            return (counts.names, counts.summaries)
         }
         func secondsLeft() -> Double { limits.requestSeconds - parts.clock.now().timeIntervalSince(started) }
         let turnCount = max(0, limits.turns)
@@ -254,7 +296,7 @@ public actor AgentSession: AgentConversing {
             emit(.status(.thinking))
             let streamed: StreamedTurn
             do {
-                let input = AgentTurnInput(system: system, tools: AgentToolCatalog.all, history: history)
+                let input = AgentTurnInput(system: system, tools: runner.tools, history: history)
                 streamed = try await Self.stream(client, input, replyCharacters: limits.replyCharacters, seconds: secondsLeft())
             } catch {
                 if isStopping { return ended(.notice(.stopped)) }
@@ -285,7 +327,7 @@ public actor AgentSession: AgentConversing {
                     continue
                 }
                 show(reply.isEmpty ? waitingReply ?? "" : reply)
-                return counts.names
+                return (counts.names, counts.summaries)
             }
             if !reply.isEmpty { show(reply) }
 
@@ -293,6 +335,7 @@ public actor AgentSession: AgentConversing {
             var plan: (plan: AgentChangePlan, index: Int)?
             var ending: AgentSessionEvent?
             var names = 0
+            let summariesBefore = runner.summariesSent
             for (index, call) in result.calls.enumerated() {
                 if plan != nil || ending != nil {
                     results.append(Self.errorResult(call, .limit_reached))
@@ -323,6 +366,9 @@ public actor AgentSession: AgentConversing {
                         continue
                     }
                     emit(.status(.checkingPlan))
+                }
+                if call.name == AgentToolRunner.readContentsName, let count = Self.idCount(call) {
+                    emit(.status(.readingContents(count: count)))
                 }
                 let outcome = await runner.run(call, selectedPaths: selected)
                 if isStopping { return ended(.notice(.stopped)) }
@@ -356,12 +402,13 @@ public actor AgentSession: AgentConversing {
                     guard await isClean(sent) else { return ended(.failed(.unreadable)) }
                     results.append(AgentToolResult(callID: call.id, name: call.name, json: sent))
                     names += count
-                    if !isProposal { emit(.status(.reading(count: runner.namesSent))) }
+                    if !isProposal, call.name != AgentToolRunner.readContentsName { emit(.status(.reading(count: runner.namesSent))) }
                 }
                 if ending == nil, let slow = runner.slowRoot { ending = .notice(.notResponding(label: slow)) }
             }
 
             counts.names += names
+            counts.summaries += runner.summariesSent - summariesBefore
             if let plan {
                 commit(result.rawItems)
                 held = HeldTurn(results: results, planIndex: plan.index, planID: plan.plan.id, leftOut: plan.plan.leftOut)
@@ -465,7 +512,13 @@ public actor AgentSession: AgentConversing {
     }
 
     private struct RequestCounts {
-        var calls = 0, plans = 0, badInARow = 0, oversized = 0, names = 0
+        var calls = 0, plans = 0, badInARow = 0, oversized = 0, names = 0, summaries = 0
+    }
+
+    /// How many ids a `read_contents` call asks for, for the status line while they are read.
+    private static func idCount(_ call: AgentToolCall) -> Int? {
+        guard let json = try? AgentJSON(data: call.arguments), let ids = json["ids"]?.arrayValue, !ids.isEmpty else { return nil }
+        return min(ids.count, AgentContentLimits.filesPerRequest)
     }
 
     /// A plan's result: applied with its counts, dismissed, or pending while its card is open.
