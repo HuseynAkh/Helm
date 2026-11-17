@@ -158,6 +158,59 @@ agent-chips AgentMess:thisMac,Downloads:thisMac,Desktop:thisMac,Templates:thisMa
 agent-say /clear
 agent-chips AgentMess:thisMac
 agent-reads Started over.
+# 7b. Whole Mac: a thread starts in This Folder. The switch at the end of the folders row starts it over, the
+# consent line names the home folder, and one chip stands for the home folder, iCloud Drive and the Google Drive
+# stand-in. With Documents on show, a screenshot there goes into Pictures/Screenshots, which only the home folder's
+# listing shows, ticked, under one Apply and one Undo. Nothing sent holds a path or the account in the stand-in's
+# folder. This Folder puts the thread and the chips back, and the screenshot is filed again so Documents is as it was
+watch-external @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+go @FIX@/home/Documents
+wait 0.5
+agent-chips Documents:thisMac
+agent-scope-is thisFolder
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-scope wholeMac
+agent-chips Documents:thisMac,Whole Mac:thisMac
+agent-reads Sends your requests and file names from your home folder to Claude, never file contents.
+agent-lacks Sends your requests and file names to Claude, never file contents.
+agent-reads Started over.
+agent-say file the screenshot
+agent-phase plan
+agent-reads Move 1 Item
+agent-plan-reads 1 move
+agent-group Move 1 item to “Screenshots” on
+agent-group-path Move 1 item to “Screenshots”=~/Pictures/Screenshots
+exists @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+agent-apply
+agent-phase result
+exists @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+exists @FIX@/home/Pictures/Screenshots/older.png
+agent-reads Moved 1 item.
+agent-undo
+exists @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+agent-reads Everything is back where it was.
+agent-sent-lacks @FIX@
+agent-sent-lacks me@example.com
+agent-sent-lacks GoogleDrive
+agent-sent-lacks com~apple~CloudDocs
+agent-scope thisFolder
+agent-chips Documents:thisMac
+agent-reads Sends your requests and file names to Claude, never file contents.
+agent-lacks from your home folder
+agent-scope wholeMac
+agent-say file the screenshot
+agent-phase plan
+agent-apply
+agent-phase result
+exists @FIX@/home/Pictures/Screenshots/Screenshot 2026-11-02 at 09.15.00.png
+missing @FIX@/home/Documents/Screenshot 2026-11-02 at 09.15.00.png
+agent-scope thisFolder
+go @FIX@/home/AgentMess
+wait 0.5
+agent-chips AgentMess:thisMac
+agent-scope-is thisFolder
 # 8. A model that tries to get round the rules: each try ends in Helm's own line, nothing outside the folders is
 # touched, and a plan that would make an app gets nothing on its card it could apply
 agent-script @FIX@/agent-hostile.json
