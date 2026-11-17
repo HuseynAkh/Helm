@@ -228,7 +228,7 @@ What was built and checked is in [`MAC_RUN_5.md`](MAC_RUN_5.md).
 
 | Question | Default used |
 |---|---|
-| The consent line while Read contents is on. Today's promise says "never file contents". | Local models: "Reads file contents on this Mac; nothing leaves your Mac." Cloud: "Sends your requests, file names and short summaries of file contents to {destination}." With Whole Mac, both say "from your home folder and disks". These ship in this build until Huseyn changes them. |
+| The consent line while Read contents is on. Today's promise says "never file contents". | Replaced in run 6, after Huseyn asked whether the run 5 wording was true. The new wording is under [run 6](#waiting-for-huseyn-run-6). |
 
 ### Delegated choices in run 5
 
@@ -247,6 +247,42 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Onboarding's place | **Saved at every step in `helm.setupProgress`. Get Started or closing the window finishes it.** | Any quit, macOS's included, comes back to the same place. |
 | The Dock | **Restarted on the Default File Viewer step, not while System Settings opens.** | Helm's tile no longer blinks as if Helm restarted. |
 | The separate AI Mode screen | **Shown once, after the window, only to people who set Helm up before AI mode. The mark still opens it when no model is ready.** | New people meet AI mode inside the onboarding. |
+
+## AI mode, Mac run 6 (2026-11-17)
+
+What was built and checked is in [`MAC_RUN_6.md`](MAC_RUN_6.md).
+
+### Rulings by Huseyn
+
+| Topic | Huseyn's words | Date | What was built |
+|---|---|---|---|
+| The consent wording | "Regarding your wording, check if that's actually true and if that is the best way to word this and talk about it. I would want us to give enough information and point out that no metadata is collected by us, if that's the case correctly." | 2026-11-17 | The run 5 line said "short summaries", which stopped being true once the model looks at pictures. Each line now names what goes: text, and small copies of pictures and video frames. Settings and the onboarding say "Helm has no servers and collects nothing", which is true: Helm has no server, no analytics and no crash reporting, and `scripts/privacy_check.py` fails the build on any of them. The wording is a draft until Huseyn says yes (below). |
+| The model looks inside files | "For the cloud providers, I'm surprised that it says sends your request file names and short summaries of file contents, as we wanted AI search to actually be able to find specific images from the directories that it's searching. … The AI models have to be able to read the local documents and identify what is being searched for, and the README should reflect that accordingly. That's image analysis, document analysis, and maybe even video analysis." | 2026-11-17 | With Read contents on, the model gets a small copy of each picture, of sampled video frames and of a scanned PDF's first page, and the text of text files, PDFs, RTF and Word files. AI search has the model look at the best candidates and keeps the ones it says fit. The README says so. |
+| File type in the plain search | "And we would probably want the option of identifying what document you're searching for as well in the file manager search." | 2026-11-17 | The kind row shows whenever the search is open, AI or not, and keeps a plain search to that kind. The status bar names it. |
+| The panel as a local harness | "One more thing I want to make sure that if you're using a sidebar chat in the directory with an AI model, it can almost act as a local harness. So you can tell it to create files, folders, different documents on request, and it can work in your directory to do that. No need to overbuild crazy harness logic. However, for basic functionality, we definitely want that to be the case. And it should support general operations on the directory and the general AI functions of creating documents, files, and so forth. Make sure you're not overbloating this. And that it can work with the different models supported." | 2026-11-17 | A plan can now make new files with the model's text, beside the folders, moves, copies, renames and Trash it could already do. It's one more list in the same plan, so every provider can do it, and Apply and Undo work as before. |
+| Push and merge | "You're free to merge and push after all of these changes, but make sure you review everything for security and private data. Make sure everything is secure and in accordance." | 2026-11-17 | A security review and a private-data scan ran on the whole change. What they found was fixed before the push, apart from two items in [`MAC_RUN_6.md`](MAC_RUN_6.md#open). |
+
+### Waiting for Huseyn (run 6)
+
+| Question | Default used |
+|---|---|
+| The consent lines while Read contents is on | Settings and the onboarding: "Sends your requests and file names to {destination}; file contents only while Read contents is on. Helm has no servers and collects nothing." A thread with a model on this Mac: "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other model: "Sends your requests, file names and what it reads inside files to {destination}: text, and small copies of pictures and video frames." AI search's hint: "Return sends your words, file names and the contents of files the model looks at to {destination}." With Whole Mac, the lines add "from your home folder and disks". These ship until Huseyn changes them. |
+
+### Delegated choices in run 6
+
+Huseyn can overrule any of these. Each one's reason is in its last column.
+
+| Topic | Choice | Why |
+|---|---|---|
+| The pictures a model gets | **A JPEG made on this Mac, 512 pixels on its longer side at quality 0.7, with no location, camera, date or other metadata. Helm reads each one back and doesn't send it if any metadata is left. A picture of more than 100 megapixels isn't read.** | Small enough to send quickly, big enough to recognize what's in it, and nothing about where or when it was taken goes with it. |
+| Videos | **The 3 frames Helm already samples, or 5 for half a minute or more, each as such a JPEG. Speech isn't read.** | Enough to tell what a video shows without sending the video. |
+| Documents | **Text, Markdown, RTF, PDFs, .docx and .odt, by their first characters. A .docx or .odt is checked before it's unpacked and refused if it would unpack to more than 16 MB. Old .doc files aren't read.** | Word files are read without running anything in them, and the old format's reader isn't worth the risk. |
+| A model that can't take pictures | **Helm asks once more without pictures and stops sending them for that thread or search. Apple's on-device labels and text are in every summary.** | Local and older models still work. |
+| AI search's look | **The model looks at the best 48 candidates with a cloud model and 12 with a model on this Mac, 12 per question. Across the whole Mac it looks only at files the search or the on-device labels matched. Code only when you choose Code, and settings files such as JSON or YAML only with Code or Document.** | It finds the photo you mean without sending unrelated files, and code and settings go only when asked for. |
+| A result's reason | **"Model saw: …", with the model's words.** | The reason says it's the model's reading, not Helm's. |
+| Secret files | **Names with a word such as secret, token, password or credentials, and env, netrc, Terraform state and service account files, are never read for a model and never shown in AI search.** | What's inside files that hold logins never reaches a model, at the cost of hiding a few ordinary files with those words in their names. |
+| New files | **Up to 20 per plan, 100,000 characters each and 500,000 in all, as plain text, Markdown, CSV, JSON, YAML, HTML, code, RTF or Word. Code and web pages start unticked, and so does any new file where others see it. Scripts Windows runs on a double click, files that run on a routine command such as `package.json` or `setup.py`, and names Windows keeps for devices are refused.** | The panel can write a document for you, and a file that would run something is never made without a look. |
+| The kind row | **It shows whenever the search is open. Each tab keeps its search's kind, and it goes back to Any when the search closes. The status bar ends with the kind.** | It works the same with AI mode on or off, and a search is never narrowed by a choice made earlier. |
 
 ## Ruled but not built yet
 
