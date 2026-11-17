@@ -92,37 +92,78 @@ private final class AgentContentBatch: @unchecked Sendable {
     }
 }
 
-/// What AI search has read inside pictures and videos during one search session, by path and modification date, so
-/// a second search with the same words doesn't read them again. It is kept in memory only, and emptied when the
-/// search's Read contents switch goes off, which it does when the search closes.
+/// What AI search has read inside files during one search session, by path and modification date, so a second search
+/// with the same words doesn't read them again. It is kept in memory only, and emptied when the search's Read contents
+/// switch goes off, which it does when the search closes.
+///
+/// A summary read with pictures keeps them while every kept picture comes to `pictureBytes` (about 24 MB of JPEG) at
+/// most; past it a summary is kept without its pictures. Asked for a summary with pictures, the memo answers only one
+/// that was read with them and still holds them, so a file is read again for its pictures rather than sent without.
 final class AgentContentMemo: @unchecked Sendable {
     private struct Key: Hashable { let path: String; let modified: Date }
+    private struct Kept {
+        let summary: AgentContentSummary
+        /// Read with pictures, and holding them still.
+        let pictured: Bool
+        var bytes: Int { summary.images.reduce(0) { $0 + $1.jpeg.count } }
+    }
     private let lock = NSLock()
-    private var kept: [Key: AgentContentSummary] = [:]
+    private var kept: [Key: Kept] = [:]
+    private var held = 0
     /// The most summaries kept. Past it the memo starts again.
     static let most = 2_000
+    /// The most bytes of pictures kept, all summaries together.
+    static let pictureBytes = 24 * 1024 * 1024
 
-    func summary(path: String, modified: Date) -> AgentContentSummary? {
+    /// The kept summary of the file as it was at `modified`. With `withPictures`, only one read with its pictures.
+    func summary(path: String, modified: Date, withPictures: Bool = false) -> AgentContentSummary? {
         lock.lock(); defer { lock.unlock() }
-        return kept[Key(path: path, modified: modified)]
+        guard let found = kept[Key(path: path, modified: modified)] else { return nil }
+        return !withPictures || found.pictured ? found.summary : nil
     }
 
-    func keep(_ summary: AgentContentSummary, path: String, modified: Date) {
+    /// Keeps a summary. `withPictures` says it was read with pictures asked for; one kept that way isn't replaced by
+    /// one without.
+    func keep(_ summary: AgentContentSummary, path: String, modified: Date, withPictures: Bool = false) {
         // A file that ran out of time is read again next time.
         guard summary.status != .not_responding else { return }
+        let key = Key(path: path, modified: modified)
         lock.lock(); defer { lock.unlock() }
-        if kept.count >= Self.most { kept.removeAll() }
-        kept[Key(path: path, modified: modified)] = summary
+        if let old = kept[key] {
+            if old.pictured, !withPictures { return }
+            held -= old.bytes
+            kept[key] = nil
+        }
+        if kept.count >= Self.most { kept.removeAll(); held = 0 }
+        var entry = Kept(summary: summary, pictured: withPictures)
+        if held + entry.bytes > Self.pictureBytes {
+            entry = Kept(summary: Self.withoutPictures(summary), pictured: false)
+        }
+        held += entry.bytes
+        kept[key] = entry
     }
 
     func clear() {
         lock.lock(); defer { lock.unlock() }
         kept.removeAll()
+        held = 0
     }
 
     var count: Int {
         lock.lock(); defer { lock.unlock() }
         return kept.count
+    }
+
+    /// The bytes of every picture kept.
+    var heldPictureBytes: Int {
+        lock.lock(); defer { lock.unlock() }
+        return held
+    }
+
+    private static func withoutPictures(_ summary: AgentContentSummary) -> AgentContentSummary {
+        AgentContentSummary(kind: summary.kind, status: summary.status, lines: summary.lines, pages: summary.pages,
+                            labels: summary.labels, foundText: summary.foundText, seconds: summary.seconds,
+                            frames: summary.frames)
     }
 }
 #endif
