@@ -46,7 +46,7 @@ Every new thread starts in **This Folder**: the folder on show, plus any you add
 
 ### Read contents
 
-Names don't always say what a file is. Turn on **Read contents** under the composer and Helm reads inside files on your Mac: the first lines of text files and PDFs, and what pictures and a few frames of a video show, with any text in them. The model gets those short summaries, never the files, so it can file a scan by what it says. Read contents is off in every new thread, and turning it on or off starts the thread over.
+Names don't always say what a file is. Turn on **Read contents** under the composer, and the model reads and looks for itself: the text of documents (text, Word, RTF and PDFs), the pictures, and a few frames of each video. Helm makes a small copy of each picture and frame on your Mac, without its location or camera details, and sends it with the request. So the model can file a scan by what it says, and a photo by what it shows. Read contents is off in every new thread, and turning it on or off starts the thread over.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-contents-dark.png">
@@ -57,7 +57,7 @@ Names don't always say what a file is. Turn on **Read contents** under the compo
 
 Turn on the trefoil in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
 
-The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. **Read contents** at the end of the row also looks inside photos and videos on your Mac, at what they show and the text in them. So "the photo of the receipt" finds receipts by the word printed on them, and pointing at one shows "Text in image: “receipt”", or for a picture with no words, something like "Shows: dog, beach". What Helm reads stays on your Mac.
+The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at the best candidates, up to 48 photos, videos and documents, and says which match. So "the photo of the receipt from the Italian place" finds it by what it shows, whatever its name, and pointing at it says what the model saw.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
@@ -68,6 +68,7 @@ The row under the header keeps a search to one kind: Photo, Video, Document, Fol
 
 - **AI mode** is a model that works on your files through Helm. It lists folders and proposes changes. Helm checks every change, and only Helm touches the disk.
 - **Bring your own model.** OpenAI with your ChatGPT plan: click **Continue with ChatGPT**, with no key to paste. Claude, Gemini and Grok with your key. Ollama and LM Studio on your Mac. Or any OpenAI-compatible API, by its https address.
+- **It can read and look.** With Read contents on, the model reads documents and looks at pictures and video frames, so it can sort and find files by what's in them.
 - **Only the folders you give it.** The folder on show, plus any you add: type `/add` and a folder, type or drop a path, or drop a folder on the panel. Whole Mac adds your home folder, cloud folders and disks. `/clear` starts over, back in This Folder.
 - **Remote and cloud folders.** iCloud Drive, Google Drive, Dropbox, OneDrive, servers and external disks work too. The folder's chip says where it is, and the plan says when changes will sync or reach other people. Helm never downloads files to do it.
 - **Nothing changes until you press Apply.** Changes run through Helm's own file operations, so conflicts keep both files, removals go to the Trash, and one Undo puts everything back.
@@ -90,14 +91,22 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
 
 ## Privacy
 
-Helm connects only to the AI provider you choose, and only while AI mode is on. AI mode is off until you turn it on.
+**Helm collects nothing.** It has no servers, accounts, analytics or crash reports, so nothing you do in Helm reaches its makers. AI mode talks to one place, the provider you choose, straight from your Mac, and only while AI mode is on. It is off until you turn it on.
 
 **What is sent.** Your requests, and the names and details of files (size, dates and kind). Never what's inside a file, unless you turn on Read contents. The top of every thread says what it sends, and each request says how many names it sent. With Whole Mac on, the names can come from anywhere in your home folder, your cloud folders and your disks, but never from your Library, hidden files or system folders.
 
-- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (PDFKit, Vision and AVFoundation): the first 1,500 characters of text files and PDFs; for a picture, up to five things it shows and any text in it; for a video, the same from three to five frames taken through it. The model gets those short summaries, never the files. With Ollama or LM Studio nothing leaves your Mac, and the thread's first line says "Reads file contents on this Mac; nothing leaves your Mac." With any other provider the summaries are sent to it, and the first line says "Sends your requests, file names and short summaries of file contents to" that provider. Each request then says how many summaries it sent. Text from inside a file is handed over as quoted data, and the model is told never to follow instructions in it. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
-- AI search with Read contents on never sends what it reads. It matches your words against what up to 200 photos and videos show and the text in them, on your Mac, and forgets what it read when the search closes.
-- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video. In the AI panel it reads 50 files a request at most, text and PDFs up to 20 MB and pictures up to 50 MB.
-- AI search sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
+- **Read contents** is off until you turn it on, under the AI panel's composer or at the end of AI search's kind row, and it lasts for that thread or that search. Helm then reads inside files on your Mac with Apple's own frameworks (PDFKit, Vision and AVFoundation), and the model gets:
+  - **Documents:** the first 1,500 characters of text files, Word and RTF documents and PDFs.
+  - **Pictures:** a small copy, 512 pixels on its longer side, made on your Mac with no location, camera or date in it.
+  - **Videos:** small copies of three to five frames taken through it.
+  - **Scanned PDFs:** their first page as a small copy.
+  - With each picture and frame, what Apple's on-device recognition found in it: up to five things it shows, and any text.
+
+  The files themselves never leave your Mac, and neither do full-size pictures. With Ollama or LM Studio nothing leaves your Mac at all, and the thread's first line says "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other provider, what Helm reads goes to it, and the first line says "Sends your requests, file names and what it reads inside files to" that provider. A model that can't take pictures gets the on-device description instead. Text and pictures from inside a file are handed over as data, and the model is told never to follow instructions in them. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
+- In the AI panel, Read contents reads 50 files a request at most and sends 24 pictures at most. It reads text and PDFs up to 20 MB and pictures up to 50 MB.
+- In AI search, Read contents first reads up to 200 candidates on your Mac. Then the model looks at the best of them, 48 at most, or 12 with a model on your Mac: their small copies and first lines are sent with the question. Helm forgets what it read when the search closes.
+- Read contents never downloads a file to read it, never follows a link, never reads a key or a wallet file, and doesn't listen to the speech in a video.
+- AI search without Read contents sends your words and the names of files that match. A match can come from text inside a file, found by Spotlight on this Mac. That text is never sent.
 - A path you type in the middle of a message is sent as you typed it, your home folder's name included. A folder at the end of a message is added to the panel and sent only as an id.
 
 **Where it goes.** Only to the one you picked:
@@ -115,7 +124,7 @@ Helm connects only to the AI provider you choose, and only while AI mode is on. 
 
 **Keys.** Claude requires a key: Anthropic doesn't allow apps like Helm to sign in with a Claude account or use a Claude plan. Each key is saved in your Mac's keychain, never in a file, a log or a picture. Removing the app doesn't remove keys or a sign-in: click **Remove Key** or **Remove** in Settings › AI first, or delete the items named **Helm AI key** and **Helm ChatGPT sign-in** in Keychain Access (their place is `com.helm.filemanager.ai-key`). Helm is signed ad hoc, so macOS may ask for your keychain password after an update.
 
-Keys are made on each provider's site, as the table under [Connect a provider](#connect-a-provider) shows. On Gemini's free tier, Google may use what you send to improve its products.
+Keys are made on each provider's site, as the table under [Connect a provider](#connect-a-provider) shows. What a provider keeps, and for how long, is up to its own terms. On Gemini's free tier, Google may use what you send to improve its products.
 
 The help pages open in your browser. Helm itself never connects to them.
 
@@ -129,7 +138,7 @@ The help pages open in your browser. Helm itself never connects to them.
 
 **Nothing is saved.** Threads, added folders and plans stay in memory. They're gone after `/clear`, when the window closes, when AI mode turns off, or when Helm quits.
 
-Helm has no accounts, analytics, crash reporting or update checks, and it doesn't read your name, your Mac's name or its serial number. It reads each disk's ID only to list the disk once, and never keeps or sends it. Otherwise files leave your Mac only when you send them: Share, AirDrop, Connect to Server, Open With, Services, drag and drop, the clipboard, or by putting them in iCloud Drive, a cloud provider's folder or a server.
+Helm makes no other connections, not even update checks, and it doesn't read your name, your Mac's name or its serial number. It reads each disk's ID only to list the disk once, and never keeps or sends it. Otherwise files leave your Mac only when you send them: Share, AirDrop, Connect to Server, Open With, Services, drag and drop, the clipboard, or by putting them in iCloud Drive, a cloud provider's folder or a server.
 
 What Helm keeps stays on your Mac, in `~/Library/Application Support/Helm`:
 
@@ -216,7 +225,7 @@ In the list, a folder unfolds right where it is, with a short, smooth animation,
 
 ### Search that lets go
 
-Press ⌘F and type. Helm looks in the folder you're in, or across the whole Mac, matching names first and then what's inside files. Click anywhere else and the keys go back to your files: an empty search closes, and one with words keeps its results until you go somewhere else. Each tab keeps its own search.
+Press ⌘F and type. Helm looks in the folder you're in, or across the whole Mac, matching names first and then what's inside files. The row under the header keeps it to one kind, such as Photo or Document. Click anywhere else and the keys go back to your files: an empty search closes, and one with words keeps its results until you go somewhere else. Each tab keeps its own search.
 
 <img src="docs/images/search-dark.png" alt="Searching Home for invoice, with the results in the grid">
 
