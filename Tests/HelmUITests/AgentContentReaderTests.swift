@@ -261,7 +261,7 @@ final class AgentContentReaderTests: XCTestCase {
             XCTAssertEqual(found[name]?.status, .read, name)
             XCTAssertEqual(found[name]?.lines, ["Plan for the bake sale", "Lemon bars", "Banana bread"], name)
         }
-        XCTAssertEqual(found["page.docx"]?.status, .too_large)
+        XCTAssertEqual(found["page.docx"]?.status, .unreadable)
         XCTAssertEqual(found["page.docx"]?.lines, [])
     }
 
@@ -305,7 +305,7 @@ final class AgentContentReaderTests: XCTestCase {
         XCTAssertEqual(found["plan.docx"]?.status, .read)
         for name in ["bomb.docx", "bomb.odt", "tight.docx", "tight.odt", "cut.docx"] {
             XCTAssertEqual(found[name]?.kind, .text, name)
-            XCTAssertEqual(found[name]?.status, .too_large, name)
+            XCTAssertEqual(found[name]?.status, name == "cut.docx" ? .unreadable : .too_large, name)
             XCTAssertEqual(found[name]?.lines, [], name)
         }
     }

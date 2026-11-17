@@ -90,8 +90,11 @@ enum AgentContentExtractor {
     private static func text(_ file: AgentContentFile, ext: String) -> AgentContentSummary {
         if let type = documentType(ext) {
             guard let data = file.bytes(upTo: file.length) else { return .notRead(.text, .unreadable) }
-            // Word and OpenDocument files are zips, whose directory says what they unpack to.
-            if type != .rtf, AgentContentZip.refusal(of: data) != nil { return .notRead(.text, .too_large) }
+            // Word and OpenDocument files are zips, whose directory says what they unpack to. One that isn't a zip, or
+            // whose directory can't be read, is unreadable; any other refusal is too large.
+            if type != .rtf, let refusal = AgentContentZip.refusal(of: data) {
+                return .notRead(.text, refusal == .unreadable ? .unreadable : .too_large)
+            }
             guard let words = document(data, type: type) else { return .notRead(.text, .unreadable) }
             return AgentContentSummary(kind: .text, status: .read, lines: lines(of: words, characters: AgentContentLimits.textCharacters))
         }
