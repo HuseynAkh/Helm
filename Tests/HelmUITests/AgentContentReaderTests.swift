@@ -300,8 +300,8 @@ final class AgentContentReaderTests: XCTestCase {
         let destination = try XCTUnwrap(CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil))
         let details: [CFString: Any] = [
             kCGImagePropertyOrientation: orientation,
-            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 43.65, kCGImagePropertyGPSLatitudeRef: "N",
-                                            kCGImagePropertyGPSLongitude: 79.38, kCGImagePropertyGPSLongitudeRef: "W"],
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 1.25, kCGImagePropertyGPSLatitudeRef: "N",
+                                            kCGImagePropertyGPSLongitude: 2.5, kCGImagePropertyGPSLongitudeRef: "E"],
             kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "Acme", kCGImagePropertyTIFFModel: "Pocket 7",
                                              kCGImagePropertyTIFFOrientation: orientation],
             kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2026:07:01 09:30:00"],
