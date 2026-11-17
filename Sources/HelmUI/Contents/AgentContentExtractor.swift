@@ -10,15 +10,25 @@ import UniformTypeIdentifiers
 import Vision
 
 /// The one place Helm looks inside a file, for Read contents. Everything here runs on this Mac with Apple's own
-/// frameworks: PDFKit for a PDF's text, Vision for the text in a picture and what it shows, AVFoundation for a video's
-/// length and a few of its frames. Nothing is sent anywhere, and the privacy check lets only this file name those
-/// frameworks. Only `AgentContentReader`, which holds the person's permit, calls it.
+/// frameworks: PDFKit for a PDF's text and its first page, Vision for the text in a picture and what it shows,
+/// AVFoundation for a video's length and a few of its frames, AppKit for rich text, Word and OpenDocument files and
+/// for the small pictures a model looks at. Nothing here sends anything anywhere, and the privacy check lets only this
+/// file name PDFKit, Vision and AVFoundation. Only `AgentContentReader`, which holds the person's permit, calls it.
+///
+/// When a request asks for pictures, it makes small JPEGs (`AgentContentImage`): a picture's first frame, turned as
+/// its EXIF orientation says; each video frame it looked at; and the first page of a PDF whose pages hold next to no
+/// text, as a scan's don't. Each is drawn anew from decoded pixels, `AgentContentLimits.lookEdge` pixels at most on its
+/// longer side, and written with no metadata at all. A scanned page is read by Vision whether or not pictures are
+/// asked for, so its words are there for a model that can't take pictures. Without a request for pictures, no
+/// picture is made.
 ///
 /// Every byte is read by Helm itself, from a file it opened without following a link and with downloads off: a file
 /// kept in a cloud and not on this Mac is refused by macOS rather than fetched, and answers `not_downloaded`. A
 /// video's bytes reach AVFoundation through a loader that reads them the same way, so AVFoundation never opens the
-/// file itself. Speech in a video is not listened to: macOS asks the person before an app may recognize speech,
-/// which a background read can't do.
+/// file itself. A Word or OpenDocument file is read from those bytes by readers that take its words alone: a linked
+/// picture, a template, a field that includes another file and an XML entity are neither fetched nor opened. Speech
+/// in a video is not listened to: macOS asks the person before an app may recognize speech, which a background read
+/// can't do.
 enum AgentContentExtractor {
     /// What one file holds, read within `deadline`.
     static func summary(of request: AgentContentRequest, deadline: DispatchTime) -> AgentContentSummary {
@@ -36,18 +46,20 @@ enum AgentContentExtractor {
         switch kind {
         case .text:
             guard file.length <= AgentContentLimits.textFileBytes else { return .notRead(kind, .too_large) }
-            return text(file, isRich: AgentContentLimits.richTextExtensions.contains(ext.lowercased()))
+            return text(file, ext: ext.lowercased())
         case .pdf:
             guard file.length <= AgentContentLimits.textFileBytes else { return .notRead(kind, .too_large) }
-            return pdf(file)
+            return pdf(file, wantsImages: request.wantsImages, deadline: deadline)
         case .image:
             guard file.length <= AgentContentLimits.imageFileBytes else { return .notRead(kind, .too_large) }
             guard let data = file.bytes(upTo: file.length) else { return .notRead(kind, .unreadable) }
             let seen = look(at: VNImageRequestHandler(data: data, options: [:]))
             guard let seen else { return .notRead(kind, .unreadable) }
-            return AgentContentSummary(kind: .image, status: .read, labels: seen.labels, foundText: seen.text)
+            // A picture costs time, so it is made only while there is time left.
+            let images = request.wantsImages && DispatchTime.now() < deadline ? picture(decoding: data).map { [$0] } ?? [] : []
+            return AgentContentSummary(kind: .image, status: .read, labels: seen.labels, foundText: seen.text, images: images)
         case .video:
-            return video(file, ext: ext, deadline: deadline)
+            return video(file, ext: ext, wantsImages: request.wantsImages, deadline: deadline)
         case .other:
             return .notRead(.other, .unsupported)
         }
@@ -55,14 +67,15 @@ enum AgentContentExtractor {
 
     // MARK: Text and PDFs
 
-    /// The first lines of a text file, read from its first bytes only. Rich text is read whole, as RTF can't be read in
-    /// part, and never as HTML, which could ask for pictures from the web.
-    private static func text(_ file: AgentContentFile, isRich: Bool) -> AgentContentSummary {
-        if isRich {
-            guard let data = file.bytes(upTo: file.length),
-                  let rich = try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf],
-                                                     documentAttributes: nil) else { return .notRead(.text, .unreadable) }
-            return AgentContentSummary(kind: .text, status: .read, lines: lines(of: rich.string, characters: AgentContentLimits.textCharacters))
+    /// The first lines of a text file, read from its first bytes only. Rich text and word processor files are read
+    /// whole, as they can't be read in part, from the bytes Helm read, by the reader their extension names, and never
+    /// as HTML, which could ask for pictures from the web.
+    private static func text(_ file: AgentContentFile, ext: String) -> AgentContentSummary {
+        if let type = documentType(ext) {
+            guard let data = file.bytes(upTo: file.length), let words = document(data, type: type) else {
+                return .notRead(.text, .unreadable)
+            }
+            return AgentContentSummary(kind: .text, status: .read, lines: lines(of: words, characters: AgentContentLimits.textCharacters))
         }
         guard let data = file.bytes(upTo: textBytesRead) else { return .notRead(.text, .unreadable) }
         let words = decoded(data, whole: file.length <= textBytesRead)
@@ -71,6 +84,30 @@ enum AgentContentExtractor {
 
     /// How much of a text file is read: enough for the characters kept, whatever the encoding.
     private static let textBytesRead: Int64 = 24 * 1024
+
+    /// The reader for a rich text or word processor file: RTF, Word (.docx, and .doc from Word 97 to 2003) or
+    /// OpenDocument text (`AgentContentLimits.richTextExtensions` and `wordExtensions`). Each takes the words and their
+    /// styles from the bytes alone; a file that isn't what its extension says is unreadable, never read as HTML.
+    private static func documentType(_ ext: String) -> NSAttributedString.DocumentType? {
+        switch ext {
+        case "rtf": return .rtf
+        case "docx": return .officeOpenXML
+        case "doc": return .docFormat
+        case "odt": return .openDocument
+        default: return nil
+        }
+    }
+
+    /// A rich text or word processor document's words. A .doc that is RTF inside, as older apps saved them, is read
+    /// as RTF.
+    private static func document(_ data: Data, type: NSAttributedString.DocumentType) -> String? {
+        if let read = try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil) {
+            return read.string
+        }
+        guard type == .docFormat, data.starts(with: Data("{\\rtf".utf8)) else { return nil }
+        return (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf],
+                                        documentAttributes: nil))?.string
+    }
 
     /// The words of a text file's first bytes: UTF-16 when it starts with that mark, else UTF-8, else Windows Latin.
     /// A character cut in two at the end of what was read is left out.
@@ -86,8 +123,10 @@ enum AgentContentExtractor {
         return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
     }
 
-    /// A PDF's first lines, page by page, from at most `pdfPages` pages. A locked PDF isn't read.
-    private static func pdf(_ file: AgentContentFile) -> AgentContentSummary {
+    /// A PDF's first lines, page by page, from at most `pdfPages` pages. A locked PDF isn't read. When those pages hold
+    /// fewer than `AgentContentLimits.scannedPageCharacters`, as a scan's do, its first page is drawn and Vision reads
+    /// the text in it and what it shows; that page is pictured for a model too when the request asks.
+    private static func pdf(_ file: AgentContentFile, wantsImages: Bool, deadline: DispatchTime) -> AgentContentSummary {
         guard let data = file.bytes(upTo: file.length), let document = PDFDocument(data: data) else { return .notRead(.pdf, .unreadable) }
         guard !document.isLocked else { return .notRead(.pdf, .unreadable) }
         var collected: [String] = []
@@ -97,10 +136,35 @@ enum AgentContentExtractor {
             count += pageLines.reduce(0) { $0 + $1.count }
             collected += pageLines
         }
-        return AgentContentSummary(kind: .pdf, status: .read, lines: collected, pages: document.pageCount)
+        guard count < AgentContentLimits.scannedPageCharacters, DispatchTime.now() < deadline,
+              let page = document.page(at: 0), let drawn = drawn(page) else {
+            return AgentContentSummary(kind: .pdf, status: .read, lines: collected, pages: document.pageCount)
+        }
+        let seen = look(at: VNImageRequestHandler(cgImage: drawn, options: [:]))
+        let images = wantsImages && DispatchTime.now() < deadline ? picture(of: drawn, source: .page(1)).map { [$0] } ?? [] : []
+        return AgentContentSummary(kind: .pdf, status: .read, lines: collected, pages: document.pageCount,
+                                   labels: seen?.labels ?? [], foundText: seen?.text ?? [], images: images)
     }
 
     private static let pdfPages = 20
+
+    /// A PDF page on white, turned as the page says, `scanEdge` pixels on its longer side.
+    private static func drawn(_ page: PDFPage) -> CGImage? {
+        let box = page.bounds(for: .cropBox)
+        let size = abs(page.rotation) % 180 == 90 ? CGSize(width: box.height, height: box.width) : box.size
+        guard size.width >= 1, size.height >= 1 else { return nil }
+        let scale = Double(scanEdge) / max(size.width, size.height)
+        guard let context = whiteContext(width: Int((size.width * scale).rounded()), height: Int((size.height * scale).rounded()))
+        else { return nil }
+        context.scaleBy(x: scale, y: scale)
+        page.draw(with: .cropBox, to: context)
+        return context.makeImage()
+    }
+
+    /// The longer side a scanned page is drawn at for Vision. At `AgentContentLimits.lookEdge` Vision misreads print
+    /// of 10 to 12 points on a letter page; at this size it reads it, in no more time. The picture for a model is
+    /// made from this drawing at `lookEdge`.
+    private static let scanEdge = 1_600
 
     /// The lines of `text`, each trimmed, empty ones left out, `characters` at most in all: the last is cut to fit.
     static func lines(of text: String, characters: Int) -> [String] {
@@ -141,11 +205,73 @@ enum AgentContentExtractor {
         return (Array(labels.prefix(AgentContentLimits.labels)), found)
     }
 
+    // MARK: Pictures for a model
+
+    /// A picture's first frame as a small JPEG for a model. AppKit decodes it and turns it as its EXIF orientation says.
+    /// Nil when it can't be decoded.
+    private static func picture(decoding data: Data) -> AgentContentImage? {
+        guard let image = NSBitmapImageRep(data: data)?.cgImage else { return nil }
+        return picture(of: image, source: .picture)
+    }
+
+    /// `image` as a JPEG for a model: drawn anew on white in sRGB, `AgentContentLimits.lookEdge` pixels at most on its
+    /// longer side and never larger than it is, and written at `lookQuality` with nothing but its pixels, so nothing of
+    /// a file's own bytes or metadata is in it.
+    private static func picture(of image: CGImage, source: AgentContentImage.Source) -> AgentContentImage? {
+        let longer = max(image.width, image.height)
+        guard longer > 0 else { return nil }
+        let scale = min(1, Double(AgentContentLimits.lookEdge) / Double(longer))
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let context = whiteContext(width: width, height: height) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let drawn = context.makeImage(),
+              let written = NSBitmapImageRep(cgImage: drawn).representation(
+                using: .jpeg, properties: [.compressionFactor: AgentContentLimits.lookQuality]),
+              let jpeg = withoutMetadata(written) else { return nil }
+        return AgentContentImage(jpeg: jpeg, width: width, height: height, source: source)
+    }
+
+    /// A bitmap of this size in sRGB, with no transparency, filled with white and drawn into smoothly.
+    private static func whiteContext(width: Int, height: Int) -> CGContext? {
+        guard width > 0, height > 0, let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.setFillColor(CGColor.white)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.interpolationQuality = .high
+        return context
+    }
+
+    /// A JPEG with its comments and every application segment but JFIF's (APP0) and Adobe's (APP14) left out: no EXIF,
+    /// GPS, TIFF, IPTC, XMP or color profile, which AppKit's writer would add, only what a decoder needs for the pixels.
+    /// Nil when it isn't a JPEG this can walk.
+    static func withoutMetadata(_ jpeg: Data) -> Data? {
+        let bytes = [UInt8](jpeg)
+        guard bytes.count > 4, bytes[0] == 0xFF, bytes[1] == 0xD8 else { return nil }
+        var kept: [UInt8] = [0xFF, 0xD8]
+        var at = 2
+        while at + 4 <= bytes.count, bytes[at] == 0xFF {
+            let marker = bytes[at + 1]
+            // A fill byte before a marker.
+            if marker == 0xFF { at += 1; continue }
+            // A marker that stands alone has no place before the scan.
+            guard marker != 0x01, !(0xD0...0xD9).contains(marker) else { return nil }
+            let length = Int(bytes[at + 2]) << 8 | Int(bytes[at + 3])
+            guard length >= 2, at + 2 + length <= bytes.count else { return nil }
+            // From the start of the scan on, the bytes are the picture itself.
+            if marker == 0xDA { return Data(kept + bytes[at...]) }
+            if !(0xE1...0xED).contains(marker), marker != 0xEF, marker != 0xFE { kept += bytes[at..<(at + 2 + length)] }
+            at += 2 + length
+        }
+        return nil
+    }
+
     // MARK: Videos
 
-    /// A video's length, and what three to five frames taken evenly through it show and say. Its bytes come only
-    /// through `AgentContentVideoBytes`.
-    private static func video(_ file: AgentContentFile, ext: String, deadline: DispatchTime) -> AgentContentSummary {
+    /// A video's length, and what three to five frames taken evenly through it show and say; each frame looked at is
+    /// also pictured for a model when the request asks. Its bytes come only through `AgentContentVideoBytes`.
+    private static func video(_ file: AgentContentFile, ext: String, wantsImages: Bool, deadline: DispatchTime) -> AgentContentSummary {
         let contentType = UTType(filenameExtension: ext)?.identifier ?? UTType.movie.identifier
         let bytes = AgentContentVideoBytes(file: file, contentType: contentType)
         guard let address = URL(string: AgentContentVideoBytes.address) else { return .notRead(.video, .unreadable) }
@@ -160,24 +286,32 @@ enum AgentContentExtractor {
                 generator.appliesPreferredTrackTransform = true
                 generator.maximumSize = CGSize(width: 1280, height: 1280)
                 let frames = AgentContentLimits.frames(forSeconds: duration)
+                // Each frame near its own time. Left to itself the generator gives the nearest keyframe, which in a
+                // video with few of them is the first frame every time.
+                let tolerance = CMTime(seconds: duration / Double(frames) / 4, preferredTimescale: 600)
+                generator.requestedTimeToleranceBefore = tolerance
+                generator.requestedTimeToleranceAfter = tolerance
                 var best: [String: Double] = [:]
                 var text: [String] = []
+                var images: [AgentContentImage] = []
                 var looked = 0
                 for index in 0..<frames {
                     try Task.checkCancellation()
                     let time = CMTime(seconds: duration * (Double(index) + 0.5) / Double(frames), preferredTimescale: 600)
-                    guard let image = try? await generator.image(at: time).image,
-                          let seen = look(at: VNImageRequestHandler(cgImage: image, options: [:])) else { continue }
+                    guard let frame = try? await generator.image(at: time),
+                          let seen = look(at: VNImageRequestHandler(cgImage: frame.image, options: [:])) else { continue }
                     looked += 1
                     for label in seen.labels { best[label.identifier] = max(best[label.identifier] ?? 0, label.confidence) }
                     for line in seen.text where !text.contains(line) { text.append(line) }
+                    let seconds = frame.actualTime.seconds.isFinite ? frame.actualTime.seconds : time.seconds
+                    if wantsImages, let made = picture(of: frame.image, source: .frame(seconds: seconds)) { images.append(made) }
                 }
                 guard looked > 0 else { answer.finish(.notRead(.video, .unreadable)); return }
                 let labels: [AgentContentLabel] = best.map { AgentContentLabel(identifier: $0.key, confidence: $0.value) }
                     .sorted(by: comesFirst)
                 let found = lines(of: text.joined(separator: "\n"), characters: AgentContentLimits.foundTextCharacters)
                 answer.finish(AgentContentSummary(kind: .video, status: .read, labels: Array(labels.prefix(AgentContentLimits.labels)),
-                                                  foundText: found, seconds: duration, frames: looked))
+                                                  foundText: found, seconds: duration, frames: looked, images: images))
             } catch {
                 answer.finish(.notRead(.video, Task.isCancelled ? .not_responding : .unreadable))
             }
