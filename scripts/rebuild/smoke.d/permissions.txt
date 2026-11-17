@@ -333,8 +333,10 @@ onboarding-shot @SHOTS@/onboarding-6-ai-off-dark.png
 appearance light
 onboarding-press AI mode
 setting-is aiModeEnabled true
+# Gemini, which has no key saved by the steps before these
+ai-provider gemini
 ai-state-is noKey
-setup-ai-reads Sends your requests and file names to Claude, never file contents.
+setup-ai-reads Sends your requests and file names to Gemini, never file contents.
 onboarding-size 540x560
 onboarding-shot @SHOTS@/onboarding-7-ai-on-light.png
 appearance dark
@@ -351,7 +353,7 @@ appearance light
 ai-provider other
 onboarding-size 540x560
 onboarding-shot @SHOTS@/onboarding-9-ai-other-light.png
-ai-provider claude
+ai-provider gemini
 # Continue with no key stays, as Done does on the AI Mode screen. With a key it's connected, and Continue goes on
 onboarding-press Continue
 setup-step ai
@@ -401,11 +403,12 @@ setting-is aiModeEnabled false
 setup-summary on,on,off
 onboarding-press Get Started
 onboarding-is closed
-# Back to Finder, no access and AI mode off, through the same switches Settings uses
+# Back to Finder, no access, AI mode off and Claude, through the same switches Settings uses
 file-viewer finder
 first-in-dock false
 fda denied
 setting aiModeEnabled false
+ai-provider claude
 # Closing it part way is going through it: the AI step it never reached changes nothing, and nothing pops up after
 setting onboardingCompleted false
 setting aiIntroSeen false
