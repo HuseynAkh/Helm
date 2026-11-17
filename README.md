@@ -22,13 +22,13 @@ macOS 14 or later &nbsp;·&nbsp; Apple silicon and Intel &nbsp;·&nbsp; Version 
 
 ### Open the panel
 
-The trefoil at the top right opens the AI panel beside your files, or press ⌃⌘I. The panel works in the folder on show. It offers three things to do there: organize it, move everything, or copy everything. Or type what you want, such as "move the PDFs into Papers".
+The trefoil at the top right opens the AI panel beside your files, or press ⌃⌘I. The panel works in the folder on show. It offers three things to do there: organize it, move everything, or copy everything. Or type what you want, such as "move the PDFs into Papers", or "write a packing list for the trip in a new Trip folder".
 
 Under the composer, the model's name is a menu of the models your connected providers offer, when there's more than one. Drag the panel's left edge to make it 300 to 560 points wide, up to 45% of the window; a double click puts it back to 340.
 
 ### Plan, then Apply
 
-Helm shows the plan before anything happens. Each group of changes has a tick and its full list, and a group of moves or copies says which folder it goes to. Moving to the Trash, and anything that lands where others can see it, starts unticked. Press Apply, and one Undo puts it all back.
+Helm shows the plan before anything happens. A plan can make folders and new files, and move, copy, rename or put things in the Trash. New files can be plain text, Markdown, CSV, JSON, HTML, code, RTF or Word, with the text the model wrote. Each group of changes has a tick and its full list, and a group of moves, copies or new files says which folder it goes to. Moving to the Trash, and anything that lands where others can see it, starts unticked. Press Apply, and one Undo puts it all back.
 
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-plan-dark.png"><img src="docs/images/ai-plan-light.png" width="49%" alt="A plan card in the AI panel: Organize “Downloads”, 9 moves and 3 new folders, with ticked groups for Documents, Images and Archives, each showing its new folder in Downloads, an unticked Trash group for Read Me.txt, and Cancel and Apply"></picture>
@@ -66,7 +66,7 @@ The row under the header keeps a search to one kind: Photo, Video, Document, Fol
 
 ## How it works
 
-- **AI mode** is a model that works on your files through Helm. It lists folders and proposes changes. Helm checks every change, and only Helm touches the disk.
+- **AI mode** is a model that works on your files through Helm. It lists folders and proposes changes, new files included. Helm checks every change, and only Helm touches the disk. A new file can't be an app, a script that runs when opened, a link or an installer.
 - **Bring your own model.** OpenAI with your ChatGPT plan: click **Continue with ChatGPT**, with no key to paste. Claude, Gemini and Grok with your key. Ollama and LM Studio on your Mac. Or any OpenAI-compatible API, by its https address.
 - **It can read and look.** With Read contents on, the model reads documents and looks at pictures and video frames, so it can sort and find files by what's in them.
 - **Only the folders you give it.** The folder on show, plus any you add: type `/add` and a folder, type or drop a path, or drop a folder on the panel. Whole Mac adds your home folder, cloud folders and disks. `/clear` starts over, back in This Folder.
