@@ -120,10 +120,11 @@ fi
 # AVFoundation, PDFKit and Vision are Read contents: a PDF's text, the text in a picture and what it shows,
 # and a few frames of a video, read on this Mac from bytes Helm reads itself. scripts/privacy_check.py keeps them to
 # one file, and check 3 still holds every URL session call to the list.
+# ImageIO decodes a picture for Read contents, from those same bytes and on this Mac; it makes no connection.
 allowed='^(/usr/lib/libobjc\.A\.dylib|/usr/lib/libSystem\.B\.dylib|/usr/lib/swift/libswift[A-Za-z_]+\.dylib'
 allowed="$allowed|/System/Library/Frameworks/(AppKit|AVFoundation|CFNetwork|Combine|CoreFoundation|CoreGraphics|CoreServices"
-allowed="$allowed|CoreText|CoreTransferable|Foundation|PDFKit|Quartz|QuartzCore|QuickLookThumbnailing|QuickLookUI|Security"
-allowed="$allowed|ServiceManagement|SwiftUI|UniformTypeIdentifiers|Vision)\.framework/.+)$"
+allowed="$allowed|CoreText|CoreTransferable|Foundation|ImageIO|PDFKit|Quartz|QuartzCore|QuickLookThumbnailing|QuickLookUI"
+allowed="$allowed|Security|ServiceManagement|SwiftUI|UniformTypeIdentifiers|Vision)\.framework/.+)$"
 libraries=$(otool -arch all -L "$bin" | awk '/^[[:space:]]/ { print $1 }' | sort -u)
 others=$(printf '%s\n' "$libraries" | grep -Ev "$allowed")
 if [ -n "$libraries" ] && [ -z "$others" ]; then

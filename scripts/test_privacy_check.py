@@ -1315,6 +1315,62 @@ class PrivacyCheckTests(unittest.TestCase):
                                'Sources/HelmApp/macOS/AppController+Agent.swift'),
                         passes=(CONTENT_READER, EXTRACTOR))
 
+    def test_rich_text_is_never_read_as_html_or_a_web_archive(self):
+        # The two types that load what they link to, however they are named, anywhere under Sources.
+        for code in ['let options = [NSAttributedString.DocumentReadingOptionKey.documentType: '
+                     'NSAttributedString.DocumentType.html]',
+                     'let read = try NSAttributedString(data: data, options: [.documentType: .html], documentAttributes: nil)',
+                     'let kind = NSAttributedString.DocumentType.webArchive',
+                     'let kind: NSAttributedString.DocumentType = .webArchive',
+                     'options[.documentType] = DocumentType . html', 'let read = [.documentType: .`html`]',
+                     'let kind = NSHTMLTextDocumentType', 'let kind = NSWebArchiveTextDocumentType',
+                     'let kind = NSAttributedString.DocumentType(rawValue: "NSHTML")', 'let kind = DocumentType("NSWebArchive")',
+                     'let kind = NSAttributedString.DocumentType.init(rawValue: name)', 'let raw = "NSHTML"',
+                     'let raw = "NSWebArchive"', '// Read as DocumentType.html when the bytes are a web page',
+                     'case "webarchive": return .webArchive']:
+            self.expect('html-document', code, fails=(CORE, HEADER, LOOP, EXTRACTOR, CONTENT_READER,
+                                                      'Sources/HelmUI/Host/AgentNewFileContents.swift'))
+        # In the file that reads documents, `.html` with its type left out, and a type made from a raw value, too.
+        # In the file that reads documents, `.html` with its type left out, and a type made from a raw value, too. That
+        # file has no use for the HTML file type either.
+        for code in ['case "htm": return .html', 'let kind: NSAttributedString.DocumentType = .init(rawValue: ext)',
+                     'let kind = UTType.html']:
+            self.expect('html-document', code, fails=[EXTRACTOR], passes=(CORE, HEADER))
+        # What only looks like them.
+        for code in ['let types = ["public.html", "public.css"]', '// never read as HTML',
+                     'let kind = NSAttributedString.DocumentType.officeOpenXML', 'case "rtf": return .rtf',
+                     'let documents = bundle?.object(forInfoDictionaryKey: "CFBundleDocumentTypes")',
+                     'let archive = "a web archive"', 'let html = page.htmlString', 'let status = Status(rawValue: raw)']:
+            self.expect('html-document', code, passes=(CORE, HEADER, EXTRACTOR))
+
+    def test_the_reader_names_the_type_of_each_document_it_reads(self):
+        # An attributed string made from bytes with no type would have macOS guess it, HTML included.
+        for code in ['let read = try NSAttributedString(data: data, options: [:], documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: options, documentAttributes: nil)',
+                     'let read = try NSAttributedString.init(data: data, options: [.characterEncoding: 4], '
+                     'documentAttributes: nil)',
+                     'let read: NSAttributedString = try .init(data: data, options: [:], documentAttributes: nil)',
+                     'try NSMutableAttributedString().read(from: data, options: [:], documentAttributes: nil)',
+                     'let read = try NSAttributedString(\n    data: data,\n    options: [:],\n    documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: [/* .documentType: */ :], '
+                     'documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: ["documentType": kind], '
+                     'documentAttributes: nil)']:
+            self.expect('html-document', code, fails=[EXTRACTOR], passes=(CORE, CONTENT_READER))
+        for code in ['let read = try NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil)',
+                     'let read = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], '
+                     'documentAttributes: nil)',
+                     'let read = try NSAttributedString(\n    data: data,\n    options: [\n        .documentType: type\n    ],\n'
+                     '    documentAttributes: nil)',
+                     'let read = try NSAttributedString(rtf: data, documentAttributes: nil)',
+                     'let text = NSAttributedString(string: words)', '// NSAttributedString(data:) with no type guesses it',
+                     'let handler = VNImageRequestHandler(data: data, options: [:])',
+                     'let image = CGImageSourceCreateWithData(data as CFData, nil)']:
+            self.expect('html-document', code, passes=(EXTRACTOR, CORE))
+        # The extractor as it is written.
+        extractor = Path(__file__).resolve().parent.parent / EXTRACTOR
+        self.assertNotIn('html-document', rules(self.planted(EXTRACTOR, extractor.read_text())))
+
     def test_build_paths_fail_in_strings_under_sources(self):
         for code in ['let home = "/Users/me/Documents"', 'let shared = "/Users/Shared"', 'let prefix = "/Users/"',
                      'let temporary = "/private/var/folders/zz/T/helm"', 'let build = "/tmp/DerivedData/Helm-abc/Build"',

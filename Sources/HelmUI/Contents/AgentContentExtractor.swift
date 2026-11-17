@@ -5,30 +5,40 @@ import Darwin
 import Foundation
 import HelmCore
 import HelmFileSystem
+import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
 import Vision
 
 /// The one place Helm looks inside a file, for Read contents. Everything here runs on this Mac with Apple's own
 /// frameworks: PDFKit for a PDF's text and its first page, Vision for the text in a picture and what it shows,
-/// AVFoundation for a video's length and a few of its frames, AppKit for rich text, Word and OpenDocument files and
-/// for the small pictures a model looks at. Nothing here sends anything anywhere, and the privacy check lets only this
-/// file name PDFKit, Vision and AVFoundation. Only `AgentContentReader`, which holds the person's permit, calls it.
+/// AVFoundation for a video's length and a few of its frames, ImageIO to decode a picture, and AppKit for rich text,
+/// Word and OpenDocument files and for the small pictures a model looks at. Nothing here sends anything anywhere, and
+/// the privacy check lets only this file name PDFKit, Vision and AVFoundation. Only `AgentContentReader`, which holds
+/// the person's permit, calls it.
 ///
-/// When a request asks for pictures, it makes small JPEGs (`AgentContentImage`): a picture's first frame, turned as
-/// its EXIF orientation says; each video frame it looked at; and the first page of a PDF whose pages hold next to no
-/// text, as a scan's don't. Each is drawn anew from decoded pixels, `AgentContentLimits.lookEdge` pixels at most on its
-/// longer side, and written with no metadata at all. A scanned page is read by Vision whether or not pictures are
-/// asked for, so its words are there for a model that can't take pictures. Without a request for pictures, no
-/// picture is made.
+/// A picture is decoded once, by ImageIO. Its size is read from its header first, and a picture of more than
+/// `mostPixels` is refused as too large before any of it is decoded. Otherwise one copy is made, `visionEdge` pixels at
+/// most on its longer side and turned as its EXIF orientation says; Vision reads that copy, and a model's picture is
+/// made from it. An animated picture gives its first frame.
+///
+/// When a request asks for pictures, it makes small JPEGs (`AgentContentImage`): a picture's first frame, each video
+/// frame it looked at, and the first page of a PDF whose pages hold next to no text, as a scan's don't. Each is drawn
+/// anew from decoded pixels, `AgentContentLimits.lookEdge` pixels at most on its longer side, and written with no
+/// metadata at all; ImageIO then reads it back, and one in which it finds any metadata isn't sent. A scanned page is
+/// read by Vision whether or not pictures are asked for, so its words are there for a model that can't take pictures.
+/// Without a request for pictures, no picture is made.
 ///
 /// Every byte is read by Helm itself, from a file it opened without following a link and with downloads off: a file
 /// kept in a cloud and not on this Mac is refused by macOS rather than fetched, and answers `not_downloaded`. A
 /// video's bytes reach AVFoundation through a loader that reads them the same way, so AVFoundation never opens the
-/// file itself. A Word or OpenDocument file is read from those bytes by readers that take its words alone: a linked
-/// picture, a template, a field that includes another file and an XML entity are neither fetched nor opened. Speech
-/// in a video is not listened to: macOS asks the person before an app may recognize speech, which a background read
-/// can't do.
+/// file itself. A Word (.docx) or OpenDocument (.odt) file is a zip, and its directory is read first
+/// (`AgentContentZip`): one that would unpack to too much, or looks built to, is refused as too large. Then it is read
+/// from those bytes by readers that take its words alone: a linked picture, a template, a field that includes another
+/// file and an XML entity are neither fetched nor opened. Rich text is always read as the type its extension names,
+/// never as HTML or a web archive, which load what they link to. Word files from before 2007 (.doc) aren't read: their
+/// reader is old and large. Speech in a video is not listened to: macOS asks the person before an app may recognize
+/// speech, which a background read can't do.
 enum AgentContentExtractor {
     /// What one file holds, read within `deadline`.
     static func summary(of request: AgentContentRequest, deadline: DispatchTime) -> AgentContentSummary {
@@ -53,10 +63,17 @@ enum AgentContentExtractor {
         case .image:
             guard file.length <= AgentContentLimits.imageFileBytes else { return .notRead(kind, .too_large) }
             guard let data = file.bytes(upTo: file.length) else { return .notRead(kind, .unreadable) }
-            let seen = look(at: VNImageRequestHandler(data: data, options: [:]))
-            guard let seen else { return .notRead(kind, .unreadable) }
+            let decoded: CGImage
+            switch firstFrame(of: data) {
+            case .success(let image): decoded = image
+            case .failure(let status): return .notRead(kind, status)
+            }
+            guard let seen = look(at: VNImageRequestHandler(cgImage: decoded, options: [:])) else {
+                return .notRead(kind, .unreadable)
+            }
             // A picture costs time, so it is made only while there is time left.
-            let images = request.wantsImages && DispatchTime.now() < deadline ? picture(decoding: data).map { [$0] } ?? [] : []
+            let wanted = request.wantsImages && DispatchTime.now() < deadline
+            let images = wanted ? picture(of: decoded, source: .picture).map { [$0] } ?? [] : []
             return AgentContentSummary(kind: .image, status: .read, labels: seen.labels, foundText: seen.text, images: images)
         case .video:
             return video(file, ext: ext, wantsImages: request.wantsImages, deadline: deadline)
@@ -72,9 +89,10 @@ enum AgentContentExtractor {
     /// as HTML, which could ask for pictures from the web.
     private static func text(_ file: AgentContentFile, ext: String) -> AgentContentSummary {
         if let type = documentType(ext) {
-            guard let data = file.bytes(upTo: file.length), let words = document(data, type: type) else {
-                return .notRead(.text, .unreadable)
-            }
+            guard let data = file.bytes(upTo: file.length) else { return .notRead(.text, .unreadable) }
+            // Word and OpenDocument files are zips, whose directory says what they unpack to.
+            if type != .rtf, AgentContentZip.refusal(of: data) != nil { return .notRead(.text, .too_large) }
+            guard let words = document(data, type: type) else { return .notRead(.text, .unreadable) }
             return AgentContentSummary(kind: .text, status: .read, lines: lines(of: words, characters: AgentContentLimits.textCharacters))
         }
         guard let data = file.bytes(upTo: textBytesRead) else { return .notRead(.text, .unreadable) }
@@ -85,28 +103,21 @@ enum AgentContentExtractor {
     /// How much of a text file is read: enough for the characters kept, whatever the encoding.
     private static let textBytesRead: Int64 = 24 * 1024
 
-    /// The reader for a rich text or word processor file: RTF, Word (.docx, and .doc from Word 97 to 2003) or
-    /// OpenDocument text (`AgentContentLimits.richTextExtensions` and `wordExtensions`). Each takes the words and their
-    /// styles from the bytes alone; a file that isn't what its extension says is unreadable, never read as HTML.
+    /// The reader for a rich text or word processor file: RTF, Word (.docx) or OpenDocument text
+    /// (`AgentContentLimits.richTextExtensions` and `wordExtensions`). Each takes the words and their styles from the
+    /// bytes alone; a file that isn't what its extension says is unreadable, never read as another type.
     private static func documentType(_ ext: String) -> NSAttributedString.DocumentType? {
         switch ext {
         case "rtf": return .rtf
         case "docx": return .officeOpenXML
-        case "doc": return .docFormat
         case "odt": return .openDocument
         default: return nil
         }
     }
 
-    /// A rich text or word processor document's words. A .doc that is RTF inside, as older apps saved them, is read
-    /// as RTF.
+    /// A rich text or word processor document's words, read as `type` and nothing else.
     private static func document(_ data: Data, type: NSAttributedString.DocumentType) -> String? {
-        if let read = try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil) {
-            return read.string
-        }
-        guard type == .docFormat, data.starts(with: Data("{\\rtf".utf8)) else { return nil }
-        return (try? NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf],
-                                        documentAttributes: nil))?.string
+        (try? NSAttributedString(data: data, options: [.documentType: type], documentAttributes: nil))?.string
     }
 
     /// The words of a text file's first bytes: UTF-16 when it starts with that mark, else UTF-8, else Windows Latin.
@@ -148,12 +159,12 @@ enum AgentContentExtractor {
 
     private static let pdfPages = 20
 
-    /// A PDF page on white, turned as the page says, `scanEdge` pixels on its longer side.
+    /// A PDF page on white, turned as the page says, `visionEdge` pixels on its longer side.
     private static func drawn(_ page: PDFPage) -> CGImage? {
         let box = page.bounds(for: .cropBox)
         let size = abs(page.rotation) % 180 == 90 ? CGSize(width: box.height, height: box.width) : box.size
         guard size.width >= 1, size.height >= 1 else { return nil }
-        let scale = Double(scanEdge) / max(size.width, size.height)
+        let scale = Double(visionEdge) / max(size.width, size.height)
         guard let context = whiteContext(width: Int((size.width * scale).rounded()), height: Int((size.height * scale).rounded()))
         else { return nil }
         context.scaleBy(x: scale, y: scale)
@@ -161,10 +172,10 @@ enum AgentContentExtractor {
         return context.makeImage()
     }
 
-    /// The longer side a scanned page is drawn at for Vision. At `AgentContentLimits.lookEdge` Vision misreads print
-    /// of 10 to 12 points on a letter page; at this size it reads it, in no more time. The picture for a model is
-    /// made from this drawing at `lookEdge`.
-    private static let scanEdge = 1_600
+    /// The longer side a scanned page is drawn at, and a picture decoded at, for Vision. At
+    /// `AgentContentLimits.lookEdge` Vision misreads print of 10 to 12 points on a letter page; at this size it reads
+    /// it, in no more time. The picture for a model is made from this copy at `lookEdge`.
+    private static let visionEdge = 1_600
 
     /// The lines of `text`, each trimmed, empty ones left out, `characters` at most in all: the last is cut to fit.
     static func lines(of text: String, characters: Int) -> [String] {
@@ -181,6 +192,30 @@ enum AgentContentExtractor {
     }
 
     // MARK: Pictures
+
+    /// A picture's first frame, or its primary image when it holds several, decoded by ImageIO at `visionEdge` pixels
+    /// at most on its longer side and turned as its EXIF orientation says. Its size is read from its header first, and
+    /// a picture of more than `mostPixels` is too large and not decoded at all. The copy is drawn from the pixels,
+    /// never taken from a thumbnail stored in the file. Unreadable when ImageIO can't read its size or decode it.
+    private static func firstFrame(of data: Data) -> Result<CGImage, AgentContentStatus> {
+        let header = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, header), CGImageSourceGetCount(source) > 0 else {
+            return .failure(.unreadable)
+        }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let found = CGImageSourceCopyPropertiesAtIndex(source, index, header) as? [String: Any],
+              let width = (found[kCGImagePropertyPixelWidth as String] as? NSNumber)?.int64Value,
+              let height = (found[kCGImagePropertyPixelHeight as String] as? NSNumber)?.int64Value,
+              width > 0, height > 0 else { return .failure(.unreadable) }
+        guard width <= mostPixels / height else { return .failure(.too_large) }
+        let copy = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: visionEdge,
+                    kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, copy) else { return .failure(.unreadable) }
+        return .success(image)
+    }
+
+    /// The most pixels a picture may have to be decoded: 100 megapixels.
+    private static let mostPixels: Int64 = 100_000_000
 
     /// What a picture shows and the text in it, from Vision's on-device text recognition (accurate, with language
     /// correction) and image classification. Nil when Vision couldn't read it.
@@ -207,16 +242,9 @@ enum AgentContentExtractor {
 
     // MARK: Pictures for a model
 
-    /// A picture's first frame as a small JPEG for a model. AppKit decodes it and turns it as its EXIF orientation says.
-    /// Nil when it can't be decoded.
-    private static func picture(decoding data: Data) -> AgentContentImage? {
-        guard let image = NSBitmapImageRep(data: data)?.cgImage else { return nil }
-        return picture(of: image, source: .picture)
-    }
-
     /// `image` as a JPEG for a model: drawn anew on white in sRGB, `AgentContentLimits.lookEdge` pixels at most on its
     /// longer side and never larger than it is, and written at `lookQuality` with nothing but its pixels, so nothing of
-    /// a file's own bytes or metadata is in it.
+    /// a file's own bytes or metadata is in it. Nil when ImageIO still finds metadata in it.
     private static func picture(of image: CGImage, source: AgentContentImage.Source) -> AgentContentImage? {
         let longer = max(image.width, image.height)
         guard longer > 0 else { return nil }
@@ -228,7 +256,7 @@ enum AgentContentExtractor {
         guard let drawn = context.makeImage(),
               let written = NSBitmapImageRep(cgImage: drawn).representation(
                 using: .jpeg, properties: [.compressionFactor: AgentContentLimits.lookQuality]),
-              let jpeg = withoutMetadata(written) else { return nil }
+              let jpeg = withoutMetadata(written), hasNoMetadata(jpeg) else { return nil }
         return AgentContentImage(jpeg: jpeg, width: width, height: height, source: source)
     }
 
@@ -265,6 +293,18 @@ enum AgentContentExtractor {
             at += 2 + length
         }
         return nil
+    }
+
+    /// ImageIO finds no metadata in this JPEG: no EXIF, GPS, TIFF or IPTC dictionary, and no tag at all, XMP's
+    /// included.
+    static func hasNoMetadata(_ jpeg: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let found = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { return false }
+        let dictionaries = [kCGImagePropertyExifDictionary, kCGImagePropertyExifAuxDictionary, kCGImagePropertyGPSDictionary,
+                            kCGImagePropertyTIFFDictionary, kCGImagePropertyIPTCDictionary]
+        guard dictionaries.allSatisfy({ found[$0 as String] == nil }) else { return false }
+        let tags = CGImageSourceCopyMetadataAtIndex(source, 0, nil).flatMap { CGImageMetadataCopyTags($0) as? [Any] } ?? []
+        return tags.isEmpty
     }
 
     // MARK: Videos
@@ -328,6 +368,73 @@ enum AgentContentExtractor {
 private func comesFirst(_ label: AgentContentLabel, _ other: AgentContentLabel) -> Bool {
     if label.confidence != other.confidence { return label.confidence > other.confidence }
     return label.identifier < other.identifier
+}
+
+/// The directory of a zip, as Word (.docx) and OpenDocument (.odt) files are, read from the bytes Helm read before
+/// any reader unpacks them. macOS's readers unpack each part to the size this directory gives and fail rather than go
+/// past it, so these sizes bound what a file can unpack to.
+enum AgentContentZip {
+    /// Why a zip is refused.
+    enum Refusal: Equatable {
+        /// Its end record or its directory can't be read, or isn't where the end record says.
+        case unreadable
+        /// A Zip64 archive, whose sizes aren't in the directory's own fields.
+        case zip64
+        /// More than `mostParts` parts.
+        case tooManyParts
+        /// Its parts unpack to more than `mostBytes` in all.
+        case tooLarge
+        /// A part unpacks to more than `mostRatio` times its packed size, and more than `slack` bytes past that.
+        case packedTooTightly
+    }
+
+    static let mostBytes = 16 * 1024 * 1024
+    static let mostParts = 2_000
+    static let mostRatio = 100
+    /// A short part packs tightly whatever it holds, so each may unpack to this many bytes past its ratio.
+    static let slack = 4 * 1024
+
+    /// Why these bytes are refused, or nil for a zip of a size Helm reads.
+    static func refusal(of data: Data) -> Refusal? {
+        data.withUnsafeBytes { refusal(of: $0) }
+    }
+
+    private static func refusal(of bytes: UnsafeRawBufferPointer) -> Refusal? {
+        func u16(_ at: Int) -> Int { Int(UInt16(littleEndian: bytes.loadUnaligned(fromByteOffset: at, as: UInt16.self))) }
+        func u32(_ at: Int) -> Int { Int(UInt32(littleEndian: bytes.loadUnaligned(fromByteOffset: at, as: UInt32.self))) }
+        // The end record is 22 bytes and a comment that ends the file. There must be one such record, and only one.
+        let ends = stride(from: bytes.count - 22, through: max(0, bytes.count - 22 - 0xFFFF), by: -1)
+            .filter { u32($0) == 0x0605_4B50 && $0 + 22 + u16($0 + 20) == bytes.count }
+        guard ends.count == 1, let end = ends.first else { return .unreadable }
+        // Zip64 keeps its sizes in a record of its own, found through a locator just before this one, and marks each
+        // field it moved there with all ones.
+        if end >= 20, u32(end - 20) == 0x0706_4B50 { return .zip64 }
+        let parts = u16(end + 10), size = u32(end + 12), start = u32(end + 16)
+        if u16(end + 8) == 0xFFFF || parts == 0xFFFF || size == 0xFFFF_FFFF || start == 0xFFFF_FFFF { return .zip64 }
+        // One disk, and the directory right before the end record.
+        guard u16(end + 4) == 0, u16(end + 6) == 0, u16(end + 8) == parts, start + size == end else { return .unreadable }
+        guard parts <= mostParts else { return .tooManyParts }
+        var at = start, unpackedInAll = 0
+        for _ in 0..<parts {
+            guard at + 46 <= end, u32(at) == 0x0201_4B50 else { return .unreadable }
+            let packed = u32(at + 20), unpacked = u32(at + 24), disk = u16(at + 34), local = u32(at + 42)
+            let extra = at + 46 + u16(at + 28), extraEnd = extra + u16(at + 30), next = extraEnd + u16(at + 32)
+            guard next <= end else { return .unreadable }
+            if packed == 0xFFFF_FFFF || unpacked == 0xFFFF_FFFF || disk == 0xFFFF || local == 0xFFFF_FFFF { return .zip64 }
+            var field = extra
+            while field + 4 <= extraEnd {
+                if u16(field) == 0x0001 { return .zip64 }
+                field += 4 + u16(field + 2)
+            }
+            // The part's packed bytes lie before the directory.
+            guard disk == 0, local + 30 + packed <= start else { return .unreadable }
+            unpackedInAll += unpacked
+            guard unpackedInAll <= mostBytes else { return .tooLarge }
+            guard unpacked <= packed * mostRatio + slack else { return .packedTooTightly }
+            at = next
+        }
+        return at == end ? nil : .unreadable
+    }
 }
 
 /// A file opened for Read contents: a plain file, opened without following a link, still the item the folder rules

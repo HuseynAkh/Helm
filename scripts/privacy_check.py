@@ -22,6 +22,8 @@ Some rules hold in one place only, or everywhere but one place:
 - Read contents looks inside files on this Mac, in CONTENT_FILES alone: only there may PDFKit, Vision,
   AVFoundation or Speech be imported, or their reading types be named. Only CONTENT_READER, which takes the person's
   permit, calls into it, and only the AI panel's model and the window's AI search may make that permit.
+- Rich text is never read as HTML or a web archive, which load what they link to: no file names those document
+  types, and CONTENT_FILES names the type of each attributed string it makes from bytes, so none is guessed.
 - ONE_FILE and GUARDED list what only a file or two may say: the keychain calls, the call that shows a
   key, and the labels of the initializers that only those files may call. The file that declares such an
   initializer, in DECLARED, may name its label in a comment.
@@ -199,6 +201,26 @@ WRITES = "AI mode's module: a way to change a file or start a tool"
 INSIDE = 'Read contents: a way to look inside a file, outside the one file that does it'
 READS = "AI mode's module: a way to open or look up a file"
 PLAIN = 'AI panel and AI search: text drawn as more than plain text, or a way to open or share'
+HTML_TYPES = 'rich text read as HTML or a web archive, which load what they link to'
+UNTYPED = 'Read contents: rich text made from bytes without naming its document type'
+
+# An attributed string made from bytes: its initializer, by name or as a bare `.init`, or `read(from:)`.
+FROM_BYTES = re.compile(r'(?:\bNS(?:Mutable)?AttributedString\s*(?:\.\s*init\s*)?|(?<![\w.)\]?!])\.\s*init\s*'
+                        r'|\.\s*read\s*)\(\s*(?:data|from)\s*:')
+
+
+def untyped_documents(code):
+    """Each attributed string made from bytes whose call doesn't name `.documentType` in its options, so the reader
+    guesses the type from the bytes, HTML included. Options handed over in a variable name no type here, so they fail
+    too."""
+    for match in FROM_BYTES.finditer(code):
+        depth, index = 1, match.end()
+        while index < len(code) and depth:
+            depth += 1 if code[index] in '([{' else -1 if code[index] in ')]}' else 0
+            index += 1
+        call = code[match.start():index]
+        if not re.search(r'\.\s*documentType\s*:', call):
+            yield match.start(), call
 
 # (id, what it finds, pattern, files it reads), then where it looks when that isn't everywhere, then what it
 # matches against when that isn't the raw text: `code` or `strings`, as layers() returns them, or a tuple of views
@@ -378,6 +400,19 @@ RULES = [
     # That file is reached only through the reader, which reads nothing without the person's permit.
     ('content-read', INSIDE, r'\bAgentContent(?:Extractor|File|VideoBytes)\b', SWIFT,
      outside(*CONTENT_FILES, CONTENT_READER), BOTH),
+    # NSAttributedString reads HTML and web archives by loading what they link to, pictures and style sheets from the
+    # web included. No file names those two document types: by name, as a value whose type is left out, by their old
+    # constants or their raw values, or made from a string.
+    ('html-document', HTML_TYPES,
+     r'\bDocumentType\s*\.\s*`?(?:html|webArchive)\b|\bdocumentType\s*:\s*\.\s*`?(?:html|webArchive)\b|\bwebArchive\b'
+     r'|\bNS(?:HTML|WebArchive)TextDocumentType\b|\bDocumentType\s*(?:\.\s*init\s*)?\(', SWIFT, inside('Sources/'), BOTH),
+    ('html-document', HTML_TYPES, r'\bNS(?:HTML|WebArchive)\b', SWIFT, inside('Sources/'), 'strings'),
+    # In the file that reads documents, `.html` with its type left out is that type too, and a type made from a raw
+    # value could be.
+    ('html-document', HTML_TYPES, r'\.\s*`?(?:html|webArchive)\b|(?<![\w.)\]?!])\.\s*init\s*\(\s*rawValue\s*:', SWIFT,
+     inside(*CONTENT_FILES), 'code'),
+    # There, each attributed string made from bytes names the type it reads them as.
+    ('html-document', UNTYPED, untyped_documents, SWIFT, inside(*CONTENT_FILES), 'code'),
 
     # A string handed to Text as a key is read as Markdown, and its links can be clicked. A key can be made by
     # name or by a literal's own initializer. Link detection may only be turned off, by `= false` and nothing more.
