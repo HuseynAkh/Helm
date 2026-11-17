@@ -92,6 +92,7 @@ final class AgentTextTests: XCTestCase {
         ("rowSize", AgentText.rowSize(1_234), "1.2 KB"),
         ("markGoesTo", AgentText.markGoesTo("Google Drive"), "Goes to Google Drive"),
         ("markLeaves", AgentText.markLeaves("iCloud Drive"), "Leaves iCloud Drive"),
+        ("markCode", AgentText.markCode, "Code: check it before you apply it"),
         ("rowHolds", AgentText.rowHolds(37), "37 items"),
         ("noteNotAllowed", AgentText.noteNotAllowed(5), "5 changes weren't allowed, so Helm left them out."),
         ("noteNotDownloaded", AgentText.noteNotDownloaded(12), "12 items aren't downloaded, so Helm left them out.")
@@ -237,8 +238,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 212)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 212, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 213)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 213, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {

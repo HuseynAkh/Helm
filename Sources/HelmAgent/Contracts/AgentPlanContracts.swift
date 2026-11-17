@@ -22,8 +22,8 @@ public enum AgentPlanTarget: Hashable, Sendable { case existing(AgentPlanItem), 
 /// One change. A renamed file keeps its extension.
 public enum AgentPlanStep: Hashable, Sendable {
     case newFolder(key: String, parent: AgentPlanTarget, name: ValidFileName)
-    /// A file the plan makes, holding the whole text the model wrote. Its name ends in one of
-    /// `AgentNewName.newFileExtensions`; an RTF or Word file is made from the text when the plan is applied.
+    /// A file the plan makes, holding the whole text the model wrote. Its name passes
+    /// `AgentNewName.validateNewFileName`; an RTF or Word file is made from the text when the plan is applied.
     case newFile(parent: AgentPlanTarget, name: ValidFileName, text: String)
     case move(AgentPlanItem, to: AgentPlanTarget)
     case copy(AgentPlanItem, to: AgentPlanTarget)
@@ -31,9 +31,9 @@ public enum AgentPlanStep: Hashable, Sendable {
     case trash(AgentPlanItem)
 }
 
-/// Why a group of steps starts unticked: it removes something, or it puts files where other people or other devices
-/// see them. When two apply to one step, the first in this order wins.
-public enum AgentPlanGuard: String, Sendable, CaseIterable { case trash, leaves, arrives, reachesOthers }
+/// Why a group of steps starts unticked: it removes something, it puts files where other people or other devices
+/// see them, or it makes a file of code or a web page. When two apply to one step, the first in this order wins.
+public enum AgentPlanGuard: String, Sendable, CaseIterable { case trash, leaves, arrives, reachesOthers, code }
 
 /// Steps the person ticks or unticks together. Steps of one kind and destination with different guards or places
 /// make separate groups.

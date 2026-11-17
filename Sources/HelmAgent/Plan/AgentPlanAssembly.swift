@@ -25,7 +25,7 @@ final class AgentPlanFacts {
 }
 
 /// Turns checked steps into Helm's own plan: place facts for every folder the steps touch, the place rules, the
-/// bulk guard, groups, names already taken, notes and the title. Both checking a new plan and looking at one again
+/// bulk guard, the guard on new code, groups, names already taken, notes and the title. Both checking a new plan and looking at one again
 /// before Apply end here, so the two can't disagree about what a plan is.
 struct AgentPlanAssembly {
     enum Failure: Error, Equatable {
@@ -150,6 +150,12 @@ struct AgentPlanAssembly {
         for (index, place) in AgentPlaceRules.bulkGuarded(changes) where rulings[index]?.guardedBy == nil {
             rulings[index]?.guardedBy = .reachesOthers
             rulings[index]?.place = place
+        }
+        // A new file of code or a web page starts unticked too, when nothing above already holds it back.
+        for index in kept where rulings[index]?.guardedBy == nil {
+            if case .newFile(_, let name, _) = steps[index], AgentNewName.isNewFileCode(name.value) {
+                rulings[index]?.guardedBy = .code
+            }
         }
 
         let finalSteps = kept.map { steps[$0] }

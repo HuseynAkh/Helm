@@ -109,8 +109,8 @@ struct AgentPlanCard: Equatable {
         let title: String
         let isOn: Bool
         let isOpen: Bool
-        /// Why the group starts unticked: "Goes to Google Drive", "Leaves iCloud Drive", "Shared". The Trash group's
-        /// title says it already.
+        /// Why the group starts unticked: "Goes to Google Drive", "Leaves iCloud Drive", "Shared", or that it is code.
+        /// The Trash group's title says it already.
         let mark: String?
         /// Where a group of moves, copies or new files goes, under its title.
         var destination: AgentPlanPath? = nil
@@ -208,6 +208,7 @@ struct AgentPlanCard: Equatable {
         case .leaves?: return AgentText.markLeaves(group.place ?? "")
         case .arrives?: return AgentText.markGoesTo(group.place ?? "")
         case .reachesOthers?: return AgentText.chipShared
+        case .code?: return AgentText.markCode
         }
     }
 
