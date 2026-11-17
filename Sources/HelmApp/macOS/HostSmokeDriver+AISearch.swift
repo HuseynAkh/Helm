@@ -45,9 +45,10 @@ extension HostSmokeDriver {
             let count = window.aiSearchContentsReadForTesting
             check(count == Int(argument), step, "\(count)")
         case "search-return":
-            // Return in the search field, then waits until the model has answered or failed.
+            // Return in the search field, then waits until the model has answered or failed. With Read contents on,
+            // every candidate is read on this Mac first, which takes longer.
             window.submitSearchForTesting()
-            let answered = await aiSearchWaitUntil {
+            let answered = await aiSearchWaitUntil(seconds: 30) {
                 guard let search = window.activeTab?.search, search.query.usesAI else { return false }
                 return search.assist.map { $0.phase != .thinking } ?? !search.isGathering
             }
@@ -72,10 +73,10 @@ extension HostSmokeDriver {
     }
 
     /// Waits up to 10 seconds for `condition`.
-    private static func aiSearchWaitUntil(_ condition: () -> Bool) async -> Bool {
+    private static func aiSearchWaitUntil(seconds: Double = 10, _ condition: () -> Bool) async -> Bool {
         var waited = 0.0
         while !condition() {
-            if waited >= 10 { return false }
+            if waited >= seconds { return false }
             await wait(seconds: 0.05); waited += 0.05
         }
         return true
