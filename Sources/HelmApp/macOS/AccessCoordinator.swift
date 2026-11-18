@@ -12,9 +12,9 @@ import HelmUI
 /// Setup comes before anything macOS guards. While setup is owed, a launch shows the onboarding and holds every window
 /// back until it closes (`setUpBeforeWindows`), so macOS asks about no folder before the person has seen it, and the
 /// file windows open only once the onboarding is through. AI mode is one of its steps in every onboarding, not a window
-/// of its own. Setup is owed until the onboarding has been through once, again whenever another build runs (macOS treats a new build of an
-/// ad hoc signed app as a new app and forgets its folder access and Full Disk Access), and while an onboarding that was
-/// quit part way is kept: the next launch carries on from its step.
+/// of its own. Setup is owed until the onboarding has been through once, again whenever another build runs (macOS
+/// treats a new build of an ad hoc signed app as a new app and forgets its folder access and Full Disk Access), and
+/// while an onboarding that was quit part way is kept: the next launch carries on from its step.
 ///
 /// Once Full Disk Access is switched on, macOS offers Quit & Reopen, since it applies it in full only from the next
 /// launch, and the onboarding's step offers Restart Helm, which does the same. Either way the onboarding's next step is
