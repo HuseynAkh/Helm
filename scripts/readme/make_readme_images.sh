@@ -116,30 +116,14 @@ if grep -q '^FAIL' "$root/result.log"; then echo "Some steps failed; see $root/r
 if ! grep -qE '^SMOKE_(QUIT|END)' "$root/result.log"; then echo "The run stopped before its last step; see $root/result.log"; exit 1; fi
 swiftc -O scripts/readme/frame_shot.swift -o "$root/frame_shot" || exit 1
 frame() { name=$1; shift; "$root/frame_shot" "$root/shots/$name.png" "docs/images/$name.png" "$@" || exit 1; }
-frame ai-panel-dark 1600
-frame ai-panel-light 1600
+frame ai-search-dark 1600
+frame ai-search-light 1600
+frame path-dark 1600 14 crop=0,0,1240,200
+frame path-light 1600 14 crop=0,0,1240,200
 frame ai-plan-light 760 18 crop=900,52,340,548
 frame ai-plan-dark 760 18 crop=900,52,340,548
 frame ai-undo-light 760 18 crop=900,52,340,548
 frame ai-undo-dark 760 18 crop=900,52,340,548
-frame ai-whole-mac-light 1600
-frame ai-whole-mac-dark 1600
-frame ai-contents-light 1600
-frame ai-contents-dark 1600
-frame ai-search-light 1600
-frame ai-search-dark 1600
-frame onboarding-ai-light 900 16
-frame onboarding-access-light 900 16
-frame settings-ai-light 1000 16
 frame hero-dark 1600
 frame hero-light 1600
-frame list-light 1600
-frame recent-dark 1600
-frame search-dark 1600
-frame path-dark 1600 14 crop=0,0,1240,200
-frame path-light 1600 14 crop=0,0,1240,200
-frame header-dark 1600 14 crop=0,0,1240,52
-frame settings-sidebar-light 1000 16
-frame trash-card-light 1600
-frame view-options-dark 600 14
 echo "Pictures in docs/images, the mark and the banner in docs/brand. Captures and log: $root"
