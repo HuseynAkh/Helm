@@ -372,7 +372,7 @@ search-queries-read “memo”
 result-reason memo.txt=Name has “memo”
 agent-script @FIX@/agent-search-fails.json
 search-return
-search-status-reads AI search isn't available.
+search-status-reads The model sent something Helm couldn't read.
 agent-script @FIX@/agent-script.json
 search-key escape
 search-shown false

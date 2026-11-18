@@ -244,8 +244,74 @@ final class AISearchSessionTests: XCTestCase {
     func testLimitsByWhereTheModelRuns() {
         XCTAssertEqual(AISearchSession.maxRows(isLocal: false), 60)
         XCTAssertEqual(AISearchSession.maxRows(isLocal: true), 30)
-        XCTAssertEqual(AISearchSession.callSeconds(isLocal: false), 20)
-        XCTAssertEqual(AISearchSession.callSeconds(isLocal: true), 60)
+        XCTAssertEqual(AISearchSession.callSeconds(isLocal: false), 60)
+        XCTAssertEqual(AISearchSession.callSeconds(isLocal: true), 120)
         XCTAssertEqual(AISearchSession.requestCharacters, 500)
     }
+
+    // MARK: The keychain's wait
+
+    private let ask = AgentStructuredAsk(system: "Plan.", user: "a bird", schemaName: AISearchSchemas.planName,
+                                         schema: AISearchSchemas.plan)
+
+    func testAQuestionsTimeStartsOnceTheKeychainHasAnswered() async throws {
+        // macOS asks the person about the keychain for longer than the whole question may take.
+        let client = KeychainWaitClient(keychainSeconds: 0.6)
+        let reply = try await AISearchSession.answer(from: client, to: ask, seconds: 0.2)
+        XCTAssertEqual(reply, KeychainWaitClient.reply)
+        XCTAssertEqual(client.counts, .init(prepared: 1, asked: 1))
+    }
+
+    func testAnAnswerSlowerThanTheQuestionsTimeStillRunsOut() async {
+        let client = KeychainWaitClient(answerSeconds: 5)
+        do {
+            _ = try await AISearchSession.answer(from: client, to: ask, seconds: 0.2)
+            XCTFail("the answer took longer than the question may")
+        } catch {
+            XCTAssertEqual(error as? AgentFailure, .timedOut)
+        }
+    }
+
+    func testAKeychainRefusalIsTheQuestionsFailureAndNothingIsAsked() async {
+        let client = KeychainWaitClient(refusal: .keyDenied)
+        do {
+            _ = try await AISearchSession.answer(from: client, to: ask, seconds: 0.2)
+            XCTFail("macOS refused the keychain")
+        } catch {
+            XCTAssertEqual(error as? AgentFailure, .keyDenied)
+        }
+        XCTAssertEqual(client.counts, .init(prepared: 1, asked: 0))
+    }
+}
+
+/// A model whose key is read from a keychain that takes its time, or refuses, before it answers.
+private final class KeychainWaitClient: AgentModelClient, @unchecked Sendable {
+    struct Counts: Equatable { var prepared = 0, asked = 0 }
+    static let reply = Data(#"{"sort": "relevance", "queries": []}"#.utf8)
+    let providerName = "ChatGPT", destination = "OpenAI", isLocal = false
+    private let keychainSeconds: Double, answerSeconds: Double
+    private let refusal: AgentFailure?
+    private let lock = NSLock()
+    private var seen = Counts()
+    var counts: Counts { lock.withLock { seen } }
+
+    init(keychainSeconds: Double = 0, answerSeconds: Double = 0, refusal: AgentFailure? = nil) {
+        self.keychainSeconds = keychainSeconds; self.answerSeconds = answerSeconds; self.refusal = refusal
+    }
+
+    func prepare() async throws {
+        lock.withLock { seen.prepared += 1 }
+        if let refusal { throw refusal }
+        try await Task.sleep(nanoseconds: UInt64(keychainSeconds * 1_000_000_000))
+    }
+    func structured(_ ask: AgentStructuredAsk) async throws -> Data {
+        lock.withLock { seen.asked += 1 }
+        try await Task.sleep(nanoseconds: UInt64(answerSeconds * 1_000_000_000))
+        return Self.reply
+    }
+    func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> {
+        AsyncThrowingStream { $0.finish(throwing: AgentFailure.unreadable) }
+    }
+    func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] { [] }
+    func models() async throws -> [AgentModelInfo] { [] }
 }

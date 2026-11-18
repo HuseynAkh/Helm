@@ -1,74 +1,71 @@
+#if os(macOS)
 import Foundation
 import SwiftUI
 import HelmCore
 
-/// Read-only F-050 Properties; host owns enrichment, reveal and dismissal (B-066/B-117).
-public struct PropertiesView: View {
-    private let model: PropertiesViewModel
-    private let icon: ([FileEntry]) -> Image
-    private let reveal: ([URL]) -> Void
-    private let dismiss: () -> Void
-    public init(model: PropertiesViewModel, icon: @escaping ([FileEntry]) -> Image,
-                reveal: @escaping ([URL]) -> Void, dismiss: @escaping () -> Void) {
-        self.model = model; self.icon = icon; self.reveal = reveal; self.dismiss = dismiss
-    }
-    public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                icon(model.entries).resizable().scaledToFit().frame(width: 64, height: 64)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.title).font(.headline).lineLimit(2)
-                    Text(model.kind).font(.subheadline).foregroundStyle(.secondary)
+/// Properties: the item's icon, name and kind, then what it is and where, then who can do what with it, in the
+/// grouped rows Helm's Settings use. Values can be selected and copied. Nothing here changes the item.
+struct PropertiesView: View {
+    static let width: CGFloat = 440
+    @ObservedObject var session: PropertiesSession
+    let icon: Image
+    let reveal: ([URL]) -> Void
+
+    var body: some View {
+        let model = session.model
+        Form {
+            Section {
+                HStack(spacing: 14) {
+                    icon.resizable().scaledToFit().frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.title).font(.title3.weight(.semibold)).lineLimit(3).textSelection(.enabled)
+                        Text(model.kind).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
                 }
-            }.padding()
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    section("General") {
-                        row("Size", model.size)
-                        if model.entries.count > 1 {
-                            row("Items", "\(model.aggregate.fileCount) files, \(model.aggregate.directoryCount) folders")
-                        }
-                        row("Location", model.location)
-                        row("Created", model.created)
-                        row("Modified", model.modified)
-                        row("Type", model.contentType)
-                        row("Locked", model.supplement.locked.map { $0 ? "Yes" : "No" } ?? "Unavailable")
-                    }
-                    if let dimensions = model.supplement.imageDimensions {
-                        section("Image") { row("Dimensions", dimensions) }
-                    }
-                    if let application = model.supplement.defaultApplication {
-                        section("Open With") { row("Default", application) }
-                    }
-                    section("Permissions") {
-                        ForEach(Array(model.permissionRows.enumerated()), id: \.offset) { _, value in
-                            row(value.0, value.1)
-                        }
-                        row("ACL", model.supplement.acl ?? "Unavailable")
-                        Text("Permissions, ACLs, name, extension and lock state are read-only.")
-                            .font(.caption).foregroundStyle(.secondary).padding(.horizontal)
-                    }
-                    Button("Show in Enclosing Folder") { reveal(model.entries.map(\.url)) }
-                        .disabled(model.entries.isEmpty).padding(.horizontal)
-                }.padding(.vertical)
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
             }
-            Divider()
-            HStack { Spacer(); Button("Done", action: dismiss).keyboardShortcut(.cancelAction) }.padding()
-        }.frame(width: 360, height: 480)
+            Section {
+                ForEach(model.generalRows, id: \.label) { row($0, model: model) }
+            }
+            if !model.permissionRows.isEmpty {
+                Section {
+                    ForEach(model.permissionRows, id: \.label) { row($0, model: model) }
+                } header: {
+                    Text("Permissions")
+                } footer: {
+                    Text("Shown as macOS keeps them. Helm doesn’t change them here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(minWidth: Self.width, idealWidth: Self.width, minHeight: 320)
     }
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary).padding(.horizontal)
-            content()
+
+    private func row(_ row: PropertiesRow, model: PropertiesViewModel) -> some View {
+        LabeledContent {
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(spacing: 6) {
+                    if row.isWorking { ProgressView().controlSize(.small) }
+                    Text(row.value).multilineTextAlignment(.trailing).textSelection(.enabled)
+                        .lineLimit(row.reveals ? 2 : nil).truncationMode(.middle)
+                    if row.reveals {
+                        Button { reveal(model.entries.map(\.url)) } label: { Image(systemName: "arrow.right.circle.fill") }
+                            .buttonStyle(.borderless).foregroundStyle(.secondary)
+                            .help("Show in Enclosing Folder")
+                            .accessibilityLabel("Show in Enclosing Folder")
+                    }
+                }
+                if let note = row.note {
+                    Text(note).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } label: {
+            Text(row.label)
         }
     }
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top) {
-            Text(label).foregroundStyle(.secondary).frame(width: 80, alignment: .trailing)
-            // MAC-VERIFY: selectable text and wrapping in narrow hosted Properties sheet.
-            Text(value).textSelection(.enabled)
-            Spacer()
-        }.font(.system(size: 12)).padding(.horizontal)
-    }
 }
+#endif

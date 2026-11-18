@@ -77,7 +77,7 @@ import HelmSearch
              send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let delivery = AISearchDelivery(tab: tab, generation: generation, send: send)
         // With no model ready this is the plain search, sent as it always is.
-        guard query.usesAI, case .ready(_, _, _, let isLocal) = dependencies.agent.runtime.state else {
+        guard query.usesAI, case .ready(let provider, _, _, let isLocal) = dependencies.agent.runtime.state else {
             return baseline { results in delivery.baseline(results) }
         }
         // Words that hold a key are never sent, as in the panel's composer: the name matches show and the status
@@ -92,7 +92,7 @@ import HelmSearch
         delivery.assist(SearchAssist(phase: .thinking))
         let plain = baseline { results in delivery.baseline(results) }
         let task = Task { @MainActor [weak self] in
-            await self?.assist(query, client: client, isLocal: isLocal, delivery: delivery)
+            await self?.assist(query, client: client, provider: provider, isLocal: isLocal, delivery: delivery)
         }
         return StoreEffectCancellation {
             plain.cancel()
@@ -102,7 +102,8 @@ import HelmSearch
 
     // MARK: The steps
 
-    private func assist(_ query: SearchQuery, client: any AgentModelClient, isLocal: Bool, delivery: AISearchDelivery) async {
+    private func assist(_ query: SearchQuery, client: any AgentModelClient, provider: String, isLocal: Bool,
+                        delivery: AISearchDelivery) async {
         let session = AISearchSession(client: client)
         let home = dependencies.home
         let scopeRoot: URL?
@@ -131,12 +132,15 @@ import HelmSearch
                                           kind: query.kind, readsContents: looking != nil)
         } catch {
             guard !Task.isCancelled else { return }
-            // The name matches stay on show, and Return again tries again.
-            delivery.assist(SearchAssist(phase: .failed, coverage: coverage))
+            // The name matches stay on show, the status bar says why, and Return again tries again.
+            let failure = error as? AgentFailure ?? .unreadable
+            delivery.assist(SearchAssist(phase: .failed, readAs: AgentText.searchFailedBecause(failure, provider: provider),
+                                         coverage: coverage))
             return
         }
         guard !Task.isCancelled else { return }
-        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind)
+        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind,
+                                   readsContents: looking != nil, scopeRoot: scopeRoot)
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
@@ -157,13 +161,18 @@ import HelmSearch
         var notDownloaded = 0
         var looked = AISearchLooked()
         if let looking, coverage != .namesOnly {
+            delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchReadingInside, coverage: coverage))
             let read = await readInside(queries, walked: walked, found: found, plain: plainKept, scopeRoot: scopeRoot,
                                         kind: query.kind, coverage: coverage, hiddenFolders: hiddenFolders,
                                         reader: looking.reader, permit: looking.permit,
                                         looks: AgentContentLimits.searchLooks(isLocal: isLocal))
             guard !Task.isCancelled else { return }
             notDownloaded = read.notDownloaded
-            looked = await look(at: Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal))),
+            let picked = Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal)))
+            if !picked.isEmpty {
+                delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchLooking(picked.count), coverage: coverage))
+            }
+            looked = await look(at: picked,
                                 request: query.text, kind: query.kind, session: session, place: place, scopeRoot: scopeRoot,
                                 reader: looking.reader, permit: looking.permit)
             guard !Task.isCancelled else { return }
@@ -263,6 +272,7 @@ import HelmSearch
                                                 locale: locale)
         if let kind = query.kind { readAs += " · " + AgentText.searchKindShown(kind) }
         if looked.count > 0 { readAs += " · " + AgentText.searchLookedAt(looked.count) }
+        if looked.failed > 0 { readAs += " · " + AgentText.searchCouldntLook(looked.failed, looked.failure, provider: provider) }
         if notDownloaded > 0 { readAs += " · " + AgentText.searchNotDownloaded(notDownloaded) }
         delivery.assist(SearchAssist(phase: .done, reasons: reasons, readAs: readAs, queriesRead: queriesRead, coverage: coverage))
     }
@@ -285,9 +295,9 @@ import HelmSearch
                     let planned = queries[index]
                     group.addTask { @MainActor in
                         if let hook { return (index, hook(planned)) }
-                        guard asksSpotlight else { return (index, []) }
+                        guard asksSpotlight, let predicate = AISearchPredicates.predicate(for: planned) else { return (index, []) }
                         let scopes: [Any] = scopeRoot.map { [$0.path] } ?? [NSMetadataQueryLocalComputerScope]
-                        let urls = await AISearchSpotlightGather.gather(AISearchPredicates.predicate(for: planned), scopes: scopes,
+                        let urls = await AISearchSpotlightGather.gather(predicate, scopes: scopes,
                                                                         limit: Self.spotlightReadLimit, seconds: Self.spotlightSeconds)
                         return (index, urls)
                     }
@@ -418,7 +428,9 @@ import HelmSearch
                       place: StorageFacts, scopeRoot: URL?, reader: any AgentContentReading,
                       permit: AgentContentPermit) async -> AISearchLooked {
         guard !picked.isEmpty else { return AISearchLooked() }
-        let shown = picturesRefused ? picked : await withPictures(picked, reader: reader, permit: permit)
+        // A model that can't see pictures, as its provider said, gets Apple's descriptions of them alone.
+        let sendsPictures = !picturesRefused && dependencies.agent.runtime.modelSeesPictures
+        let shown = sendsPictures ? await withPictures(picked, reader: reader, permit: permit) : picked
         guard !Task.isCancelled else { return AISearchLooked() }
         let facts = await shownFacts(shown.map(\.entry), place: place, scopeRoot: scopeRoot)
         let home = dependencies.home.path
@@ -435,28 +447,36 @@ import HelmSearch
             })
         }
         var answers: [Int: [AISearchLook]] = [:]
+        var failures: [Int: AgentFailure] = [:]
         var next = 0
         while next < questions.count, !Task.isCancelled {
             let batch = Array(next..<min(next + AgentContentLimits.lookQuestionsAtOnce, questions.count))
             next += batch.count
-            let pictures = !picturesRefused
-            await withTaskGroup(of: (Int, [AISearchLook]?, Bool).self) { group in
+            let pictures = !picturesRefused && sendsPictures
+            await withTaskGroup(of: (Int, [AISearchLook]?, Bool, AgentFailure?).self) { group in
                 for index in batch {
                     let items = questions[index].map(\.item)
                     group.addTask {
                         let answer = await Self.ask(session, request: request, kind: kind, items: items, homes: homes, pictures: pictures)
-                        return (index, answer.looks, answer.refused)
+                        return (index, answer.looks, answer.refused, answer.failure)
                     }
                 }
-                for await (index, looks, refused) in group {
+                for await (index, looks, refused, failure) in group {
                     if refused { picturesRefused = true }
-                    if let looks { answers[index] = looks }
+                    if let looks { answers[index] = looks } else { failures[index] = failure ?? .unreadable }
                 }
             }
         }
         var looked = AISearchLooked()
         for (index, question) in questions.enumerated() {
-            guard let looks = answers[index] else { continue }
+            guard let looks = answers[index] else {
+                // Not answered: counted and said in the status bar, so a look that failed is never silent.
+                if !Task.isCancelled, let failure = failures[index] {
+                    looked.failed += question.count
+                    if looked.failure == nil { looked.failure = failure }
+                }
+                continue
+            }
             looked.count += question.count
             for look in looks where question.indices.contains(look.item - 1) {
                 let (entry, item) = question[look.item - 1]
@@ -473,17 +493,21 @@ import HelmSearch
 
     /// One look question. Asked with pictures and turned away as a bad request, it is asked once more in words alone,
     /// with the words found on this Mac standing in, and the answer says pictures were refused. Any other failure
-    /// answers no looks.
+    /// answers no looks, and why.
     nonisolated private static func ask(_ session: AISearchSession, request: String, kind: AISearchKind?,
                                         items: [AISearchLookItem], homes: [String],
-                                        pictures: Bool) async -> (looks: [AISearchLook]?, refused: Bool) {
+                                        pictures: Bool) async -> (looks: [AISearchLook]?, refused: Bool, failure: AgentFailure?) {
         let carries = pictures && items.contains { !$0.summary.images.isEmpty }
         do {
-            return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: carries), false)
+            return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: carries), false, nil)
         } catch AgentFailure.badRequest where carries {
-            return (try? await session.look(request: request, kind: kind, items: items, homes: homes, pictures: false), true)
+            do {
+                return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: false), true, nil)
+            } catch {
+                return (nil, true, error as? AgentFailure ?? .unreadable)
+            }
         } catch {
-            return (nil, false)
+            return (nil, false, error as? AgentFailure ?? .unreadable)
         }
     }
 
@@ -552,7 +576,7 @@ import HelmSearch
     /// Nil for a query with no such words, and for one kept to kinds Read contents doesn't read.
     static func lookQuery(_ query: AISearchQuery) -> AISearchQuery? {
         guard !query.contentAll.isEmpty else { return nil }
-        var look = query
+        var look = withoutRepeatedNames(query)
         look.contentAll = []
         let readable: [AISearchKind] = [.image, .video, .pdf, .text, .code, .document]
         if query.kinds.isEmpty {
@@ -570,12 +594,27 @@ import HelmSearch
         return look
     }
 
+    /// `query` without the name words that say again a word it looks for inside files, as a model planning "a bird"
+    /// says it: every query of gpt-oss's asked for "bird" in the name as well as inside, so no photo was ever read. A
+    /// list of other names that holds such a word goes whole, since its words are other names for the same thing.
+    /// A name word of its own, such as "trip" beside "dog", stays.
+    static func withoutRepeatedNames(_ query: AISearchQuery) -> AISearchQuery {
+        func folded(_ word: String) -> String {
+            word.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        }
+        let inside = Set(query.contentAll.map(folded))
+        var look = query
+        look.nameAll = query.nameAll.filter { !inside.contains(folded($0)) }
+        if query.nameAny.contains(where: { inside.contains(folded($0)) }) { look.nameAny = [] }
+        return look
+    }
+
     /// A query that looks for words inside files, as one for the pictures and videos it describes: the same names,
     /// folders, dates and sizes, with no words inside files, and kept to pictures and videos. Nil for a query with no
     /// such words, and for one kept to kinds that are neither.
     static func visualQuery(_ query: AISearchQuery) -> AISearchQuery? {
         guard !query.contentAll.isEmpty else { return nil }
-        var look = query
+        var look = withoutRepeatedNames(query)
         look.contentAll = []
         let seen: [AISearchKind] = [.image, .video]
         if query.kinds.isEmpty {
@@ -603,8 +642,9 @@ import HelmSearch
         if let hook = Self.fanOutAnswersForTesting {
             urls = hook(look)
         } else {
-            guard !dependencies.agent.secrets.isMemoryOnly, coverage != .namesOnly else { return [] }
-            urls = await AISearchSpotlightGather.gather(AISearchPredicates.predicate(for: look), scopes: [NSMetadataQueryLocalComputerScope],
+            guard !dependencies.agent.secrets.isMemoryOnly, coverage != .namesOnly,
+                  let predicate = AISearchPredicates.predicate(for: look) else { return [] }
+            urls = await AISearchSpotlightGather.gather(predicate, scopes: [NSMetadataQueryLocalComputerScope],
                                                         limit: Self.spotlightReadLimit, seconds: Self.spotlightSeconds)
         }
         let entries = await DatalessGuard.off { () async -> [FileEntry] in
@@ -719,12 +759,65 @@ import HelmSearch
     /// The plan's queries for this place. Where only names can be searched, words inside files are dropped, never
     /// broadened, and a query left with nothing to look for goes. None left: the request's own words, by name.
     /// With a kind chosen in the kind row, every query that runs is kept to it, whichever way it was made.
+    /// With the kind row at Any and no kind named in the request, the last and loosest query looks at every kind, so a
+    /// model that guessed one, such as documents for "a receipt" that's a photo, can't hide the rest.
+    /// In a search of a folder, a folder word naming that folder or one above it goes first, since it holds every file
+    /// searched (`AISearchMatcher.withoutPlaceSearched`); a query left with nothing to look for goes with it.
     static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String,
-                        kind: AISearchKind? = nil) -> [AISearchQuery] {
-        let kept = placeQueries(planned, coverage: coverage, request: request)
-        guard let kind else { return kept }
+                        kind: AISearchKind? = nil, readsContents: Bool = false, scopeRoot: URL? = nil) -> [AISearchQuery] {
+        var placed: [AISearchQuery] = []
+        for query in planned.map({ AISearchMatcher.withoutPlaceSearched($0, scopeRoot: scopeRoot) })
+            where query != AISearchQuery() && !placed.contains(query) {
+            placed.append(query)
+        }
+        if placed.isEmpty { placed = [ownWords(request)].filter { $0 != AISearchQuery() } }
+        var kept = placeQueries(placed, coverage: coverage, request: request)
+        if readsContents, coverage != .namesOnly { kept = insideLast(kept, request: request) }
+        guard let kind else { return everyKindLast(kept, request: request) }
         return AISearchPlan(sort: .relevance, queries: kept).limited(to: kind).queries
     }
+
+    /// With Read contents on, a plan that looks for no words inside files gets queries that do: the words the person
+    /// typed among its first query's names, inside files of its kinds, its dates and sizes kept and its folders and
+    /// extensions left out. gpt-oss planned "a bird" as names alone about half the time, so no photo was ever read.
+    /// Names that must all be there are looked for together; other names, each on its own, two at most.
+    static func insideLast(_ queries: [AISearchQuery], request: String) -> [AISearchQuery] {
+        guard let first = queries.first, queries.allSatisfy({ $0.contentAll.isEmpty }) else { return queries }
+        func typed(_ words: [String]) -> [String] { AISearchQuery(contentAll: words).clamped(request: request).contentAll }
+        let all = typed(first.nameAll), any = typed(first.nameAny)
+        let groups = all.isEmpty ? any.prefix(2).map { [$0] } : [all]
+        var added = queries
+        for words in groups {
+            let inside = AISearchQuery(contentAll: words, kinds: first.kinds, dateField: first.dateField, dateFrom: first.dateFrom,
+                                       dateTo: first.dateTo, sizeMinBytes: first.sizeMinBytes, sizeMaxBytes: first.sizeMaxBytes)
+            if !added.contains(inside) { added.append(inside) }
+        }
+        return added
+    }
+
+    /// Adds the last query again without its kinds and extensions, when every query has some and the request names
+    /// no kind of file. A request that names one, in English, keeps the model's kinds as they are.
+    static func everyKindLast(_ queries: [AISearchQuery], request: String) -> [AISearchQuery] {
+        guard let last = queries.last, queries.allSatisfy({ !$0.kinds.isEmpty || !$0.extensions.isEmpty }),
+              !namesAKind(request) else { return queries }
+        var open = last
+        open.kinds = []; open.extensions = []
+        guard open != AISearchQuery(), !queries.contains(open) else { return queries }
+        return queries + [open]
+    }
+    /// Whether the request names a kind of file: a word such as photo, PDF, video or folder, or an extension.
+    static func namesAKind(_ request: String) -> Bool {
+        let words = request.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "." }.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
+        return words.contains { kindWords.contains($0) || kindWords.contains(String($0.dropLast())) }
+    }
+    private static let kindWords: Set<String> = [
+        "photo", "picture", "pic", "image", "screenshot", "selfie", "jpg", "jpeg", "png", "heic", "gif",
+        "video", "movie", "clip", "film", "footage", "mp4", "mov",
+        "document", "doc", "docx", "pdf", "spreadsheet", "presentation", "slide", "deck", "txt", "csv", "xlsx", "pptx",
+        "folder", "directory", "directorie", "code", "script",
+        "audio", "song", "music", "podcast", "recording", "mp3", "wav", "m4a",
+        "archive", "zip", "dmg"
+    ]
 
     private static func placeQueries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String) -> [AISearchQuery] {
         guard coverage == .namesOnly else { return planned }
@@ -734,11 +827,16 @@ import HelmSearch
             if query != AISearchQuery(), !kept.contains(query) { kept.append(query) }
         }
         if kept.isEmpty {
-            let words = request.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.count >= 2 }
-            let own = AISearchQuery(nameAny: words).clamped(request: request)
+            let own = ownWords(request)
             if own != AISearchQuery() { kept.append(own) }
         }
         return kept
+    }
+
+    /// The request's own words, by name: what a search runs when nothing of its plan is left.
+    private static func ownWords(_ request: String) -> AISearchQuery {
+        let words = request.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.count >= 2 }
+        return AISearchQuery(nameAny: words).clamped(request: request)
     }
 
     /// The facts a planned query asks about, as reason codes, in the order a reason names them.
@@ -799,6 +897,9 @@ private struct AISearchLooked {
     var misses: Set<ItemID> = []
     /// The files in the questions it answered.
     var count = 0
+    /// The files in the questions it didn't answer, and why the first of those wasn't.
+    var failed = 0
+    var failure: AgentFailure?
 }
 
 /// The folders of one AI search that carry macOS's hidden flag. An agent listing never enters such a folder, so an

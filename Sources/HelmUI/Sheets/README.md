@@ -45,14 +45,14 @@ must also cancel any host-owned metadata/recursive-size work.
   Collapsed details do no formatting. Retain each immutable completed row model
   across progress updates to preserve its current-page formatting cache. This panel does
   not create journal entries or retry operations.
-- PropertiesViewModel deduplicates ItemID and delegates aggregates to Core's
-  PropertiesModel. PropertiesSupplement is single-item enrichment only; multi-
-  item instances discard it to avoid presenting one item's permissions as all
-  items' permissions. POSIX bits retain Read/Write/Execute/None wording. Exact
-  known bytes, overflow, unknown size and non-recursive directory sizes are
-  explicit. Missing permissions/ACLs are unavailable, not inferred from a mode
-  or an isReadable bit. The host may provide image dimensions/default app/lock/
-  ACL text. Reveal emits selected URLs; it never calls NSWorkspace itself.
+- Properties (Mac run 7) lives in `Sources/HelmUI/Properties/` and is a window
+  of its own, not a sheet. PropertiesViewModel deduplicates ItemID, delegates
+  aggregates to Core's PropertiesModel, and turns what PropertiesReader read and
+  FolderCounter counted so far into rows. PropertiesSupplement is single-item
+  enrichment only; multi-item instances discard it to avoid presenting one
+  item's permissions as all items' permissions. A row that wasn't read is left
+  out rather than shown as unknown, and permissions are never inferred from an
+  isReadable bit. Reveal emits selected URLs; it never calls NSWorkspace itself.
 
 ## Preserved behaviour and deviations
 
@@ -61,12 +61,9 @@ OperationProgressView.swift, NewFileView.swift and ViewModels/PropertiesViewMode
 F-050/F-052–F-058/F-061, B-038/B-046/B-047/B-066/B-100/B-117.
 Review fixes 1/5/8/9 take precedence over old architecture sketches.
 
-Properties preserves General/Image/Open With/Permissions, enclosing-folder and
-Done wording. Multi-item display is additive per this lane's explicit request;
-it does not add commands to the context menu. Unsupported editing remains
-read-only, including ACL, name, extension, lock and permissions. No editable
-M20 parity claim, recursive scanner, icon provider, inspector window, Open With
-picker or sharing adapter is included. Conflict wording is new: the old app
+Properties was rebuilt in Mac run 7 after Nautilus's: a window per item or
+selection, a counted folder, and Nautilus's words for access. Editing remains
+read-only, including ACL, name, extension, lock and permissions. Conflict wording is new: the old app
 kept both without a conflict sheet. New validation text fixes unsafe names.
 The leaf does not implement inline rename or New Folder dispatch.
 
@@ -86,7 +83,6 @@ swift test --scratch-path /tmp/build-K16 --filter HelmUITests
 
 - OperationsPanel.swift: DisclosureGroup expansion, selectable detail text and
   keyboard focus inside the hosted operations panel.
-- PropertiesView.swift: selectable text wrapping inside the 360-point sheet.
 - All SwiftUI still needs macOS SDK typechecking (Binding dynamic members,
   ViewBuilder switches, enumerated ForEach closures, keyboard shortcuts and
   actor isolation). Linux parsing does not resolve types or SDK availability.

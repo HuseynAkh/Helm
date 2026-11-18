@@ -311,11 +311,13 @@ final class AgentEndpointTests: XCTestCase {
         XCTAssertEqual(try route(.ollama, .chat), AgentRouteSpec(method: "POST", path: "/v1/chat/completions", auth: AgentAuthStyle.none))
         XCTAssertEqual(try route(.ollama, .models), AgentRouteSpec(method: "GET", path: "/api/tags", auth: AgentAuthStyle.none))
         XCTAssertEqual(try route(.lmStudio, .chat), AgentRouteSpec(method: "POST", path: "/v1/chat/completions", auth: .bearer))
-        XCTAssertEqual(try route(.lmStudio, .models), AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer))
+        // LM Studio's own list says which models see pictures; its OpenAI-style list, for an older LM Studio, doesn't.
+        XCTAssertEqual(try route(.lmStudio, .models), AgentRouteSpec(method: "GET", path: "/api/v0/models", auth: .bearer))
+        XCTAssertEqual(try route(.lmStudio, .modelsAlternate), AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer))
         XCTAssertEqual(try route(.other, .chat), AgentRouteSpec(method: "POST", path: "/chat/completions", auth: .bearer))
         XCTAssertEqual(try route(.other, .models), AgentRouteSpec(method: "GET", path: "/models", auth: .bearer))
         XCTAssertEqual(try route(.other, .modelsAlternate), AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer))
-        for id in AgentProviderID.allCases where id != .other {
+        for id in AgentProviderID.allCases where id != .other && id != .lmStudio {
             XCTAssertNil(try route(id, .modelsAlternate), id.rawValue)
         }
         // No route carries a key in its address.

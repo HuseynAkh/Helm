@@ -43,6 +43,25 @@ final class AgentModelListerTests: XCTestCase {
         XCTAssertEqual(try ids("lmstudio", .lmStudio), ["qwen2.5-7b-instruct", "lmstudio-community/llama-3.2-3b-instruct"])
     }
 
+    /// LM Studio's own list names a vision model "vlm" and a text model "llm"; its other list doesn't say.
+    func testLMStudiosOwnListSaysWhichModelsSeePictures() throws {
+        let own = Data("""
+            {"object": "list", "data": [
+              {"id": "qwen2.5-vl-7b-instruct", "object": "model", "type": "vlm", "state": "not-loaded"},
+              {"id": "openai/gpt-oss-20b", "object": "model", "type": "llm", "state": "loaded"},
+              {"id": "text-embedding-nomic-embed-text-v1.5", "object": "model", "type": "embeddings"},
+              {"id": "some-new-kind", "object": "model", "type": "tts"}]}
+            """.utf8)
+        let models = try AgentModelLister.models(from: own, provider: .lmStudio)
+        XCTAssertEqual(models.map(\.id), ["qwen2.5-vl-7b-instruct", "openai/gpt-oss-20b", "some-new-kind"])
+        XCTAssertEqual(models.map(\.seesPictures), [true, false, nil])
+        let other = Data(#"{"data": [{"id": "qwen2.5-vl-7b-instruct", "object": "model"}]}"#.utf8)
+        XCTAssertEqual(try AgentModelLister.models(from: other, provider: .lmStudio).map(\.seesPictures), [nil])
+        // Another provider's list saying "vlm" is never read as an answer.
+        let ollama = Data(#"{"models": [{"name": "llava:7b", "type": "vlm"}]}"#.utf8)
+        XCTAssertEqual(try AgentModelLister.models(from: ollama, provider: .ollama).map(\.seesPictures), [nil])
+    }
+
     func testOtherKeepsSlashAndColonIDs() throws {
         XCTAssertEqual(try ids("other", .other), ["anthropic/claude-opus-5-5", "openai/gpt-6-astra", "meta-llama/llama-5:free"])
     }

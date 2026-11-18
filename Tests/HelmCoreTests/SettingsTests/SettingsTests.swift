@@ -8,8 +8,8 @@ final class SettingsTests: XCTestCase {
     }
     func testAllDefaultsAndExactKeys() {
         let snapshot = SettingsSnapshot()
-        XCTAssertEqual(snapshot.values.count, 35)
-        XCTAssertEqual(SettingKey.allCases.count, 35)
+        XCTAssertEqual(snapshot.values.count, 36)
+        XCTAssertEqual(SettingKey.allCases.count, 36)
         for key in SettingKey.allCases {
             XCTAssertEqual(key.rawValue, "helm.\(key)")
             XCTAssertEqual(snapshot[key], SettingsSchema.defaultValue(for: key))
@@ -118,5 +118,18 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(snapshot.integer(.showHiddenFiles), 0)
         XCTAssertEqual(snapshot.double(.showHiddenFiles), 0)
         XCTAssertEqual(snapshot.string(.showHiddenFiles), "")
+    }
+
+    /// Open in Terminal starts with the Mac's default terminal and keeps only a terminal Helm knows how to hand a
+    /// folder to.
+    func testTheTerminalAppIsTheMacsDefaultOrAKnownOne() {
+        XCTAssertEqual(SettingsSchema.defaultValue(for: .terminalApp), .string("default"))
+        XCTAssertEqual(SettingsSchema.validated(.string("com.mitchellh.ghostty"), for: .terminalApp), .string("com.mitchellh.ghostty"))
+        XCTAssertEqual(SettingsSchema.validated(.string("com.apple.Terminal"), for: .terminalApp), .string("com.apple.Terminal"))
+        XCTAssertEqual(SettingsSchema.validated(.string("com.example.Shell; rm -rf"), for: .terminalApp), .string("default"))
+        XCTAssertEqual(SettingsSchema.validated(.bool(true), for: .terminalApp), .string("default"))
+        XCTAssertEqual(TerminalApps.choices.first, "default")
+        XCTAssertEqual(TerminalApps.name(of: "com.mitchellh.ghostty"), "Ghostty")
+        XCTAssertEqual(Set(TerminalApps.known.map(\.id)).count, TerminalApps.known.count)
     }
 }

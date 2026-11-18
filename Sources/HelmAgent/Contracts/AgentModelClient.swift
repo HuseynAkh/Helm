@@ -106,12 +106,16 @@ public struct AgentModelInfo: Hashable, Sendable, Identifiable {
     public let id: String
     /// The name to show in place of the id: a ChatGPT plan's display name. Nil for every other provider.
     public let label: String?
+    /// Whether the model can see pictures, as its provider says: LM Studio names each model a vision model or not.
+    /// Nil where the provider doesn't say.
+    public let seesPictures: Bool?
     /// Nil for an empty id and for one with any other character or more than 128 of them.
     public init?(id: String) { self.init(id: id, label: nil) }
     /// A label that isn't clean text of 1 to 64 characters is dropped, and the id is shown.
-    public init?(id: String, label: String?) {
+    public init?(id: String, label: String?, seesPictures: Bool? = nil) {
         guard !id.isEmpty, id.unicodeScalars.count <= Self.idCharacters, id.unicodeScalars.allSatisfy(Self.isAllowed) else { return nil }
         self.id = id
+        self.seesPictures = seesPictures
         self.label = label.flatMap { text in
             let trimmed = text.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, trimmed.unicodeScalars.count <= Self.labelCharacters, AgentTextEscaper.isClean(trimmed) else { return nil }
@@ -144,6 +148,14 @@ public protocol AgentModelClient: Sendable {
     /// JSON in the shape the ask gives. No tools are sent.
     func structured(_ ask: AgentStructuredAsk) async throws -> Data
     func models() async throws -> [AgentModelInfo]
+    /// Reads what a request will need from the keychain, a key or a sign-in, and holds it. macOS may ask the person
+    /// first, so a caller with a time limit starts it after this. Throws only an `AgentFailure`.
+    func prepare() async throws
+}
+
+extension AgentModelClient {
+    /// A client that reads nothing from the keychain is ready at once.
+    public func prepare() async throws {}
 }
 
 /// A client that holds a connection, which is let go when AI mode turns off or the provider changes.

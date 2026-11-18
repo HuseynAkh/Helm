@@ -1,0 +1,88 @@
+# Properties: a folder's contents counted, with what couldn't be read, its parent folder and Nautilus's permissions.
+# In a tab of its own, closed at the end, so the steps after these find the window as it was.
+cmd newTab
+wait 0.3
+go @FIX@/home
+select Measured
+cmd properties
+properties-wait
+properties-windows 1
+properties-title Measured Properties
+properties-row Contents=8 items, totalling 45 bytes
+properties-note Contents=1 folder inside couldn’t be read, so what’s in it isn’t counted.
+properties-row Parent Folder=~
+properties-row Owner=You
+properties-note Owner=Can create and delete files
+properties-row Others=Can access files
+properties-note Disk=GB free of
+properties-row Locked=No
+properties-lacks Size
+properties-lacks Runs as Program
+properties-shot @SHOTS@/properties-folder.png
+properties-close escape
+properties-windows 0
+# A file: its size once, its type as Nautilus words it, and whether it runs
+go @FIX@/home/Measured
+view list
+select a.txt
+cmd properties
+properties-wait
+properties-row Size=5 bytes
+properties-row Type=text/plain
+properties-row Runs as Program=No
+properties-row Parent Folder=~/Measured
+properties-note Owner=Can read and write
+properties-lacks Disk
+properties-lacks Contents
+properties-shot @SHOTS@/properties-file.png
+properties-close
+# A package counts what's inside it as its size
+select Tool.app
+cmd properties
+properties-wait
+properties-row Size=7 bytes
+properties-lacks Opens With
+properties-close
+# Several items: how many of each, their size together, and what's inside the folders
+select a.txt,sub
+cmd properties
+properties-wait
+properties-title 2 Items Properties
+properties-row Selected=1 file, 1 folder
+properties-row Size=35 bytes
+properties-note Size=With 3 items inside the folders.
+properties-lacks Owner
+properties-close
+# Two windows at once, as Nautilus allows
+select sub
+cmd properties
+properties-wait
+select a.txt
+cmd properties
+properties-wait
+properties-windows 2
+properties-close
+properties-close
+properties-windows 0
+# The folder on show, from the empty space's menu
+select
+cmd directoryProperties
+properties-wait
+properties-title Measured Properties
+properties-close
+# Open in Terminal: the selected folder, or the folder on show; never a file or several items
+select sub
+hunt-context-item enabled Open in Terminal
+terminal-opens @FIX@/home/Measured/sub
+select
+hunt-context-bg enabled Open in Terminal
+terminal-opens @FIX@/home/Measured
+select a.txt
+menu openInTerminal disabled
+select a.txt,sub
+menu openInTerminal disabled
+select Tool.app
+menu openInTerminal disabled
+select
+cmd closeTab
+wait 0.3

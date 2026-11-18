@@ -46,6 +46,8 @@ extension BrowserWindowController {
         // Find with AI is there whenever AI mode is on, as the search field's spark is: with no model ready it opens
         // the AI mode screen.
         if command == .findWithAI { return state == .enabled && isAISearchAvailable }
+        // One folder, selected or on show.
+        if command == .openInTerminal { return state == .enabled && terminalFolder() != nil }
         return state == .enabled
     }
 
@@ -151,6 +153,7 @@ extension BrowserWindowController {
         case .openInNewWindow:
             for entry in selectedEntries() where entry.isDirectoryLike { host?.openWindow(at: .directory(CanonicalPath.resolve(entry.url)), selecting: []) }
         case .reveal: if let entry = selectedEntries().first { revealInCurrentTab(entry.url) }
+        case .openInTerminal: if let folder = terminalFolder() { openInTerminal(folder) } else { NSSound.beep() }
         case .showOriginal: showOriginal()
         case .quickLook: toggleQuickLook()
         case .cut: cutSelection()
@@ -1114,15 +1117,34 @@ extension BrowserWindowController {
             if let entry = try? await fileSystem.entry(at: url) { showProperties(for: [entry]) }
         }
     }
+    /// A Properties window for the items, beside this one, as Nautilus opens one. It reads the item's details first,
+    /// which is quick, so the window opens whole, then counts what's inside folders while it's open.
     func showProperties(for entries: [FileEntry]) {
-        guard !entries.isEmpty, let window else { return }
-        let icon = icons.icon(for: entries[0])
-        let model = PropertiesViewModel(entries: entries)
-        let view = PropertiesView(model: model, icon: { _ in Image(nsImage: icon) },
-            reveal: { [weak self] urls in if let url = urls.first { self?.revealInCurrentTab(url) } },
-            dismiss: { [weak window] in if let attached = window?.attachedSheet { window?.endSheet(attached) } })
-        let sheet = NSWindow(contentViewController: NSHostingController(rootView: view))
-        window.beginSheet(sheet, completionHandler: nil)
+        guard !entries.isEmpty, window != nil else { return }
+        let icon = entries.count == 1 ? icons.icon(for: entries[0]) : (NSImage(named: NSImage.multipleDocumentsName) ?? icons.icon(for: entries[0]))
+        let session = PropertiesSession(entries: entries, home: dependencies.home)
+        let controller = PropertiesWindowController(session: session, icon: icon,
+            reveal: { [weak self] urls in
+                guard let self, let url = urls.first else { return }
+                self.revealInCurrentTab(url)
+                self.window?.makeKeyAndOrderFront(nil)
+            },
+            onClose: { [weak self] closed in self?.propertiesWindows.removeAll { $0 === closed } })
+        propertiesWindows.append(controller)
+        let launcher = dependencies.launcher, fileSystem = dependencies.fileSystem
+        Task { @MainActor [weak self] in
+            await session.load(fileSystem: fileSystem, opener: { url in
+                launcher.defaultApplication(toOpen: url).map { FileManager.default.displayName(atPath: $0.path) }
+                    .map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 }
+            })
+            guard let self, let shown = controller.window, self.propertiesWindows.contains(where: { $0 === controller }) else { return }
+            if let frame = self.window?.frame {
+                // Beside the browser window, a little in from its top, as Nautilus's opens over its window.
+                let offset = CGFloat(self.propertiesWindows.count - 1) * 24
+                shown.setFrameTopLeftPoint(NSPoint(x: frame.midX - shown.frame.width / 2 + offset, y: frame.maxY - 60 - offset))
+            }
+            self.host?.present(shown)
+        }
     }
 
     // MARK: Test support

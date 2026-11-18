@@ -17,14 +17,18 @@ public struct AgentSessionParts: Sendable {
     /// What reads inside files on this Mac, for a thread with Read contents on. It lives where files may be opened,
     /// and answers only summaries. Nil reads nothing, and the switch then offers no tool.
     public var contents: (any AgentContentReading)?
+    /// Whether the chosen model can see pictures. False sends it none, only Apple's descriptions of them, from the
+    /// first request, rather than waiting for a provider to turn them away, which some never do.
+    public var seesPictures: @Sendable () async -> Bool
     public init(client: @escaping @Sendable () async -> Result<any AgentModelClient, AgentFailure>,
                 disk: any AgentDisk, home: String, supportFolder: String, clock: any HelmClock,
                 listSecondsOverride: @escaping @Sendable () -> Double? = { nil },
                 mountedVolumes: @escaping @Sendable () async -> [String] = { [] },
-                contents: (any AgentContentReading)? = nil) {
+                contents: (any AgentContentReading)? = nil,
+                seesPictures: @escaping @Sendable () async -> Bool = { true }) {
         self.client = client; self.disk = disk; self.home = home; self.supportFolder = supportFolder
         self.clock = clock; self.listSecondsOverride = listSecondsOverride; self.mountedVolumes = mountedVolumes
-        self.contents = contents
+        self.contents = contents; self.seesPictures = seesPictures
     }
 }
 
@@ -157,6 +161,13 @@ public enum AgentConnection: Equatable, Sendable {
         announce()
     }
 
+    /// Whether the chosen model can see pictures: false only when its provider said it can't, the last time its
+    /// models were listed, as LM Studio says of a model that reads text only.
+    public var modelSeesPictures: Bool {
+        guard let profile = Self.profile(for: config), let model = AgentProviderCatalog.model(for: config) else { return true }
+        return config.textOnlyModels[profile.secretID.account]?.contains(model) != true
+    }
+
     /// The client for the chosen provider and model, built on first use. While AI mode is off the answer is
     /// `.off` and nothing is built; with no provider, address or model it is `.notReady`; with no key for a
     /// provider that needs one it is `.noKey`.
@@ -247,7 +258,8 @@ public enum AgentConnection: Equatable, Sendable {
         let sessionParts = AgentSessionParts(
             client: { [weak self] in await self?.client() ?? .failure(.off) },
             disk: parts.disk, home: parts.home, supportFolder: parts.supportFolder, clock: parts.clock,
-            listSecondsOverride: { overrides.listSeconds }, mountedVolumes: parts.mountedVolumes, contents: parts.contents)
+            listSecondsOverride: { overrides.listSeconds }, mountedVolumes: parts.mountedVolumes, contents: parts.contents,
+            seesPictures: { [weak self] in await self?.modelSeesPictures ?? true })
         let session = parts.makeSession?(sessionParts) ?? StandInConversation()
         sessions.removeAll { $0.session == nil }
         sessions.append(WeakSession(session))

@@ -22,6 +22,27 @@ import AppKit
         guard let window else { return }
         if window.alphaValue != 0 { window.alphaValue = 0 }
         if !window.ignoresMouseEvents { window.ignoresMouseEvents = true }
+        keepOnSharpest(window)
+    }
+
+    /// The README's pictures are taken at the scale of the screen their window is on. With this on, the run keeps
+    /// its windows, still invisible, on the screen with the most pixels to a point, so they come out sharp whichever
+    /// screen is the main one. Off by default; only the `screen sharpest` step of a scripted fixture run turns it on.
+    private(set) static var keepsOnSharpestScreen = false
+
+    static func setKeepsOnSharpestScreen(_ on: Bool) {
+        keepsOnSharpestScreen = on
+        hideAll()
+    }
+
+    /// Moves a window that sits on a less sharp screen to the top left of the sharpest one, keeping its size. A child
+    /// window, such as the path bar's suggestions, goes where its parent does.
+    private static func keepOnSharpest(_ window: NSWindow) {
+        guard keepsOnSharpestScreen, window.parent == nil,
+              let sharpest = NSScreen.screens.max(by: { $0.backingScaleFactor < $1.backingScaleFactor }),
+              (window.screen?.backingScaleFactor ?? 0) < sharpest.backingScaleFactor else { return }
+        let room = sharpest.visibleFrame
+        window.setFrameOrigin(NSPoint(x: room.minX + 20, y: room.maxY - 20 - window.frame.height))
     }
 
     private static func hideAll() {

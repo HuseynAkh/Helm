@@ -560,6 +560,30 @@ import HelmTestKit
         XCTAssertEqual(seen.last, .ready(provider: "Claude", destination: "Claude", model: "claude-opus-5-5", isLocal: false))
     }
 
+    // MARK: Models that can't see pictures
+
+    /// A model LM Studio said reads text only gets no pictures; any other, or one it said nothing of, does. The
+    /// answer is the chosen model's, for the provider at the address it was listed for.
+    func testOnlyAModelItsProviderCalledTextOnlyIsSentNoPictures() throws {
+        let runtime = makeRuntime()
+        XCTAssertTrue(runtime.modelSeesPictures, "nothing chosen")
+        var config = AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"],
+                              textOnlyModels: ["lmStudio|127.0.0.1:1234": ["openai/gpt-oss-20b"]])
+        runtime.configure(config)
+        XCTAssertFalse(runtime.modelSeesPictures)
+        config.models["lmStudio"] = "qwen2.5-vl-7b-instruct"
+        runtime.configure(config)
+        XCTAssertTrue(runtime.modelSeesPictures)
+        // The same name listed by LM Studio at another port says nothing about this one.
+        config.models["lmStudio"] = "openai/gpt-oss-20b"
+        config.ports["lmStudio"] = 4321
+        runtime.configure(config)
+        XCTAssertTrue(runtime.modelSeesPictures)
+        // A file written before Helm kept this reads as every model seeing pictures.
+        let old = try JSONDecoder().decode(AIConfig.self, from: Data(#"{"provider": "lmStudio", "models": {"lmStudio": "x"}}"#.utf8))
+        XCTAssertEqual(old.textOnlyModels, [:])
+    }
+
     // MARK: What checks found, for the model menu
 
     func testEveryCheckTellsWhatTheProviderListedOrThatItDidNot() async throws {

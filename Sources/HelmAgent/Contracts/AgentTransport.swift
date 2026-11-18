@@ -25,10 +25,14 @@ public protocol AgentTransport: Sendable {
     func shutdown() async
     /// Turns every request away from now on, cancels those under way and forgets a cached key, without waiting.
     func refuseRequests()
+    /// Reads the key, or the sign-in's token, that requests will carry, and holds it, without starting any request's
+    /// time. It can wait on macOS asking the person about the keychain.
+    func prepareKey() async throws
 }
 
 extension AgentTransport {
     public func refuseRequests() {}
+    public func prepareKey() async throws {}
 }
 
 /// How long a request may take and how much may come back.

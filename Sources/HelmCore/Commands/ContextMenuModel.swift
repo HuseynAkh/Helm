@@ -31,6 +31,8 @@ public enum ContextMenuModel {
                 // Several items share Open With too, offering the apps that open all of them, as Finder does (P-228).
                 if count > 1 { sections[0].insert(item("Open With", .openWith, nil, .command, true), at: 1) }
                 sections[0] += [item("Open in New Tab", .openInNewTab, nil, .command, true), item("Open in New Window", .openInNewWindow, nil, .command, true)]
+                // A folder opens in the terminal too, as in Nautilus.
+                if kind == .folder { sections[0].append(item("Open in Terminal", .openInTerminal, nil, .command, true)) }
                 sections.append([item("Duplicate", .duplicate, nil, .command, true), item("Make Alias", .makeAlias, nil, .command, true),
                     item("Quick Look", .quickLook, nil, [], true), item("Show in Enclosing Folder", .reveal, nil, .command, true)])
             }
@@ -39,6 +41,10 @@ public enum ContextMenuModel {
                 sections.append([item("Empty Trash...", .emptyTrash, nil, .command, true)])
             }
             if kind == .recent { sections.append([item("Clear Recent", .clearRecent, nil, .command, true)]) }
+            // The folder on show, just above its Properties, as Nautilus's background menu has it.
+            if kind == .background, let last = sections.indices.last {
+                sections.insert([item("Open in Terminal", .openInTerminal, nil, .command, true)], at: last)
+            }
         }
         return MenuModel(title: "", sections: sections)
     }

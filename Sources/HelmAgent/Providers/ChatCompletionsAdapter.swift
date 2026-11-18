@@ -11,11 +11,21 @@ import HelmCore
 /// tool choice, an effort or stream options, which one server or another refuses.
 public struct ChatCompletionsAdapter: AgentWireAdapter {
     private let sendsMaxTokens: Bool
+    private let schemaInPrompt: Bool
 
     /// `sendsMaxTokens` is true for a hosted endpoint. A server on this Mac decides for itself.
-    public init(sendsMaxTokens: Bool) {
+    ///
+    /// `schemaInPrompt` is true for LM Studio. There a `response_format` makes a model that thinks before it answers,
+    /// such as gpt-oss, answer without thinking, and what it answers is junk: words that aren't the person's and
+    /// dates such as "202-???". The schema then goes at the end of the system prompt instead, and the answer is the
+    /// first JSON object in the reply, checked as every answer is.
+    public init(sendsMaxTokens: Bool, schemaInPrompt: Bool = false) {
         self.sendsMaxTokens = sendsMaxTokens
+        self.schemaInPrompt = schemaInPrompt
     }
+
+    /// The line before the schema, when the schema goes in the system prompt.
+    static let schemaLead = "Answer with one JSON object and nothing else. It follows this JSON schema:"
 
     public func turnBody(_ input: AgentTurnInput, model: String) throws -> Data {
         try AgentWireParts.check(model: model)
@@ -28,11 +38,17 @@ public struct ChatCompletionsAdapter: AgentWireAdapter {
     public func structuredBody(_ ask: AgentStructuredAsk, model: String) throws -> Data {
         try AgentWireParts.check(model: model)
         let content: AgentJSON = ask.pictures.isEmpty ? .string(ask.user) : .array(Self.textPart(ask.user) + Self.parts(ask.pictures))
-        var body = common(model: model, system: ask.system, messages: [.object(["role": .string("user"), "content": content])])
-        body["response_format"] = .object([
-            "type": .string("json_schema"),
-            "json_schema": .object(["name": .string(ask.schemaName), "schema": ask.schema, "strict": .bool(true)])
-        ])
+        guard schemaInPrompt else {
+            var body = common(model: model, system: ask.system, messages: [.object(["role": .string("user"), "content": content])])
+            body["response_format"] = .object([
+                "type": .string("json_schema"),
+                "json_schema": .object(["name": .string(ask.schemaName), "schema": ask.schema, "strict": .bool(true)])
+            ])
+            return AgentJSON.object(body).data()
+        }
+        let schema = String(decoding: ask.schema.data(), as: UTF8.self)
+        let system = (ask.system.isEmpty ? "" : ask.system + "\n\n") + Self.schemaLead + "\n" + schema
+        let body = common(model: model, system: system, messages: [.object(["role": .string("user"), "content": content])])
         return AgentJSON.object(body).data()
     }
 

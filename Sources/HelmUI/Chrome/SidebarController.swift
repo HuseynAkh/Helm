@@ -17,6 +17,15 @@ import HelmPersistence
     func sidebarPerformDrop(_ info: NSDraggingInfo, onto place: Place) -> Bool
     func sidebarDragEnded()
     func sidebarEmptyTrash()
+    /// Whether a row's place is a folder that can open in the terminal, and opening it there.
+    func sidebarOpensInTerminal(_ url: URL) -> Bool
+    func sidebarOpenInTerminal(_ url: URL)
+}
+
+extension SidebarDelegate {
+    /// A delegate without a terminal offers none.
+    func sidebarOpensInTerminal(_ url: URL) -> Bool { false }
+    func sidebarOpenInTerminal(_ url: URL) {}
 }
 
 /// The Places sidebar in Nautilus's shape: one full-height translucent pane, plain rows with monochrome icons,
@@ -179,6 +188,10 @@ import HelmPersistence
         if let place = place(row >= 0 ? outline.item(atRow: row) : nil) {
             if place.url != nil {
                 menu.addItem(item("Open in New Tab", place) { [weak self] in self?.delegate?.sidebarActivate($0, newTab: true) })
+            }
+            // A folder row, which a starred file isn't.
+            if let url = place.url, delegate?.sidebarOpensInTerminal(url) == true {
+                menu.addItem(item("Open in Terminal", place) { [weak self] _ in self?.delegate?.sidebarOpenInTerminal(url) })
             }
             if place.isEjectable {
                 menu.addItem(item("Eject “\(place.name)”", place) { [weak self] in self?.delegate?.sidebarEject($0) })

@@ -238,8 +238,37 @@ public enum AgentText {
     public static func searchNotDownloaded(_ count: Int) -> String { "\(number(count)) not downloaded" }
     /// The part of the status bar's line that counts the files the model looked inside, with Read contents on.
     public static func searchLookedAt(_ count: Int) -> String { "Looked at \(number(count))" }
+    /// The same, for the files the model was asked about but didn't answer for: "Couldn't look at 12: OpenAI took too
+    /// long to answer".
+    public static func searchCouldntLook(_ count: Int, _ failure: AgentFailure?, provider: String) -> String {
+        let why = failure.map { searchFailedBecause($0, provider: provider) }
+        let reason = why.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 }
+        return "Couldn't look at \(number(count))" + (reason.map { ": " + $0 } ?? "")
+    }
     public static let searchThinking = "Thinking…"
+    /// The status bar while Read contents reads inside the candidates on this Mac, and while the model looks at them.
+    public static let searchReadingInside = "Reading inside files…"
+    public static func searchLooking(_ count: Int) -> String { "Looking at \(number(count)) \(count == 1 ? "file" : "files")…" }
     public static let searchFailed = "AI search isn't available."
+    public static func searchTookTooLong(_ provider: String) -> String { "\(shown(provider)) took too long to answer." }
+    /// Why an AI search, or its look at some files, got no answer: the panel's line for that failure, and for a question
+    /// that ran out of time, that it took too long.
+    public static func searchFailedBecause(_ failure: AgentFailure, provider: String) -> String {
+        switch failure {
+        case .timedOut: return searchTookTooLong(provider)
+        case .unreachable, .notRunning: return failUnreachable(provider)
+        case .rateLimited, .overloaded: return failBusy(provider)
+        case .noKey, .notReady: return failNoKey(provider)
+        case .keyDenied: return failKeyDenied
+        case .wrongKey: return failWrongKey
+        case .outOfCredit: return failOutOfCredit(provider)
+        case .noSuchModel: return failNoSuchModel(provider)
+        case .badRequest, .unreadable: return failUnreadable
+        case .tooLarge: return failTooLarge
+        case .declined: return failDeclined
+        case .off, .noTools, .cancelled: return searchFailed
+        }
+    }
     public static let searchOnThisMac = "Searched what's on this Mac."
     public static let searchNamesOnly = "Names only here."
     /// The kind row under the header while the search is open: its VoiceOver label, then its first choice.
@@ -348,6 +377,9 @@ public enum AgentText {
     public static let addressOtherDevice = "Servers on other devices aren't supported yet."
     public static let modelLabel = "Model"
     public static let modelPlaceholder = "Model name"
+    /// Under the model, where its provider says whether it sees pictures, as LM Studio does.
+    public static let modelSeesPictures = "Sees pictures: with Read contents on, it gets small copies of them."
+    public static let modelReadsTextOnly = "Reads text only: with Read contents on, Helm describes pictures to it in words."
     /// The button beside the model menu that asks the provider for its models again.
     public static let refreshModels = "Refresh Models"
 

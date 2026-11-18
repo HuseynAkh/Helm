@@ -54,12 +54,21 @@ struct AISettingsView: View {
                         localState
                     }
                     // Other has no models to offer until an address has been taken.
-                    if model.provider != .other || model.hasProfile { modelRow }
+                    if model.provider != .other || model.hasProfile {
+                        modelRow
+                        if let sees = model.chosenModelSeesPictures {
+                            Text(verbatim: sees ? AgentText.modelSeesPictures : AgentText.modelReadsTextOnly)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .frame(width: Self.width)
+        // As tall as the window, as every other pane is: a form taller than the window then scrolls inside it,
+        // rather than being centred with its first rows under the toolbar, and the window can measure it.
+        .frame(maxHeight: .infinity)
         .onAppear { draftAddress = model.address }
         // Settings has no Done, so a key, an address, a port or a model typed and not yet entered is entered as the
         // pane goes away.
@@ -175,8 +184,11 @@ extension SettingsWindowController {
         let host = AISettingsHost(rootView: AISettingsView(model: model))
         host.sizingOptions = []
         replacePane(.ai, with: host) { AISettingsView.height(for: model) }
+        // The model says it will change before the form redraws, so the pane is fitted after the redraw, and once
+        // more a moment later for rows that come in as the form lays out.
         host.refit = model.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.fitPane() } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { MainActor.assumeIsolated { self?.fitPane() } }
         }
     }
     /// What Settings › AI shows and changes, once the app has given it one.

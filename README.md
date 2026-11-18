@@ -7,9 +7,11 @@
 
 **Ask Helm to organize, move and find your files.<br>Nothing changes until you press Apply.**
 
+Or press ⌘L and type where you're going: Tab completes the path, as it does in your shell.
+
 macOS 14 or later &nbsp;·&nbsp; Apple silicon and Intel &nbsp;·&nbsp; Version 0.2, an early preview
 
-[AI mode](#ai-mode) · [How it works](#how-it-works) · [Privacy](#privacy) · [Install](#install) · [The file manager](#the-file-manager) · [Shortcuts](#keyboard-shortcuts) · [Build and test](#build-and-test)
+[Type a path](#type-a-path) · [AI mode](#ai-mode) · [How it works](#how-it-works) · [Privacy](#privacy) · [Install](#install) · [The file manager](#the-file-manager) · [Shortcuts](#keyboard-shortcuts) · [Build and test](#build-and-test)
 
 </div>
 
@@ -17,6 +19,27 @@ macOS 14 or later &nbsp;·&nbsp; Apple silicon and Intel &nbsp;·&nbsp; Version 
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-panel-dark.png">
   <img src="docs/images/ai-panel-light.png" alt="Helm showing Downloads in the grid, with the AI panel open on the right: the Downloads chip, the This Folder and Whole Mac switch, the consent line, the suggestions Organize 10 items, Move everything to… and Copy everything to…, and the composer with the model menu and Read contents">
 </picture>
+
+## Type a path
+
+For people who'd rather type than click, as they do in Yazi, ranger, lf or nnn. Press **⌘L**, or click the current folder's name in the path bar, and the bar becomes a prompt. Type a path as you would after `cd`, and Tab completes it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/path-dark.png">
+  <img src="docs/images/path-light.png" alt="The top of the window over Home: the path bar is a prompt reading ~/Documents/Pro, with the rest of Projects in grey after the caret, and under it the suggestions Projects, chosen, and Product Roadmap.pdf">
+</picture>
+
+| Type or press | What happens |
+|---|---|
+| `~`, `..`, `Documents/Pro` | Your home folder, the folder above, and a path that starts from the folder on show |
+| Tab or → | Takes the suggestion. A folder gets its `/` and its contents are suggested at once, so Tab, Tab walks down the tree |
+| ↑ ↓ | Choose another suggestion |
+| Return | Goes there. A file's path opens its folder with the file selected, hidden files included |
+| Escape | Closes the suggestions, then the prompt. A click anywhere else puts the path bar back too |
+
+Suggestions are the names in that folder that start with what you typed, in any case, folders first. They come 100 ms after you stop typing, or at once after a `/`; Settings › Advanced sets the delay. Hidden names show only while Show Hidden Files (⌘.) is on. The match is from the start of the name, like a shell's Tab: nothing fuzzy, and no memory of where you've been. `file://` addresses work too, and `smb://`, `afp://`, `nfs://`, `ftp://` and `webdav://` addresses connect to the server, as Finder's Connect to Server does. A path that doesn't exist shakes the bar and keeps your text, so you can fix it.
+
+In the files, type a name's first letters to select it. ⌘↓ opens, ⌘↑ goes up, ⌘[ and ⌘] go back and forward, and Space is Quick Look.
 
 ## AI mode
 
@@ -57,7 +80,7 @@ Names don't always say what a file is. Turn on **Read contents** under the compo
 
 Turn on the trefoil in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
 
-The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "a receipt from somewhere I ate" finds the café's and the deli's among six receipts, by what they show, whatever their names, and pointing at one says what the model saw.
+The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "a receipt from somewhere I ate" finds the café's and the deli's among six receipts, by what they show, whatever their names, and pointing at one says what the model saw. While it reads and looks, the status bar says so, and if the model didn't answer for some files it says how many and why.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
@@ -102,7 +125,7 @@ AI mode is off until you turn it on. The onboarding's AI Mode step and Settings 
   - **Scanned PDFs:** their first page as a small copy.
   - With each picture and frame, what Apple's on-device recognition found in it: up to five things it shows, and any text.
 
-  The files themselves never leave your Mac, and neither do full-size pictures. With Ollama or LM Studio nothing leaves your Mac at all, and the thread's first line says "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other provider, what Helm reads goes to it, and the first line says "Sends your requests, file names and what it reads inside files to" that provider. A model that can't take pictures gets the on-device description instead. Text and pictures from inside a file are handed over as data, and the model is told never to follow instructions in them. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
+  The files themselves never leave your Mac, and neither do full-size pictures. With Ollama or LM Studio nothing leaves your Mac at all, and the thread's first line says "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other provider, what Helm reads goes to it, and the first line says "Sends your requests, file names and what it reads inside files to" that provider. A model that can't take pictures gets the on-device description instead. LM Studio says which of its models see pictures, and Settings › AI shows it under the model; a model that reads text only, such as gpt-oss, is never sent pictures, only their description. Text and pictures from inside a file are handed over as data, and the model is told never to follow instructions in them. Whatever it proposes, Helm checks every change, and nothing happens until you press Apply.
 - In the AI panel, Read contents reads 50 files a request at most and sends 24 pictures at most. It reads text and PDFs up to 20 MB, .docx and .odt files that unpack to 16 MB at most, and pictures up to 50 MB and 100 megapixels.
 - In AI search, Read contents first reads up to 200 candidates on your Mac. Then the model looks at 48 of them at most, or 12 with a model on your Mac, and their small copies and first lines are sent with the question: across the whole Mac only files the search or the on-device recognition matched, in a folder its newest files too. Code goes only when you choose Code, and settings files such as JSON or YAML only with Code or Document. Helm forgets what it read when the search closes.
 - Read contents never downloads a file to read it, never follows a link, never reads a key, password or wallet file, and doesn't listen to the speech in a video.
@@ -172,8 +195,8 @@ Helm is an early preview for macOS 14 Sonoma or later, on Apple silicon or Intel
    The first command checks the file matches the release: it prints `OK` after the file's name. The second checks that GitHub Actions built it from this repository. It needs the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. [RELEASING.md](docs/RELEASING.md#verify-a-release) explains both.
 3. **Drag Helm to Applications.** Open the disk image and drag Helm onto the Applications folder beside it, then eject the disk image.
 4. **Open it the first time.** Helm isn't notarized yet, so macOS stops it once. On macOS 15 and later, click **Done**, open **System Settings › Privacy & Security**, scroll to **Security**, click **Open Anyway** next to the note about Helm, and confirm with your password. On macOS 14, Control-click Helm in Applications, choose **Open**, then **Open** again. [Why it isn't notarized](docs/RELEASING.md#why-helm-isnt-notarized-yet).
-5. **Set it up.** Helm opens one window that goes step by step, with Back and Continue: **Welcome**, **Full Disk Access**, **Default File Viewer**, **AI Mode** and **You're All Set**. A step that's already done is left out. Opened from the disk image, the welcome offers to move Helm to Applications first. Full Disk Access opens System Settings only when you click its button; when macOS asks to quit and reopen Helm, setup carries on at the next step. Default File Viewer makes Helm open in place of Finder and puts it next to Finder in the Dock, if you leave its box ticked.
-6. **Turn on AI mode**, if you want it, at the AI Mode step: switch it on, pick a provider, then click **Continue with ChatGPT** for OpenAI, paste your key, or start Ollama or LM Studio. **Continue** keeps it on; **Not Now**, or closing the window before you answer, leaves it off. Click **Get Started** at the end and your files open, with nothing else popping up. **Help › Set Up Helm…** goes through the steps again.
+5. **Set it up.** Helm opens one window that goes step by step, with Back and Continue: **Welcome**, **Full Disk Access**, **Default File Viewer**, **AI Mode** and **You're All Set**. A step that's already done is left out; AI Mode always shows, with how it stands. Opened from the disk image, the welcome offers to move Helm to Applications first. Full Disk Access opens System Settings only when you click its button. Once it's on, macOS asks to quit and reopen Helm, and the step's **Restart Helm** does the same; either way setup carries on at the next step. Default File Viewer makes Helm open in place of Finder and puts it next to Finder in the Dock, if you leave its box ticked.
+6. **Turn on AI mode**, if you want it, at the AI Mode step: switch it on, pick a provider, then click **Continue with ChatGPT** for OpenAI, paste your key, or start Ollama or LM Studio. **Continue** keeps it on; **Not Now**, or closing the window before you answer, leaves it off. Set up before, it shows as it is, and **Continue** goes on. Click **Get Started** at the end and your files open, with nothing else popping up. **Help › Set Up Helm…** goes through the steps again.
 
 <p align="center">
   <img src="docs/images/onboarding-access-light.png" width="49%" alt="The onboarding's Full Disk Access step, step 2 of 5: Full Disk Access is off, Without it, macOS asks about Desktop, Documents and Downloads, the Open System Settings button, and the note that macOS will ask to quit and reopen Helm and setup continues after. Back and Continue">
@@ -243,9 +266,10 @@ macOS guards some places, such as the Trash and other apps' data. When Helm can'
 
 ### Everything else
 
-- **Getting around.** Tabs and windows that come back after a relaunch. Back, Forward and Enclosing Folder. Typed paths with `~`, file URLs and any capitalisation; a typed file opens its folder with the file selected, and a click anywhere else puts the path bar back.
+- **Getting around.** Tabs and windows that come back after a relaunch. Back, Forward and Enclosing Folder. Typed paths with Tab completion, in any capitalisation: see [Type a path](#type-a-path).
 - **Working with files.** Copy, cut and paste, move, rename, duplicate, aliases and symbolic links. Undo and Redo. When an item fails, choose Skip, Try Again or Stop instead of losing the whole copy. Compress, Expand Archive, Move to Trash, Put Back and Empty Trash.
 - **Seeing files.** Thumbnails for pictures, PDFs, films and documents, made at your screen's real resolution. Quick Look with Space. Open With lists the apps that suit a file best first, and Change Default App sets which app opens that kind of file, as Finder's Get Info does.
+- **Properties and the terminal.** Properties (⌘I, or right-click) opens a window beside yours, as in Nautilus. For a folder, it counts what's inside and shows the total as it goes, says what it couldn't read, and shows the parent folder, the disk's free space, the dates, and who can do what with it. Files kept in iCloud aren't downloaded to be counted. Right-click a folder, the empty space, a sidebar row or a piece of the path and choose **Open in Terminal**. It opens your default terminal, the one your shell scripts open in, and Settings › General can pick Terminal, Ghostty, iTerm, Warp, WezTerm or kitty instead.
 - **Drag and drop.** Option copies, Command moves, and both make an alias, as in Finder. Hold a drag over a folder, sidebar row, path segment or tab and it springs open. Pictures from Photos and attachments from Mail drop straight in.
 - **Fitting in.** Show in Helm and Open in Helm in the Services menu. Helm can be the app that "Show in Finder" opens, and can sit next to Finder in the Dock. Light and dark appearance, adjustable transparency, and text from 80% to 170%.
 
@@ -290,7 +314,7 @@ Helm is a file manager, so it works best when it can see your whole Mac. Without
 
 1. Click **Open System Settings** at the onboarding's Full Disk Access step, or open **Help › Full Disk Access…**.
 2. Click **+** and choose Helm, or drag Helm's icon from the window into the list.
-3. Turn Helm on, then choose **Quit & Reopen** when macOS offers it. Helm reopens where setup left off.
+3. Turn Helm on, then choose **Quit & Reopen** when macOS offers it, or click **Restart Helm** at the onboarding's step. Helm reopens where setup left off.
 
 Full Disk Access isn't part of Files and Folders: it has its own entry in Privacy & Security.
 

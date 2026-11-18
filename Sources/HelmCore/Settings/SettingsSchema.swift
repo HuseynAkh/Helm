@@ -11,6 +11,7 @@ public enum SettingsSchema {
         case .setupCarriedRows: return .string("") // Nothing to carry on with.
         case .setupBuild: return .string("") // No build has been through setup.
         case .setupProgress: return .string("") // No onboarding under way.
+        case .terminalApp: return .string(TerminalApps.followsMac) // The terminal this Mac's scripts open in.
         case .agentPanelWidth: return .double(340) // Points, as the panel opens the first time.
         case .gridIconSize: return .double(96)
         case .fileTextSize: return .double(14)
@@ -64,6 +65,7 @@ public enum SettingsSchema {
             case .defaultSortField: allowed = ["name", "size", "dateModified", "kind"]
             case .crossVolumeDragDefault: allowed = ["copy", "move"]
             case .newWindowLocation: allowed = NewWindowLocation.allCases.map(\.rawValue)
+            case .terminalApp: allowed = TerminalApps.choices
             default: allowed = []
             }
             return allowed.contains(text) ? value : fallback

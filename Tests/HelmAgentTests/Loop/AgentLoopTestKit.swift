@@ -92,6 +92,29 @@ final class AgentLoopSlowClient: AgentModelClient, @unchecked Sendable {
     func models() async throws -> [AgentModelInfo] { try await inner.models() }
 }
 
+/// A scripted model whose key is read from a keychain that moves a clock on, as macOS asking the person would, or
+/// that refuses.
+final class AgentLoopKeychainClient: AgentModelClient, @unchecked Sendable {
+    let inner: ScriptedModelClient
+    let clock: FakeClock?
+    let seconds: TimeInterval
+    let refusal: AgentFailure?
+    init(inner: ScriptedModelClient, clock: FakeClock? = nil, seconds: TimeInterval = 0, refusal: AgentFailure? = nil) {
+        self.inner = inner; self.clock = clock; self.seconds = seconds; self.refusal = refusal
+    }
+    var providerName: String { inner.providerName }
+    var destination: String { inner.destination }
+    var isLocal: Bool { inner.isLocal }
+    func prepare() async throws {
+        if let refusal { throw refusal }
+        clock?.advance(by: seconds)
+    }
+    func turn(_ input: AgentTurnInput) -> AsyncThrowingStream<AgentModelEvent, Error> { inner.turn(input) }
+    func userItems(text: String?, toolResults: [AgentToolResult]) -> [AgentJSON] { inner.userItems(text: text, toolResults: toolResults) }
+    func structured(_ ask: AgentStructuredAsk) async throws -> Data { try await inner.structured(ask) }
+    func models() async throws -> [AgentModelInfo] { try await inner.models() }
+}
+
 /// A scripted model whose first turn moves a clock on and whose later turns never end until they are cancelled, so a
 /// request runs out of time in the middle of a turn.
 final class AgentLoopStallingClient: AgentModelClient, @unchecked Sendable {

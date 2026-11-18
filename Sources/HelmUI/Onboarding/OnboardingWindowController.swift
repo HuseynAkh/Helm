@@ -10,8 +10,8 @@ import SwiftUI
 /// every moment, and while System Settings is in front the window stays above it, so Helm's icon can be dragged across.
 /// On its own, it shows the AI mode screen, dark, whose Done is the only way to leave AI mode on.
 ///
-/// Quitting with the onboarding open, as macOS's Quit & Reopen does once Full Disk Access is switched on, changes
-/// nothing: the step it reached is kept as it goes (`onProgress`), and the next launch carries on there.
+/// Quitting with the onboarding open, as macOS's Quit & Reopen and Restart Helm do once Full Disk Access is switched on,
+/// changes nothing: the step it reached is kept as it goes (`onProgress`), and the next launch carries on there.
 @MainActor public final class OnboardingWindowController: NSWindowController, NSWindowDelegate {
     public let model: OnboardingModel
     /// Called once the onboarding (not the guide or the AI mode screen) has been through: Get Started, or the window
@@ -23,6 +23,9 @@ import SwiftUI
     public var onProgress: ((OnboardingProgress) -> Void)?
     /// Called after the window closes, with the mode it was in. The windows the first launch held back open then.
     public var onClosed: ((OnboardingModel.Mode) -> Void)?
+    /// Restart Helm, on the Full Disk Access step once access is on: quits Helm and opens it again. The onboarding's
+    /// next step is kept first. The app sets it.
+    public var onRestart: (() -> Void)?
     private let host: NSHostingController<OnboardingView>
     private var counted = false
     private var isWatching = false
@@ -68,6 +71,7 @@ import SwiftUI
         model.changed = { [weak self] in self?.update() }
         model.carry = { [weak self] rows in self?.onCarry?(rows) }
         model.saveProgress = { [weak self] progress in self?.onProgress?(progress) }
+        model.restart = { [weak self] in self?.onRestart?() }
         // The standard refusal, so Continue never seems to do nothing. Scripted runs stay quiet.
         model.refused = { [weak self] in if self?.interactive == true { NSSound.beep() } }
         model.announce = { [weak self] text in self?.post(text) }
@@ -118,13 +122,14 @@ import SwiftUI
     }
 
     /// A launch's onboarding: from the step where it stopped, or the steps still to do. False, and nothing shows, when
-    /// nothing is left to do.
-    public func showSetup(resuming saved: OnboardingProgress?, includesAI: Bool, activate: Bool) -> Bool {
+    /// nothing is left to do. AI mode's step is always among them, but once AI mode has been seen (`aiSeen`) it's no
+    /// reason on its own to open one.
+    public func showSetup(resuming saved: OnboardingProgress?, aiSeen: Bool, activate: Bool) -> Bool {
         if isOpen && model.mode == .ai { leaveAIMode() }
         start { model in
-            if let saved { model.resume(saved) } else { model.startSetup(steps: model.plannedSteps(skippingDone: true, includesAI: includesAI)) }
+            if let saved { model.resume(saved) } else { model.startSetup(steps: model.plannedSteps(skippingDone: true)) }
         }
-        guard !model.nothingToDo else { return false }
+        guard !model.nothingLeft(besides: aiSeen && saved == nil ? [.ai] : []) else { return false }
         present(activate: activate)
         return true
     }
@@ -186,9 +191,9 @@ import SwiftUI
     }
 
     /// The copy that was just moved into Applications opens the onboarding again and carries on after the welcome step.
-    public func continueSetup(_ rows: [SetupRow], resuming saved: OnboardingProgress? = nil, includesAI: Bool = true, activate: Bool) {
+    public func continueSetup(_ rows: [SetupRow], resuming saved: OnboardingProgress? = nil, activate: Bool) {
         if isOpen && model.mode == .ai { leaveAIMode() }
-        start { $0.continueSetup(rows, resuming: saved, includesAI: includesAI) }
+        start { $0.continueSetup(rows, resuming: saved) }
         present(activate: activate)
     }
 
@@ -276,8 +281,11 @@ import SwiftUI
 
     private func fit() {
         guard let window, let content = window.contentView else { return }
-        // Every step of the onboarding is the same size; the guide and the AI mode screen fit what they show.
-        let height = model.mode == .setup ? OnboardingView.stepHeight
+        // Every step of the onboarding is the same size below the title bar, which the content runs under and whose
+        // height changes with the SDK Helm is built with: sized without it, a step ran past the window's bottom edge
+        // and took its buttons with it. The guide and the AI mode screen fit what they show, title bar included.
+        let titleBar = max(0, window.frame.height - window.contentLayoutRect.height)
+        let height = model.mode == .setup ? OnboardingView.stepHeight + titleBar
             : ceil(host.sizeThatFits(in: NSSize(width: OnboardingView.width, height: 4000)).height)
         guard height > 0, abs(content.frame.height - height) > 0.5 || abs(content.frame.width - OnboardingView.width) > 0.5 else { return }
         // The top edge stays where it is and the bottom slides, rather than the window snapping to its new size.
@@ -321,6 +329,11 @@ import SwiftUI
     /// The onboarding's step on show, or "closed".
     public var stepForTesting: String { isSetupShown ? model.step.rawValue : "closed" }
     public var levelForTesting: NSWindow.Level { window?.level ?? .normal }
+    /// How far the footer's buttons sit above the window's bottom edge, as last laid out. Nil before they are.
+    public var footerRoomForTesting: CGFloat? {
+        guard isOpen, let height = window?.contentView?.bounds.height, model.footerFrame != .zero else { return nil }
+        return height - model.footerFrame.maxY
+    }
     public func pressForTesting(_ title: String) -> Bool { model.press(title) }
     /// As if another app had come to the front, by its bundle identifier.
     public func frontmostChangedForTesting(_ identifier: String?) {

@@ -144,6 +144,11 @@ public enum AgentContentLimits {
     /// What a picture shows: the most certain five, each at least this sure.
     public static let labels = 5
     public static let labelConfidence = 0.3
+    /// What a video shows: each frame's own most certain five, as many as twelve in all, so a video that changes
+    /// scene is described all the way through rather than by its most certain frame alone.
+    public static let videoLabels = 12
+    /// The most labels kept for a file of this kind.
+    public static func labels(for kind: AgentContentKind) -> Int { kind == .video ? videoLabels : labels }
     /// Frames looked at in a video: three, or five for one of half a minute or more.
     public static func frames(forSeconds seconds: Double) -> Int { seconds >= 30 ? 5 : 3 }
     /// The time reading has in one request in the panel, and in one AI search.

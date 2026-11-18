@@ -8,6 +8,8 @@ window-size 1240 760
 # Each picture draws its window as the window in front: window buttons in colour, the accent on Apply, Continue and
 # the switches. The run itself stays in the background
 active-look on
+# Every picture at the sharpest screen's scale, whichever screen is the main one; the windows stay invisible
+screen sharpest
 app-icon docs/brand/logo-variants/variant-4-isometric.png
 setting-is aiModeEnabled false
 # A bookmark, a starred file and a few things opened lately, as on a Mac in use
@@ -64,6 +66,21 @@ search-type invoice
 wait 3
 screenshot @SHOTS@/search-dark.png
 search-key escape
+# Typing a path from Home: ~ for the home folder, and the suggestions for what's typed, folders first, with the rest
+# of the first one in grey, ready for Tab
+appearance dark
+go @FIX@/home
+view grid
+wait 1
+type ~/Documents/Pro
+wait 1
+typed-rows Projects,Product Roadmap.pdf
+screenshot-popups @SHOTS@/path-dark.png
+appearance light
+wait 1.5
+screenshot-popups @SHOTS@/path-light.png
+location-escape
+location @FIX@/home
 # AI mode, after Recent's picture so Recent shows none of its folders. The plan, the result, Whole Mac, Read contents
 # and AI search are taken in light and dark, for the README's pairs.
 # The AI Mode screen, switched on with a stand-in key, which the screen never draws

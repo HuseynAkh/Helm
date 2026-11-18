@@ -19,6 +19,17 @@ public enum AISearchMatcher {
         return kind.covers(found)
     }
 
+    /// `query` without the folder words that name the folder searched or a folder above it. Every file searched is in
+    /// those, and `matches` looks for folder words only below `scopeRoot`, so such a word would rule every file out:
+    /// gpt-oss asked for "Helm Test" as a folder of a search of Helm Test. With no folder searched, it is `query`.
+    public static func withoutPlaceSearched(_ query: AISearchQuery, scopeRoot: URL?) -> AISearchQuery {
+        guard let scopeRoot, !query.folderAny.isEmpty else { return query }
+        let above = components(scopeRoot)
+        var kept = query
+        kept.folderAny = query.folderAny.filter { word in !above.contains { holds($0, word) } }
+        return kept
+    }
+
     /// Whether `entry` answers `query`.
     ///
     /// `scopeRoot` is the folder searched, when there is one: the item must be inside it, and the folder words are
@@ -66,7 +77,8 @@ public enum AISearchMatcher {
         case .text, .pdf, .other: return nil
         }
         let text = summary.foundText.joined(separator: " ")
-        let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }.prefix(AgentContentLimits.labels)
+        let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }
+                .prefix(AgentContentLimits.labels(for: summary.kind))
         var textWords: [String] = [], shown: [String] = []
         for word in words {
             // A label that is the word itself first, so "sky" is shown as sky rather than as blue sky.

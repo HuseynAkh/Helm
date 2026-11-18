@@ -60,6 +60,7 @@ public struct MenuModel: Equatable, Sendable {
             sections.insert([
                 item("Open", .open, "o", isNew: true), item("Open With", .openWith, isNew: true),
                 item("Open in New Tab", .openInNewTab, isNew: true), item("Open in New Window", .openInNewWindow, isNew: true),
+                item("Open in Terminal", .openInTerminal, isNew: true),
                 item("Quick Look", .quickLook, " ", [], isNew: true)], at: 3)
             sections.insert([
                 item("Duplicate", .duplicate, isNew: true), item("Make Alias", .makeAlias, "a", [.command, .control], isNew: true),

@@ -170,6 +170,23 @@ import HelmCore
         editor.didChangeText()
     }
 
+    func testTypingAPathStartsWithThePathOnShowSelectedSoWhatsTypedReplacesIt() {
+        let (window, header, _, _) = hosted()
+        var current = tab()
+        current.addressBar = AddressEditor.reduce(current.addressBar, .beginEditing).0
+        header.pathBar.render(location: current.location, home: home, editor: current.addressBar)
+        settle()
+        XCTAssertTrue(window.firstResponder is NSTextView, "the field has the caret")
+        let path = current.addressBar.text as NSString
+        XCTAssertTrue(path.hasSuffix("/"), current.addressBar.text)
+        XCTAssertEqual(header.pathBar.fieldSelectionForTesting, NSRange(location: 0, length: path.length), "the whole path")
+        // Once typing is under way the caret follows the text, at its end.
+        current.addressBar = AddressEditor.reduce(current.addressBar, .textChanged("~/Do")).0
+        header.pathBar.render(location: current.location, home: home, editor: current.addressBar)
+        settle()
+        XCTAssertEqual(header.pathBar.fieldSelectionForTesting, NSRange(location: 4, length: 0))
+    }
+
     func testOpeningSearchPutsTheCaretInTheTypingFill() {
         let (_, header, _, _) = hosted()
         header.beginSearch()

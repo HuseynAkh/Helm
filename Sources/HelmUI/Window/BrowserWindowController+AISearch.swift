@@ -28,9 +28,11 @@ extension BrowserWindowController {
         let runtime = dependencies.agent.runtime
         let watch = AISearchWatch(runtime: runtime)
         watch.runtimeToken = runtime.changes.subscribe { [weak self] _ in
-            // AI mode, the provider or the model changed: a look may carry pictures again.
+            // AI mode, the provider or the model changed: a look may carry pictures again, and the status bar's hint
+            // names the new provider, even while the spark stays as it was.
             self?.aiSearchRunner?.runtimeChanged()
             self?.followAISearchReadiness()
+            if let self, let tab = self.activeTab { self.renderStatus(tab) }
         }
         watch.storeToken = store.snapshots.subscribe { [weak self] _ in self?.followAISearchReadiness() }
         runner.watch = watch
@@ -85,8 +87,8 @@ extension BrowserWindowController {
         guard let runner = aiSearchRunner, case .ready(_, let destination, _, _) = dependencies.agent.runtime.state else { return nil }
         if let search = tab.search, search.query.usesAI, let assist = search.assist {
             switch assist.phase {
-            case .thinking: return AISearchStatus(text: AgentText.searchThinking)
-            case .failed: return AISearchStatus(text: AgentText.searchFailed)
+            case .thinking: return AISearchStatus(text: assist.readAs ?? AgentText.searchThinking)
+            case .failed: return AISearchStatus(text: assist.readAs ?? AgentText.searchFailed)
             case .done:
                 let coverage: String?
                 switch assist.coverage {

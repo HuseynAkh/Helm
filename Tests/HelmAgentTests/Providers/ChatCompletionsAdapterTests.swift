@@ -63,6 +63,28 @@ final class ChatCompletionsAdapterTests: XCTestCase {
         XCTAssertEqual(json["response_format"]?["json_schema"]?["schema"], ProviderFixtures.ask.schema)
     }
 
+    /// With the schema in the prompt, the system prompt ends with it, in sorted keys, and nothing else changes: no
+    /// `response_format`, no tools, no stream. The answer is read as it always is.
+    func testTheSchemaInThePromptEndsTheSystemPromptAndNothingConstrainsTheAnswer() throws {
+        let adapter = ChatCompletionsAdapter(sendsMaxTokens: false, schemaInPrompt: true)
+        let json = try AgentJSON(data: adapter.structuredBody(ProviderFixtures.ask, model: ProviderFixtures.model))
+        XCTAssertNil(json["response_format"])
+        XCTAssertNil(json["tools"])
+        XCTAssertNil(json["stream"])
+        XCTAssertNil(json["max_tokens"])
+        let messages = try XCTUnwrap(json["messages"]?.arrayValue)
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages[0]["role"], .string("system"))
+        let schema = String(decoding: ProviderFixtures.ask.schema.data(), as: UTF8.self)
+        XCTAssertEqual(messages[0]["content"]?.stringValue,
+                       ProviderFixtures.ask.system + "\n\n" + ChatCompletionsAdapter.schemaLead + "\n" + schema)
+        XCTAssertEqual(messages[1]["content"]?.stringValue, ProviderFixtures.ask.user)
+        try ProviderFixtures.assertNothingForbidden(adapter.structuredBody(ProviderFixtures.ask, model: ProviderFixtures.model))
+        // A reply with words around its object, as a model writing freely may send, still gives the object.
+        let reply = #"{"choices":[{"message":{"role":"assistant","content":"Here it is:\n```json\n{\"sort\":\"relevance\"}\n```"}}]}"#
+        XCTAssertEqual(try AgentJSON(data: adapter.structuredAnswer(from: Data(reply.utf8))), .object(["sort": .string("relevance")]))
+    }
+
     // MARK: User turns
 
     func testOneToolMessagePerResultInCallOrderThenTheText() {

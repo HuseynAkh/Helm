@@ -49,6 +49,9 @@ public enum SettingKey: String, CaseIterable, Sendable, Codable {
     /// "access:welcome,access,viewer,ai,done:asked", or empty. The next launch carries on there, as after macOS's
     /// Quit & Reopen once Full Disk Access is switched on.
     case setupProgress = "helm.setupProgress"
+    /// The app Open in Terminal opens a folder in: "default" for the Mac's own, or a bundle identifier from
+    /// `TerminalApps.known`.
+    case terminalApp = "helm.terminalApp"
 }
 
 /// Typed preferences cross actor boundaries without defaults objects (F-065).

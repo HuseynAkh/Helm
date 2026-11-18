@@ -260,7 +260,7 @@ final class SetupLaunchTests: XCTestCase {
         let again = try XCTUnwrap(second.onboardingForTesting)
         XCTAssertEqual(again.stepForTesting, "viewer", "the next step, since Full Disk Access is on")
         XCTAssertEqual(again.model.steps, [.welcome, .access, .viewer, .ai, .done], "the same steps")
-        XCTAssertEqual(again.window?.contentView?.frame.size, NSSize(width: OnboardingView.width, height: OnboardingView.stepHeight))
+        XCTAssertEqual(again.window?.contentLayoutRect.size, NSSize(width: OnboardingView.width, height: OnboardingView.stepHeight))
         XCTAssertTrue(second.allWindows.isEmpty, "no file window before the onboarding is through")
         XCTAssertEqual(second.privacyForTesting?.openedPanes, [], "System Settings isn't opened again")
         XCTAssertTrue(second.moverForTesting?.relaunches.isEmpty ?? false)
@@ -301,8 +301,10 @@ final class SetupLaunchTests: XCTestCase {
         XCTAssertFalse(second.access.setupOwed)
     }
 
-    /// Full Disk Access that shows up while Helm still runs moves the onboarding on, and nothing in Helm quits or reopens.
-    func testAccessArrivingWhileHelmRunsMovesOnWithoutAQuit() async throws {
+    /// Full Disk Access that shows up while Helm still runs: the step stays and offers Restart Helm, which keeps the next
+    /// step and restarts Helm, as macOS's Quit & Reopen does. Here the stand-in mover only counts it and the relaunch is
+    /// stood in for in this process: the launch that follows carries on at the next step, before any file window.
+    func testAccessArrivingWhileHelmRunsOffersARestartAndTheNextLaunchCarriesOn() async throws {
         let app = makeApp()
         let launch = Task { @MainActor in await app.compose() }
         _ = await until { app.onboardingForTesting?.modeForTesting == "setup" }
@@ -312,14 +314,60 @@ final class SetupLaunchTests: XCTestCase {
         XCTAssertTrue(screen.pressForTesting("Open System Settings"))
         app.privacyForTesting?.status = .granted
         await app.permissionsForTesting.refresh()
-        let movedOn = await until(5) { screen.stepForTesting == "viewer" }
-        XCTAssertTrue(movedOn)
-        XCTAssertEqual(app.moverForTesting?.moves, 0)
-        XCTAssertTrue(app.moverForTesting?.relaunches.isEmpty ?? false, "no relaunch of Helm's own")
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(screen.stepForTesting, "access", "it stays for the restart")
+        XCTAssertEqual(screen.model.primaryTitle, "Restart Helm")
+        let mover = try XCTUnwrap(app.moverForTesting)
+        XCTAssertTrue(screen.pressForTesting("Restart Helm"))
+        let carried = await until { app.onboardingForTesting !== screen && app.onboardingForTesting?.stepForTesting == "viewer" }
+        XCTAssertTrue(carried, "the next launch carries on at the next step")
+        XCTAssertEqual(mover.restarts, 1)
+        XCTAssertEqual(mover.moves, 0)
+        XCTAssertTrue(mover.relaunches.isEmpty, "the move's relaunch isn't used")
+        XCTAssertEqual(screen.modeForTesting, "closed", "the window went with the launch")
+        let settings = try XCTUnwrap(app.environment?.settings)
+        XCTAssertFalse(settings.snapshot.bool(.onboardingCompleted), "restarting isn't going through it")
+        let again = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(again.model.primaryTitle, "Continue")
+        XCTAssertTrue(again.pressForTesting("Back"))
+        XCTAssertEqual(again.model.state(of: .fullDiskAccess), .done)
+        XCTAssertFalse(again.model.offersRestart, "that launch found access on")
         XCTAssertTrue(app.allWindows.isEmpty)
-        XCTAssertEqual(screen.modeForTesting, "setup")
+        again.close()
+        await launch.value
+        XCTAssertEqual(app.allWindows.count, 1)
+    }
+
+    /// Another build's onboarding, for someone who set up AI mode before: the AI step is among its steps, with AI mode
+    /// on as it was, and Continue goes on. Closing on that step leaves it on.
+    func testAnotherBuildsOnboardingHasTheAIStepWithAIModeAsItWas() async throws {
+        let preferences = IsolatedSettings()
+        let earlier = SettingsStore(storage: preferences)
+        earlier.set(.bool(true), for: .onboardingCompleted)
+        earlier.set(.bool(true), for: .aiIntroSeen)
+        earlier.set(.string("cdhash H\"0000\""), for: .setupBuild)
+        let app = makeApp(settings: preferences)
+        let launch = Task { @MainActor in await app.compose() }
+        let shown = await until { app.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(shown, "another build owes setup")
+        let screen = try XCTUnwrap(app.onboardingForTesting)
+        XCTAssertEqual(screen.model.steps, [.welcome, .access, .viewer, .ai, .done], "AI mode was seen, and its step still shows")
+        let ai = try XCTUnwrap(app.aiSetupModelForTesting)
+        ai.setOn(true)
+        ai.enterKey("test-key-from-the-build-before")
+        await ai.settle()
+        await continueTo("ai", in: screen)
+        XCTAssertTrue(ai.isOn)
+        XCTAssertTrue(screen.model.aiSetup === ai)
+        XCTAssertTrue(screen.pressForTesting("Continue"))
+        await screen.model.work?.value
+        XCTAssertEqual(screen.stepForTesting, "done")
+        XCTAssertTrue(ai.isOn, "Continue leaves it as it was")
+        XCTAssertTrue(screen.pressForTesting("Back"))
+        XCTAssertEqual(screen.stepForTesting, "ai")
         screen.close()
         await launch.value
+        XCTAssertTrue(ai.isOn, "closing on the AI step leaves it as it was")
         XCTAssertEqual(app.allWindows.count, 1)
     }
 

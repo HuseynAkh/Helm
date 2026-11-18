@@ -15,7 +15,8 @@ import HelmCore
 @MainActor final class SearchKindBar: NSView {
     /// The choices in order: nil for Any, then `AISearchKind.searchChoices`.
     static let choices: [AISearchKind?] = [nil] + AISearchKind.searchChoices.map { Optional($0) }
-    static let height: CGFloat = 32
+    /// As tall as the tab strip, the other row that can show under the header.
+    static let height: CGFloat = 36
     /// The row's height while it is shown, and zero while it isn't.
     private(set) lazy var heightConstraint: NSLayoutConstraint = heightAnchor.constraint(equalToConstant: 0)
     private let row = NSStackView()
@@ -34,11 +35,15 @@ import HelmCore
     var onContents: ((Bool) -> Void)?
 
     /// Room at the row's ends, between two choices, and either side of a choice's word: as much as there's room for,
-    /// down to the least, so every choice shows whole in the narrowest window.
+    /// down to the least, so every choice shows whole in the narrowest window. The ends line up with the header's
+    /// first button, and the gap is the tab strip's.
     private static let edge: CGFloat = 8
-    private static let gap: CGFloat = 2
-    private static let mostPadding: CGFloat = 9
-    private static let leastPadding: CGFloat = 4
+    private static let gap: CGFloat = 4
+    private static let mostPadding: CGFloat = 10
+    private static let leastPadding: CGFloat = 5
+    /// How far the choices sit above the row's middle, so they're centred between the header's line above the row
+    /// and the row's own hairline under it.
+    private static let lift: CGFloat = 1
     /// The least room between the last choice and the Read contents switch.
     private static let toggleGap: CGFloat = 12
 
@@ -66,9 +71,9 @@ import HelmCore
         addSubview(contentsToggle)
         NSLayoutConstraint.activate([
             row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.edge),
-            row.centerYAnchor.constraint(equalTo: centerYAnchor),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -Self.lift),
             contentsToggle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.edge),
-            contentsToggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            contentsToggle.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             separator.leadingAnchor.constraint(equalTo: leadingAnchor), separator.trailingAnchor.constraint(equalTo: trailingAnchor),
             separator.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
@@ -112,13 +117,21 @@ import HelmCore
         super.setFrameSize(newSize)
         fitChips(to: newSize.width)
     }
-    /// Each choice's padding, the same for all: the most there's room for, between the least and the most.
+    /// Each choice's padding, the same for all: the most there's room for, between the least and the most. Where the
+    /// choices don't fit beside the Read contents switch with its words, as with the AI panel open, the switch shows
+    /// its symbol alone, so it never sits on a choice.
     private func fitChips(to width: CGFloat) {
         guard width > 0, !chips.isEmpty else { return }
         let words = chips.reduce(0) { $0 + $1.wordWidth }
+        let fixed = 2 * Self.edge + Self.gap * CGFloat(chips.count - 1) + words
+        let least = Self.leastPadding * CGFloat(2 * chips.count)
         // The switch at the end keeps its own width, and a gap before it.
-        let toggle = contentsToggle.isHidden ? 0 : contentsToggle.width + Self.toggleGap
-        let room = width - 2 * Self.edge - Self.gap * CGFloat(chips.count - 1) - words - toggle
+        var toggle: CGFloat = 0
+        if !contentsToggle.isHidden {
+            contentsToggle.showsWord = width - fixed - least >= contentsToggle.fullWidth + Self.toggleGap
+            toggle = contentsToggle.width + Self.toggleGap
+        }
+        let room = width - fixed - toggle
         let padding = min(Self.mostPadding, max(Self.leastPadding, floor(room / CGFloat(2 * chips.count))))
         for chip in chips { chip.padding = padding }
     }
@@ -201,15 +214,17 @@ import HelmCore
 }
 
 /// One choice in the kind row: its word, on the header's lit fill while chosen, with the header buttons' fills
-/// under the pointer and while pressed. It never takes the keys; the row does.
+/// under the pointer and while pressed. Its size, corners and type are the tabs': 13-point words, the chosen one
+/// a step heavier. It never takes the keys; the row does.
 @MainActor final class SearchKindChip: FlatButton {
     /// The kind it chooses: nil for Any.
     let choice: AISearchKind?
     let word: String
-    static let font = NSFont.systemFont(ofSize: 12)
-    static let chipHeight: CGFloat = 24
-    /// The search field's spark sits on a lit fill with these corners, at this height.
-    static let cornerRadius: CGFloat = 6
+    static let font = NSFont.systemFont(ofSize: 13)
+    static let chosenFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    static let chipHeight: CGFloat = 26
+    /// A tab's corners.
+    static let cornerRadius: CGFloat = 7
     /// The word's own width.
     let wordWidth: CGFloat
     private var widthConstraint: NSLayoutConstraint?
@@ -229,7 +244,8 @@ import HelmCore
     init(choice: AISearchKind?, target: AnyObject?, action: Selector?) {
         self.choice = choice
         word = choice.map(AgentText.searchKind) ?? AgentText.searchKindAny
-        wordWidth = ceil(NSAttributedString(string: word, attributes: [.font: Self.font]).size().width)
+        // The chosen word's width, a step heavier, so a choice doesn't change size when it's made.
+        wordWidth = ceil(NSAttributedString(string: word, attributes: [.font: Self.chosenFont]).size().width)
         super.init(symbol: "circle", label: word, pointSize: 12, minimumWidth: 0, height: Self.chipHeight, target: target,
                    action: action)
         image = nil
@@ -246,10 +262,12 @@ import HelmCore
     }
     required init?(coder: NSCoder) { nil }
 
-    /// The word, centred: in the label colour while chosen, a step quieter otherwise.
+    /// The word, centred: in the label colour and a step heavier while chosen, as the active tab is, a step quieter
+    /// otherwise.
     override func draw(_ dirtyRect: NSRect) {
         let words = NSAttributedString(string: word, attributes: [
-            .font: Self.font, .foregroundColor: isChosen ? NSColor.labelColor : NSColor.secondaryLabelColor])
+            .font: isChosen ? Self.chosenFont : Self.font,
+            .foregroundColor: isChosen ? NSColor.labelColor : NSColor.secondaryLabelColor])
         let size = words.size()
         let rect = NSRect(x: ((bounds.width - size.width) / 2).rounded(), y: ((bounds.height - size.height) / 2).rounded(),
                           width: ceil(size.width), height: ceil(size.height))

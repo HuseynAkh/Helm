@@ -28,12 +28,14 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         adapter = Self.adapter(for: profile.wire, profile: profile)
     }
 
-    /// The adapter for a wire. A Chat Completions server on this Mac is sent no token ceiling.
+    /// The adapter for a wire. A Chat Completions server on this Mac is sent no token ceiling, and LM Studio gets the
+    /// shape of an answer in the prompt rather than as a `response_format`, which stops a model there from thinking.
     public static func adapter(for wire: AgentWire, profile: AgentProviderProfile) -> any AgentWireAdapter {
         switch wire {
         case .anthropicMessages: return AnthropicMessagesAdapter()
         case .openAIResponses: return OpenAIResponsesAdapter(planUsage: profile.usesChatGPT)
-        case .chatCompletions: return ChatCompletionsAdapter(sendsMaxTokens: !profile.isLocal)
+        case .chatCompletions:
+            return ChatCompletionsAdapter(sendsMaxTokens: !profile.isLocal, schemaInPrompt: profile.id == .lmStudio)
         }
     }
 
@@ -86,14 +88,25 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
     }
 
     /// The provider's models. A typed address whose models aren't where Chat Completions servers usually keep them
-    /// is asked again under `/v1`; a key that was refused or a server that can't be reached is not asked twice.
+    /// is asked again under `/v1`, and an LM Studio without its own list is asked for its other one; a key that was
+    /// refused or a server that can't be reached is not asked twice.
     public func models() async throws -> [AgentModelInfo] {
         do {
             return try await models(on: .models)
         } catch let failure as AgentFailure {
-            guard provider == .other, Self.triesAlternate.contains(failure) else { throw failure }
+            guard provider == .other || provider == .lmStudio, Self.triesAlternate.contains(failure) else { throw failure }
             if let listed = try? await models(on: .modelsAlternate) { return listed }
             throw failure
+        }
+    }
+
+    /// Reads the key or the ChatGPT sign-in now, so the time a question may take starts after macOS's keychain
+    /// question rather than during it.
+    public func prepare() async throws {
+        do {
+            try await transport.prepareKey()
+        } catch {
+            throw failureMap(error)
         }
     }
 

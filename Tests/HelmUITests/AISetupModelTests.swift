@@ -486,6 +486,25 @@ import HelmTestKit
         XCTAssertGreaterThanOrEqual(AISettingsView.height(for: model), SettingsPane.ai.height)
     }
 
+    /// Opened after General, the tallest pane, as a click on its tab does, Settings › AI is as tall as its form and at
+    /// its top: its form fills the pane and scrolls inside it, so the window can measure it, rather than being centred
+    /// with its first rows under the toolbar.
+    func testThePaneIsAsTallAsItsFormAndOpensAtItsTop() async throws {
+        let (model, _, _, _, settings) = rig(config: AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"]), on: true)
+        let window = SettingsWindowController(store: settings, fileViewer: nil, persistsFrame: false)
+        defer { window.close() }
+        window.showAI(model)
+        window.select(.general)
+        window.select(.ai)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        await model.settle()
+        window.fitPane()
+        let areas = window.scrollAreasForTesting(.ai)
+        XCTAssertFalse(areas.isEmpty, "the form scrolls inside the pane, so it can be measured")
+        XCTAssertTrue(areas.allSatisfy { $0.content <= $0.visible + 1 }, "\(areas)")
+        XCTAssertTrue(window.scrolledFromTopForTesting.allSatisfy { abs($0) <= 1 }, "\(window.scrolledFromTopForTesting)")
+    }
+
     // MARK: Parts
 
     /// Every string held in `value`'s stored properties, and in theirs, a few levels down.

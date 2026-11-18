@@ -13,6 +13,13 @@ import HelmCore
     func pathBarPerformDrop(_ info: NSDraggingInfo, into url: URL) -> Bool
     func pathBarDragEnded()
     func pathBarFolderMenu() -> NSMenu?
+    /// Open in Terminal from a piece's menu.
+    func pathBarOpenInTerminal(_ url: URL)
+}
+
+extension PathBarDelegate {
+    /// A delegate without a terminal offers none.
+    func pathBarOpenInTerminal(_ url: URL) {}
 }
 
 /// One piece of the path as it's shown.
@@ -96,6 +103,8 @@ struct PathBarSegment: Equatable {
     var isEditingLocation: Bool { editing }
     /// The ⋯ at the field's end, for tests.
     var folderMenuButtonForTesting: FlatMenuButton { folderMenuButton }
+    /// What's selected in the location field while it's typed in.
+    var fieldSelectionForTesting: NSRange? { field.currentEditor()?.selectedRange }
     /// The path's pieces, as rendered.
     var segmentTitles: [String] { segments.map(\.title) }
     /// The narrowest the bar can be with the whole name of the folder you're in: the folder, after the … that stands
@@ -130,6 +139,7 @@ struct PathBarSegment: Equatable {
             folderMenuButton.toolTip = actions
             folderMenuButton.setAccessibilityLabel(actions)
         }
+        let began = editor.isEditing && !editing
         if editor.isEditing != editing {
             editing = editor.isEditing
             stack.isHidden = editing; field.isHidden = !editing
@@ -153,6 +163,11 @@ struct PathBarSegment: Equatable {
             // A long path shows its end, where you're typing, not its start.
             (field.currentEditor() as? NSTextView)?.scrollRangeToVisible(end)
             applyingText = false
+        }
+        // As a browser's address bar does: the path on show is selected, so what's typed replaces it. A name typed
+        // alone still starts from the folder on show, and the caret stays where it is when the bar comes back.
+        if began, editor.text == field.stringValue {
+            field.currentEditor()?.selectedRange = NSRange(location: 0, length: (editor.text as NSString).length)
         }
         updateGhost(editor)
         if editor.isPopupVisible {
@@ -287,10 +302,16 @@ struct PathBarSegment: Equatable {
         let open = NSMenuItem(title: "Open in New Tab", action: #selector(openSegmentTab(_:)), keyEquivalent: "")
         open.target = self; open.representedObject = url
         menu.addItem(open)
+        let terminal = NSMenuItem(title: "Open in Terminal", action: #selector(openSegmentTerminal(_:)), keyEquivalent: "")
+        terminal.target = self; terminal.representedObject = url
+        menu.addItem(terminal)
         let copy = NSMenuItem(title: "Copy Path", action: #selector(copySegmentPath(_:)), keyEquivalent: "")
         copy.target = self; copy.representedObject = url
         menu.addItem(copy)
         return menu
+    }
+    @objc private func openSegmentTerminal(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { delegate?.pathBarOpenInTerminal(url) }
     }
     @objc private func openSegmentTab(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL { delegate?.pathBarOpenInNewTab(url) }
@@ -436,7 +457,8 @@ struct PathBarSegment: Equatable {
         let effect = NSVisualEffectView()
         effect.material = .menu; effect.state = .active; effect.wantsLayer = true; effect.layer?.cornerRadius = 8; effect.layer?.masksToBounds = true
         let scroll = NSScrollView()
-        scroll.drawsBackground = false; scroll.hasVerticalScroller = true
+        // A short list has no scroller, so with a mouse plugged in no empty track takes the rows' room.
+        scroll.drawsBackground = false; scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         let column = NSTableColumn(identifier: .init("name"))
         table.addTableColumn(column); table.headerView = nil; table.backgroundColor = .clear
         table.dataSource = self; table.delegate = self; table.rowHeight = 28

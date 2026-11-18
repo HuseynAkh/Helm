@@ -78,9 +78,9 @@ public enum SetupRowState: Equatable, Sendable {
 ///
 /// Nothing changes until the person acts on a step: Continue on the welcome step moves Helm into Applications when it's
 /// ticked, the Full Disk Access step opens System Settings only from its button, and Continue on the file viewer step
-/// does that row when it's ticked. Every check is quiet: it reads the Mac, never asks it anything. Helm never quits or
-/// reopens itself for a permission: only macOS's Quit & Reopen does, and the onboarding then carries on from the step it
-/// had reached, which it keeps through `saveProgress`.
+/// does that row when it's ticked. Every check is quiet: it reads the Mac, never asks it anything. Once Full Disk Access
+/// is on, its step's button restarts Helm, as macOS's own Quit & Reopen does, since macOS applies it in full only from
+/// the next launch. Either way the onboarding carries on where it was kept through `saveProgress`.
 @MainActor public final class OnboardingModel: ObservableObject {
     public enum Mode: String, Sendable {
         /// The onboarding, step by step: on the first launch, from Help › Set Up Helm…, and from Settings.
@@ -92,7 +92,7 @@ public enum SetupRowState: Equatable, Sendable {
         case ai
     }
     /// What the footer's main button does.
-    public enum Action: Sendable { case next, openSettings, finish }
+    public enum Action: Sendable { case next, openSettings, restart, finish }
 
     @Published public private(set) var mode: Mode = .setup
     /// The onboarding's steps on show, in order. Fixed when it starts, so the step indicator doesn't change under the person.
@@ -133,12 +133,16 @@ public enum SetupRowState: Equatable, Sendable {
     public var isFinishing: Bool { finishing != nil }
     /// What was last said to VoiceOver.
     public private(set) var lastAnnouncement: String?
+    /// Where the window's footer buttons were last laid out, from its top left.
+    var footerFrame: CGRect = .zero
 
     var close: () -> Void = {}
     /// The onboarding has been through: Get Started, or the window closed. The window controller sees to closing.
     var seen: () -> Void = {}
     /// Something that decides whether the window watches for access, floats or resizes has changed.
     var changed: () -> Void = {}
+    /// Quits Helm and opens it again. The app sets it; the next step is kept first.
+    var restart: () -> Void = {}
     /// Saves the rows the copy in Applications carries on with, or clears them (nil). The app keeps them in its
     /// settings, so a copy that's opened by hand, without the flag, finds them too.
     var carry: ([SetupRow]?) -> Void = { _ in }
@@ -154,14 +158,14 @@ public enum SetupRowState: Equatable, Sendable {
     private var generation = 0
     /// Asked for again just as it was about to move on or close by itself, so it stays until the person goes on.
     private var staysOpen = false
-    /// The row whose work, once done, takes the onboarding to its next step by itself: Full Disk Access after System
-    /// Settings was opened from its step, or the file viewer after Continue.
+    /// The row whose work, once done, takes the onboarding to its next step by itself: the file viewer after Continue.
+    /// Full Disk Access stays on its step, which then offers to restart Helm.
     private var advancesWhenDone: SetupRow?
     /// Continue or Not Now answered the AI step, so whatever the switch says stays when the onboarding ends.
     private(set) var aiAnswered = false
-    /// AI mode was on and connected when the AI step first showed, as when Help › Set Up Helm… runs again: closing the
-    /// onboarding leaves it as it was.
-    private var aiReadyBefore: Bool?
+    /// AI mode was on when the AI step first showed, as for someone who set it up before: closing the onboarding leaves
+    /// it as it was.
+    private var aiOnBefore: Bool?
     /// The copy already made in Applications, so trying again only has to reopen it.
     private var movedCopy: URL?
     /// How each row stood when last looked at, so only a change is announced.
@@ -194,16 +198,15 @@ public enum SetupRowState: Equatable, Sendable {
         }
     }
 
-    /// The steps an onboarding shows. A launch's leaves out what's done already, and AI mode once it's been seen; Help ›
-    /// Set Up Helm… shows them all, with how each stands.
-    public func plannedSteps(skippingDone: Bool, includesAI: Bool = true) -> [OnboardingStep] {
+    /// The steps an onboarding shows. A launch's leaves out what's done already; Help › Set Up Helm… shows them all, with
+    /// how each stands. AI mode is always one, showing how it stands, so someone who set it up already just goes on.
+    public func plannedSteps(skippingDone: Bool) -> [OnboardingStep] {
         OnboardingStep.allCases.filter { step in
             guard applies(step) else { return false }
             switch step {
             case .access: return !(skippingDone && isDone(.fullDiskAccess))
             case .viewer: return !(skippingDone && isDone(.fileViewer))
-            case .ai: return includesAI
-            case .welcome, .done: return true
+            case .welcome, .ai, .done: return true
             }
         }
     }
@@ -261,9 +264,13 @@ public enum SetupRowState: Equatable, Sendable {
     }
 
     /// Nothing is left to set up: every step but the welcome and done is left out, and there's no move to make.
-    public var nothingToDo: Bool {
+    public var nothingToDo: Bool { nothingLeft(besides: []) }
+    /// Nothing is left but `others`, the welcome and done, and there's no move to make. A launch passes AI mode once it
+    /// has been seen: its step shows in every onboarding, but on its own it's no reason to open one.
+    public func nothingLeft(besides others: Set<OnboardingStep>) -> Bool {
         switch mode {
-        case .setup: return steps.allSatisfy { $0 == .welcome || $0 == .done } && !(mover.placement.needsMove && !moved)
+        case .setup:
+            return steps.allSatisfy { $0 == .welcome || $0 == .done || others.contains($0) } && !(mover.placement.needsMove && !moved)
         case .guide, .ai: return rows.allSatisfy(isDone)
         }
     }
@@ -283,6 +290,11 @@ public enum SetupRowState: Equatable, Sendable {
     /// A step's work is under way: the move, the file viewer, or the AI step's check. The buttons wait for it.
     public var isWorking: Bool { progress.values.contains(.working) || aiChecking }
 
+    /// Full Disk Access was switched on while this Helm runs, and its step is on show. macOS applies it in full only
+    /// from the next launch, so the step's button restarts Helm.
+    public var offersRestart: Bool {
+        mode == .setup && step == .access && !isOutsideApp && isDone(.fullDiskAccess) && permissions.switchedOnSinceLaunch
+    }
     /// The Full Disk Access step's own Open System Settings button, while access is off.
     public var stepOpensSettings: Bool { mode == .setup && step == .access && !isDone(.fullDiskAccess) && !isOutsideApp }
     /// Helm's icon to drag into System Settings' list: in the guide, and on the Full Disk Access step once System Settings
@@ -322,7 +334,7 @@ public enum SetupRowState: Equatable, Sendable {
 
     public var primaryAction: Action {
         switch mode {
-        case .setup: return step == .done ? .finish : .next
+        case .setup: return step == .done ? .finish : offersRestart ? .restart : .next
         case .guide: return openedSettings || isDone(.fullDiskAccess) || isOutsideApp ? .finish : .openSettings
         case .ai: return .finish
         }
@@ -332,6 +344,7 @@ public enum SetupRowState: Equatable, Sendable {
         case (.setup, .finish): return Self.getStarted
         case (_, .next): return Self.continueTitle
         case (_, .openSettings): return Self.openSettingsTitle
+        case (_, .restart): return Self.restartTitle
         case (_, .finish): return AgentText.done
         }
     }
@@ -353,6 +366,7 @@ public enum SetupRowState: Equatable, Sendable {
     public static let backTitle = "Back"
     public static let notNowTitle = "Not Now"
     public static let openSettingsTitle = "Open System Settings"
+    public static let restartTitle = "Restart Helm"
     /// On the Full Disk Access step: what happens once Helm is switched on, so macOS's question isn't a surprise.
     public static let reopenNote = "macOS will ask to quit and reopen Helm, and setup continues after."
 
@@ -360,6 +374,7 @@ public enum SetupRowState: Equatable, Sendable {
         switch primaryAction {
         case .next: next()
         case .openSettings: openFullDiskAccess()
+        case .restart: restartHelm()
         case .finish: if mode == .setup { finish() } else { close() }
         }
     }
@@ -445,14 +460,13 @@ public enum SetupRowState: Equatable, Sendable {
         if at == .access && isDone(.fullDiskAccess) { at = next(after: .access) ?? .done }
         heard = states()
         enter(at)
-        if at == .access && progress[.fullDiskAccess] == .waiting { advancesWhenDone = .fullDiskAccess }
     }
 
     /// The copy that was just moved into Applications carries on, after the welcome step where the move was. With no
     /// progress kept, it starts from the steps that are left.
-    public func continueSetup(_ carried: [SetupRow], resuming saved: OnboardingProgress? = nil, includesAI: Bool = true) {
+    public func continueSetup(_ carried: [SetupRow], resuming saved: OnboardingProgress? = nil) {
         if let saved { resume(saved, carried: carried); return }
-        startSetup(steps: plannedSteps(skippingDone: true, includesAI: includesAI))
+        startSetup(steps: plannedSteps(skippingDone: true))
         // Still outside Applications, so the person starts again from the welcome step, where the move is.
         guard carried.contains(.moveToApplications), !mover.placement.needsMove else { return }
         moved = true
@@ -487,7 +501,6 @@ public enum SetupRowState: Equatable, Sendable {
         startSetup(steps: plannedSteps(skippingDone: false), at: .access)
         progress[.fullDiskAccess] = access
         openedSettings = opened
-        if access == .waiting && step == .access { advancesWhenDone = .fullDiskAccess }
         heard = states()
         keep()
         changed()
@@ -557,7 +570,7 @@ public enum SetupRowState: Equatable, Sendable {
         if next == .ai, let model = aiSetup ?? aiSource() {
             if aiSetup !== model { follow(model) }
             aiAnswered = false
-            if aiReadyBefore == nil { aiReadyBefore = model.isOn && model.isConnected }
+            if aiOnBefore == nil { aiOnBefore = model.isOn }
             // Done on the screen, in a script, comes here, as the footer's Continue does.
             model.donePressed = { [weak self] key in self?.continueFromAI(pendingKey: key) }
         }
@@ -592,7 +605,7 @@ public enum SetupRowState: Equatable, Sendable {
         steps = []; step = .welcome
         checked = Set(SetupRow.allCases)
         started = false; openedSettings = false; moved = false; accessHelpRequested = false; staysOpen = false
-        aiChecking = false; aiAnswered = false; aiReadyBefore = nil; advancesWhenDone = nil
+        aiChecking = false; aiAnswered = false; aiOnBefore = nil; advancesWhenDone = nil
         progress = [:]; movedCopy = nil
         fileViewer?.refresh()
         // What's already done when it opens isn't news.
@@ -602,7 +615,7 @@ public enum SetupRowState: Equatable, Sendable {
     // MARK: Each step's work
 
     /// The move goes first, on the welcome step. The copy in Applications carries on from the next step once it opens,
-    /// so the file viewer and the Dock tile point at it. Helm's own quit here is for the move alone, never for a permission.
+    /// so the file viewer and the Dock tile point at it.
     private func startMove() {
         progress[.moveToApplications] = .working
         settle()
@@ -692,21 +705,27 @@ public enum SetupRowState: Equatable, Sendable {
         progress[.fullDiskAccess] = permissions.open(.fullDiskAccess) ? .waiting
             : .failed("Choose Apple menu › System Settings › Privacy & Security › Full Disk Access.")
         if mode == .guide && !started { started = true }
-        if mode == .setup && step == .access {
-            advancesWhenDone = .fullDiskAccess
-            keep()
-        }
+        if mode == .setup && step == .access { keep() }
         settle()
+    }
+
+    /// Restart Helm: the next step is kept first, so the launch that follows carries on there, as after macOS's own Quit
+    /// & Reopen.
+    private func restartHelm() {
+        guard offersRestart, !isWorking else { return }
+        cancelFinishing()
+        saveProgress(OnboardingProgress(step: next(after: .access) ?? .done, steps: steps, moved: moved))
+        restart()
     }
 
     /// Full Disk Access changed, so its row may be done now.
     func permissionsChanged() { settle() }
     /// The window closed. Work still going stops at its next step. An AI step that was shown but never answered with
-    /// Continue or Not Now leaves AI mode off, as closing the AI mode screen does, unless it was ready before the step
+    /// Continue or Not Now leaves AI mode off, as closing the AI mode screen does, unless it was on before the step
     /// showed: only Continue turns it on and leaves it on.
     func closed() {
         stop()
-        if mode == .setup, aiReadyBefore == false, !aiAnswered, let ai = aiSetup, ai.isOn { ai.closedWithoutDone() }
+        if mode == .setup, aiOnBefore == false, !aiAnswered, let ai = aiSetup, ai.isOn { ai.closedWithoutDone() }
         if mode == .setup, step == .ai { aiSetup?.donePressed = nil }
     }
     /// The process is ending with the window open, as macOS's Quit & Reopen ends it: work stops, and nothing else

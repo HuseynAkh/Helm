@@ -28,6 +28,9 @@ import HelmPersistence
     @Published public private(set) var provider: AgentProviderID
     @Published public private(set) var connection: Connection = .none
     @Published public private(set) var models: [AgentModelInfo] = []
+    /// Whether the chosen model sees pictures, where its provider said so when it listed its models, as LM Studio
+    /// does. Nil where the provider doesn't say.
+    public var chosenModelSeesPictures: Bool? { models.first { $0.id == model }?.seesPictures }
     /// The model requests go to: the one chosen for this provider, else the provider's own first choice.
     @Published public private(set) var model: String?
     /// Why the address typed for Other wasn't taken, as one line. Nil when it was, or when none was typed.

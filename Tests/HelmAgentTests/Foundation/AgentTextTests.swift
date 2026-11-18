@@ -153,6 +153,10 @@ final class AgentTextTests: XCTestCase {
         ("searchOnThisMac", AgentText.searchOnThisMac, "Searched what's on this Mac."),
         ("searchNamesOnly", AgentText.searchNamesOnly, "Names only here."),
         ("searchLookedAt", AgentText.searchLookedAt(48), "Looked at 48"),
+        ("searchCouldntLook", AgentText.searchCouldntLook(12, .timedOut, provider: "OpenAI"), "Couldn't look at 12: OpenAI took too long to answer"),
+        ("searchReadingInside", AgentText.searchReadingInside, "Reading inside files…"),
+        ("searchLooking", AgentText.searchLooking(34), "Looking at 34 files…"),
+        ("searchTookTooLong", AgentText.searchTookTooLong("OpenAI"), "OpenAI took too long to answer."),
         ("searchKindRow", AgentText.searchKindRow, "File type"),
         ("searchKindAny", AgentText.searchKindAny, "Any"),
         ("searchKind(image)", AgentText.searchKind(.image), "Photo"),
@@ -195,6 +199,8 @@ final class AgentTextTests: XCTestCase {
         ("addressOtherDevice", AgentText.addressOtherDevice, "Servers on other devices aren't supported yet."),
         ("modelLabel", AgentText.modelLabel, "Model"),
         ("modelPlaceholder", AgentText.modelPlaceholder, "Model name"),
+        ("modelSeesPictures", AgentText.modelSeesPictures, "Sees pictures: with Read contents on, it gets small copies of them."),
+        ("modelReadsTextOnly", AgentText.modelReadsTextOnly, "Reads text only: with Read contents on, Helm describes pictures to it in words."),
         ("aboutLine", AgentText.aboutLine, "An agentic file manager for your Mac.")
     ]
     /// The ChatGPT sign-in, Refresh Models and each provider's help.
@@ -238,8 +244,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 213)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 213, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 219)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 219, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {

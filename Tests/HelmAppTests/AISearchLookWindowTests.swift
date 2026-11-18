@@ -182,6 +182,32 @@ import HelmPersistence
                        controller.aiSearchStatusForTesting?.text ?? "")
     }
 
+    /// The two plans gpt-oss-20b made for "a bird" live, as kites: names alone, and names that say again the word
+    /// looked for inside, the folder searched among its folder words. Each still reads the pictures, finds the one
+    /// labelled a kite on this Mac, after the list named for kites, and lets the model, on this Mac and reading text
+    /// only, look.
+    func testPlansOfNamesFromASmallModelStillReadThePictures() async throws {
+        for plan in ["""
+            {"sort":"relevance","queries":[{"name_any":["kite"],"folder_any":["Pictures"],"kinds":["image"]},{"name_any":["kite"]}]}
+            """, """
+            {"sort":"relevance","queries":[{"name_any":["kite"],"content_all":["kite"],"folder_any":["Pictures"],"kinds":["image"]},
+             {"name_any":["kite"],"content_all":["kite"],"kinds":["image","document"]},{"name_any":["kite"],"content_all":["kite"]}]}
+            """] {
+            let client = AISearchLookClient(plan: plan, isLocal: true) { names in
+                AISearchLookClient.answer(names, fits: [:], misses: [], order: [])
+            }
+            let (controller, runtime) = try await window(client: client, reader: AISearchLookReader())
+            runtime.configure(AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"],
+                                       textOnlyModels: ["lmStudio|127.0.0.1:1234": ["openai/gpt-oss-20b"]]))
+            await searchReadingContents(controller, client, "kite")
+            XCTAssertEqual(client.looks.count, 1, plan)
+            XCTAssertTrue(names(controller).contains("IMG_0042.jpg"), "\(names(controller)) for \(plan)")
+            XCTAssertTrue(controller.aiSearchStatusForTesting?.text.contains("Looked at") == true,
+                          controller.aiSearchStatusForTesting?.text ?? "")
+            controller.window?.close()
+        }
+    }
+
     // MARK: What the model may look at
 
     func testASearchOfTheWholeMacLooksOnlyAtWhatThisMacMatchedOrASearchFound() async throws {
@@ -270,6 +296,32 @@ import HelmPersistence
         XCTAssertEqual(client.looks[3].pictures.count, 5)
     }
 
+    /// A model its provider listed as reading text only, as LM Studio says of gpt-oss, is shown Apple's descriptions
+    /// from the first look, and no picture is even made for it. Choosing a model that sees pictures sends them again.
+    func testAModelThatCantSeePicturesGetsWordsFromTheFirstLook() async throws {
+        let client = AISearchLookClient(plan: kitePlan) { names in
+            AISearchLookClient.answer(names, fits: ["DSC_0193.jpg": "A red kite"], misses: [], order: ["DSC_0193.jpg"])
+        }
+        let reader = AISearchLookReader()
+        let (controller, runtime) = try await window(client: client, reader: reader)
+        var config = AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"],
+                              textOnlyModels: ["lmStudio|127.0.0.1:1234": ["openai/gpt-oss-20b"]])
+        runtime.configure(config)
+        XCTAssertFalse(runtime.modelSeesPictures)
+        await searchReadingContents(controller, client, "kite")
+        XCTAssertEqual(client.looks.map(\.pictures.count), [0], "asked once, in words")
+        XCTAssertTrue(client.looks[0].user.contains("\"shows\":[\"kite\"]"), "the words found on this Mac stand in")
+        XCTAssertEqual(reader.asked(pictures: true), [], "no picture was made")
+        XCTAssertEqual(names(controller).first, "DSC_0193.jpg")
+        XCTAssertEqual(controller.aiSearchRunner?.picturesRefused, false, "nothing was turned away")
+
+        config.models["lmStudio"] = "qwen2.5-vl-7b-instruct"
+        runtime.configure(config)
+        reader.reset()
+        await searchReadingContents(controller, client, "kite")
+        XCTAssertEqual(client.looks.last?.pictures.count, 5)
+    }
+
     func testALookThatFailsKeepsWhatWasReadOnThisMac() async throws {
         let client = AISearchLookClient(plan: kitePlan) { _ in throw AgentFailure.timedOut }
         let (controller, _) = try await window(client: client, reader: AISearchLookReader())
@@ -280,6 +332,8 @@ import HelmPersistence
         XCTAssertTrue(listed)
         XCTAssertEqual(controller.matchReasonForTesting(named: "IMG_0042.jpg"), "Shows: kite")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.text.contains("Looked at"), false, "nothing was looked at")
+        let status = controller.aiSearchStatusForTesting?.text ?? ""
+        XCTAssertTrue(status.contains("Couldn't look at ") && status.hasSuffix("took too long to answer"), "the status bar says why: \(status)")
         XCTAssertEqual(controller.aiSearchRunner?.picturesRefused, false, "only a bad request turns pictures off")
     }
 }

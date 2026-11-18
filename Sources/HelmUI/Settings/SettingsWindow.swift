@@ -12,7 +12,9 @@ import SwiftUI
     public init(store: SettingsStore, fileViewer: FileViewerModel?, access: AccessSettings? = nil, supportsSingleClick: Bool = false,
                 persistsFrame: Bool = true) {
         tabs.tabStyle = .toolbar
-        tabs.transitionOptions = [.crossfade, .allowUserInteraction]
+        // No crossfade: on macOS 26 a pane that faded in kept the edge AppKit draws where a scroll view meets the
+        // toolbar, a frosted band with a line, a toolbar's height tall, over its first rows, until the window closed.
+        tabs.transitionOptions = [.allowUserInteraction]
         tabs.canPropagateSelectedChildViewControllerTitle = true
         for pane in SettingsPane.allCases {
             let host = NSHostingController(rootView: SettingsPaneHost(pane: pane, store: store, fileViewer: fileViewer,
@@ -70,21 +72,111 @@ import SwiftUI
         return tabs.tabViewItems[index].viewController
     }
     /// Fits the window to the pane on show again, as when what it shows has grown or shrunk.
-    func fitPane() { tabs.fit(animated: window?.isVisible == true) }
+    func fitPane() { tabs.fit() }
+
+    /// For fixture runs: each area of a pane that could scroll, with the height of what it holds and of what's in
+    /// view. The pane shows all of itself when every area has all of it in view.
+    public func scrollAreasForTesting(_ pane: SettingsPane) -> [(content: CGFloat, visible: CGFloat)] {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        guard let view = paneController(pane)?.view else { return [] }
+        view.layoutSubtreeIfNeeded()
+        return scrollViews(in: view).compactMap { scroll in
+            guard let document = scroll.documentView else { return nil }
+            let insets = scroll.contentInsets
+            return (document.frame.height, scroll.contentView.bounds.height - insets.top - insets.bottom)
+        }
+    }
+    /// The window's content height, for fixture runs.
+    public var contentHeightForTesting: CGFloat { window?.contentLayoutRect.height ?? 0 }
+    /// Makes the window's content this tall, as a pane that came out too short would, for fixture runs.
+    public func squeezeForTesting(to height: CGFloat) {
+        guard let window else { return }
+        var frame = window.frame
+        let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 560, height: height)).size
+        frame.origin.y += frame.height - size.height
+        frame.size = size
+        window.setFrame(frame, display: true)
+    }
+    /// Fits the window to the pane on show, as a change to what it shows does, for fixture runs.
+    public func fitPaneForTesting() { fitPane() }
+    /// Each area of a pane that could scroll, in words: its frame in the window, its insets, how far it's scrolled and
+    /// what it holds, with the window's content height, for fixture runs.
+    public func scrollDetailsForTesting(_ pane: SettingsPane) -> String {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        guard let view = paneController(pane)?.view else { return "no pane" }
+        view.layoutSubtreeIfNeeded()
+        let areas = scrollViews(in: view).map { scroll -> String in
+            let frame = scroll.convert(scroll.bounds, to: nil)
+            let insets = scroll.contentInsets
+            let flipped = scroll.documentView?.isFlipped == true
+            return "frame y \(Int(frame.minY)) h \(Int(frame.height)), insets \(Int(insets.top))/\(Int(insets.bottom)), "
+                + "clip y \(Int(scroll.contentView.bounds.minY)) h \(Int(scroll.contentView.bounds.height)), "
+                + "document \(Int(scroll.documentView?.frame.height ?? -1))\(flipped ? " flipped" : "")"
+        }
+        return "content \(Int(window?.contentLayoutRect.height ?? 0)), pane view h \(Int(view.frame.height)): " + areas.joined(separator: "; ")
+    }
+    /// How far each area of the pane on show is scrolled from its top, for fixture runs.
+    public var scrolledFromTopForTesting: [CGFloat] { tabs.scrolledFromTopForTesting }
+    /// For fixture runs: how tall the edge AppKit draws where a scroll view meets the toolbar is inside the pane, in
+    /// points. A pane sits below the toolbar, so it should be 0; SDK 14 builds draw no such edge at all.
+    public func toolbarEdgeForTesting(_ pane: SettingsPane) -> CGFloat {
+        guard let view = paneController(pane)?.view else { return 0 }
+        view.layoutSubtreeIfNeeded()
+        func edges(in view: NSView) -> [CGFloat] {
+            guard !view.isHidden, view.alphaValue > 0 else { return [] }
+            let own = String(describing: type(of: view)).contains("Pocket") ? [view.frame.height] : []
+            return own + view.subviews.flatMap(edges(in:))
+        }
+        return edges(in: view).max() ?? 0
+    }
 }
 
 /// Resizes the window to each pane as it's chosen, keeping the top edge where it was, as System Settings does.
+///
+/// A pane's height is its form's own, measured as it's drawn, since a form's rows are taller with a newer SDK than
+/// with the one a fixed height was measured with; a pane whose form can't be measured yet uses its fixed height. The
+/// window changes size at once rather than animating: a pane that fits itself again while an animation is under way,
+/// as Settings › AI does when its model loads, left the window's old outline drawn below it.
 private final class SettingsTabs: NSTabViewController {
     /// Panes whose height depends on what they show. The others have a fixed height.
     var heights: [SettingsPane: () -> CGFloat] = [:]
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
-        fit(animated: view.window?.isVisible == true)
+        fit()
+        // Once the pane has laid out its form, which can take a turn of the run loop, fit it to what it holds.
+        DispatchQueue.main.async { [weak self] in self?.fit() }
     }
-    func fit(animated: Bool) {
+    /// The height a pane's form needs to show all it holds: what its scrolling areas hold, with their insets. Nil
+    /// before the form is laid out.
+    static func measuredHeight(of view: NSView) -> CGFloat? {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        view.layoutSubtreeIfNeeded()
+        let needed = scrollViews(in: view).compactMap { scroll -> CGFloat? in
+            guard let document = scroll.documentView, document.frame.height > 0 else { return nil }
+            return document.frame.height + scroll.contentInsets.top + scroll.contentInsets.bottom
+        }
+        return needed.max().map { $0.rounded(.up) }
+    }
+    func fit(animated: Bool = false) {
         guard let window = view.window, SettingsPane.allCases.indices.contains(selectedTabViewItemIndex) else { return }
         let pane = SettingsPane.allCases[selectedTabViewItemIndex]
-        var height = heights[pane]?() ?? pane.height
+        let measured = tabViewItems[selectedTabViewItemIndex].viewController.map(\.view).flatMap(Self.measuredHeight(of:))
+        var height: CGFloat
+        if pane == .sidebar, let rows = heights[pane] {
+            // Sidebar works its own height out from its rows, in two columns.
+            height = rows()
+        } else if let estimate = heights[pane] {
+            // A pane that estimates its height, as AI does, is at least as tall as its form turns out to be.
+            height = max(estimate(), measured ?? 0)
+        } else {
+            height = measured ?? pane.height
+        }
         let screen = (window.screen ?? NSScreen.main)?.visibleFrame
         // A pane taller than the screen scrolls inside the window, rather than the window running off the screen.
         if let screen {
@@ -96,7 +188,39 @@ private final class SettingsTabs: NSTabViewController {
         frame.origin.y += frame.height - size.height
         frame.size = size
         if let screen { frame.origin.y = max(frame.origin.y, screen.minY) }
-        window.setFrame(frame, display: true, animate: animated)
+        if frame != window.frame { window.setFrame(frame, display: true, animate: animated) }
+        if let shown = tabViewItems[selectedTabViewItemIndex].viewController?.view { Self.showTop(of: shown) }
+    }
+    /// A window that shrinks keeps its forms' bottom edge where it was, which leaves a pane that came after a taller
+    /// one scrolled, its first rows under the toolbar. Each area that now shows all it holds goes back to its top.
+    static func showTop(of view: NSView) {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        view.layoutSubtreeIfNeeded()
+        for scroll in scrollViews(in: view) {
+            guard let document = scroll.documentView else { continue }
+            let insets = scroll.contentInsets
+            guard document.frame.height <= scroll.contentView.bounds.height - insets.top - insets.bottom + 1 else { continue }
+            let top = NSPoint(x: scroll.contentView.bounds.minX,
+                              y: document.isFlipped ? -insets.top : document.frame.maxY + insets.top - scroll.contentView.bounds.height)
+            scroll.contentView.scroll(to: top)
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+    }
+    /// Where each area of the pane on show is scrolled to, for fixture runs: 0 is its top.
+    var scrolledFromTopForTesting: [CGFloat] {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        guard SettingsPane.allCases.indices.contains(selectedTabViewItemIndex),
+              let shown = tabViewItems[selectedTabViewItemIndex].viewController?.view else { return [] }
+        return scrollViews(in: shown).compactMap { scroll in
+            guard let document = scroll.documentView else { return nil }
+            let y = scroll.contentView.bounds.minY
+            return document.isFlipped ? y + scroll.contentInsets.top
+                : document.frame.maxY + scroll.contentInsets.top - (y + scroll.contentView.bounds.height)
+        }
     }
 }
 

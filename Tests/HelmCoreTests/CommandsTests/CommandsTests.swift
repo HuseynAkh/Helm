@@ -124,7 +124,9 @@ final class CommandsTests: XCTestCase {
             .newTab, .find, .closeTab, .grid, .list, .sidebar, .hidden, .refresh,
             .home, .minimize, .zoom, .selectAll, .location, .eject, .closeWindow, .reopenClosedTab,
             .nextTab, .previousTab, .desktop, .documents, .downloads, .recents, .applications, .utilities, .connectToServer,
-            .viewOptions, .computer, .goToTrash, .aiPanel, .findWithAI]
+            .viewOptions, .computer, .goToTrash, .aiPanel, .findWithAI,
+            // The window narrows it to one folder, selected or on show.
+            .openInTerminal]
         let hidden: Set<CommandID> = [.putBack, .emptyTrash, .clearRecent]
         for command in CommandID.allCases {
             let expected: CommandAvailability = enabled.contains(command) ? .enabled : hidden.contains(command) ? .hidden : .disabled
@@ -237,5 +239,21 @@ final class CommandsTests: XCTestCase {
         XCTAssertTrue(items([ContextMenuModel.menu(for: .trash)]).contains { $0.command == .putBack && $0.isNew })
         XCTAssertTrue(items([ContextMenuModel.menu(for: .recent)]).contains { $0.command == .clearRecent && $0.isNew })
         XCTAssertEqual(ContextMenuModel.newFileFallback.command, .newTextFile)
+    }
+
+    /// A folder, and the folder on show, open in the terminal; files, several items and the virtual places don't.
+    func testOpenInTerminalIsOfferedForOneFolderAndTheFolderOnShow() {
+        func commands(_ kind: CommandMenuContext, _ count: Int = 1) -> [[CommandID]] {
+            ContextMenuModel.menu(for: kind, selectionCount: count).sections.map { $0.map(\.command) }
+        }
+        XCTAssertEqual(commands(.folder).first, [.open, .openWith, .openInNewTab, .openInNewWindow, .openInTerminal])
+        let background = commands(.background, 0)
+        XCTAssertEqual(background.suffix(2), [[.openInTerminal], [.directoryProperties]])
+        for (kind, count) in [(CommandMenuContext.file, 1), (.multiple, 2), (.trash, 1), (.trash, 0), (.recent, 1), (.recent, 0)] {
+            XCTAssertFalse(commands(kind, count).joined().contains(.openInTerminal), "\(kind) \(count)")
+        }
+        let file = MenuModel.menuBar.first { $0.title == "File" }?.sections.joined().map(\.command) ?? []
+        XCTAssertEqual(file.firstIndex(of: .openInTerminal), file.firstIndex(of: .openInNewWindow).map { $0 + 1 })
+        XCTAssertEqual(CommandValidation.state(for: .openInTerminal, in: CommandContext()), .enabled)
     }
 }

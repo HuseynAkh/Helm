@@ -45,7 +45,8 @@ final class AgenticContractValuesTests: XCTestCase {
         let config = AIConfig(provider: "claude", models: ["claude": "m"], ports: ["ollama": 11434], otherAddress: "a.example.com",
                               keyOwners: ["claude|api.anthropic.com:443": "stamp"])
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(config)) as? [String: Any])
-        XCTAssertEqual(Set(object.keys), ["provider", "models", "ports", "otherAddress", "keyOwners", "modelLists", "openAIUsesKey"])
+        XCTAssertEqual(Set(object.keys), ["provider", "models", "ports", "otherAddress", "keyOwners", "modelLists", "textOnlyModels",
+                                          "openAIUsesKey"])
         XCTAssertEqual(object["openAIUsesKey"] as? Bool, false, "a flag, never a key")
         XCTAssertFalse(object.keys.contains { $0.lowercased().contains("secret") || $0.lowercased().contains("token") || $0.lowercased() == "key" })
     }
