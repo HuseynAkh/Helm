@@ -394,6 +394,47 @@ import HelmPersistence
         XCTAssertTrue(client.asks.first?.user.contains("\"searching_in\":\"Documents\"") == true)
     }
 
+    func testASearchTheDiskDidntAnswerSaysSoRatherThanNoMatches() async throws {
+        standInFanOut()
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\"scan\"]}"), rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client)
+        // The disk stops answering once the folder is open: the walk and every Spotlight hit's lookup time out.
+        let fileSystem = try XCTUnwrap(fileSystems.last)
+        fileSystem.isStalled = true
+        await searchWithAI(controller, "report")
+        let done = await until { controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        XCTAssertEqual(names(controller), [], "nothing was found")
+        let status = try XCTUnwrap(controller.aiSearchStatusForTesting)
+        XCTAssertEqual(status.text, AgentText.searchDiskDidntAnswer, "never “0 matches”")
+        XCTAssertTrue(fileSystem.lookups.all.contains { $0.path == scan.path }, "a Spotlight hit was looked up")
+    }
+
+    func testAPlaceThatIsntRespondingSaysTheDiskDidntAnswerWhenNothingIsFound() async throws {
+        AISearchRunner.fanOutAnswersForTesting = { _ in [] }
+        let storage = MemoryStorageFactsReader(home: home)
+        storage.set(StorageProbe(timedOut: true), under: documents.path)
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\"zebra\"]}"), rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client, storage: storage)
+        await searchWithAI(controller, "zebra")
+        let done = await until { controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        // The line is the sentence alone: nothing was searched, so "Names only here" has nothing to add.
+        XCTAssertEqual(controller.aiSearchStatusForTesting?.text, AgentText.searchDiskDidntAnswer)
+    }
+
+    func testASearchThatFindsNothingOnADiskThatAnswersCountsNoMatches() async throws {
+        AISearchRunner.fanOutAnswersForTesting = { _ in [] }
+        let client = AISearchWindowClient(plan: plan("{\"name_any\": [\"zebra\"]}"), rank: "{\"ranked\": []}")
+        let (controller, _) = try await window(client: client)
+        await searchWithAI(controller, "zebra")
+        let done = await until { controller.activeTab?.search?.assist?.phase == .done }
+        XCTAssertTrue(done)
+        let status = try XCTUnwrap(controller.aiSearchStatusForTesting)
+        XCTAssertNotEqual(status.text, AgentText.searchDiskDidntAnswer)
+        XCTAssertTrue(status.text.hasPrefix("0 matches"), status.text)
+    }
+
     func testTheSparkIsOffAtLaunchWhenAIModeIsOffAndAfterTheSearchCloses() async throws {
         let client = AISearchWindowClient(plan: nil, rank: nil)
         let (off, _) = try await window(client: client, on: false)
@@ -788,7 +829,15 @@ final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
     let flagged: Set<String>
     /// Every item looked up, and whether downloads were off for it.
     let lookups = AISearchWindowLookups()
+    private let lock = NSLock()
+    private var stalled = false
     init(base: InMemoryFileSystem, flagged: Set<String>) { self.base = base; self.flagged = flagged }
+
+    /// While on, every read fails as timed out, as on a disk that stopped answering.
+    var isStalled: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return stalled }
+        set { lock.lock(); stalled = newValue; lock.unlock() }
+    }
 
     private func marked(_ entry: FileEntry) -> FileEntry {
         guard flagged.contains(entry.url.path) else { return entry }
@@ -797,6 +846,7 @@ final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
     }
     func entry(at url: URL) async throws -> FileEntry {
         lookups.append(path: url.path, downloadsOff: DatalessGuard.isOff)
+        if isStalled { throw FileSystemError.timedOut }
         return marked(try await base.entry(at: url))
     }
     func enumerate(_ directory: URL, options: EnumerationOptions) -> AsyncThrowingStream<[FileEntry], Error> {
@@ -804,6 +854,7 @@ final class AISearchWindowFileSystem: FileSystem, @unchecked Sendable {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
+                    if self.isStalled { throw FileSystemError.timedOut }
                     for try await batch in base.enumerate(directory, options: options) {
                         continuation.yield(batch.map(self.marked).filter { options.includeHidden || !$0.isHidden })
                     }

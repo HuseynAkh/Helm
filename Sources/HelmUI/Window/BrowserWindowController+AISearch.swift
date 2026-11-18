@@ -96,9 +96,11 @@ extension BrowserWindowController {
                 case .onThisMacOnly: coverage = AgentText.searchOnThisMac
                 case .namesOnly: coverage = AgentText.searchNamesOnly
                 }
-                // Inside the dot list the coverage is one part of it, not a sentence: "… · Names only here".
+                // Inside the dot list the coverage is one part of it, not a sentence: "… · Names only here". Where the
+                // disk didn't answer, nothing was searched, so how much could have been is left out.
                 let readAs = assist.readAs ?? ""
-                let part = readAs.isEmpty ? coverage : coverage.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 }
+                let part = readAs.isEmpty ? coverage : readAs == AgentText.searchDiskDidntAnswer ? nil
+                    : coverage.map { $0.hasSuffix(".") ? String($0.dropLast()) : $0 }
                 let words = [assist.readAs, part].compactMap { $0 }.filter { !$0.isEmpty }
                 return AISearchStatus(text: words.joined(separator: " · "), queries: assist.queriesRead)
             }
