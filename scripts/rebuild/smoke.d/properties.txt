@@ -1,6 +1,8 @@
-# Properties: a folder's contents counted, with what couldn't be read, its parent folder and Nautilus's permissions
+# Properties: a folder's contents counted, with what couldn't be read, its parent folder and Nautilus's permissions.
+# In a tab of its own, closed at the end, so the steps after these find the window as it was.
+cmd newTab
+wait 0.3
 go @FIX@/home
-view list
 select Measured
 cmd properties
 properties-wait
@@ -21,6 +23,7 @@ properties-close escape
 properties-windows 0
 # A file: its size once, its type as Nautilus words it, and whether it runs
 go @FIX@/home/Measured
+view list
 select a.txt
 cmd properties
 properties-wait
@@ -81,3 +84,5 @@ menu openInTerminal disabled
 select Tool.app
 menu openInTerminal disabled
 select
+cmd closeTab
+wait 0.3
