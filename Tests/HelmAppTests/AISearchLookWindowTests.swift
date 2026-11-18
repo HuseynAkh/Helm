@@ -280,6 +280,8 @@ import HelmPersistence
         XCTAssertTrue(listed)
         XCTAssertEqual(controller.matchReasonForTesting(named: "IMG_0042.jpg"), "Shows: kite")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.text.contains("Looked at"), false, "nothing was looked at")
+        let status = controller.aiSearchStatusForTesting?.text ?? ""
+        XCTAssertTrue(status.contains("Couldn't look at ") && status.hasSuffix("took too long to answer"), "the status bar says why: \(status)")
         XCTAssertEqual(controller.aiSearchRunner?.picturesRefused, false, "only a bad request turns pictures off")
     }
 }

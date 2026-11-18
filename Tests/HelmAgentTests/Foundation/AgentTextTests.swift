@@ -153,6 +153,10 @@ final class AgentTextTests: XCTestCase {
         ("searchOnThisMac", AgentText.searchOnThisMac, "Searched what's on this Mac."),
         ("searchNamesOnly", AgentText.searchNamesOnly, "Names only here."),
         ("searchLookedAt", AgentText.searchLookedAt(48), "Looked at 48"),
+        ("searchCouldntLook", AgentText.searchCouldntLook(12, .timedOut, provider: "OpenAI"), "Couldn't look at 12: OpenAI took too long to answer"),
+        ("searchReadingInside", AgentText.searchReadingInside, "Reading inside files…"),
+        ("searchLooking", AgentText.searchLooking(34), "Looking at 34 files…"),
+        ("searchTookTooLong", AgentText.searchTookTooLong("OpenAI"), "OpenAI took too long to answer."),
         ("searchKindRow", AgentText.searchKindRow, "File type"),
         ("searchKindAny", AgentText.searchKindAny, "Any"),
         ("searchKind(image)", AgentText.searchKind(.image), "Photo"),
@@ -238,8 +242,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 213)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 213, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 217)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 217, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {

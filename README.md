@@ -57,7 +57,7 @@ Names don't always say what a file is. Turn on **Read contents** under the compo
 
 Turn on the trefoil in the search field and describe the file. The model plans the searches, Helm runs them on your Mac, and the status bar says how it read your words. Point at a result to see why it matched.
 
-The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "a receipt from somewhere I ate" finds the café's and the deli's among six receipts, by what they show, whatever their names, and pointing at one says what the model saw.
+The row under the header keeps a search to one kind: Photo, Video, Document, Folder, Code, Audio or Archive. Turn on **Read contents** at the end of the row and the model also looks at up to 48 photos, videos and documents and says which match. Across the whole Mac it looks only at files the search or Apple's on-device recognition matched; in a folder, also at the newest that fit the rest of your words. So "a receipt from somewhere I ate" finds the café's and the deli's among six receipts, by what they show, whatever their names, and pointing at one says what the model saw. While it reads and looks, the status bar says so, and if the model didn't answer for some files it says how many and why.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">

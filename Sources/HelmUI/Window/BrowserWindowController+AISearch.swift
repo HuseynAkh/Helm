@@ -85,8 +85,8 @@ extension BrowserWindowController {
         guard let runner = aiSearchRunner, case .ready(_, let destination, _, _) = dependencies.agent.runtime.state else { return nil }
         if let search = tab.search, search.query.usesAI, let assist = search.assist {
             switch assist.phase {
-            case .thinking: return AISearchStatus(text: AgentText.searchThinking)
-            case .failed: return AISearchStatus(text: AgentText.searchFailed)
+            case .thinking: return AISearchStatus(text: assist.readAs ?? AgentText.searchThinking)
+            case .failed: return AISearchStatus(text: assist.readAs ?? AgentText.searchFailed)
             case .done:
                 let coverage: String?
                 switch assist.coverage {
