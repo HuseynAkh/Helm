@@ -161,14 +161,15 @@ import HelmSearch
         var notDownloaded = 0
         var looked = AISearchLooked()
         if let looking, coverage != .namesOnly {
+            let looks = AgentContentLimits.searchLooks(isLocal: isLocal, seesPictures: dependencies.agent.runtime.modelSeesPictures)
             delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchReadingInside, coverage: coverage))
             let read = await readInside(queries, walked: walked, found: found, plain: plainKept, scopeRoot: scopeRoot,
                                         kind: query.kind, coverage: coverage, hiddenFolders: hiddenFolders,
                                         reader: looking.reader, permit: looking.permit,
-                                        looks: AgentContentLimits.searchLooks(isLocal: isLocal))
+                                        looks: looks)
             guard !Task.isCancelled else { return }
             notDownloaded = read.notDownloaded
-            let picked = Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal)))
+            let picked = Array(read.pool.prefix(looks))
             if !picked.isEmpty {
                 delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchLooking(picked.count), coverage: coverage))
             }

@@ -39,6 +39,26 @@ final class AISearchQueryClampTests: XCTestCase {
         XCTAssertEqual(clamped.folderAny, ["Finance"])
     }
 
+    func testALoneLetterIsNoWordToLookFor() {
+        // Qwen2.5-VL asked for "a" inside every photo of "a bird".
+        let clamped = AISearchQuery(nameAll: ["a", "bird"], nameAny: ["A", "x"], contentAll: ["a", "bird"], folderAny: ["b"])
+            .clamped(request: "a bird")
+        XCTAssertEqual(clamped.contentAll, ["bird"])
+        XCTAssertEqual(clamped.nameAll, ["bird"])
+        XCTAssertEqual(clamped.nameAny, [])
+        XCTAssertEqual(clamped.folderAny, [])
+        // A one-character word in another script can be a whole word, and a digit can name a file: both stay.
+        XCTAssertEqual(AISearchQuery(nameAny: ["猫", "2"], contentAll: ["猫"]).clamped(request: "猫").contentAll, ["猫"])
+        XCTAssertEqual(AISearchQuery(nameAny: ["猫", "2"]).clamped(request: "猫").nameAny, ["猫", "2"])
+    }
+
+    func testAModelOnThisMacThatSeesPicturesLooksAtTwoQuestionsOfThem() {
+        XCTAssertEqual(AgentContentLimits.searchLooks(isLocal: false), 48)
+        XCTAssertEqual(AgentContentLimits.searchLooks(isLocal: false, seesPictures: true), 48)
+        XCTAssertEqual(AgentContentLimits.searchLooks(isLocal: true), 12)
+        XCTAssertEqual(AgentContentLimits.searchLooks(isLocal: true, seesPictures: true), 24)
+    }
+
     func testNameWordsMayBeTheModelsOwn() {
         // A model may widen a search by name with words the person never typed.
         let clamped = AISearchQuery(nameAll: ["bill"], nameAny: ["receipt", "statement"]).clamped(request: request)

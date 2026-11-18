@@ -172,8 +172,11 @@ public enum AgentContentLimits {
     /// summary holds words only.
     public static let picturesPerRequest = 24
     /// Files the model looks at in one AI search: pictures, video frames and the first lines of documents, the best
-    /// candidates first. A model on this Mac is slower, so it looks at fewer.
-    public static func searchLooks(isLocal: Bool) -> Int { isLocal ? 12 : 48 }
+    /// candidates first. A model on this Mac is slower, so it looks at fewer: 12, or 24 for one that sees pictures,
+    /// whose look is the point of the search. With 12, Qwen2.5-VL never saw the parrot among a folder's 23 photos.
+    public static func searchLooks(isLocal: Bool, seesPictures: Bool = false) -> Int {
+        isLocal ? (seesPictures ? 2 * looksPerQuestion : looksPerQuestion) : 48
+    }
     /// Files shown to the model in one question of an AI search's look, and questions asked at once.
     public static let looksPerQuestion = 12
     public static let lookQuestionsAtOnce = 2
