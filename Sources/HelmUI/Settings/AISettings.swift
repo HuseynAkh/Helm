@@ -66,6 +66,9 @@ struct AISettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: Self.width)
+        // As tall as the window, as every other pane is: a form taller than the window then scrolls inside it,
+        // rather than being centred with its first rows under the toolbar, and the window can measure it.
+        .frame(maxHeight: .infinity)
         .onAppear { draftAddress = model.address }
         // Settings has no Done, so a key, an address, a port or a model typed and not yet entered is entered as the
         // pane goes away.
