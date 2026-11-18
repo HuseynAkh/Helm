@@ -555,7 +555,7 @@ import HelmPersistence
         app.showAIIntroIfNeeded()
         XCTAssertEqual(screen.stepForTesting, "welcome", "nothing takes the onboarding's place")
         XCTAssertTrue(screen.pressForTesting("Continue"))
-        screen.close()
+        screen.window?.performClose(nil)
         XCTAssertTrue(settings.snapshot.bool(.onboardingCompleted))
         XCTAssertTrue(settings.snapshot.bool(.aiIntroSeen))
         app.showAIIntroIfNeeded()

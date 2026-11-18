@@ -47,7 +47,7 @@ final class SetupLaunchTests: XCTestCase {
         XCTAssertEqual(window.model.state(of: .moveToApplications).name, "failed")
         XCTAssertEqual(mover.relaunches, [[.moveToApplications]])
         XCTAssertFalse(viewer.isHelmDefault)
-        window.close()
+        window.window?.performClose(nil)
         // The same copy opened again from the disk image leaves them for the right one.
         access.showWelcomeIfNeeded()
         XCTAssertEqual(window.modeForTesting, "closed")
@@ -139,6 +139,15 @@ final class SetupLaunchTests: XCTestCase {
         earlier.append(app)
     }
 
+    /// A quit as AppKit may carry it out: Helm is asked to quit, it quits, and the onboarding's window is closed the
+    /// ordinary way rather than going with the process, as AppKit may close windows on its way out.
+    private func quitClosingTheWindow(_ app: AppController) {
+        app.access.quitRequested()
+        app.access.quitting()
+        app.onboardingForTesting?.close()
+        earlier.append(app)
+    }
+
     private func until(_ timeout: TimeInterval = 15, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
@@ -168,7 +177,7 @@ final class SetupLaunchTests: XCTestCase {
         XCTAssertEqual(screen.model.folderNote(.fullDiskAccess), SetupRow.fullDiskAccess.folderNote)
         XCTAssertNil(screen.model.folderNote(.fileViewer))
 
-        screen.close()
+        screen.window?.performClose(nil)
         await launch.value
         XCTAssertEqual(app.allWindows.count, 1, "the window opens as today once setup has closed")
         XCTAssertEqual(app.dependencies?.volumes.isStarted, true)
@@ -276,6 +285,41 @@ final class SetupLaunchTests: XCTestCase {
         XCTAssertEqual(settings.snapshot.string(.setupProgress), "")
     }
 
+    /// macOS's Quit & Reopen after Full Disk Access, with AppKit closing the onboarding's window on the way out: the
+    /// close isn't the person's, so the onboarding isn't through, and the next launch carries on at the next step.
+    /// Helm came back through with setup, and went to its file window, when a close on the way out counted.
+    func testAWindowClosedOnTheWayOutLeavesTheOnboardingToCarryOn() async throws {
+        let preferences = IsolatedSettings()
+        let first = makeApp(settings: preferences)
+        let launch = Task { @MainActor in await first.compose() }
+        _ = await until { first.onboardingForTesting?.modeForTesting == "setup" }
+        let screen = try XCTUnwrap(first.onboardingForTesting)
+        await continueTo("access", in: screen)
+        XCTAssertTrue(screen.pressForTesting("Open System Settings"))
+        first.privacyForTesting?.status = .granted
+        quitClosingTheWindow(first)
+        let kept = try XCTUnwrap(first.environment?.settings)
+        XCTAssertFalse(kept.snapshot.bool(.onboardingCompleted), "a close on the way out isn't going through it")
+        XCTAssertEqual(kept.snapshot.string(.setupProgress), "access:welcome,access,viewer,ai,done:asked")
+        launch.cancel()
+
+        let second = makeApp(settings: preferences)
+        second.privacyForTesting?.status = .granted
+        let relaunch = Task { @MainActor in await second.compose() }
+        let carried = await until { second.onboardingForTesting?.modeForTesting == "setup" }
+        XCTAssertTrue(carried, "the onboarding came back first")
+        let again = try XCTUnwrap(second.onboardingForTesting)
+        XCTAssertEqual(again.stepForTesting, "viewer")
+        XCTAssertTrue(second.allWindows.isEmpty, "no file window before the onboarding is through")
+        // A quit that's cancelled leaves the window counting again: closing it now is the person's.
+        second.access.quitRequested()
+        second.access.quitCancelled()
+        again.window?.performClose(nil)
+        await relaunch.value
+        XCTAssertEqual(second.allWindows.count, 1)
+        XCTAssertFalse(second.access.setupOwed)
+    }
+
     /// A quit for any other reason, part way through, carries on at the same step in the next launch: here the file
     /// viewer step, with Full Disk Access still off.
     func testAQuitForAnyOtherReasonCarriesOnWhereItStopped() async throws {
@@ -294,8 +338,8 @@ final class SetupLaunchTests: XCTestCase {
         let again = try XCTUnwrap(second.onboardingForTesting)
         XCTAssertEqual(again.stepForTesting, "viewer")
         XCTAssertTrue(second.allWindows.isEmpty)
-        // Closed part way, it's through: the window opens and the next launch shows nothing.
-        again.close()
+        // Closed part way by the person, it's through: the window opens and the next launch shows nothing.
+        again.window?.performClose(nil)
         await relaunch.value
         XCTAssertEqual(second.allWindows.count, 1)
         XCTAssertFalse(second.access.setupOwed)
@@ -569,7 +613,7 @@ final class SetupLaunchTests: XCTestCase {
         let other = Task { @MainActor in await access.setUpBeforeWindows(); second = true }
         try? await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertFalse(second)
-        try XCTUnwrap(access.onboarding).close()
+        try XCTUnwrap(access.onboarding).window?.performClose(nil)
         await first.value
         await other.value
         XCTAssertTrue(second)
@@ -613,7 +657,7 @@ final class SetupLaunchTests: XCTestCase {
         let gate = Task { @MainActor in await again.setUpBeforeWindows() }
         let shown = await until { again.onboarding?.modeForTesting == "setup" }
         XCTAssertTrue(shown)
-        again.onboarding?.close()
+        again.onboarding?.window?.performClose(nil)
         await gate.value
         XCTAssertEqual(settings.snapshot.string(.setupBuild), "cdhash H\"cccc\"")
     }
