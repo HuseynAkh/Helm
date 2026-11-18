@@ -410,10 +410,60 @@ import Quartz
             }
             try? data?.write(to: URL(fileURLWithPath: argument))
             check(data != nil, step)
+        case "screenshot-popups":
+            // As screenshot, with the window's open pop-ups, such as the path bar's suggestions, drawn where they show.
+            guard let main = window.window, let content = main.contentView?.superview,
+                  let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) else {
+                check(false, step, "no view"); return
+            }
+            // A child window takes its parent's level, so the pop-ups are the child windows on show.
+            let children = main.childWindows ?? []
+            let popups = children.filter { $0.isVisible }
+            let data = await SmokeActiveLook.drawingInFront([main]) { () -> Data? in
+                content.cacheDisplay(in: content.bounds, to: image)
+                return withPopups(popups, over: withMaterials(image, of: content), of: main).representation(using: .png, properties: [:])
+            }
+            try? data?.write(to: URL(fileURLWithPath: argument))
+            check(data != nil && !popups.isEmpty, step, popups.isEmpty ? "no pop-up on show among \(children.count) child windows" : "")
         default:
             if await performTrackVerb(verb, argument, step: step, window: window, app: app) { return }
             check(false, step, "unknown step")
         }
+    }
+
+    /// Draws each pop-up over a window's capture where it shows, as a menu does: rounded, on the menu's colour, with
+    /// a soft shadow and a hairline edge.
+    static func withPopups(_ popups: [NSWindow], over capture: NSBitmapImageRep, of window: NSWindow) -> NSBitmapImageRep {
+        guard !popups.isEmpty, let context = NSGraphicsContext(bitmapImageRep: capture) else { return capture }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        for popup in popups {
+            guard let root = popup.contentView, let part = root.bitmapImageRepForCachingDisplay(in: root.bounds) else { continue }
+            root.cacheDisplay(in: root.bounds, to: part)
+            let frame = NSRect(x: popup.frame.minX - window.frame.minX, y: popup.frame.minY - window.frame.minY,
+                               width: popup.frame.width, height: popup.frame.height)
+            let shape = NSBezierPath(roundedRect: frame, xRadius: 8, yRadius: 8)
+            popup.effectiveAppearance.performAsCurrentDrawingAppearance {
+                NSGraphicsContext.saveGraphicsState()
+                let shadow = NSShadow()
+                shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
+                shadow.shadowBlurRadius = 14
+                shadow.shadowOffset = NSSize(width: 0, height: -4)
+                shadow.set()
+                NSColor.windowBackgroundColor.setFill()
+                shape.fill()
+                NSGraphicsContext.restoreGraphicsState()
+                NSGraphicsContext.saveGraphicsState()
+                shape.addClip()
+                part.draw(in: frame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                NSGraphicsContext.restoreGraphicsState()
+                NSColor.separatorColor.setStroke()
+                shape.lineWidth = 0.5
+                shape.stroke()
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        return capture
     }
 
     /// A capture drawn from the views leaves out what a material shows from behind the window, which some SDKs

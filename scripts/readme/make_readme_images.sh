@@ -136,6 +136,8 @@ frame hero-light 1600
 frame list-light 1600
 frame recent-dark 1600
 frame search-dark 1600
+frame path-dark 1600
+frame path-light 1600
 frame header-dark 1600 14 crop=0,0,1240,52
 frame settings-sidebar-light 1000 16
 frame trash-card-light 1600

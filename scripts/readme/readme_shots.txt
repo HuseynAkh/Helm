@@ -64,6 +64,21 @@ search-type invoice
 wait 3
 screenshot @SHOTS@/search-dark.png
 search-key escape
+# Typing a path from Home: ~ for the home folder, and the suggestions for what's typed, folders first, with the rest
+# of the first one in grey, ready for Tab
+appearance dark
+go @FIX@/home
+view grid
+wait 1
+type ~/Documents/Pro
+wait 1
+typed-rows Projects,Product Roadmap.pdf
+screenshot-popups @SHOTS@/path-dark.png
+appearance light
+wait 1.5
+screenshot-popups @SHOTS@/path-light.png
+location-escape
+location @FIX@/home
 # AI mode, after Recent's picture so Recent shows none of its folders. The plan, the result, Whole Mac, Read contents
 # and AI search are taken in light and dark, for the README's pairs.
 # The AI Mode screen, switched on with a stand-in key, which the screen never draws
