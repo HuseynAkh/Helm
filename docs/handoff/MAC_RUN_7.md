@@ -92,16 +92,27 @@ Then with LM Studio's `gpt-oss-20b` (text only), on each build as it was fixed, 
 
 Tested on this Mac with real photos, in `AgentRealPictureTests`: a model's copy of a picture is at most 512 pixels a side with no metadata; a photo stored on its side arrives upright, without its location; transparency is drawn on white; a 48-megapixel photo is read and scaled down; and a clip that changes scene is described all the way through.
 
+### Morning retest, with Full Disk Access on
+
+Huseyn turned Full Disk Access on for `d8840d7` in the morning. Settings › General then said "Full Disk Access is on", and the home window listed its 24 items with no word of a disk not responding. In the same folder, with Read contents on, on the installed build:
+
+| Provider | Request | Expected | Found |
+|---|---|---|---|
+| LM Studio, `gpt-oss-20b` (text only) | a bird | eagle, owl, penguin; the parrot only for a model that sees, since Apple's reader says nothing of it | in about a minute, the eagle, owl and penguin and the penguin video: "4 matches · Image · “bird” · Looked at 12", from three queries, "bird" in pictures, in images and in any file |
+| LM Studio, `gpt-oss-20b` | Video kind: a storm with lightning | the video | the video: "1 match · “storm”, “lightning” · Mentions “storm”, “lightning” · Videos · Looked at 1" |
+
+A model on this Mac looks at 12 files in one search and a hosted one at 48 (`AgentContentLimits.searchLooks`), so "Looked at 12" is as built. So LM Studio's search now plans, reads and finds what Apple's reader can name, and the parrot waits for a local model that sees pictures (open item 5).
+
 ### Left installed
 
-`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with AI search's provider set back to OpenAI. Being a new build, it has Full Disk Access off, and the ChatGPT sign-in asks the keychain once more. Nothing was pushed.
+`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with Full Disk Access on and AI search's provider set back to OpenAI (`ai.json` as it was before the retest). Nothing was pushed.
 
 ## Open
 
 1. **The README branch** (`claude/modest-visvesvaraya-113d31`) is waiting for Huseyn's word to be merged. Until it is, the script test for the README's pictures fails here, since this branch's picture script already takes the path pictures.
 2. **Permissions are shown, not changed.** Nautilus can change them from its Properties window. That would be a change to the disk, with Undo, and waits for Huseyn's word.
 3. **From run 6:** Apple's readers inside Helm's process, and a folder swapped for a link between plan and Apply ([`MAC_RUN_6.md`](MAC_RUN_6.md#open)).
-4. **One unanswered macOS question takes the whole disk.** Without Full Disk Access, a read that waits on macOS's question about Documents is timed out after 30 seconds, and the I/O executor (B-107) then fails every read on that disk until the question is answered: the home window says the disk isn't responding, and AI search says "0 matches" rather than why. Three things would help, each a change to how Helm reads the disk: not looking inside Desktop, Documents and Downloads before the person opens them; a timed-out read shutting only the folder it waited on; and AI search saying the disk didn't answer. They wait for Huseyn's word.
+4. **One unanswered macOS question takes the whole disk.** Without Full Disk Access, a read that waits on macOS's question about Documents is timed out after 30 seconds, and the I/O executor (B-107) then fails every read on that disk until the question is answered: the home window says the disk isn't responding, and AI search says "0 matches" rather than why. Three things would help, each a change to how Helm reads the disk: not looking inside Desktop, Documents and Downloads before the person opens them; a timed-out read shutting only the folder it waited on; and AI search saying the disk didn't answer. They wait for Huseyn's word. With Full Disk Access on, as after the morning retest, it doesn't arise.
 5. **The vision model.** Qwen2.5-VL 7B never finished downloading in LM Studio (stopped at 98.65%, then 0% three times), so a local model that sees pictures is untested. LM Studio's Downloads may still hold the stalled download.
 
 ## Disclosures
