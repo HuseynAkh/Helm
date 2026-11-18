@@ -377,6 +377,9 @@ public enum AgentText {
     public static let addressOtherDevice = "Servers on other devices aren't supported yet."
     public static let modelLabel = "Model"
     public static let modelPlaceholder = "Model name"
+    /// Under the model, where its provider says whether it sees pictures, as LM Studio does.
+    public static let modelSeesPictures = "Sees pictures: with Read contents on, it gets small copies of them."
+    public static let modelReadsTextOnly = "Reads text only: with Read contents on, Helm describes pictures to it in words."
     /// The button beside the model menu that asks the provider for its models again.
     public static let refreshModels = "Refresh Models"
 

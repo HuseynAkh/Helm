@@ -106,12 +106,16 @@ public struct AgentModelInfo: Hashable, Sendable, Identifiable {
     public let id: String
     /// The name to show in place of the id: a ChatGPT plan's display name. Nil for every other provider.
     public let label: String?
+    /// Whether the model can see pictures, as its provider says: LM Studio names each model a vision model or not.
+    /// Nil where the provider doesn't say.
+    public let seesPictures: Bool?
     /// Nil for an empty id and for one with any other character or more than 128 of them.
     public init?(id: String) { self.init(id: id, label: nil) }
     /// A label that isn't clean text of 1 to 64 characters is dropped, and the id is shown.
-    public init?(id: String, label: String?) {
+    public init?(id: String, label: String?, seesPictures: Bool? = nil) {
         guard !id.isEmpty, id.unicodeScalars.count <= Self.idCharacters, id.unicodeScalars.allSatisfy(Self.isAllowed) else { return nil }
         self.id = id
+        self.seesPictures = seesPictures
         self.label = label.flatMap { text in
             let trimmed = text.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty, trimmed.unicodeScalars.count <= Self.labelCharacters, AgentTextEscaper.isClean(trimmed) else { return nil }

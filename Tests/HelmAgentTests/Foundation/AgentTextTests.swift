@@ -199,6 +199,8 @@ final class AgentTextTests: XCTestCase {
         ("addressOtherDevice", AgentText.addressOtherDevice, "Servers on other devices aren't supported yet."),
         ("modelLabel", AgentText.modelLabel, "Model"),
         ("modelPlaceholder", AgentText.modelPlaceholder, "Model name"),
+        ("modelSeesPictures", AgentText.modelSeesPictures, "Sees pictures: with Read contents on, it gets small copies of them."),
+        ("modelReadsTextOnly", AgentText.modelReadsTextOnly, "Reads text only: with Read contents on, Helm describes pictures to it in words."),
         ("aboutLine", AgentText.aboutLine, "An agentic file manager for your Mac.")
     ]
     /// The ChatGPT sign-in, Refresh Models and each provider's help.
@@ -242,8 +244,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 217)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 217, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 219)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 219, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {

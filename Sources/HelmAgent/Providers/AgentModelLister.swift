@@ -13,7 +13,8 @@ public enum AgentModelLister {
               let entries = reply["data"]?.arrayValue ?? reply["models"]?.arrayValue else { throw AgentFailure.unreadable }
         var seen: Set<String> = [], models: [AgentModelInfo] = []
         for entry in entries {
-            guard let id = modelID(of: entry, provider: provider), let model = AgentModelInfo(id: id),
+            guard let id = modelID(of: entry, provider: provider),
+                  let model = AgentModelInfo(id: id, label: nil, seesPictures: seesPictures(entry, provider: provider)),
                   seen.insert(model.id).inserted else { continue }
             models.append(model)
         }
@@ -82,6 +83,17 @@ public enum AgentModelLister {
             return name.hasPrefix(geminiPrefix) ? String(name.dropFirst(geminiPrefix.count)) : name
         case .claude, .openAI, .grok, .lmStudio, .other:
             return entry["id"]?.stringValue ?? entry["key"]?.stringValue ?? entry["name"]?.stringValue
+        }
+    }
+
+    /// What LM Studio's own list says of a model: "vlm" for one that sees pictures, "llm" for one that reads text
+    /// only. Nil for any other provider, or an entry from its other list, which doesn't say.
+    private static func seesPictures(_ entry: AgentJSON, provider: AgentProviderID) -> Bool? {
+        guard provider == .lmStudio, let type = entry["type"]?.stringValue else { return nil }
+        switch type {
+        case "vlm": return true
+        case "llm": return false
+        default: return nil
         }
     }
 

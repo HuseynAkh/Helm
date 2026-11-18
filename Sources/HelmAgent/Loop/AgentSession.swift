@@ -261,7 +261,7 @@ public actor AgentSession: AgentConversing {
         }
         let runner = AgentToolRunner(scope: scope, disk: parts.disk, validator: validator, limits: limits, contents: reading)
             .usingListSeconds(listSeconds)
-        if picturesRefused { runner.stopSendingPictures() }
+        if picturesRefused { runner.stopSendingPictures() } else if !(await parts.seesPictures()) { runner.stopSendingPictures() }
         let asksForChanges = input.asksForChanges || AgentChangeAsk.asksForChanges(input.text)
         let system = AgentPrompt.system(for: mode, readsContents: reading != nil)
         let sent = await turns(client: client, runner: runner, limits: limits, system: system, selected: Set(input.selectedPaths),

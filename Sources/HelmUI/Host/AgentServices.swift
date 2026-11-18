@@ -34,6 +34,9 @@ import HelmPersistence
             config.update { saved in
                 let names = models?.map(\.id) ?? []
                 saved.modelLists[profile.secretID.account] = names.isEmpty ? nil : names
+                // And which of them can't see pictures, where the provider says.
+                let textOnly = models?.filter { $0.seesPictures == false }.map(\.id) ?? []
+                saved.textOnlyModels[profile.secretID.account] = textOnly.isEmpty ? nil : textOnly
             }
         }
     }

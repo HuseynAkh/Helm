@@ -54,7 +54,13 @@ struct AISettingsView: View {
                         localState
                     }
                     // Other has no models to offer until an address has been taken.
-                    if model.provider != .other || model.hasProfile { modelRow }
+                    if model.provider != .other || model.hasProfile {
+                        modelRow
+                        if let sees = model.chosenModelSeesPictures {
+                            Text(verbatim: sees ? AgentText.modelSeesPictures : AgentText.modelReadsTextOnly)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }

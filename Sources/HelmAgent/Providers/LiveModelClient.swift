@@ -86,12 +86,13 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
     }
 
     /// The provider's models. A typed address whose models aren't where Chat Completions servers usually keep them
-    /// is asked again under `/v1`; a key that was refused or a server that can't be reached is not asked twice.
+    /// is asked again under `/v1`, and an LM Studio without its own list is asked for its other one; a key that was
+    /// refused or a server that can't be reached is not asked twice.
     public func models() async throws -> [AgentModelInfo] {
         do {
             return try await models(on: .models)
         } catch let failure as AgentFailure {
-            guard provider == .other, Self.triesAlternate.contains(failure) else { throw failure }
+            guard provider == .other || provider == .lmStudio, Self.triesAlternate.contains(failure) else { throw failure }
             if let listed = try? await models(on: .modelsAlternate) { return listed }
             throw failure
         }

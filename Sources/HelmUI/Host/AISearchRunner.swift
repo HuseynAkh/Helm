@@ -427,7 +427,9 @@ import HelmSearch
                       place: StorageFacts, scopeRoot: URL?, reader: any AgentContentReading,
                       permit: AgentContentPermit) async -> AISearchLooked {
         guard !picked.isEmpty else { return AISearchLooked() }
-        let shown = picturesRefused ? picked : await withPictures(picked, reader: reader, permit: permit)
+        // A model that can't see pictures, as its provider said, gets Apple's descriptions of them alone.
+        let sendsPictures = !picturesRefused && dependencies.agent.runtime.modelSeesPictures
+        let shown = sendsPictures ? await withPictures(picked, reader: reader, permit: permit) : picked
         guard !Task.isCancelled else { return AISearchLooked() }
         let facts = await shownFacts(shown.map(\.entry), place: place, scopeRoot: scopeRoot)
         let home = dependencies.home.path
@@ -449,7 +451,7 @@ import HelmSearch
         while next < questions.count, !Task.isCancelled {
             let batch = Array(next..<min(next + AgentContentLimits.lookQuestionsAtOnce, questions.count))
             next += batch.count
-            let pictures = !picturesRefused
+            let pictures = !picturesRefused && sendsPictures
             await withTaskGroup(of: (Int, [AISearchLook]?, Bool, AgentFailure?).self) { group in
                 for index in batch {
                     let items = questions[index].map(\.item)

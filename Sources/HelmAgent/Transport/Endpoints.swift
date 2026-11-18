@@ -116,12 +116,14 @@ public enum AgentProviderCatalog {
         case (.ollama, .chat): return AgentRouteSpec(method: "POST", path: "/v1/chat/completions", auth: AgentAuthStyle.none)
         case (.ollama, .models): return AgentRouteSpec(method: "GET", path: "/api/tags", auth: AgentAuthStyle.none)
         case (.lmStudio, .chat): return AgentRouteSpec(method: "POST", path: "/v1/chat/completions", auth: .bearer)
-        case (.lmStudio, .models): return AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer)
+        // LM Studio's own list, which says which models see pictures; its other list, which doesn't, for an older one.
+        case (.lmStudio, .models): return AgentRouteSpec(method: "GET", path: "/api/v0/models", auth: .bearer)
+        case (.lmStudio, .modelsAlternate): return AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer)
         case (.other, .chat): return AgentRouteSpec(method: "POST", path: "/chat/completions", auth: .bearer)
         case (.other, .models): return AgentRouteSpec(method: "GET", path: "/models", auth: .bearer)
         case (.other, .modelsAlternate): return AgentRouteSpec(method: "GET", path: "/v1/models", auth: .bearer)
         case (.claude, .modelsAlternate), (.openAI, .modelsAlternate), (.grok, .modelsAlternate), (.gemini, .modelsAlternate),
-             (.ollama, .modelsAlternate), (.lmStudio, .modelsAlternate):
+             (.ollama, .modelsAlternate):
             return nil
         }
     }
