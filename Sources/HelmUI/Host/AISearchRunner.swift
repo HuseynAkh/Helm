@@ -140,7 +140,7 @@ import HelmSearch
         }
         guard !Task.isCancelled else { return }
         let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind,
-                                   readsContents: looking != nil)
+                                   readsContents: looking != nil, scopeRoot: scopeRoot)
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
@@ -761,9 +761,17 @@ import HelmSearch
     /// With a kind chosen in the kind row, every query that runs is kept to it, whichever way it was made.
     /// With the kind row at Any and no kind named in the request, the last and loosest query looks at every kind, so a
     /// model that guessed one, such as documents for "a receipt" that's a photo, can't hide the rest.
+    /// In a search of a folder, a folder word naming that folder or one above it goes first, since it holds every file
+    /// searched (`AISearchMatcher.withoutPlaceSearched`); a query left with nothing to look for goes with it.
     static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String,
-                        kind: AISearchKind? = nil, readsContents: Bool = false) -> [AISearchQuery] {
-        var kept = placeQueries(planned, coverage: coverage, request: request)
+                        kind: AISearchKind? = nil, readsContents: Bool = false, scopeRoot: URL? = nil) -> [AISearchQuery] {
+        var placed: [AISearchQuery] = []
+        for query in planned.map({ AISearchMatcher.withoutPlaceSearched($0, scopeRoot: scopeRoot) })
+            where query != AISearchQuery() && !placed.contains(query) {
+            placed.append(query)
+        }
+        if placed.isEmpty { placed = [ownWords(request)].filter { $0 != AISearchQuery() } }
+        var kept = placeQueries(placed, coverage: coverage, request: request)
         if readsContents, coverage != .namesOnly { kept = insideLast(kept, request: request) }
         guard let kind else { return everyKindLast(kept, request: request) }
         return AISearchPlan(sort: .relevance, queries: kept).limited(to: kind).queries
@@ -819,11 +827,16 @@ import HelmSearch
             if query != AISearchQuery(), !kept.contains(query) { kept.append(query) }
         }
         if kept.isEmpty {
-            let words = request.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.count >= 2 }
-            let own = AISearchQuery(nameAny: words).clamped(request: request)
+            let own = ownWords(request)
             if own != AISearchQuery() { kept.append(own) }
         }
         return kept
+    }
+
+    /// The request's own words, by name: what a search runs when nothing of its plan is left.
+    private static func ownWords(_ request: String) -> AISearchQuery {
+        let words = request.split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.count >= 2 }
+        return AISearchQuery(nameAny: words).clamped(request: request)
     }
 
     /// The facts a planned query asks about, as reason codes, in the order a reason names them.

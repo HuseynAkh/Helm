@@ -196,5 +196,22 @@ final class AISearchPredicateTests: XCTestCase {
         let inside = planned + [AISearchQuery(contentAll: ["bird"])]
         XCTAssertEqual(AISearchRunner.queries(inside, coverage: .full, request: "a bird", readsContents: true), inside)
     }
+
+    @MainActor func testAFolderWordNamingThePlaceSearchedIsLeftOut() {
+        // gpt-oss asked for "Helm Test" as a folder of a search of Helm Test, and every file was ruled out.
+        let scope = URL(fileURLWithPath: "/Users/someone/Helm Test", isDirectory: true)
+        let planned = [AISearchQuery(nameAll: ["invoice"], folderAny: ["Helm", "Invoices"], kinds: [.document]),
+                       AISearchQuery(nameAll: ["invoice"], folderAny: ["helm test"], kinds: [.document])]
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "an invoice", kind: .document, scopeRoot: scope),
+                       [AISearchQuery(nameAll: ["invoice"], folderAny: ["Invoices"], kinds: [.document]),
+                        AISearchQuery(nameAll: ["invoice"], kinds: [.document])],
+                       "a folder below the place searched is kept")
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "an invoice", kind: .document), planned,
+                       "a search of the whole Mac has no place to leave out")
+        // A query that asked for nothing but the place searched goes; none left, the request's own words by name.
+        let only = [AISearchQuery(folderAny: ["Someone"])]
+        XCTAssertEqual(AISearchRunner.queries(only, coverage: .full, request: "tax forms", scopeRoot: scope),
+                       [AISearchQuery(nameAny: ["tax", "forms"])])
+    }
 }
 #endif
