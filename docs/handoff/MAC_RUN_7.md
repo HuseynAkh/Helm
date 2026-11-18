@@ -1,6 +1,6 @@
 # Mac run 7
 
-**Status: AI search waits long enough for a model that reasons and says what it's doing and why it failed. The onboarding restarts Helm as a step of its own and always has the AI Mode step, and the welcome window has room under Continue. Go to Folder starts with the path selected. Folders gain Open in Terminal and a Properties window that counts what's inside them, and the search's kind row was brought in line with the tab strip. All of it was checked on fixtures with invisible windows; see "Live on this Mac" for what was tried in the installed app. Nothing was pushed.**
+**Status: AI search waits long enough for a model that reasons and says what it's doing and why it failed. The onboarding restarts Helm as a step of its own and always has the AI Mode step, and the welcome window has room under Continue. Go to Folder starts with the path selected. Folders gain Open in Terminal and a Properties window that counts what's inside them, and the search's kind row was brought in line with the tab strip. All of it was checked on fixtures with invisible windows; see "Live on this Mac" for what was tried in the installed app. On the 18th, image, PDF and video search were tried live with OpenAI and LM Studio, a keychain question stopped counting as a slow ChatGPT, and run 7 was pushed and merged to main at Huseyn's word.**
 
 Run on 2026-11-17 and 18, on `handoff/mac-fixups` after `23978dd`. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#mac-run-7-2026-11-18); the AI search and onboarding rows are in the run 6 table, where they were first recorded.
 
@@ -104,18 +104,38 @@ Huseyn turned Full Disk Access on for `d8840d7` in the morning. Settings › Gen
 
 A model on this Mac looks at 12 files in one search and a hosted one at 48 (`AgentContentLimits.searchLooks`), so "Looked at 12" is as built. So LM Studio's search now plans, reads and finds what Apple's reader can name, and the parrot waits for a local model that sees pictures (open item 5). OpenAI's search finds every bird on this build, as it did on `232b5b7` overnight.
 
+### PDF and video search
+
+Huseyn asked to "confirm that you have also tested PDF search and video search", and to push to main if everything passed. Live, on the installed `d8840d7` with Full Disk Access on and Read contents on, a few minutes apart. Its search is the one pushed but for the two changes below, which change when a question's time starts and what a plan's folder words may ask.
+
+| Provider | Folder, kind | Request | Expected | Found |
+|---|---|---|---|---|
+| OpenAI | Image Tests, Video | a storm with lightning | the video | the video: "1 match · Mentions “storm”, “lightning” · Videos · Looked at 1" |
+| LM Studio | Image Tests, Video | a storm with lightning | the video | the video, as in the morning retest |
+| OpenAI | Helm Test, Document | a lease renewal starting in January | `Scan 2026-11-09.pdf`, whose name says nothing of it | that alone, not the lease agreement: "1 match · “lease”, “renewal” · Mentions “January” · Documents · Looked at 21" |
+| LM Studio | Helm Test, Document | a lease renewal starting in January | the same | that alone: "1 match · “lease”, “renewal”, “starting” · Mentions “lease”, “renewal”, “starting”, “January” · Documents · Looked at 12" |
+| OpenAI | Helm Test, Document | an invoice due at the end of November | `Scan 2026-11-03.pdf`, invoice 1047, due 30 November | it first, then the three invoices named "Invoice": "4 matches · “invoice” · Mentions “due”, “November” · Documents · Looked at 21" |
+| LM Studio | Helm Test, Document | an invoice due at the end of November | the same | the first time "0 matches" and nothing looked at; asked again, the same four, the scan first: "4 matches · Looked at 12" |
+
+LM Studio's first invoice plan couldn't be seen afterwards. Its status line listed five queries that all asked for "invoice" in the name, the last for nothing more, and three invoices are named so; a word the line doesn't show must have ruled them out, since the line leaves out any name, folder or extension word that the person didn't type and no result bears. Helm's own request, sent to LM Studio four more times and once more through the app, was planned five other ways, each of which finds them. One word that rules every file out is a folder word naming the folder searched or one above it, since folder words are compared only below it; the prompt asks the model not to, and such a word is now left out before the queries run (`AISearchMatcher.withoutPlaceSearched`, `fa00847`). A name word nobody typed, asked of every query, would do the same, and stays the model's to choose.
+
+### Fixed after the morning
+
+- **A keychain question no longer counts as a slow ChatGPT** (open item 6, `682346c`). A model client reads its key or sign-in first (`AgentModelClient.prepare`, the transport's `prepareKey`), and only then does a search question's time start, or the AI panel's request's. A refusal ends the question as `keyDenied` with nothing sent. Tested with a client whose keychain takes longer than the question may, one whose answer is too slow, one refused, and a transport that reads the key once, before any request, and none where no key goes.
+- **The README branch was merged** (`edb0f09`): Type a path near the top, with a picture of the path bar's suggestions. The script test for the README's pictures passes now.
+
 ### Left installed
 
-`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with Full Disk Access on, the keychain question for the ChatGPT sign-in answered, and AI search's provider set back to OpenAI (`ai.json` as it was before the retest). Nothing was pushed.
+`/Applications/Helm.app` is `fa00847`, built clean (CDHash `beae633d…`), installed as a fresh install at Huseyn's word: "rebuild my Helm with all cache cleared so I get a fresh install experience (having to turn on AI again etc)". Before it, Finder was made the file viewer again and Helm taken off first in the Dock with Helm's own `--default-viewer finder` and `--dock-first off`, so setup offers both; Helm's data folder (AI setup, sidebar, stars, tag list, bookmarks, recents, session, Put Back origins) and an export of its preferences went to the Trash, named "before fresh install, 18 Nov", and the preferences were deleted; its two keychain items, the ChatGPT sign-in, were deleted; and `d8840d7` went to the Trash as "Helm 0.2 (d8840d7, 18 Nov).app". It hasn't been opened: setup, Full Disk Access, AI mode and the ChatGPT sign-in are Huseyn's. Run 7 was pushed and merged to main at his word: "if everything passes, push all to the main branch and make sure it's finished".
 
 ## Open
 
-1. **The README branch** (`claude/modest-visvesvaraya-113d31`) is waiting for Huseyn's word to be merged. Until it is, the script test for the README's pictures fails here, since this branch's picture script already takes the path pictures.
+1. ~~**The README branch**~~ Merged (`edb0f09`); its picture test passes.
 2. **Permissions are shown, not changed.** Nautilus can change them from its Properties window. That would be a change to the disk, with Undo, and waits for Huseyn's word.
 3. **From run 6:** Apple's readers inside Helm's process, and a folder swapped for a link between plan and Apply ([`MAC_RUN_6.md`](MAC_RUN_6.md#open)).
 4. **One unanswered macOS question takes the whole disk.** Without Full Disk Access, a read that waits on macOS's question about Documents is timed out after 30 seconds, and the I/O executor (B-107) then fails every read on that disk until the question is answered: the home window says the disk isn't responding, and AI search says "0 matches" rather than why. Three things would help, each a change to how Helm reads the disk: not looking inside Desktop, Documents and Downloads before the person opens them; a timed-out read shutting only the folder it waited on; and AI search saying the disk didn't answer. They wait for Huseyn's word. With Full Disk Access on, as after the morning retest, it doesn't arise.
 5. **The vision model.** Qwen2.5-VL 7B never finished downloading in LM Studio (stopped at 98.65%, then 0% three times), so a local model that sees pictures is untested. LM Studio's Downloads may still hold the stalled download.
-6. **A keychain question counts as a slow ChatGPT.** An AI search question's time limit (`AISearchSession.answer`) starts before the client reads the ChatGPT sign-in from the keychain (`AgentChatGPTBearer.savedTokens`, off the main thread), so while macOS asks the person about the keychain, the search runs out of time and says "ChatGPT took too long to answer." Seen live on the morning's first OpenAI search. Reading the sign-in before the clock starts, or saying the search is waiting for the keychain, would fix it.
+6. ~~**A keychain question counts as a slow ChatGPT.**~~ Fixed after the morning (`682346c`): a question's time starts once the keychain has answered.
 
 ## Disclosures
 
