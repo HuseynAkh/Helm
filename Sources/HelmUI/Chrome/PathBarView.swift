@@ -96,6 +96,8 @@ struct PathBarSegment: Equatable {
     var isEditingLocation: Bool { editing }
     /// The ⋯ at the field's end, for tests.
     var folderMenuButtonForTesting: FlatMenuButton { folderMenuButton }
+    /// What's selected in the location field while it's typed in.
+    var fieldSelectionForTesting: NSRange? { field.currentEditor()?.selectedRange }
     /// The path's pieces, as rendered.
     var segmentTitles: [String] { segments.map(\.title) }
     /// The narrowest the bar can be with the whole name of the folder you're in: the folder, after the … that stands
@@ -130,6 +132,7 @@ struct PathBarSegment: Equatable {
             folderMenuButton.toolTip = actions
             folderMenuButton.setAccessibilityLabel(actions)
         }
+        let began = editor.isEditing && !editing
         if editor.isEditing != editing {
             editing = editor.isEditing
             stack.isHidden = editing; field.isHidden = !editing
@@ -153,6 +156,11 @@ struct PathBarSegment: Equatable {
             // A long path shows its end, where you're typing, not its start.
             (field.currentEditor() as? NSTextView)?.scrollRangeToVisible(end)
             applyingText = false
+        }
+        // As a browser's address bar does: the path on show is selected, so what's typed replaces it. A name typed
+        // alone still starts from the folder on show, and the caret stays where it is when the bar comes back.
+        if began, editor.text == field.stringValue {
+            field.currentEditor()?.selectedRange = NSRange(location: 0, length: (editor.text as NSString).length)
         }
         updateGhost(editor)
         if editor.isPopupVisible {
