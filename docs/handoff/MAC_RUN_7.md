@@ -50,6 +50,43 @@ Tried in the installed Release build of `232b5b7` (CDHash `da80f346…`), on the
 | AI search, LM Studio `gpt-oss-20b`, Read contents on, "a receipt from a cafe" in `~/Helm Test` | Done in about a minute with "0 matches · PDF, Document, Text · Mentions “receipt”, “cafe” · Looked at 12". The status said what it looked for, but the model had kept the search to documents and the receipt is a photo; fixed as above, after this build, and the model's new plan was checked straight against LM Studio |
 | AI search with OpenAI | Not run: the provider was LM Studio, from run 6's tests, and Settings' provider menu can't be opened from the background |
 
+## Overnight, 18 November
+
+At Huseyn's word ("you can install the build right now as well. Make sure you do extensive image testing for AI mode"), with OpenAI through his ChatGPT plan for small searches in one folder, and one vision model downloaded in LM Studio.
+
+### What was built
+
+- **Settings › AI, cut off under the toolbar.** Three causes, all fixed. Each pane had a fixed height measured with SDK 14, and a Release build's rows are taller, so General, View, Search, Advanced and AI were a little short; each pane is now as tall as its form, measured as it's drawn. A window that shrinks keeps its forms' bottom edge where it was, so a pane opened after General came up scrolled with its top under the toolbar; a pane that fits now goes back to its top. And the window animated its size while Settings › AI fitted itself again as its model loaded, which is what left the frosted area below it; it now changes size at once. A fixture step checks every pane on Debug and Release.
+- **AI search's hint** names the provider chosen as soon as it's chosen, rather than the one before until the search is opened again.
+- **Models that can't see pictures.** LM Studio took pictures sent to gpt-oss-20b, a text-only model, and dropped them without a word, so results said "Model saw" of pictures it never saw. Helm now lists LM Studio's models from LM Studio's own list, which names each one a vision model or not, and sends a text-only model Apple's description of each picture instead, from the first look and the panel's first request. Settings › AI says under the model "Sees pictures" or "Reads text only".
+- **Videos are described all the way through.** A video's labels were cut to the five most certain of all its frames, so a clip that changes scene was described by one frame. Each frame now keeps its own five, up to twelve for the video.
+- **The kind row with the AI panel open.** The narrower row put the Read contents switch on top of Archive; where there's no room for its words it now shows its symbol alone.
+
+### Image testing
+
+`~/Helm Test/Pictures/Image Tests` holds 20 of macOS's own sample photos (animals, flowers, instruments, sports, nature, food) renamed `IMG_3001.HEIC` and on, so no name gives a photo away, plus a zebra stored on its side with orientation 6 and a made-up location, a guitar on transparency (`Untitled 2.png`), a 48-megapixel sunflower (`DSC09981.JPG`) and an 8-second video of a penguin then lightning (`MOV_0412.MOV`).
+
+What Apple's on-device recognition says of them, as Helm reads them: confident and right for the eagle, owl, penguin, zebra, sunflower, rose, violin, guitar and lightning; nothing at all for the parrot, lotus and daisy; and wrong for the cactus (an ant), the snowflake (a jellyfish) and the fortune cookie (a bagel). So a model that can't see pictures misses those, and one that can finds them.
+
+Live, in the installed app, with OpenAI (`gpt-6.2-sol` through the ChatGPT plan), Read contents on, a few minutes apart:
+
+| Request | Expected | Found |
+|---|---|---|
+| a bird | eagle, owl, parrot, penguin | the four, the parrot included |
+| flowers | the five flowers, the 48-megapixel one included | the five |
+| a striped animal | both zebras | both, the one stored on its side included |
+| a string instrument | guitar, violin, the guitar PNG | those three |
+| a ball used in sports | basketball, soccer, tennis | "ChatGPT is busy, so try again in a moment." the first time; the three, 15 minutes later |
+| something sweet to eat | gingerbread man, fortune cookie | both, the "bagel" included |
+| a plant that grows in the desert | cactus | the cactus, the "ant" |
+| AI panel: what does IMG_3021.JPG show, and is it upright? | a zebra, upright | "a close-up of a zebra in profile, facing right, with golden grass and blue sky behind it. The picture is upright." |
+| AI panel: make a Birds folder and move every photo of a bird into it | the four birds | a plan moving exactly those four; Apply moved them, Undo put them back |
+| Video kind: a storm with lightning | the video | nothing, and nothing looked at: the click meant for Read contents most likely landed on the kind row, under the switch that sat on Archive (fixed above) |
+
+Each search took about a minute, said "Reading inside files…" and "Looking at 23 files…" while it worked, and ended with its count, what it looked for and "Looked at 23".
+
+Tested on this Mac with real photos, in `AgentRealPictureTests`: a model's copy of a picture is at most 512 pixels a side with no metadata; a photo stored on its side arrives upright, without its location; transparency is drawn on white; a 48-megapixel photo is read and scaled down; and a clip that changes scene is described all the way through.
+
 ## Open
 
 1. **The README branch** (`claude/modest-visvesvaraya-113d31`) is waiting for Huseyn's word to be merged. Until it is, the script test for the README's pictures fails here, since this branch's picture script already takes the path pictures.
