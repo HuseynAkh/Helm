@@ -100,12 +100,13 @@ Huseyn turned Full Disk Access on for `d8840d7` in the morning. Settings › Gen
 |---|---|---|---|
 | LM Studio, `gpt-oss-20b` (text only) | a bird | eagle, owl, penguin; the parrot only for a model that sees, since Apple's reader says nothing of it | in about a minute, the eagle, owl and penguin and the penguin video: "4 matches · Image · “bird” · Looked at 12", from three queries, "bird" in pictures, in images and in any file |
 | LM Studio, `gpt-oss-20b` | Video kind: a storm with lightning | the video | the video: "1 match · “storm”, “lightning” · Mentions “storm”, “lightning” · Videos · Looked at 1" |
+| OpenAI, `gpt-6.2-sol` (ChatGPT plan) | a bird | eagle, owl, parrot, penguin | the first time, "ChatGPT took too long to answer.": the new build's first ChatGPT request waited on macOS's keychain question until Huseyn answered it (open item 6). Asked again, the four, the parrot included, and the penguin video: "5 matches · “bird” · Mentions “bird” · Looked at 24" |
 
-A model on this Mac looks at 12 files in one search and a hosted one at 48 (`AgentContentLimits.searchLooks`), so "Looked at 12" is as built. So LM Studio's search now plans, reads and finds what Apple's reader can name, and the parrot waits for a local model that sees pictures (open item 5).
+A model on this Mac looks at 12 files in one search and a hosted one at 48 (`AgentContentLimits.searchLooks`), so "Looked at 12" is as built. So LM Studio's search now plans, reads and finds what Apple's reader can name, and the parrot waits for a local model that sees pictures (open item 5). OpenAI's search finds every bird on this build, as it did on `232b5b7` overnight.
 
 ### Left installed
 
-`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with Full Disk Access on and AI search's provider set back to OpenAI (`ai.json` as it was before the retest). Nothing was pushed.
+`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with Full Disk Access on, the keychain question for the ChatGPT sign-in answered, and AI search's provider set back to OpenAI (`ai.json` as it was before the retest). Nothing was pushed.
 
 ## Open
 
@@ -114,6 +115,7 @@ A model on this Mac looks at 12 files in one search and a hosted one at 48 (`Age
 3. **From run 6:** Apple's readers inside Helm's process, and a folder swapped for a link between plan and Apply ([`MAC_RUN_6.md`](MAC_RUN_6.md#open)).
 4. **One unanswered macOS question takes the whole disk.** Without Full Disk Access, a read that waits on macOS's question about Documents is timed out after 30 seconds, and the I/O executor (B-107) then fails every read on that disk until the question is answered: the home window says the disk isn't responding, and AI search says "0 matches" rather than why. Three things would help, each a change to how Helm reads the disk: not looking inside Desktop, Documents and Downloads before the person opens them; a timed-out read shutting only the folder it waited on; and AI search saying the disk didn't answer. They wait for Huseyn's word. With Full Disk Access on, as after the morning retest, it doesn't arise.
 5. **The vision model.** Qwen2.5-VL 7B never finished downloading in LM Studio (stopped at 98.65%, then 0% three times), so a local model that sees pictures is untested. LM Studio's Downloads may still hold the stalled download.
+6. **A keychain question counts as a slow ChatGPT.** An AI search question's time limit (`AISearchSession.answer`) starts before the client reads the ChatGPT sign-in from the keychain (`AgentChatGPTBearer.savedTokens`, off the main thread), so while macOS asks the person about the keychain, the search runs out of time and says "ChatGPT took too long to answer." Seen live on the morning's first OpenAI search. Reading the sign-in before the clock starts, or saying the search is waiting for the keychain, would fix it.
 
 ## Disclosures
 
