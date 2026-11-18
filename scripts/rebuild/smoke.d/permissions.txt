@@ -453,16 +453,16 @@ setup-progress ai:welcome,access,viewer,ai,done:
 onboarding close
 setting-is onboardingCompleted true
 setting aiModeEnabled false
-# The first launch opens the onboarding while something is left to do. Quitting with it open keeps its step, here
-# the welcome, and counts nothing as seen
+# The first launch opens the onboarding while something is left to do, AI mode's step among the steps though it was
+# seen. Quitting with it open keeps its step, here the welcome, and counts nothing as seen
 setting onboardingCompleted false
 setup-first-launch
 onboarding-is setup
 setup-step welcome
-setup-steps welcome,access,viewer,done
+setup-steps welcome,access,viewer,ai,done
 onboarding-quitting
 setting-is onboardingCompleted false
-setup-progress welcome:welcome,access,viewer,done:
+setup-progress welcome:welcome,access,viewer,ai,done:
 onboarding close
 setting-is onboardingCompleted true
 setup-progress none
@@ -479,8 +479,9 @@ first-in-dock false
 fda denied
 # Access that turns on while the step waits shows its check mark, and the step stays: macOS applies it in full only from
 # the next launch, so its button is Restart Helm. That keeps the next step and restarts Helm, stood in for here, and the
-# launch that follows carries on there, with access on and nothing to restart for
+# launch that follows carries on there, with access on and nothing to restart for. Restarting isn't going through it
 restarts-mark
+setting onboardingCompleted false
 onboarding open
 onboarding-press Continue
 onboarding-press Open System Settings
