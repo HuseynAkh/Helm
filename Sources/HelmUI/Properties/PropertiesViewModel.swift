@@ -29,15 +29,18 @@ public struct PropertiesSupplement: Sendable, Equatable {
     public var mimeType: String?
     /// The app that opens it when it's double-clicked.
     public var defaultApplication: String?
+    /// Its mode and identity as a change to its permissions is checked against, and what stands in the way of one.
+    public var permissionTarget: PermissionTarget?
     public init(posixMode: UInt16? = nil, owner: String? = nil, group: String? = nil, ownerIsYou: Bool = false,
                 locked: Bool? = nil, hasAccessList: Bool = false, accessed: Date? = nil, volumeName: String? = nil,
                 volumeFree: Int64? = nil, volumeTotal: Int64? = nil, linkTarget: String? = nil,
-                imageDimensions: String? = nil, mimeType: String? = nil, defaultApplication: String? = nil) {
+                imageDimensions: String? = nil, mimeType: String? = nil, defaultApplication: String? = nil,
+                permissionTarget: PermissionTarget? = nil) {
         self.posixMode = posixMode; self.owner = owner; self.group = group; self.ownerIsYou = ownerIsYou
         self.locked = locked; self.hasAccessList = hasAccessList; self.accessed = accessed
         self.volumeName = volumeName; self.volumeFree = volumeFree; self.volumeTotal = volumeTotal
         self.linkTarget = linkTarget; self.imageDimensions = imageDimensions; self.mimeType = mimeType
-        self.defaultApplication = defaultApplication
+        self.defaultApplication = defaultApplication; self.permissionTarget = permissionTarget
     }
 }
 
@@ -50,9 +53,24 @@ public struct PropertiesRow: Equatable, Sendable {
     public let isWorking: Bool
     /// A button beside the value shows the item in its folder.
     public let reveals: Bool
-    public init(_ label: String, _ value: String, note: String? = nil, isWorking: Bool = false, reveals: Bool = false) {
+    /// A pop-up beside the value changes what this row's class of user can do, for an item the person owns.
+    public let control: PermissionControl?
+    public init(_ label: String, _ value: String, note: String? = nil, isWorking: Bool = false, reveals: Bool = false,
+                control: PermissionControl? = nil) {
         self.label = label; self.value = value; self.note = note; self.isWorking = isWorking; self.reveals = reveals
+        self.control = control
     }
+}
+
+/// Finder's privilege pop-up for one class of user: the person as owner, the group or everyone else.
+public struct PermissionControl: Equatable, Sendable {
+    public let subject: PermissionSubject
+    /// What the pop-up shows chosen. Nil is Custom: the class's bits match none of Finder's three choices, and Custom
+    /// is shown, but can't be chosen, until one of them is.
+    public let choice: FinderAccess?
+    public init(subject: PermissionSubject, choice: FinderAccess?) { self.subject = subject; self.choice = choice }
+    /// What the pop-up reads.
+    public var title: String { choice?.title ?? "Custom" }
 }
 
 /// Properties, as Nautilus shows them: for a folder what's inside it, counted, with its parent folder, its disk's free
@@ -68,14 +86,21 @@ public struct PropertiesViewModel: Sendable {
     public let counting: Bool
     /// Paths under it are written from ~.
     public let home: URL?
+    /// What the last change to the permissions came to, when it didn't simply happen.
+    public let permissionMessage: String?
+    /// A change to the permissions is under way, so the controls wait for it.
+    public let changingPermissions: Bool
 
     public init(entries: [FileEntry], supplement: PropertiesSupplement = PropertiesSupplement(),
-                contents: FolderContentsCount? = nil, counting: Bool = false, home: URL? = nil) {
+                contents: FolderContentsCount? = nil, counting: Bool = false, home: URL? = nil,
+                permissionMessage: String? = nil, changingPermissions: Bool = false) {
         var seen: Set<ItemID> = []
         let unique = entries.filter { seen.insert($0.id).inserted }
         self.entries = unique; aggregate = PropertiesModel(entries: unique)
         self.supplement = unique.count == 1 ? supplement : PropertiesSupplement()
         self.contents = contents; self.counting = counting; self.home = home
+        self.permissionMessage = unique.count == 1 ? permissionMessage : nil
+        self.changingPermissions = changingPermissions
     }
 
     // MARK: Header
@@ -120,23 +145,89 @@ public struct PropertiesViewModel: Sendable {
         return rows
     }
 
-    /// Who owns it and what each can do with it, as Nautilus's Permissions page puts it. Only for one item.
+    /// Who owns it and what each can do with it, as Nautilus's Permissions page puts it. Only for one item. For an item
+    /// the person can change, each class of user has Finder's pop-up, and a file's Runs as Program row gives way to
+    /// the "Allow executing file as program" checkbox.
     public var permissionRows: [PropertiesRow] {
         guard entries.count == 1 else { return [] }
         let entry = entries[0]
         var rows: [PropertiesRow] = []
-        let folder = entry.isDirectoryLike || entry.kind == .package
+        let folder = isFolderForPermissions
         // Each with what it can do under it, as Nautilus pairs them.
         let mode = supplement.posixMode
         let can = { (shift: UInt16) in mode.map { Self.access(($0 >> shift) & 7, folder: folder) } }
-        if let owner = supplement.ownerIsYou ? "You" : supplement.owner { rows.append(PropertiesRow("Owner", owner, note: can(6))) }
-        if let group = supplement.group { rows.append(PropertiesRow("Group", group, note: can(3))) }
-        if let others = can(0) { rows.append(PropertiesRow("Others", others)) }
-        if let mode, entry.kind == .regular { rows.append(PropertiesRow("Runs as Program", mode & 0o100 != 0 ? "Yes" : "No")) }
+        if showsPermissionControls, let mode {
+            let control = { (subject: PermissionSubject) in
+                PermissionControl(subject: subject, choice: FinderAccess(bits: mode >> UInt16(subject.rawValue), folder: folder))
+            }
+            rows.append(PropertiesRow("Owner", "You", note: can(6), control: control(.owner)))
+            rows.append(PropertiesRow("Group", supplement.group ?? "", note: can(3), control: control(.group)))
+            rows.append(PropertiesRow("Others", "", note: can(0), control: control(.everyone)))
+        } else {
+            if let owner = supplement.ownerIsYou ? "You" : supplement.owner { rows.append(PropertiesRow("Owner", owner, note: can(6))) }
+            if let group = supplement.group { rows.append(PropertiesRow("Group", group, note: can(3))) }
+            if let others = can(0) { rows.append(PropertiesRow("Others", others)) }
+            if let mode, entry.kind == .regular { rows.append(PropertiesRow("Runs as Program", mode & 0o100 != 0 ? "Yes" : "No")) }
+        }
         if let locked = supplement.locked { rows.append(PropertiesRow("Locked", locked ? "Yes" : "No")) }
         if supplement.hasAccessList { rows.append(PropertiesRow("Access List", "Has extra rules")) }
         return rows
     }
+
+    /// Whether Finder's pop-ups are shown: for one item of the person's own, a file, folder, package or alias. Another
+    /// account's or root's item is shown as it is, since only the owner may change its permissions without an
+    /// administrator's password, and Helm never asks for one. So is a link, whose own permissions macOS doesn't use.
+    public var showsPermissionControls: Bool {
+        guard entries.count == 1, supplement.ownerIsYou, supplement.posixMode != nil,
+              let target = supplement.permissionTarget else { return false }
+        switch entries[0].kind {
+        case .regular, .directory, .package, .alias: break
+        case .symlinkToDirectory, .symlinkToFile, .danglingSymlink, .other: return false
+        }
+        return target.refusal != .notOwner && target.refusal != .link
+    }
+    /// Whether the controls can be used now: nothing stands in the way, such as Locked or a read-only disk, and no
+    /// change is under way.
+    public var permissionControlsEnabled: Bool {
+        showsPermissionControls && supplement.permissionTarget?.refusal == nil && !changingPermissions
+    }
+    /// Whether Nautilus's "Allow executing file as program" is on, for a file of the person's own. Nil where it isn't
+    /// shown: for a folder, an app or other package, an alias, and an item the person can't change.
+    public var allowsExecuting: Bool? {
+        guard showsPermissionControls, entries[0].kind == .regular, let mode = supplement.posixMode else { return nil }
+        return PermissionEdit.allowsExecuting(mode)
+    }
+    /// Whether the checkbox would change anything. Turning it on lets each class that can read the file run it, so
+    /// for a file nobody can read it's off and stays off.
+    public var canToggleExecuting: Bool {
+        guard let on = allowsExecuting, let mode = supplement.posixMode else { return false }
+        return on || PermissionEdit.mode(mode, allowingExecution: true) != mode
+    }
+    /// The quieter line under the permissions: what the last change came to when it didn't simply happen, what stands
+    /// in the way of a change, or, for an item Helm only shows, why it's shown and not changed.
+    public var permissionsFooter: String? {
+        guard entries.count == 1 else { return nil }
+        if let permissionMessage { return permissionMessage }
+        if showsPermissionControls { return supplement.permissionTarget?.refusal?.message }
+        let shown = "Shown as macOS keeps them."
+        switch entries[0].kind {
+        case .symlinkToDirectory, .symlinkToFile, .danglingSymlink: return shown + " " + PermissionRefusal.link.message
+        default: return supplement.ownerIsYou ? shown : shown + " " + PermissionRefusal.notOwner.message
+        }
+    }
+
+    /// The mode choosing `access` in `subject`'s pop-up makes, from the mode on disk, or nil when there's no pop-up.
+    public func mode(choosing access: FinderAccess, for subject: PermissionSubject) -> UInt16? {
+        guard showsPermissionControls, let mode = supplement.permissionTarget?.mode else { return nil }
+        return PermissionEdit.mode(mode, setting: access, for: subject, folder: isFolderForPermissions)
+    }
+    /// The mode the checkbox makes, turned on or off, or nil when there's no checkbox.
+    public func mode(allowingExecution on: Bool) -> UInt16? {
+        guard allowsExecuting != nil, let mode = supplement.permissionTarget?.mode else { return nil }
+        return PermissionEdit.mode(mode, allowingExecution: on)
+    }
+    /// A folder needs execute to be opened, and so does an app or other package, which is a folder on disk.
+    private var isFolderForPermissions: Bool { entries.first.map { $0.isDirectoryLike || $0.kind == .package } ?? false }
 
     /// What one class of user can do, after Nautilus's words: for a folder what they can do with the files in it, for
     /// a file whether they can read and change it. A mix Nautilus has no words for shows its letters.

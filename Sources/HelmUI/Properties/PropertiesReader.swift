@@ -6,8 +6,9 @@ import UniformTypeIdentifiers
 import HelmCore
 import HelmFileSystem
 
-/// Reads what Properties shows about one item beyond its row in the folder: owner, group and what each can do,
-/// Locked, an access list, when it was last opened, its disk's free space, where a link points and a picture's size.
+/// Reads what Properties shows about one item beyond its row in the folder: owner, group and what each can do, and
+/// whether that can be changed here, Locked, an access list, when it was last opened, its disk's free space, where a
+/// link points and a picture's size.
 /// It reads only the item's own attributes and a picture's header, never a file kept in a cloud and not on this Mac,
 /// which it leaves unread rather than download. Nothing it reads leaves the Mac.
 enum PropertiesReader {
@@ -29,6 +30,8 @@ enum PropertiesReader {
             supplement.group = name(ofGroup: info.st_gid)
             supplement.locked = info.st_flags & UInt32(UF_IMMUTABLE) != 0
         }
+        // What a change to its permissions would be checked against: the item read again as the writer reads it.
+        if case .success(let target) = PermissionsWriter.target(at: url) { supplement.permissionTarget = target }
         supplement.hasAccessList = hasAccessList(url.path)
         if let values = try? url.resourceValues(forKeys: [.contentAccessDateKey, .volumeLocalizedNameKey]) {
             supplement.accessed = values.contentAccessDate
