@@ -28,12 +28,14 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         adapter = Self.adapter(for: profile.wire, profile: profile)
     }
 
-    /// The adapter for a wire. A Chat Completions server on this Mac is sent no token ceiling.
+    /// The adapter for a wire. A Chat Completions server on this Mac is sent no token ceiling, and LM Studio gets the
+    /// shape of an answer in the prompt rather than as a `response_format`, which stops a model there from thinking.
     public static func adapter(for wire: AgentWire, profile: AgentProviderProfile) -> any AgentWireAdapter {
         switch wire {
         case .anthropicMessages: return AnthropicMessagesAdapter()
         case .openAIResponses: return OpenAIResponsesAdapter(planUsage: profile.usesChatGPT)
-        case .chatCompletions: return ChatCompletionsAdapter(sendsMaxTokens: !profile.isLocal)
+        case .chatCompletions:
+            return ChatCompletionsAdapter(sendsMaxTokens: !profile.isLocal, schemaInPrompt: profile.id == .lmStudio)
         }
     }
 

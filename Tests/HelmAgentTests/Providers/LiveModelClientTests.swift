@@ -314,4 +314,15 @@ final class LiveModelClientTests: XCTestCase {
         XCTAssertTrue(LiveModelClient.adapter(for: .openAIResponses, profile: try profile(.grok)) is OpenAIResponsesAdapter)
         XCTAssertTrue(LiveModelClient.adapter(for: .chatCompletions, profile: try profile(.gemini)) is ChatCompletionsAdapter)
     }
+
+    /// LM Studio alone gets an answer's shape in the prompt: a `response_format` there stops gpt-oss from thinking.
+    func testOnlyLMStudioGetsTheSchemaInThePrompt() throws {
+        for id in [AgentProviderID.gemini, .ollama, .other, .lmStudio] {
+            let adapter = LiveModelClient.adapter(for: .chatCompletions, profile: try profile(id))
+            let body = try AgentJSON(data: adapter.structuredBody(ProviderFixtures.ask, model: ProviderFixtures.model))
+            let system = body["messages"]?.arrayValue?.first?["content"]?.stringValue ?? ""
+            XCTAssertEqual(body["response_format"] == nil, id == .lmStudio, "\(id)")
+            XCTAssertEqual(system.contains(ChatCompletionsAdapter.schemaLead), id == .lmStudio, "\(id)")
+        }
+    }
 }
