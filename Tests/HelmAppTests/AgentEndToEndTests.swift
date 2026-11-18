@@ -109,7 +109,7 @@ import HelmPersistence
         XCTAssertTrue(agent.disk is InjectedAgentDisk, "a fixture run reads the fixture home through the real agent disk")
         let (window, model) = try await openedOnMess(app)
         XCTAssertTrue(model.sessionForTesting is AgentSession, "the panel talks to the real conversation")
-        XCTAssertEqual(model.suggestionsForTesting, [AgentText.suggestOrganize(4), AgentText.suggestMoveAll, AgentText.suggestCopyAll])
+        XCTAssertEqual(model.suggestionsForTesting, [AgentText.suggestOrganize(4)])
 
         model.press(AgentText.suggestOrganize(4))
         await settle(window, model)

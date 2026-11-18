@@ -25,18 +25,10 @@ final class AgentTextTests: XCTestCase {
         ("chipRemove", AgentText.chipRemove("2026"), "Remove “2026”"),
         ("suggestOrganize", AgentText.suggestOrganize(214), "Organize 214 items"),
         ("suggestOrganizeSelected", AgentText.suggestOrganizeSelected(12), "Organize 12 selected"),
-        ("suggestMoveAll", AgentText.suggestMoveAll, "Move everything to…"),
-        ("suggestMoveSelected", AgentText.suggestMoveSelected(12), "Move 12 selected to…"),
-        ("suggestCopyAll", AgentText.suggestCopyAll, "Copy everything to…"),
-        ("suggestCopySelected", AgentText.suggestCopySelected(12), "Copy 12 selected to…"),
         ("depthThisFolder", AgentText.depthThisFolder, "This Folder"),
         ("depthTwoLevels", AgentText.depthTwoLevels, "2 Levels"),
         ("depthAllLevels", AgentText.depthAllLevels, "All Levels"),
         ("emptyFolder", AgentText.emptyFolder, "Nothing here to organize yet."),
-        ("fillMoveAll", AgentText.fillMoveAll, "Move everything in this folder to "),
-        ("fillMoveSelected", AgentText.fillMoveSelected(12), "Move the 12 selected items to "),
-        ("fillCopyAll", AgentText.fillCopyAll, "Copy everything in this folder to "),
-        ("fillCopySelected", AgentText.fillCopySelected(12), "Copy the 12 selected items to "),
         ("composerPlaceholder", AgentText.composerPlaceholder, "Ask, or type /add and a folder"),
         ("send", AgentText.send, "Send"),
         ("stop", AgentText.stop, "Stop"),
@@ -244,8 +236,8 @@ final class AgentTextTests: XCTestCase {
         for row in Self.rows {
             XCTAssertEqual(row.text, row.expected, row.key)
         }
-        XCTAssertEqual(Self.rows.count, 219)
-        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 219, "a key is listed twice")
+        XCTAssertEqual(Self.rows.count, 211)
+        XCTAssertEqual(Set(Self.rows.map(\.key)).count, 211, "a key is listed twice")
     }
 
     func testQuotesAreCurlyAndTheEllipsisIsOneCharacter() {
@@ -254,7 +246,6 @@ final class AgentTextTests: XCTestCase {
             XCTAssertFalse(row.text.contains("..."), row.key)
             XCTAssertEqual(row.text.filter { $0 == "“" }.count, row.text.filter { $0 == "”" }.count, row.key)
         }
-        XCTAssertEqual(AgentText.suggestMoveAll.last, "\u{2026}")
         XCTAssertEqual(AgentText.statusThinking, "Thinking\u{2026}")
         XCTAssertEqual(AgentText.chipRemove("a"), "Remove \u{201C}a\u{201D}")
         XCTAssertEqual(AgentText.resultStopped(done: 1, total: 2), "Stopped after 1 of 2.")
@@ -306,8 +297,6 @@ final class AgentTextTests: XCTestCase {
         XCTAssertEqual(AgentText.resultTrashed(1), "Moved 1 item to the Trash.")
         XCTAssertEqual(AgentText.resultMadeFolders(1), "Made 1 new folder.")
         XCTAssertEqual(AgentText.resultPartial(done: 9, total: 10, skipped: 1), "9 of 10 done, and 1 was skipped.")
-        XCTAssertEqual(AgentText.fillMoveSelected(1), "Move the 1 selected item to ")
-        XCTAssertEqual(AgentText.fillCopySelected(1), "Copy the 1 selected item to ")
         // A count that isn't 1 is plural, zero included.
         XCTAssertEqual(AgentText.suggestOrganize(0), "Organize 0 items")
         XCTAssertEqual(AgentText.suggestOrganize(2), "Organize 2 items")
@@ -356,13 +345,6 @@ final class AgentTextTests: XCTestCase {
         // An ordinary name is shown as it is, accents and emoji included.
         XCTAssertEqual(AgentText.addAdded("Übersicht 写真 👨‍👩‍👧"), "Added “Übersicht 写真 👨‍👩‍👧”.")
         XCTAssertEqual(AgentText.groupMoves(2, folder: "Tax “2026”"), "Move 2 items to “Tax “2026””")
-    }
-
-    func testTheSentencesTypedIntoTheComposerEndInASpace() {
-        for text in [AgentText.fillMoveAll, AgentText.fillCopyAll, AgentText.fillMoveSelected(12), AgentText.fillCopySelected(12)] {
-            XCTAssertTrue(text.hasSuffix(" to "), text)
-            XCTAssertFalse(text.hasSuffix("  "), text)
-        }
     }
 
     func testWhereRequestsGoIsSaidTheSameWayEverywhere() {

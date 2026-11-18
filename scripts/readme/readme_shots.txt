@@ -105,7 +105,7 @@ agent-is open
 agent-phase idle
 agent-scope-is thisFolder
 agent-contents-is off
-agent-suggests Organize 10 items|Move everything to…|Copy everything to…
+agent-suggests Organize 10 items
 wait 1.5
 screenshot @SHOTS@/ai-panel-dark.png
 appearance light

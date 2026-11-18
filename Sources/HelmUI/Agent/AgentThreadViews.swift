@@ -196,8 +196,8 @@ struct AgentFolderChipView: View {
     }
 }
 
-/// The three suggestions, or the line said in their place. Organize runs as soon as it is pressed; on the folder its
-/// menu offers how deep to go. Move and Copy fill the composer.
+/// The suggestion, Organize, or the line said in its place. Organize runs as soon as it is pressed, on the folder on
+/// show or the items selected; anything else, moving or copying say, is asked for in the composer.
 struct AgentSuggestionsRow: View {
     @ObservedObject var model: AgentPanelModel
 
@@ -215,12 +215,13 @@ struct AgentSuggestionsRow: View {
             }
             .padding(.horizontal, AgentPanelStyle.margin)
         } else if !model.suggestions.isEmpty {
-            // Organize has a row of its own and Move and Copy share the next, so each title keeps its count and its
-            // "to…" at the panel's fixed width.
             VStack(spacing: 6) {
-                ForEach(model.suggestions.filter { $0.kind == .organize }) { chip(for: $0) }
-                HStack(spacing: 6) {
-                    ForEach(model.suggestions.filter { $0.kind != .organize }) { chip(for: $0) }
+                ForEach(model.suggestions) { suggestion in
+                    Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
+                        Text(verbatim: suggestion.title).font(.system(size: AgentPanelStyle.secondary)).lineLimit(1).minimumScaleFactor(0.8)
+                            .modifier(AgentSuggestionLook())
+                    }
+                    .buttonStyle(AgentChipButtonStyle())
                 }
             }
             .padding(.horizontal, AgentPanelStyle.margin)
@@ -231,46 +232,9 @@ struct AgentSuggestionsRow: View {
                 .padding(.horizontal, AgentPanelStyle.margin)
         }
     }
-
-    /// Organize on the folder offers how deep to go; on a selection the items are already chosen, so it is a plain
-    /// button, as Move and Copy are.
-    @ViewBuilder private func chip(for suggestion: AgentSuggestion) -> some View {
-        if suggestion.kind == .organize, !suggestion.isSelection {
-            // Drawn as the other chips are, the same type and height. Its chevron is drawn beside the words, the same
-            // on every SDK, since the plain style hides the menu's own; a press runs This Folder, and holding it
-            // offers the depths.
-            AgentChipLook {
-                Menu {
-                    ForEach(AgentPanelModel.depths, id: \.title) { depth in
-                        Button(depth.title) { model.choose(suggestion, depth: depth.depth) }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(verbatim: suggestion.title).font(.system(size: AgentPanelStyle.secondary)).foregroundStyle(.primary)
-                            .lineLimit(1).minimumScaleFactor(0.8)
-                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
-                    }
-                } primaryAction: {
-                    model.choose(suggestion, depth: .thisFolder)
-                }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .modifier(AgentSuggestionLook())
-            }
-        } else {
-            Button(action: { model.choose(suggestion, depth: .thisFolder) }) {
-                Text(verbatim: suggestion.title).font(.system(size: AgentPanelStyle.secondary)).lineLimit(1).minimumScaleFactor(0.8)
-                    .modifier(AgentSuggestionLook())
-            }
-            .buttonStyle(AgentChipButtonStyle())
-        }
-    }
 }
 
-/// A suggestion's size: its row's full width or an equal share of it, and one height for all three.
+/// The suggestion's size: its row's full width, at one height.
 private struct AgentSuggestionLook: ViewModifier {
     func body(content: Content) -> some View {
         content

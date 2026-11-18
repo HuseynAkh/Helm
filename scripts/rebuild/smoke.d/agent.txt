@@ -44,20 +44,20 @@ agent-is closed
 path-reads Home / AgentMess
 agent-open
 agent-is open
-# 4. The folder on show, the consent line and three suggestions with real counts. They follow the selection, and
-# are still there after a request
+# 4. The folder on show, the consent line and Organize with real counts. It follows the selection, and is still
+# there after a request
 agent-phase idle
 agent-chips AgentMess:thisMac
 agent-reads Sends your requests and file names to Claude, never file contents.
-agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+agent-suggests Organize 6 items
 select photo-1.png,photo-2.jpg
-agent-suggests Organize 2 selected|Move 2 selected to…|Copy 2 selected to…
+agent-suggests Organize 2 selected
 select none
-agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+agent-suggests Organize 6 items
 agent-say hello
 agent-phase idle
 agent-reads I can organize, move and copy files in these folders.
-agent-suggests Organize 6 items|Move everything to…|Copy everything to…
+agent-suggests Organize 6 items
 agent-sent-lacks @FIX@
 # 5. Organize: the card counts what it would do and nothing has moved yet. With one group unticked, Apply makes
 # one folder and moves two files, under one Undo that Command-Z takes back whole, with nothing to redo

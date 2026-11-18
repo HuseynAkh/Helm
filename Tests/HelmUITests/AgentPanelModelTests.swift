@@ -102,7 +102,9 @@ import HelmCore
         await settle(model)
     }
 
-    private let organize = "Organize 5 items", move = "Move everything to…", copy = "Copy everything to…"
+    private let organize = "Organize 5 items"
+    /// A sentence the person types that ends where they go on to name a folder.
+    private let moveSentence = "Move everything in this folder to "
 
     // MARK: Phases and suggestions
 
@@ -152,7 +154,7 @@ import HelmCore
         applyGate = PanelTestGate()
         let conversation = PanelTestConversation(plan: plan())
         let model = await model(conversation)
-        XCTAssertEqual(model.suggestionsForTesting, [organize, move, copy], "idle")
+        XCTAssertEqual(model.suggestionsForTesting, [organize], "idle")
 
         conversation.gate = PanelTestGate()
         model.type("tidy up")
@@ -168,23 +170,23 @@ import HelmCore
         XCTAssertEqual(model.suggestionsForTesting, [], "hidden during Apply")
         applyGate.open()
         _ = await until { model.phase == .result }
-        XCTAssertEqual(model.suggestionsForTesting, [organize, move, copy], "back with the result")
+        XCTAssertEqual(model.suggestionsForTesting, [organize], "back with the result")
 
         conversation.failure = .overloaded
         await say(model, "once more")
         XCTAssertEqual(model.phaseForTesting, "failed")
-        XCTAssertEqual(model.suggestionsForTesting, [organize, move, copy], "on show after a failure")
+        XCTAssertEqual(model.suggestionsForTesting, [organize], "on show after a failure")
 
         // A plain request with no plan: back to idle with the same three.
         conversation.failure = nil
         conversation.withoutPlan = true
         await say(model, "what can you do")
         XCTAssertEqual(model.phaseForTesting, "idle")
-        XCTAssertEqual(model.suggestionsForTesting, [organize, move, copy], "still there after a request")
+        XCTAssertEqual(model.suggestionsForTesting, [organize], "still there after a request")
 
         // They follow the selection.
         model.update(tab: AgentPanelModel.TabContext(folder: downloads, itemCount: 5, selectedPaths: [downloads + "/a.png", downloads + "/b.png"]))
-        XCTAssertEqual(model.suggestionsForTesting, ["Organize 2 selected", "Move 2 selected to…", "Copy 2 selected to…"])
+        XCTAssertEqual(model.suggestionsForTesting, ["Organize 2 selected"])
 
         // A search-results tab has no folder: no suggestions.
         model.update(tab: AgentPanelModel.TabContext(folder: nil, itemCount: 0, selectedPaths: []))
@@ -228,15 +230,9 @@ import HelmCore
         XCTAssertEqual(conversation.inner.sent.last?.text, "Organize the items in r1 into folders by kind. Depth: all levels. List them, then call propose_changes.")
     }
 
-    func testMoveAndCopyFillTheComposerAndSendNothing() async {
-        let conversation = PanelTestConversation()
-        let model = await model(conversation)
-        model.press(move)
-        XCTAssertEqual(model.composerTextForTesting, AgentText.fillMoveAll)
-        model.press(copy)
-        XCTAssertEqual(model.composerTextForTesting, AgentText.fillCopyAll)
-        await settle(model)
-        XCTAssertEqual(conversation.inner.sent.count, 0)
+    func testOrganizeIsTheOnlySuggestion() async {
+        let model = await model(PanelTestConversation())
+        XCTAssertEqual(model.suggestionsForTesting, [organize], "moving and copying are asked for in the composer")
     }
 
     // MARK: The composer
@@ -354,10 +350,10 @@ import HelmCore
         XCTAssertEqual(model.composerTextForTesting, "")
 
         // With a sentence waiting, its path goes in at the caret.
-        model.press(move)
+        model.type(moveSentence)
         model.drop(URL(fileURLWithPath: "/home/helm/Old Stuff", isDirectory: true))
         await settle(model)
-        XCTAssertEqual(model.composerTextForTesting, AgentText.fillMoveAll + "/home/helm/Old Stuff")
+        XCTAssertEqual(model.composerTextForTesting, moveSentence + "/home/helm/Old Stuff")
         XCTAssertTrue(model.chipsForTesting.contains("Old Stuff:thisMac"))
         // The caret in the middle: the path goes there.
         model.composerEdited("Copy  please", caret: 5)
@@ -367,7 +363,7 @@ import HelmCore
 
         XCTAssertEqual(applied, [], "nothing was applied")
         XCTAssertEqual(conversation.inner.sent.count, 0, "a drop sends nothing")
-        model.type(AgentText.fillMoveAll + "/home/helm/Old Stuff")
+        model.type(moveSentence + "/home/helm/Old Stuff")
         model.send()
         await settle(model)
         XCTAssertEqual(conversation.inner.sent.map(\.text), ["Move everything in this folder to r3"])
