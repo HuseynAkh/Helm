@@ -132,6 +132,10 @@ public struct SearchEngine: Sendable {
                     diagnostic(.unreadable(directory)); truncated = true
                 case .notFound where depth > 0 || uniqueRoots.count > 1:
                     diagnostic(.unreadable(directory)); truncated = true
+                // A folder inside that doesn't answer, as one waiting on a macOS question does, is left out and the walk
+                // goes on: the disk shuts only that folder, so the rest of the search can still be read.
+                case .timedOut where depth > 0:
+                    diagnostic(.unreadable(directory)); truncated = true
                 default: throw error
                 }
             }
