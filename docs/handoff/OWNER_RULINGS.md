@@ -289,6 +289,30 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | New files | **Up to 20 per plan, 100,000 characters each and 500,000 in all, as plain text, Markdown, CSV, JSON, YAML, HTML, code, RTF or Word. Code and web pages start unticked, and so does any new file where others see it. Scripts Windows runs on a double click, files that run on a routine command such as `package.json` or `setup.py`, and names Windows keeps for devices are refused.** | The panel can write a document for you, and a file that would run something is never made without a look. |
 | The kind row | **It shows whenever the search is open. Each tab keeps its search's kind, and it goes back to Any when the search closes. The status bar ends with the kind.** | It works the same with AI mode on or off, and a search is never narrowed by a choice made earlier. |
 
+## Mac run 7 (2026-11-18)
+
+What was built and checked is in [`MAC_RUN_7.md`](MAC_RUN_7.md).
+
+### Rulings by Huseyn
+
+| Topic | Huseyn's words | Date | What was built |
+|---|---|---|---|
+| Open in Terminal | "can you add an option to right click open in terminal for all folders? So the terminal opens the existing folder." | 2026-11-18 | **Open in Terminal** on a folder's right-click menu, the empty space's (the folder on show), every folder row in the sidebar, each piece of the path bar, and File in the menu bar. Helm hands the folder to the terminal app through macOS, as Finder's New Terminal at Folder does, so it runs no shell and types nothing. |
+| Folder Properties | "Also fix right click properties of folder (should show file size, other nautilus features etc.)" | 2026-11-18 | Properties is a window of its own, as in Nautilus. For a folder it counts what's inside, hidden files too, with running totals ("1,204 items, totalling 2.1 GB so far"), and says which folders it couldn't read or are in the cloud and not downloaded. It shows the parent folder with a button to show the item there, the disk with its free space, Created, Modified and Accessed, and the owner, group and others with what each can do, in Nautilus's words. A file shows its size, MIME type, dimensions for a picture, the app that opens it and whether it runs as a program. Before, a folder's size said "Calculating contents size" forever and the permission rows said "Unavailable". |
+| The kind row | "also this bar looks kind of weird, improve padding etc in line with our style" | 2026-11-18 | The row now matches the tab strip, the other row under the header: 36 points tall, 13-point words with the chosen one a step heavier, 7-point corners and 4 points between choices. The choices are centred between the lines above and below the row; before, the chosen one sat 2 points nearer the bottom line. |
+
+### Delegated choices in run 7
+
+Huseyn can overrule any of these. Each one's reason is in its last column.
+
+| Topic | Choice | Why |
+|---|---|---|
+| Which terminal | **Terminal, until another is picked in Settings › General › Terminal. The list holds the ones on this Mac that macOS says can open a folder, among Terminal, Ghostty, iTerm, Warp, WezTerm and kitty. If the chosen one is removed, Helm uses Terminal.** | Ghostty is on this Mac, and the menu item keeps Nautilus's name whichever app it opens. |
+| Where it's offered | **One folder, selected or on show. Not on files, several items, apps and other packages, Recent or the Trash.** | It's what Nautilus offers, and a terminal can only start in one folder. |
+| Properties as a window | **A window beside the browser window, several at once, closed with Escape or ⌘W, instead of a sheet over the window.** | Counting a big folder takes time, and a sheet would hold the window up meanwhile. Nautilus opens a window too. |
+| What counts | **Every file and folder inside, hidden ones too. An app or other package counts as one item, with all its bytes. Links count as items and aren't followed. Sizes are as each file says, as Finder's Size is.** | Nautilus counts hidden files too, and on a Mac an app is one thing. |
+| Permissions | **Shown, not changed, with the note "Shown as macOS keeps them. Helm doesn't change them here."** | Changing them is a change to the disk, with Undo to work out. It can come later if you want it. |
+
 ## Ruled but not built yet
 
 The app works without these, but each ruling above is still owed. Row-level status is in [`P0_P1_STATUS.md`](P0_P1_STATUS.md).
