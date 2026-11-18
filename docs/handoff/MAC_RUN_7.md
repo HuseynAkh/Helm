@@ -62,6 +62,8 @@ At Huseyn's word ("you can install the build right now as well. Make sure you do
 - **Models that can't see pictures.** LM Studio took pictures sent to gpt-oss-20b, a text-only model, and dropped them without a word, so results said "Model saw" of pictures it never saw. Helm now lists LM Studio's models from LM Studio's own list, which names each one a vision model or not, and sends a text-only model Apple's description of each picture instead, from the first look and the panel's first request. Settings › AI says under the model "Sees pictures" or "Reads text only".
 - **Videos are described all the way through.** A video's labels were cut to the five most certain of all its frames, so a clip that changes scene was described by one frame. Each frame now keeps its own five, up to twelve for the video.
 - **The kind row with the AI panel open.** The narrower row put the Read contents switch on top of Archive; where there's no room for its words it now shows its symbol alone.
+- **A search that stayed on "Thinking…" for good.** With gpt-oss's better plans came queries of folder words alone, the name of the folder searched. Spotlight can't check those, so Helm asked it a predicate that is just false; Spotlight throws on one ("Unknown kind of NSPredicate … (FALSEPREDICATE)"), and the exception ended the search without a word, and kept Helm from quitting. Such a query is no longer asked of Spotlight, and a test starts a real Spotlight query with every kind of predicate Helm builds. Fixture runs answer the fan-out with a stand-in, which is why none met it. The plan's instructions also say a folder word is never the name of the place searched.
+- **Small models' plans that never read a picture.** gpt-oss planned "a bird" two ways, and neither read a photo: "bird" in the name and inside the file in every query (choosing what to read kept the name, so only a file named for a bird would be read), or "bird" in the name alone (Read contents had nothing to look for). A name word that repeats a word looked for inside is now left out when choosing what to read, and with Read contents on a plan of names alone gets one more query that looks inside files for the person's own words. A window test runs both plans through a local, text-only model and reads the pictures each time.
 
 ### Image testing
 
@@ -86,13 +88,21 @@ Live, in the installed app, with OpenAI (`gpt-6.2-sol` through the ChatGPT plan)
 
 Each search took about a minute, said "Reading inside files…" and "Looking at 23 files…" while it worked, and ended with its count, what it looked for and "Looked at 23".
 
+Then with LM Studio's `gpt-oss-20b` (text only), on each build as it was fixed, in the same folder: no plan read a photo until the fixes above, and on the last build, `d8840d7`, the search ended "0 matches" with nothing read even so. Printing what the search did showed why: the walk of the folder failed at once with "timed out". Each new build is a new signature, so Full Disk Access was off, and macOS asked, through `sandboxd`, whether Helm may see Documents; nobody was there to answer, a read waited on the question, and after 30 seconds Helm took the whole disk as not responding. The home window said so: the disk holding the home folder "isn't responding". Every read on it fails until the question is answered, so AI search walked nothing. The same walk, run outside the app, finds all 24 files, and Apple's reader reads them in under half a second, the eagle as "bird". So the last live check of LM Studio waits for Full Disk Access.
+
 Tested on this Mac with real photos, in `AgentRealPictureTests`: a model's copy of a picture is at most 512 pixels a side with no metadata; a photo stored on its side arrives upright, without its location; transparency is drawn on white; a 48-megapixel photo is read and scaled down; and a clip that changes scene is described all the way through.
+
+### Left installed
+
+`/Applications/Helm.app` is `d8840d7` (CDHash `e811f7f8…`), still the default file viewer, with AI search's provider set back to OpenAI. Being a new build, it has Full Disk Access off, and the ChatGPT sign-in asks the keychain once more. Nothing was pushed.
 
 ## Open
 
 1. **The README branch** (`claude/modest-visvesvaraya-113d31`) is waiting for Huseyn's word to be merged. Until it is, the script test for the README's pictures fails here, since this branch's picture script already takes the path pictures.
 2. **Permissions are shown, not changed.** Nautilus can change them from its Properties window. That would be a change to the disk, with Undo, and waits for Huseyn's word.
 3. **From run 6:** Apple's readers inside Helm's process, and a folder swapped for a link between plan and Apply ([`MAC_RUN_6.md`](MAC_RUN_6.md#open)).
+4. **One unanswered macOS question takes the whole disk.** Without Full Disk Access, a read that waits on macOS's question about Documents is timed out after 30 seconds, and the I/O executor (B-107) then fails every read on that disk until the question is answered: the home window says the disk isn't responding, and AI search says "0 matches" rather than why. Three things would help, each a change to how Helm reads the disk: not looking inside Desktop, Documents and Downloads before the person opens them; a timed-out read shutting only the folder it waited on; and AI search saying the disk didn't answer. They wait for Huseyn's word.
+5. **The vision model.** Qwen2.5-VL 7B never finished downloading in LM Studio (stopped at 98.65%, then 0% three times), so a local model that sees pictures is untested. LM Studio's Downloads may still hold the stalled download.
 
 ## Disclosures
 
