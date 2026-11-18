@@ -79,9 +79,33 @@ extension HostSmokeDriver {
             let height = app.settingsControllerForTesting?.contentHeightForTesting ?? 0
             // And it's at its top, its first rows below the toolbar rather than under it.
             let scrolled = app.settingsControllerForTesting?.scrolledFromTopForTesting ?? []
+            // And nothing frosted over its top: the toolbar's edge belongs to the toolbar, not inside the pane.
+            let edge = app.settingsControllerForTesting?.toolbarEdgeForTesting(pane) ?? 0
             let detail = "window \(Int(height)): " + areas.map { "holds \(Int($0.content)), shows \(Int($0.visible))" }.joined(separator: "; ")
-                + "; scrolled \(scrolled.map { Int($0) })"
+                + "; scrolled \(scrolled.map { Int($0) }); toolbar edge \(Int(edge))"
             print("SETTINGS \(argument) \(detail)"); fflush(stdout)
+            check(!areas.isEmpty && areas.allSatisfy { $0.content <= $0.visible + 1 } && scrolled.allSatisfy { abs($0) <= 1 } && edge <= 1,
+                  step, detail)
+            app.settingsWindowForTesting?.close()
+        case "settings-pane-squeeze":
+            // settings-pane-squeeze <pane>: the window made shorter than the pane's form, as a pane that came out short
+            // in a Release build is, then fitted again, as a change to what the pane shows does. It shows all it
+            // holds and is at its top.
+            app.showSettingsWindow(nil)
+            await wait(seconds: 0.4)
+            guard let pane = SettingsPane.allCases.first(where: { $0.rawValue.lowercased() == argument }),
+                  let settings = app.settingsControllerForTesting else { check(false, step, "usage or no Settings"); return true }
+            settings.select(pane)
+            await wait(seconds: 0.6)
+            settings.squeezeForTesting(to: 180)
+            await wait(seconds: 0.4)
+            print("SETTINGS squeezed \(argument) \(settings.scrollDetailsForTesting(pane)) scrolled \(settings.scrolledFromTopForTesting.map { Int($0) })")
+            settings.fitPaneForTesting()
+            await wait(seconds: 0.6)
+            let areas = settings.scrollAreasForTesting(pane)
+            let scrolled = settings.scrolledFromTopForTesting
+            let detail = settings.scrollDetailsForTesting(pane) + "; scrolled \(scrolled.map { Int($0) })"
+            print("SETTINGS refitted \(argument) \(detail)"); fflush(stdout)
             check(!areas.isEmpty && areas.allSatisfy { $0.content <= $0.visible + 1 } && scrolled.allSatisfy { abs($0) <= 1 }, step, detail)
             app.settingsWindowForTesting?.close()
         default: return false

@@ -12,7 +12,9 @@ import SwiftUI
     public init(store: SettingsStore, fileViewer: FileViewerModel?, access: AccessSettings? = nil, supportsSingleClick: Bool = false,
                 persistsFrame: Bool = true) {
         tabs.tabStyle = .toolbar
-        tabs.transitionOptions = [.crossfade, .allowUserInteraction]
+        // No crossfade: on macOS 26 a pane that faded in kept the edge AppKit draws where a scroll view meets the
+        // toolbar, a frosted band with a line, a toolbar's height tall, over its first rows, until the window closed.
+        tabs.transitionOptions = [.allowUserInteraction]
         tabs.canPropagateSelectedChildViewControllerTitle = true
         for pane in SettingsPane.allCases {
             let host = NSHostingController(rootView: SettingsPaneHost(pane: pane, store: store, fileViewer: fileViewer,
@@ -88,8 +90,49 @@ import SwiftUI
     }
     /// The window's content height, for fixture runs.
     public var contentHeightForTesting: CGFloat { window?.contentLayoutRect.height ?? 0 }
+    /// Makes the window's content this tall, as a pane that came out too short would, for fixture runs.
+    public func squeezeForTesting(to height: CGFloat) {
+        guard let window else { return }
+        var frame = window.frame
+        let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 560, height: height)).size
+        frame.origin.y += frame.height - size.height
+        frame.size = size
+        window.setFrame(frame, display: true)
+    }
+    /// Fits the window to the pane on show, as a change to what it shows does, for fixture runs.
+    public func fitPaneForTesting() { fitPane() }
+    /// Each area of a pane that could scroll, in words: its frame in the window, its insets, how far it's scrolled and
+    /// what it holds, with the window's content height, for fixture runs.
+    public func scrollDetailsForTesting(_ pane: SettingsPane) -> String {
+        func scrollViews(in view: NSView) -> [NSScrollView] {
+            (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews(in:))
+        }
+        guard let view = paneController(pane)?.view else { return "no pane" }
+        view.layoutSubtreeIfNeeded()
+        let areas = scrollViews(in: view).map { scroll -> String in
+            let frame = scroll.convert(scroll.bounds, to: nil)
+            let insets = scroll.contentInsets
+            let flipped = scroll.documentView?.isFlipped == true
+            return "frame y \(Int(frame.minY)) h \(Int(frame.height)), insets \(Int(insets.top))/\(Int(insets.bottom)), "
+                + "clip y \(Int(scroll.contentView.bounds.minY)) h \(Int(scroll.contentView.bounds.height)), "
+                + "document \(Int(scroll.documentView?.frame.height ?? -1))\(flipped ? " flipped" : "")"
+        }
+        return "content \(Int(window?.contentLayoutRect.height ?? 0)), pane view h \(Int(view.frame.height)): " + areas.joined(separator: "; ")
+    }
     /// How far each area of the pane on show is scrolled from its top, for fixture runs.
     public var scrolledFromTopForTesting: [CGFloat] { tabs.scrolledFromTopForTesting }
+    /// For fixture runs: how tall the edge AppKit draws where a scroll view meets the toolbar is inside the pane, in
+    /// points. A pane sits below the toolbar, so it should be 0; SDK 14 builds draw no such edge at all.
+    public func toolbarEdgeForTesting(_ pane: SettingsPane) -> CGFloat {
+        guard let view = paneController(pane)?.view else { return 0 }
+        view.layoutSubtreeIfNeeded()
+        func edges(in view: NSView) -> [CGFloat] {
+            guard !view.isHidden, view.alphaValue > 0 else { return [] }
+            let own = String(describing: type(of: view)).contains("Pocket") ? [view.frame.height] : []
+            return own + view.subviews.flatMap(edges(in:))
+        }
+        return edges(in: view).max() ?? 0
+    }
 }
 
 /// Resizes the window to each pane as it's chosen, keeping the top edge where it was, as System Settings does.

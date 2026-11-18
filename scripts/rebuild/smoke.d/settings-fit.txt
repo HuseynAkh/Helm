@@ -1,5 +1,6 @@
 # Every Settings pane shows all it holds and opens at its top, its first rows below the toolbar, after the tallest
-# pane, General, as when a tab is clicked. A fixed height measured with an older SDK cut panes short in a Release build.
+# pane, General, as when a tab is clicked. A fixed height measured with an older SDK cut panes short in a Release build,
+# and a pane that faded in kept a frosted band over its first rows. A pane squeezed short fits again at its top.
 settings-pane-fits general
 settings-pane-fits ai
 settings-pane-fits view
@@ -7,3 +8,4 @@ settings-pane-fits appearance
 settings-pane-fits sidebar
 settings-pane-fits search
 settings-pane-fits advanced
+settings-pane-squeeze ai
