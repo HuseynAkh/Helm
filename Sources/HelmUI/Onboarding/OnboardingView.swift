@@ -409,6 +409,12 @@ private struct SetupStatusView: View {
     var body: some View {
         Group {
             switch state {
+            case .pending where row == .fullDiskAccess:
+                // Off is something to do, not a step to skip past: a red mark where the green one goes once it's on.
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .symbolRenderingMode(.palette).foregroundStyle(.white, Color.red)
+                    .accessibilityLabel("Off")
             case .pending:
                 Color.clear.frame(width: 18, height: 18).accessibilityHidden(true)
             case .working:
