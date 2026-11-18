@@ -8,6 +8,8 @@ window-size 1240 760
 # Each picture draws its window as the window in front: window buttons in colour, the accent on Apply, Continue and
 # the switches. The run itself stays in the background
 active-look on
+# Every picture at the sharpest screen's scale, whichever screen is the main one; the windows stay invisible
+screen sharpest
 app-icon docs/brand/logo-variants/variant-4-isometric.png
 setting-is aiModeEnabled false
 # A bookmark, a starred file and a few things opened lately, as on a Mac in use

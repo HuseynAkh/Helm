@@ -457,7 +457,8 @@ struct PathBarSegment: Equatable {
         let effect = NSVisualEffectView()
         effect.material = .menu; effect.state = .active; effect.wantsLayer = true; effect.layer?.cornerRadius = 8; effect.layer?.masksToBounds = true
         let scroll = NSScrollView()
-        scroll.drawsBackground = false; scroll.hasVerticalScroller = true
+        // A short list has no scroller, so with a mouse plugged in no empty track takes the rows' room.
+        scroll.drawsBackground = false; scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         let column = NSTableColumn(identifier: .init("name"))
         table.addTableColumn(column); table.headerView = nil; table.backgroundColor = .clear
         table.dataSource = self; table.delegate = self; table.rowHeight = 28

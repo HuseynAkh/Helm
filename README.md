@@ -7,9 +7,11 @@
 
 **Ask Helm to organize, move and find your files.<br>Nothing changes until you press Apply.**
 
+Or press ⌘L and type where you're going: Tab completes the path, as it does in your shell.
+
 macOS 14 or later &nbsp;·&nbsp; Apple silicon and Intel &nbsp;·&nbsp; Version 0.2, an early preview
 
-[AI mode](#ai-mode) · [How it works](#how-it-works) · [Privacy](#privacy) · [Install](#install) · [The file manager](#the-file-manager) · [Shortcuts](#keyboard-shortcuts) · [Build and test](#build-and-test)
+[Type a path](#type-a-path) · [AI mode](#ai-mode) · [How it works](#how-it-works) · [Privacy](#privacy) · [Install](#install) · [The file manager](#the-file-manager) · [Shortcuts](#keyboard-shortcuts) · [Build and test](#build-and-test)
 
 </div>
 
@@ -17,6 +19,27 @@ macOS 14 or later &nbsp;·&nbsp; Apple silicon and Intel &nbsp;·&nbsp; Version 
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-panel-dark.png">
   <img src="docs/images/ai-panel-light.png" alt="Helm showing Downloads in the grid, with the AI panel open on the right: the Downloads chip, the This Folder and Whole Mac switch, the consent line, the suggestions Organize 10 items, Move everything to… and Copy everything to…, and the composer with the model menu and Read contents">
 </picture>
+
+## Type a path
+
+For people who'd rather type than click, as they do in Yazi, ranger, lf or nnn. Press **⌘L**, or click the current folder's name in the path bar, and the bar becomes a prompt. Type a path as you would after `cd`, and Tab completes it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/path-dark.png">
+  <img src="docs/images/path-light.png" alt="The top of the window over Home: the path bar is a prompt reading ~/Documents/Pro, with the rest of Projects in grey after the caret, and under it the suggestions Projects, chosen, and Product Roadmap.pdf">
+</picture>
+
+| Type or press | What happens |
+|---|---|
+| `~`, `..`, `Documents/Pro` | Your home folder, the folder above, and a path that starts from the folder on show |
+| Tab or → | Takes the suggestion. A folder gets its `/` and its contents are suggested at once, so Tab, Tab walks down the tree |
+| ↑ ↓ | Choose another suggestion |
+| Return | Goes there. A file's path opens its folder with the file selected, hidden files included |
+| Escape | Closes the suggestions, then the prompt. A click anywhere else puts the path bar back too |
+
+Suggestions are the names in that folder that start with what you typed, in any case, folders first. They come 100 ms after you stop typing, or at once after a `/`; Settings › Advanced sets the delay. Hidden names show only while Show Hidden Files (⌘.) is on. The match is from the start of the name, like a shell's Tab: nothing fuzzy, and no memory of where you've been. `file://` addresses work too, and `smb://`, `afp://`, `nfs://`, `ftp://` and `webdav://` addresses connect to the server, as Finder's Connect to Server does. A path that doesn't exist shakes the bar and keeps your text, so you can fix it.
+
+In the files, type a name's first letters to select it. ⌘↓ opens, ⌘↑ goes up, ⌘[ and ⌘] go back and forward, and Space is Quick Look.
 
 ## AI mode
 
@@ -243,7 +266,7 @@ macOS guards some places, such as the Trash and other apps' data. When Helm can'
 
 ### Everything else
 
-- **Getting around.** Tabs and windows that come back after a relaunch. Back, Forward and Enclosing Folder. Typed paths with `~`, file URLs and any capitalisation; a typed file opens its folder with the file selected, and a click anywhere else puts the path bar back.
+- **Getting around.** Tabs and windows that come back after a relaunch. Back, Forward and Enclosing Folder. Typed paths with Tab completion, in any capitalisation: see [Type a path](#type-a-path).
 - **Working with files.** Copy, cut and paste, move, rename, duplicate, aliases and symbolic links. Undo and Redo. When an item fails, choose Skip, Try Again or Stop instead of losing the whole copy. Compress, Expand Archive, Move to Trash, Put Back and Empty Trash.
 - **Seeing files.** Thumbnails for pictures, PDFs, films and documents, made at your screen's real resolution. Quick Look with Space. Open With lists the apps that suit a file best first, and Change Default App sets which app opens that kind of file, as Finder's Get Info does.
 - **Properties and the terminal.** Properties (⌘I, or right-click) opens a window beside yours, as in Nautilus. For a folder, it counts what's inside and shows the total as it goes, says what it couldn't read, and shows the parent folder, the disk's free space, the dates, and who can do what with it. Files kept in iCloud aren't downloaded to be counted. Right-click a folder, the empty space, a sidebar row or a piece of the path and choose **Open in Terminal**. It opens your default terminal, the one your shell scripts open in, and Settings › General can pick Terminal, Ghostty, iTerm, Warp, WezTerm or kitty instead.
