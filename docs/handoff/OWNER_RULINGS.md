@@ -312,6 +312,7 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Properties as a window | **A window beside the browser window, several at once, closed with Escape or ⌘W, instead of a sheet over the window.** | Counting a big folder takes time, and a sheet would hold the window up meanwhile. Nautilus opens a window too. |
 | What counts | **Every file and folder inside, hidden ones too. An app or other package counts as one item, with all its bytes. Links count as items and aren't followed. Sizes are as each file says, as Finder's Size is.** | Nautilus counts hidden files too, and on a Mac an app is one thing. |
 | Permissions | **Shown, not changed, with the note "Shown as macOS keeps them. Helm doesn't change them here."** | Changing them is a change to the disk, with Undo to work out. It can come later if you want it. |
+| The owner's name | **"You" for your own items, root for the system's, and "Another account (ID 502)" for any other.** | Helm reads no account's name, which its privacy checks hold it to, so Nautilus's owner names would mean loosening that promise. |
 
 ## Ruled but not built yet
 

@@ -554,8 +554,6 @@ class PrivacyCheckTests(unittest.TestCase):
             ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
              'return try? string.data(from: whole, documentAttributes: '
              '[.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
-            ('identifier', 'Sources/HelmUI/Properties/PropertiesReader.swift',
-             'guard let entry = getpwuid(id), let name = entry.pointee.pw_name else { return nil }'),
             ('network-key', 'App/Info.plist', '<key>NSAppTransportSecurity</key>'),
         ])
         self.assertEqual(NETWORK_FILES, {'Sources/HelmAgent/Transport/HTTPTransport.swift'})

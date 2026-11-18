@@ -519,10 +519,6 @@ ALLOW = [
     # spelling as a session's load from an address, and reads nothing.
     ('session-shape', 'Sources/HelmUI/Host/AgentNewFileContents.swift',
      'return try? string.data(from: whole, documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML])'),
-    # Properties names an item's owner, as Nautilus and Finder do, when it isn't you, such as root. Your own items say
-    # "You", so your account name is never read. The name stays in that window; nothing sends it anywhere.
-    ('identifier', 'Sources/HelmUI/Properties/PropertiesReader.swift',
-     'guard let entry = getpwuid(id), let name = entry.pointee.pw_name else { return nil }'),
     # Plain http to a model on this Mac. transport_security() holds what is under the key to ATS_SHAPE.
     ATS_KEY,
 ]

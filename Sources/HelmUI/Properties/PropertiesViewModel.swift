@@ -6,8 +6,9 @@ import HelmFileSystem
 /// read, never a guess.
 public struct PropertiesSupplement: Sendable, Equatable {
     public var posixMode: UInt16?
-    /// The owner's name when it isn't the person using this Mac, who is "You" instead; the group's name; and whether
-    /// the owner is the person using this Mac.
+    /// The owner when it isn't the person using this Mac, who is "You" instead: root, or another account by its
+    /// number, since Helm reads no account's name. Then the group's name, and whether the owner is the person using
+    /// this Mac.
     public var owner: String?
     public var group: String?
     public var ownerIsYou: Bool

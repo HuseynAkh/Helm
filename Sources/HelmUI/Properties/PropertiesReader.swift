@@ -22,10 +22,10 @@ enum PropertiesReader {
         var info = stat()
         if lstat(url.path, &info) == 0 {
             supplement.posixMode = UInt16(info.st_mode & 0o7777)
-            // Your own items say "You", so your account name is never read or shown; another owner, such as root,
-            // is named.
+            // Helm reads no account's name: your own items say "You", the system's say root, which is always account
+            // 0, and any other is shown by its number.
             supplement.ownerIsYou = info.st_uid == getuid()
-            if !supplement.ownerIsYou { supplement.owner = name(ofUser: info.st_uid) }
+            if !supplement.ownerIsYou { supplement.owner = info.st_uid == 0 ? "root" : "Another account (ID \(info.st_uid))" }
             supplement.group = name(ofGroup: info.st_gid)
             supplement.locked = info.st_flags & UInt32(UF_IMMUTABLE) != 0
         }
@@ -54,11 +54,6 @@ enum PropertiesReader {
         return supplement
     }
 
-    /// The name of an account that isn't yours, such as root or _www, for Properties' Owner row.
-    private static func name(ofUser id: uid_t) -> String? {
-        guard let entry = getpwuid(id), let name = entry.pointee.pw_name else { return nil }
-        return String(cString: name)
-    }
     private static func name(ofGroup id: gid_t) -> String? {
         guard let entry = getgrgid(id), let name = entry.pointee.gr_name else { return nil }
         return String(cString: name)
