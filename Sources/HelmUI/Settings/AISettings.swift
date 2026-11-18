@@ -175,8 +175,11 @@ extension SettingsWindowController {
         let host = AISettingsHost(rootView: AISettingsView(model: model))
         host.sizingOptions = []
         replacePane(.ai, with: host) { AISettingsView.height(for: model) }
+        // The model says it will change before the form redraws, so the pane is fitted after the redraw, and once
+        // more a moment later for rows that come in as the form lays out.
         host.refit = model.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.fitPane() } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { MainActor.assumeIsolated { self?.fitPane() } }
         }
     }
     /// What Settings › AI shows and changes, once the app has given it one.

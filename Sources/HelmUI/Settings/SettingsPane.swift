@@ -22,7 +22,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
     /// draws it. Sidebar grows past its height to show every row.
     public var height: CGFloat {
         switch self {
-        case .general: return 716
+        case .general: return 808
         case .ai: return 277
         case .view: return 277
         case .appearance: return 277

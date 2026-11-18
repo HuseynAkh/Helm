@@ -63,6 +63,27 @@ extension HostSmokeDriver {
             let app = opening.flatMap { Bundle(url: $0.application)?.bundleIdentifier }
             check(opening?.urls.map(\.path) == [argument] && app == TerminalLocator.resolve(window.dependencies.settings.snapshot.string(.terminalApp)), step,
                   opening.map { "\($0.urls.map(\.path)) with \(app ?? $0.application.path)" } ?? "nothing handed over")
+        case "settings-pane-fits":
+            // settings-pane-fits <pane>: Settings opens at General, the tallest, then moves to the pane, as a click on
+            // its tab does. Every area of the pane that could scroll has all it holds in view.
+            guard let pane = SettingsPane.allCases.first(where: { $0.rawValue.lowercased() == argument }) else {
+                check(false, step, "usage"); return true
+            }
+            app.showSettingsWindow(nil)
+            await wait(seconds: 0.4)
+            app.settingsControllerForTesting?.select(.general)
+            await wait(seconds: 0.6)
+            app.settingsControllerForTesting?.select(pane)
+            await wait(seconds: 1.0)
+            let areas = app.settingsControllerForTesting?.scrollAreasForTesting(pane) ?? []
+            let height = app.settingsControllerForTesting?.contentHeightForTesting ?? 0
+            // And it's at its top, its first rows below the toolbar rather than under it.
+            let scrolled = app.settingsControllerForTesting?.scrolledFromTopForTesting ?? []
+            let detail = "window \(Int(height)): " + areas.map { "holds \(Int($0.content)), shows \(Int($0.visible))" }.joined(separator: "; ")
+                + "; scrolled \(scrolled.map { Int($0) })"
+            print("SETTINGS \(argument) \(detail)"); fflush(stdout)
+            check(!areas.isEmpty && areas.allSatisfy { $0.content <= $0.visible + 1 } && scrolled.allSatisfy { abs($0) <= 1 }, step, detail)
+            app.settingsWindowForTesting?.close()
         default: return false
         }
         return true
