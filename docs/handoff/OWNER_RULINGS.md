@@ -228,7 +228,7 @@ What was built and checked is in [`MAC_RUN_5.md`](MAC_RUN_5.md).
 
 | Question | Default used |
 |---|---|
-| The consent line while Read contents is on. Today's promise says "never file contents". | Replaced in run 6, after Huseyn asked whether the run 5 wording was true. The new wording is under [run 6](#waiting-for-huseyn-run-6). |
+| The consent line while Read contents is on. Today's promise says "never file contents". | Replaced in run 6, after Huseyn asked whether the run 5 wording was true. Huseyn approved the new wording; it is under [run 6](#the-consent-wording-run-6). |
 
 ### Delegated choices in run 5
 
@@ -256,17 +256,20 @@ What was built and checked is in [`MAC_RUN_6.md`](MAC_RUN_6.md).
 
 | Topic | Huseyn's words | Date | What was built |
 |---|---|---|---|
-| The consent wording | "Regarding your wording, check if that's actually true and if that is the best way to word this and talk about it. I would want us to give enough information and point out that no metadata is collected by us, if that's the case correctly." | 2026-11-17 | The run 5 line said "short summaries", which stopped being true once the model looks at pictures. Each line now names what goes: text, and small copies of pictures and video frames. Settings and the onboarding say "Helm has no servers and collects nothing", which is true: Helm has no server, no analytics and no crash reporting, and `scripts/privacy_check.py` fails the build on any of them. The wording is a draft until Huseyn says yes (below). |
+| The consent wording | "Regarding your wording, check if that's actually true and if that is the best way to word this and talk about it. I would want us to give enough information and point out that no metadata is collected by us, if that's the case correctly." | 2026-11-17 | The run 5 line said "short summaries", which stopped being true once the model looks at pictures. Each line now names what goes: text, and small copies of pictures and video frames. Settings and the onboarding say "Helm has no servers and collects nothing", which is true: Helm has no server, no analytics and no crash reporting, and `scripts/privacy_check.py` fails the build on any of them. Huseyn approved it the same day (below). |
 | The model looks inside files | "For the cloud providers, I'm surprised that it says sends your request file names and short summaries of file contents, as we wanted AI search to actually be able to find specific images from the directories that it's searching. … The AI models have to be able to read the local documents and identify what is being searched for, and the README should reflect that accordingly. That's image analysis, document analysis, and maybe even video analysis." | 2026-11-17 | With Read contents on, the model gets a small copy of each picture, of sampled video frames and of a scanned PDF's first page, and the text of text files, PDFs, RTF and Word files. AI search has the model look at the best candidates and keeps the ones it says fit. The README says so. |
 | File type in the plain search | "And we would probably want the option of identifying what document you're searching for as well in the file manager search." | 2026-11-17 | The kind row shows whenever the search is open, AI or not, and keeps a plain search to that kind. The status bar names it. |
 | The panel as a local harness | "One more thing I want to make sure that if you're using a sidebar chat in the directory with an AI model, it can almost act as a local harness. So you can tell it to create files, folders, different documents on request, and it can work in your directory to do that. No need to overbuild crazy harness logic. However, for basic functionality, we definitely want that to be the case. And it should support general operations on the directory and the general AI functions of creating documents, files, and so forth. Make sure you're not overbloating this. And that it can work with the different models supported." | 2026-11-17 | A plan can now make new files with the model's text, beside the folders, moves, copies, renames and Trash it could already do. It's one more list in the same plan, so every provider can do it, and Apply and Undo work as before. |
 | Push and merge | "You're free to merge and push after all of these changes, but make sure you review everything for security and private data. Make sure everything is secure and in accordance." | 2026-11-17 | A security review and a private-data scan ran on the whole change. What they found was fixed before the push, apart from two items in [`MAC_RUN_6.md`](MAC_RUN_6.md#open). |
+| Wording approved | "approve wording and push" | 2026-11-17 | The consent lines below stand as they shipped in PR #5. This record of his approval was pushed. |
 
-### Waiting for Huseyn (run 6)
+### The consent wording (run 6)
 
-| Question | Default used |
+Approved by Huseyn on 2026-11-17.
+
+| Lines | Wording |
 |---|---|
-| The consent lines while Read contents is on | Settings and the onboarding: "Sends your requests and file names to {destination}; file contents only while Read contents is on. Helm has no servers and collects nothing." A thread with a model on this Mac: "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other model: "Sends your requests, file names and what it reads inside files to {destination}: text, and small copies of pictures and video frames." AI search's hint: "Return sends your words, file names and the contents of files the model looks at to {destination}." With Whole Mac, the lines add "from your home folder and disks". These ship until Huseyn changes them. |
+| The consent lines while Read contents is on | Settings and the onboarding: "Sends your requests and file names to {destination}; file contents only while Read contents is on. Helm has no servers and collects nothing." A thread with a model on this Mac: "Reads text, pictures and video frames inside files on this Mac; nothing leaves your Mac." With any other model: "Sends your requests, file names and what it reads inside files to {destination}: text, and small copies of pictures and video frames." AI search's hint: "Return sends your words, file names and the contents of files the model looks at to {destination}." With Whole Mac, the lines add "from your home folder and disks". |
 
 ### Delegated choices in run 6
 
