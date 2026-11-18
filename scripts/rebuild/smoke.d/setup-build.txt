@@ -115,8 +115,6 @@ onboarding-press Restart Helm
 setup-restarts 1
 onboarding-is setup
 setup-step viewer
-setup-moves 0
-setup-relaunched none
 onboarding-size 540x560
 onboarding-footer-fits
 setup-check viewer off
