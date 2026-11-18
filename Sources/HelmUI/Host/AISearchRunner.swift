@@ -740,12 +740,38 @@ import HelmSearch
     /// The plan's queries for this place. Where only names can be searched, words inside files are dropped, never
     /// broadened, and a query left with nothing to look for goes. None left: the request's own words, by name.
     /// With a kind chosen in the kind row, every query that runs is kept to it, whichever way it was made.
+    /// With the kind row at Any and no kind named in the request, the last and loosest query looks at every kind, so a
+    /// model that guessed one, such as documents for "a receipt" that's a photo, can't hide the rest.
     static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String,
                         kind: AISearchKind? = nil) -> [AISearchQuery] {
         let kept = placeQueries(planned, coverage: coverage, request: request)
-        guard let kind else { return kept }
+        guard let kind else { return everyKindLast(kept, request: request) }
         return AISearchPlan(sort: .relevance, queries: kept).limited(to: kind).queries
     }
+
+    /// Adds the last query again without its kinds and extensions, when every query has some and the request names
+    /// no kind of file. A request that names one, in English, keeps the model's kinds as they are.
+    static func everyKindLast(_ queries: [AISearchQuery], request: String) -> [AISearchQuery] {
+        guard let last = queries.last, queries.allSatisfy({ !$0.kinds.isEmpty || !$0.extensions.isEmpty }),
+              !namesAKind(request) else { return queries }
+        var open = last
+        open.kinds = []; open.extensions = []
+        guard open != AISearchQuery(), !queries.contains(open) else { return queries }
+        return queries + [open]
+    }
+    /// Whether the request names a kind of file: a word such as photo, PDF, video or folder, or an extension.
+    static func namesAKind(_ request: String) -> Bool {
+        let words = request.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "." }.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".")) }
+        return words.contains { kindWords.contains($0) || kindWords.contains(String($0.dropLast())) }
+    }
+    private static let kindWords: Set<String> = [
+        "photo", "picture", "pic", "image", "screenshot", "selfie", "jpg", "jpeg", "png", "heic", "gif",
+        "video", "movie", "clip", "film", "footage", "mp4", "mov",
+        "document", "doc", "docx", "pdf", "spreadsheet", "presentation", "slide", "deck", "txt", "csv", "xlsx", "pptx",
+        "folder", "directory", "directorie", "code", "script",
+        "audio", "song", "music", "podcast", "recording", "mp3", "wav", "m4a",
+        "archive", "zip", "dmg"
+    ]
 
     private static func placeQueries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String) -> [AISearchQuery] {
         guard coverage == .namesOnly else { return planned }

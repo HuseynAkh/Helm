@@ -130,5 +130,21 @@ final class AISearchPredicateTests: XCTestCase {
                                               kind: .image),
                        [AISearchQuery(nameAny: ["beach", "day"], kinds: [.image])])
     }
+
+    /// A model that narrows every query to a kind the person never named, such as documents for "a receipt from a
+    /// cafe" that's a photo, gets one more, loosest query over every kind. Naming a kind keeps the model's.
+    @MainActor func testWithAnyKindAndNoKindNamedTheLastQueryLooksAtEveryKind() {
+        let planned = [AISearchQuery(contentAll: ["receipt", "cafe"], kinds: [.pdf, .document]),
+                       AISearchQuery(contentAll: ["receipt"], kinds: [.pdf, .document, .text])]
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "a receipt from a cafe"),
+                       planned + [AISearchQuery(contentAll: ["receipt"])])
+        for named in ["receipt PDFs from a cafe", "a photo of a receipt", "cafe receipt .pdf", "receipts in screenshots"] {
+            XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: named), planned, named)
+        }
+        // A plan with one query open to every kind already, or a kind chosen in the row, is left as it is.
+        let open = planned + [AISearchQuery(nameAny: ["receipt"])]
+        XCTAssertEqual(AISearchRunner.queries(open, coverage: .full, request: "a receipt"), open)
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "a receipt", kind: .pdf).count, 2)
+    }
 }
 #endif
