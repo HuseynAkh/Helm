@@ -271,9 +271,11 @@ final class LiveModelClientTests: XCTestCase {
         XCTAssertEqual(transport.fetched, [.models])
     }
 
-    func testOnlyATypedAddressHasASecondPlaceToLook() async throws {
+    /// A typed address, and LM Studio, which has its own list and an OpenAI-style one, look in a second place;
+    /// every other provider has one list.
+    func testOnlyATypedAddressAndLMStudioHaveASecondPlaceToLook() async throws {
         let transport = ProviderRecordingTransport(fetches: [.models: .success(AgentHTTPReply(status: 404, body: Data()))])
-        let client = LiveModelClient(profile: try profile(.lmStudio), model: ProviderFixtures.model, transport: transport)
+        let client = LiveModelClient(profile: try profile(.ollama), model: ProviderFixtures.model, transport: transport)
         do {
             _ = try await client.models()
             XCTFail("a missing list should fail")
@@ -281,6 +283,15 @@ final class LiveModelClientTests: XCTestCase {
             XCTAssertEqual(error as? AgentFailure, .noSuchModel)
         }
         XCTAssertEqual(transport.fetched, [.models])
+        // An LM Studio without its own list is asked for its other one, which names no model that sees pictures.
+        let older = ProviderRecordingTransport(fetches: [
+            .models: .success(AgentHTTPReply(status: 404, body: Data())),
+            .modelsAlternate: .success(AgentHTTPReply(status: 200, body: Data(#"{"data": [{"id": "qwen2.5-7b-instruct"}]}"#.utf8)))])
+        let lmStudio = LiveModelClient(profile: try profile(.lmStudio), model: ProviderFixtures.model, transport: older)
+        let listed = try await lmStudio.models()
+        XCTAssertEqual(listed.map(\.id), ["qwen2.5-7b-instruct"])
+        XCTAssertEqual(listed.map(\.seesPictures), [nil])
+        XCTAssertEqual(older.fetched, [.models, .modelsAlternate])
     }
 
     // MARK: The client itself
