@@ -5,10 +5,14 @@ import HelmUI
 
 /// Smoke verbs for the onboarding and its steps. Everything here runs against the fixture's stand-ins: the file viewer
 /// and Dock switches, the permission and the mover change nothing outside Helm, open nothing and never quit, and
-/// macOS's Quit & Reopen is stood in for in this one process (`setup-quit-reopen`).
+/// macOS's Quit & Reopen, like Restart Helm, is stood in for in this one process (`setup-quit-reopen`).
 extension HostSmokeDriver {
     /// System Settings panes the stand-in had opened when `panes-mark` ran.
     private static var paneBaseline = 0
+    /// Restarts the stand-in mover had been asked for when `restarts-mark` ran.
+    private static var restartBaseline = 0
+    /// The least room under the footer's buttons, inside the window.
+    static let footerRoom: CGFloat = 12
 
     static func performSetupVerb(_ verb: String, _ argument: String, step: String,
                                  window: BrowserWindowController, app: AppController) async -> Bool {
@@ -34,10 +38,17 @@ extension HostSmokeDriver {
             await app.access.quitAndReopenForTesting { if argument == "granted" { privacy.status = .granted } }
             await wait(seconds: 0.8)
         case "onboarding-size":
-            // onboarding-size <width>x<height>: the window's content, the same size on every step of the onboarding.
-            let size = app.onboardingForTesting?.window?.contentView?.frame.size
+            // onboarding-size <width>x<height>: the window's content below the title bar, the same size on every step of
+            // the onboarding.
+            let size = app.onboardingForTesting?.window?.contentLayoutRect.size
             let text = size.map { "\(Int($0.width.rounded()))x\(Int($0.height.rounded()))" } ?? "closed"
             check(text == argument, step, text)
+        case "onboarding-footer-fits":
+            // The footer's buttons, on the step or screen on show, sit inside the window with room below them, whatever
+            // height the SDK gives the title bar.
+            await wait(seconds: 0.3)
+            let room = app.onboardingForTesting?.footerRoomForTesting
+            check((room ?? -1) >= footerRoom, step, room.map { "\(Int($0.rounded())) points below the buttons" } ?? "no footer")
         case "setup-summary":
             // setup-summary <on|off for each line of the done step, in order>
             let lines = app.onboardingForTesting?.model.summary.map { $0.on ? "on" : "off" }.joined(separator: ",") ?? "closed"
@@ -131,6 +142,12 @@ extension HostSmokeDriver {
             // onboarding-announced <words>: what the welcome window last said to VoiceOver contains them.
             let said = model?.lastAnnouncement ?? "nothing"
             check(said.contains(argument), step, said)
+        case "restarts-mark":
+            restartBaseline = app.moverForTesting?.restarts ?? 0
+        case "setup-restarts":
+            // setup-restarts <count>: restarts the stand-in mover was asked for since restarts-mark. It never quits.
+            let count = (app.moverForTesting?.restarts ?? 0) - restartBaseline
+            check(count == Int(argument), step, "\(count)")
         case "setup-moves":
             let moves = app.moverForTesting?.moves ?? -1
             check(moves == Int(argument), step, "\(moves)")

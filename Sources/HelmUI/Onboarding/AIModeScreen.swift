@@ -174,6 +174,7 @@ struct AIModeScreen: View {
                     .buttonStyle(.borderedProminent).controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             }
+            .reportsFooterFrame()
             .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 18)
         }
     }

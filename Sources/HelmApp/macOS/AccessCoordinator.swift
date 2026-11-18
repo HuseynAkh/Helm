@@ -5,19 +5,20 @@ import HelmPersistence
 import HelmUI
 
 /// Full Disk Access across the app: the shared permission, the welcome window and its guide, and trying blocked
-/// places again when Helm comes back to the front. A fixture run uses stand-ins for the permission and for moving Helm
-/// into Applications, never opens the welcome by itself, and never opens System Settings, copies Helm or relaunches.
+/// places again when Helm comes back to the front. A fixture run uses stand-ins for the permission and for moving or
+/// restarting Helm, never opens the welcome by itself, and never opens System Settings, copies Helm or relaunches.
 /// The same window shows the AI mode screen, which a fixture run never opens by itself either.
 ///
 /// Setup comes before anything macOS guards. While setup is owed, a launch shows the onboarding and holds every window
 /// back until it closes (`setUpBeforeWindows`), so macOS asks about no folder before the person has seen it, and the
-/// file windows open only once the onboarding is through. AI mode is one of its steps, not a window of its own. Setup is
-/// owed until the onboarding has been through once, again whenever another build runs (macOS treats a new build of an
-/// ad hoc signed app as a new app and forgets its folder access and Full Disk Access), and while an onboarding that was
-/// quit part way is kept: the next launch carries on from its step.
+/// file windows open only once the onboarding is through. AI mode is one of its steps in every onboarding, not a window
+/// of its own. Setup is owed until the onboarding has been through once, again whenever another build runs (macOS
+/// treats a new build of an ad hoc signed app as a new app and forgets its folder access and Full Disk Access), and
+/// while an onboarding that was quit part way is kept: the next launch carries on from its step.
 ///
-/// Helm never quits or reopens itself for a permission. Once Full Disk Access is switched on, macOS offers Quit & Reopen;
-/// Helm then quits like any app, with the onboarding's step kept, and the launch macOS starts carries on there.
+/// Once Full Disk Access is switched on, macOS offers Quit & Reopen, since it applies it in full only from the next
+/// launch, and the onboarding's step offers Restart Helm, which does the same. Either way the onboarding's next step is
+/// kept, and the launch that follows carries on there.
 @MainActor final class AccessCoordinator {
     /// Where launch stands with setup: not looked at yet, waiting for the onboarding to close, or through.
     enum LaunchGate { case unchecked, waiting, open }
@@ -179,8 +180,9 @@ import HelmUI
         if settings.snapshot.string(.setupCarriedRows) != text { settings.set(.string(text), for: .setupCarriedRows) }
     }
 
-    /// Whether a launch's onboarding has an AI step: until the AI step or the AI mode screen has been seen once.
-    private var aiStepOwed: Bool { !(settings?.snapshot.bool(.aiIntroSeen) ?? true) }
+    /// Whether AI mode has been seen, on the onboarding's AI step or its own screen. Every onboarding has the AI step;
+    /// once it has been seen, it's no reason on its own to open a launch's onboarding.
+    private var aiSeen: Bool { settings?.snapshot.bool(.aiIntroSeen) ?? true }
 
     /// A launch's onboarding: the first launch's, another build's, or one that was quit part way, which carries on from
     /// its step. Only the steps left to do show; if none is, there's nothing to show, and that counts as through.
@@ -188,14 +190,14 @@ import HelmUI
         guard settings != nil, setupOwed else { return }
         let controller = onboarding ?? makeOnboarding()
         guard !controller.isShown else { return }
-        if !controller.showSetup(resuming: savedProgress, includesAI: aiStepOwed, activate: isInteractive) { markWelcomeSeen() }
+        if !controller.showSetup(resuming: savedProgress, aiSeen: aiSeen, activate: isInteractive) { markWelcomeSeen() }
     }
 
     func continueSetup(_ rows: [SetupRow]) {
         guard settings != nil else { return }
         // Handed over now, so they aren't carried on twice.
         saveCarried(nil)
-        (onboarding ?? makeOnboarding()).continueSetup(rows, resuming: savedProgress, includesAI: aiStepOwed, activate: isInteractive)
+        (onboarding ?? makeOnboarding()).continueSetup(rows, resuming: savedProgress, activate: isInteractive)
     }
 
     func showWelcome() { present(.setup) }
@@ -226,6 +228,7 @@ import HelmUI
         controller.onCarry = { [weak self] rows in self?.saveCarried(rows) }
         controller.onProgress = { [weak self] progress in self?.keepProgress(progress) }
         controller.onClosed = { [weak self] _ in self?.onboardingClosed() }
+        controller.onRestart = { [weak self] in self?.restartHelm() }
         onboarding = controller
         return controller
     }
@@ -271,6 +274,19 @@ import HelmUI
         if launchGate == .waiting { openGate() }
     }
 
+    /// Restart Helm, from the onboarding's Full Disk Access step once access is on. The onboarding has kept its next
+    /// step, so the launch that follows carries on there. A fixture run's mover only counts it, and the relaunch is
+    /// stood in for in this process.
+    private func restartHelm() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let quit = await self.mover.restart()
+            // Still running: the quit was cancelled, or this is a fixture run, whose mover never quits.
+            guard !quit, self.isIsolated else { return }
+            await self.quitAndReopenForTesting()
+        }
+    }
+
     /// Settings › General › Access.
     var settingsSection: AccessSettings {
         AccessSettings(permissions: permissions, setUp: { [weak self] in self?.showGuide(.fullDiskAccess) },
@@ -279,15 +295,16 @@ import HelmUI
 
     // MARK: Standing in for a relaunch
 
-    /// What macOS's Quit & Reopen does, in one process: Helm quits as it would (`quitting`, then the window goes with the
-    /// process, counting nothing), `meanwhile` runs, as macOS applies a new Full Disk Access only to the next launch,
-    /// and that launch reads Full Disk Access again and shows what setup is owed. A scripted run or a test stands in for
-    /// the relaunch with this; nothing quits.
+    /// What macOS's Quit & Reopen and Restart Helm do, in one process: Helm quits as it would (`quitting`, then the
+    /// window goes with the process, counting nothing), `meanwhile` runs, as macOS applies a new Full Disk Access only to
+    /// the next launch, and that launch reads Full Disk Access again and shows what setup is owed. A scripted run or a
+    /// test stands in for the relaunch with this; nothing quits.
     func quitAndReopenForTesting(meanwhile: () -> Void = {}) async {
         quitting()
         onboarding?.endWithProcess()
         onboarding = nil
         meanwhile()
+        permissions.relaunchedForTesting()
         await permissions.refresh()
         openOnFirstLaunch()
     }
