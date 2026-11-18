@@ -56,13 +56,12 @@ extension BrowserWindowController {
         setting == TerminalApps.followsMac ? macDefault() : setting
     }
     /// The Mac's default terminal. macOS keeps no one setting for it, so it's the first terminal other than Terminal
-    /// that the Mac opens shell scripts, executables or ssh links with, as someone who prefers another terminal makes
-    /// it open those. Terminal when none is: it's every Mac's own.
+    /// that the Mac opens shell scripts or executables with, as someone who prefers another terminal makes it open
+    /// those. Terminal when none is: it's every Mac's own.
     public static func macDefault() -> String {
         let types = ["public.shell-script", "com.apple.terminal.shell-script", "public.unix-executable", "public.zsh-script"]
             .compactMap(UTType.init)
-        var handlers = types.compactMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
-        if let ssh = URL(string: "ssh://localhost"), let app = NSWorkspace.shared.urlForApplication(toOpen: ssh) { handlers.append(app) }
+        let handlers = types.compactMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
         let known = Set(TerminalApps.known.map(\.id)).subtracting([TerminalApps.standard])
         return handlers.compactMap(identifier(of:)).first { known.contains($0) } ?? TerminalApps.standard
     }
