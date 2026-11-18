@@ -52,7 +52,7 @@ extension HostSmokeDriver {
             window.perform(.openInTerminal)
             await wait(seconds: 0.3)
             let opening = launcher.openings.count == before + 1 ? launcher.openings.last : nil
-            let chosen = window.dependencies.settings.snapshot.string(.terminalApp)
+            let chosen = TerminalLocator.resolve(window.dependencies.settings.snapshot.string(.terminalApp))
             let app = opening.flatMap { Bundle(url: $0.application)?.bundleIdentifier }
             check(opening?.urls.map(\.path) == [argument] && app == chosen, step,
                   opening.map { "\($0.urls.map(\.path)) with \(app ?? $0.application.path)" } ?? "nothing handed over")
@@ -61,7 +61,7 @@ extension HostSmokeDriver {
             guard let launcher = window.dependencies.launcher as? MemoryAppLauncher else { check(false, step, "no stand-in"); return true }
             let opening = launcher.openings.last
             let app = opening.flatMap { Bundle(url: $0.application)?.bundleIdentifier }
-            check(opening?.urls.map(\.path) == [argument] && app == window.dependencies.settings.snapshot.string(.terminalApp), step,
+            check(opening?.urls.map(\.path) == [argument] && app == TerminalLocator.resolve(window.dependencies.settings.snapshot.string(.terminalApp)), step,
                   opening.map { "\($0.urls.map(\.path)) with \(app ?? $0.application.path)" } ?? "nothing handed over")
         default: return false
         }

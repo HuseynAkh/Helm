@@ -12,6 +12,8 @@ public enum TerminalApps {
     }
     /// Terminal, which every Mac has.
     public static let standard = "com.apple.Terminal"
+    /// The setting that follows the Mac: the terminal its scripts open in, as `TerminalLocator.macDefault` finds it.
+    public static let followsMac = "default"
     public static let known: [App] = [
         App(id: standard, name: "Terminal"),
         App(id: "com.mitchellh.ghostty", name: "Ghostty"),
@@ -22,4 +24,6 @@ public enum TerminalApps {
     ]
     /// The name Settings shows for an identifier, or the identifier itself for one Helm doesn't know.
     public static func name(of id: String) -> String { known.first { $0.id == id }?.name ?? id }
+    /// What Settings may keep: the Mac's default, or one of the known terminals.
+    public static var choices: [String] { [followsMac] + known.map(\.id) }
 }

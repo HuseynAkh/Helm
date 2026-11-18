@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import HelmCore
+import UniformTypeIdentifiers
 
 /// Open in Terminal, as Nautilus offers it: a new window of the terminal app chosen in Settings › General, in a
 /// folder. The folder is the one selected, or the one on show when nothing is. Helm hands the folder to the app as
@@ -20,10 +21,10 @@ extension BrowserWindowController {
         return selected[0].url
     }
 
-    /// Opens `folder` in the chosen terminal app, or Terminal when that one isn't on this Mac any more. Says what went
-    /// wrong when macOS couldn't open it.
+    /// Opens `folder` in the chosen terminal app: the Mac's default unless another is picked in Settings, and Terminal
+    /// when the chosen one isn't on this Mac any more. Says what went wrong when macOS couldn't open it.
     func openInTerminal(_ folder: URL) {
-        let chosen = dependencies.settings.snapshot.string(.terminalApp)
+        let chosen = TerminalLocator.resolve(dependencies.settings.snapshot.string(.terminalApp))
         guard let application = TerminalLocator.application(chosen) ?? TerminalLocator.application(TerminalApps.standard) else {
             show(message: "Couldn’t find \(TerminalApps.name(of: chosen)) on this Mac.")
             return
@@ -50,6 +51,21 @@ extension BrowserWindowController {
 
 /// The terminal apps on this Mac. It only asks Launch Services, which reads nothing of the apps' own data.
 @MainActor public enum TerminalLocator {
+    /// The bundle identifier a setting stands for: the Mac's default terminal for "default", else the setting itself.
+    public static func resolve(_ setting: String) -> String {
+        setting == TerminalApps.followsMac ? macDefault() : setting
+    }
+    /// The Mac's default terminal. macOS keeps no one setting for it, so it's the first terminal other than Terminal
+    /// that the Mac opens shell scripts, executables or ssh links with, as someone who prefers another terminal makes
+    /// it open those. Terminal when none is: it's every Mac's own.
+    public static func macDefault() -> String {
+        let types = ["public.shell-script", "com.apple.terminal.shell-script", "public.unix-executable", "public.zsh-script"]
+            .compactMap(UTType.init)
+        var handlers = types.compactMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
+        if let ssh = URL(string: "ssh://localhost"), let app = NSWorkspace.shared.urlForApplication(toOpen: ssh) { handlers.append(app) }
+        let known = Set(TerminalApps.known.map(\.id)).subtracting([TerminalApps.standard])
+        return handlers.compactMap(identifier(of:)).first { known.contains($0) } ?? TerminalApps.standard
+    }
     /// Where the app with this bundle identifier is, if it's on this Mac.
     public static func application(_ id: String) -> URL? {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)

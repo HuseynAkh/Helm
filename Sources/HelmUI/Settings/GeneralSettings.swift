@@ -46,9 +46,11 @@ extension SettingsPaneView {
 
 #if os(macOS)
 extension SettingsPaneView {
-    /// The terminals on this Mac that can open a folder, and the one chosen even when it's gone, so the choice shows.
+    /// The Mac's default terminal first, then the terminals on this Mac that can open a folder, and the one chosen even
+    /// when it's gone, so the choice shows.
     var terminals: [TerminalApps.App] {
-        var apps = TerminalLocator.installed(folder: FileManager.default.temporaryDirectory)
+        let standard = TerminalApps.App(id: TerminalApps.followsMac, name: "Default (\(TerminalApps.name(of: TerminalLocator.macDefault())))")
+        var apps = [standard] + TerminalLocator.installed(folder: FileManager.default.temporaryDirectory)
         let chosen = snapshot.string(.terminalApp)
         if !apps.contains(where: { $0.id == chosen }) {
             apps.append(TerminalApps.App(id: chosen, name: "\(TerminalApps.name(of: chosen)) (not on this Mac)"))

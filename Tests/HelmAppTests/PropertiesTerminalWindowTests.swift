@@ -84,9 +84,10 @@ import HelmPersistence
 
     // MARK: Open in Terminal
 
-    /// A selected folder, or the folder on show when nothing is, goes to Terminal; a file or two items don't.
+    /// A selected folder, or the folder on show when nothing is, goes to the terminal chosen; a file or two items don't.
     func testOpenInTerminalHandsTheFolderToTerminal() async throws {
         let (controller, launcher, _) = try await window()
+        controller.dependencies.settings.set(.string("com.apple.Terminal"), for: .terminalApp)
         select(["Project"], in: controller)
         XCTAssertTrue(controller.title(of: .openInTerminal).1)
         controller.perform(.openInTerminal)
@@ -106,6 +107,18 @@ import HelmPersistence
         select(["letter.txt", "Project"], in: controller)
         XCTAssertFalse(controller.title(of: .openInTerminal).1)
         XCTAssertEqual(launcher.openings.count, 2)
+    }
+
+    /// Out of the box it's the Mac's default terminal: the one its scripts open in, or Terminal.
+    func testOutOfTheBoxItsTheMacsDefaultTerminal() async throws {
+        let (controller, launcher, _) = try await window()
+        XCTAssertEqual(controller.dependencies.settings.snapshot.string(.terminalApp), "default")
+        select(["Project"], in: controller)
+        controller.perform(.openInTerminal)
+        await settle()
+        let opened = launcher.openings.last.flatMap { Bundle(url: $0.application)?.bundleIdentifier }
+        XCTAssertEqual(opened, TerminalLocator.macDefault())
+        XCTAssertTrue(TerminalApps.known.map(\.id).contains(TerminalLocator.macDefault()))
     }
 
     /// The right-click menus offer it on a folder and on the empty space, and not on a file.
