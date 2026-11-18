@@ -322,6 +322,22 @@ Huseyn can overrule any of these. Each one's reason is in its last column.
 | Permissions | **Changed in Properties for your own items, as in Finder's Get Info and Nautilus's Permissions page: "Read & Write", "Read only" or "No access" for you, the group and others (with execute for a folder; a file keeps its own), and "Allow executing file as program" for a file. Bits that match none show "Custom". A change applies at once and is one Undo, there or in the browser window: "Undo Change Permissions". Another account's or root's items, and links, are only shown: "Shown as macOS keeps them. Only the owner can change these." Locked items and read-only disks say why they can't change. Nothing inside a folder changes: no "Apply to enclosed items".** | On a Mac only an item's owner can change it without an administrator's password, and Helm never asks for one. Each change is checked against the item and mode it was asked about and read back from the disk, so the window shows what the disk keeps. Changing everything inside a folder is a bulk change, left for later. |
 | The owner's name | **"You" for your own items, root for the system's, and "Another account (ID 502)" for any other.** | Helm reads no account's name, which its privacy checks hold it to, so Nautilus's owner names would mean loosening that promise. |
 
+## Mac run 8 (2026-11-18)
+
+What was built and checked is in [`MAC_RUN_8.md`](MAC_RUN_8.md).
+
+### Rulings by Huseyn
+
+| Topic | Huseyn's words | Date | What was built |
+|---|---|---|---|
+| Full Disk Access off | "This screen should have something red near "Full Disk Accesses Off," like a red X, so that people can see that they need to do something rather than press and continue." | 2026-11-18 | A red ✕ where the green check goes once access is on, on the onboarding's Full Disk Access step and in the guide. |
+| The onboarding after a quit | "When full disk access is granted and you hit quit and reopen auto mac dialogue (not inside helm), it skips the onboarding. Make sure that when helm is opened again after that it continues onboarding flow instead of going to the default file manager view. We have talked about this bug multiple times now. Fix it. Onboarding flow should be maintained after quiting / force quitting" | 2026-11-18 | Only the person's own close or Get Started counts as going through the onboarding. From the moment Helm is asked to quit, by the person or by macOS's Quit & Reopen, nothing the window does counts, so the next launch carries on at the step it reached; a force quit runs no code, and the step is kept as each one opens. |
+| Organize | "Also organize isn't a drop down, remove drop down symbol and get rid of the move and copy buttons, users can command it themselves" | 2026-11-18 | The panel's one suggestion is a plain Organize button, for the folder on show or the items selected. Its depth menu and the Move and Copy suggestions are gone; asking to move or copy in the composer works as before. |
+| A disk that stops answering | "Decide what is best here. Maybe even hybrid, up to you for user UX." | 2026-11-18 | Hybrid: a read that macOS holds shuts only the folder it was reading, and the disk is shut as before only when reads stall in two places at once or the disk itself looks stuck. A search leaves out a folder inside that doesn't answer, and AI search says the disk didn't answer rather than "0 matches". |
+| A vision model on this Mac | "Qwen download finished" | 2026-11-18 | Tested with Qwen2.5-VL 7B in LM Studio. A model on this Mac that sees pictures now looks at 24 files, 4 and at most 6 pictures a question, so a question fits LM Studio's 4,096 tokens, and a lone letter such as "a" is no word to look for. |
+| Permissions | "Decide what is best here, should replicate Finder / Nautilus behaviour and be stable" | 2026-11-18 | See "Permissions" under the delegated choices of run 7, whose row describes what was built: Finder's Read & Write, Read only and No access for your own items, Nautilus's "Allow executing file as program", each change one Undo. |
+| A fresh install | "Reinstall / clear helm cache again" | 2026-11-18 | Done as the fresh install of run 7, with Huseyn's earlier "Everything" and "Restore Finder first": the details are under "Left installed" in [`MAC_RUN_8.md`](MAC_RUN_8.md#left-installed). |
+
 ## Ruled but not built yet
 
 The app works without these, but each ruling above is still owed. Row-level status is in [`P0_P1_STATUS.md`](P0_P1_STATUS.md).
