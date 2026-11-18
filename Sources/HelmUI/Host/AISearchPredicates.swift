@@ -10,7 +10,9 @@ import HelmCore
 /// words of an "any" field, the kinds, the extensions and the dates of `any` are ORed among themselves. Folder words
 /// aren't asked of Spotlight, which can't search a path; the matcher checks them on every hit.
 enum AISearchPredicates {
-    static func predicate(for query: AISearchQuery) -> NSPredicate {
+    /// Nil for a query that asks nothing Spotlight can check, such as one of folder words alone: Spotlight throws on a
+    /// predicate that is just false, and the exception left the search on "Thinking…" for good.
+    static func predicate(for query: AISearchQuery) -> NSPredicate? {
         var parts: [NSPredicate] = []
         parts += query.nameAll.compactMap { word in clean(word).map { like(NSMetadataItemFSNameKey, "*\($0)*") } }
         if let any = or(query.nameAny.compactMap { word in clean(word).map { like(NSMetadataItemFSNameKey, "*\($0)*") } }) {
@@ -29,8 +31,8 @@ enum AISearchPredicates {
         if query.sizeMaxBytes > 0 {
             parts.append(compare(NSMetadataItemFSSizeKey, .lessThanOrEqualTo, NSNumber(value: query.sizeMaxBytes), options: []))
         }
-        // A query that asks for nothing Spotlight can check finds nothing here; the walk and the baseline still run.
-        guard !parts.isEmpty else { return NSPredicate(value: false) }
+        // A query that asks for nothing Spotlight can check isn't asked of it; the walk and the baseline still run.
+        guard !parts.isEmpty else { return nil }
         return parts.count == 1 ? parts[0] : NSCompoundPredicate(andPredicateWithSubpredicates: parts)
     }
 

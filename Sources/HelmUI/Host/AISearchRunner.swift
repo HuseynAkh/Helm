@@ -294,9 +294,9 @@ import HelmSearch
                     let planned = queries[index]
                     group.addTask { @MainActor in
                         if let hook { return (index, hook(planned)) }
-                        guard asksSpotlight else { return (index, []) }
+                        guard asksSpotlight, let predicate = AISearchPredicates.predicate(for: planned) else { return (index, []) }
                         let scopes: [Any] = scopeRoot.map { [$0.path] } ?? [NSMetadataQueryLocalComputerScope]
-                        let urls = await AISearchSpotlightGather.gather(AISearchPredicates.predicate(for: planned), scopes: scopes,
+                        let urls = await AISearchSpotlightGather.gather(predicate, scopes: scopes,
                                                                         limit: Self.spotlightReadLimit, seconds: Self.spotlightSeconds)
                         return (index, urls)
                     }
@@ -626,8 +626,9 @@ import HelmSearch
         if let hook = Self.fanOutAnswersForTesting {
             urls = hook(look)
         } else {
-            guard !dependencies.agent.secrets.isMemoryOnly, coverage != .namesOnly else { return [] }
-            urls = await AISearchSpotlightGather.gather(AISearchPredicates.predicate(for: look), scopes: [NSMetadataQueryLocalComputerScope],
+            guard !dependencies.agent.secrets.isMemoryOnly, coverage != .namesOnly,
+                  let predicate = AISearchPredicates.predicate(for: look) else { return [] }
+            urls = await AISearchSpotlightGather.gather(predicate, scopes: [NSMetadataQueryLocalComputerScope],
                                                         limit: Self.spotlightReadLimit, seconds: Self.spotlightSeconds)
         }
         let entries = await DatalessGuard.off { () async -> [FileEntry] in

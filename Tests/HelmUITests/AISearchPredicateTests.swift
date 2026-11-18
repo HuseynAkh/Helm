@@ -24,7 +24,7 @@ final class AISearchPredicateTests: XCTestCase {
         for word in hostile {
             for query in [AISearchQuery(nameAll: [word]), AISearchQuery(nameAny: [word, "plain"]), AISearchQuery(contentAll: [word]),
                           AISearchQuery(extensions: [word])] {
-                let predicate = AISearchPredicates.predicate(for: query)
+                let predicate = AISearchPredicates.predicate(for: query)!
                 let parts = comparisons(predicate)
                 XCTAssertFalse(parts.isEmpty, word)
                 for part in parts {
@@ -42,7 +42,7 @@ final class AISearchPredicateTests: XCTestCase {
     }
 
     func testAWordsSyntaxNeverAddsAClause() {
-        let predicate = AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["%@ OR 1==1", "x\") OR (\"y"]))
+        let predicate = AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["%@ OR 1==1", "x\") OR (\"y"]))!
         XCTAssertEqual(comparisons(predicate).count, 2, "one comparison a word, however the word reads")
         XCTAssertEqual(Set(values(predicate)), ["*%@ OR 1==1*", "*x) OR (y*"])
         // Written out and read back, it is still two comparisons of values.
@@ -52,10 +52,9 @@ final class AISearchPredicateTests: XCTestCase {
     }
 
     func testAWordOfNothingButSyntaxIsLeftOut() {
-        let predicate = AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["*?\\\""], nameAny: ["ok"]))
+        let predicate = AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["*?\\\""], nameAny: ["ok"]))!
         XCTAssertEqual(values(predicate), ["*ok*"])
-        XCTAssertEqual(AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["**"])).predicateFormat,
-                       NSPredicate(value: false).predicateFormat, "nothing left to ask, so nothing is found")
+        XCTAssertNil(AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["**"])), "nothing left to ask, so nothing is asked")
     }
 
     func testTheQueryShape() {
@@ -90,14 +89,43 @@ final class AISearchPredicateTests: XCTestCase {
 
     func testAnyDateLooksAtEveryDateSpotlightKeeps() {
         let from = Date(timeIntervalSince1970: 1_772_000_000)
-        let predicate = AISearchPredicates.predicate(for: AISearchQuery(dateField: .any, dateFrom: from))
+        let predicate = AISearchPredicates.predicate(for: AISearchQuery(dateField: .any, dateFrom: from))!
         guard let or = predicate as? NSCompoundPredicate, or.compoundPredicateType == .or else { return XCTFail("any date is an OR") }
         XCTAssertEqual(Set(comparisons(or).map(\.leftExpression.keyPath)),
                        [NSMetadataItemFSContentChangeDateKey, "kMDItemFSCreationDate", "kMDItemDateAdded", "kMDItemLastUsedDate"])
     }
 
-    func testAnEmptyQueryFindsNothing() {
-        XCTAssertEqual(AISearchPredicates.predicate(for: AISearchQuery()).predicateFormat, NSPredicate(value: false).predicateFormat)
+    /// A query with nothing Spotlight can check, empty or of folder words alone, isn't asked of it: Spotlight throws on
+    /// a predicate that is just false, which left a live search on "Thinking…" when gpt-oss planned one of folder words.
+    func testAQueryWithNothingSpotlightCanCheckIsNotAskedOfIt() {
+        XCTAssertNil(AISearchPredicates.predicate(for: AISearchQuery()))
+        XCTAssertNil(AISearchPredicates.predicate(for: AISearchQuery(folderAny: ["Image", "Tests"])))
+        XCTAssertNil(AISearchPredicates.predicate(for: AISearchQuery(nameAll: ["**"], folderAny: ["Tests"])))
+    }
+
+    /// Every predicate Helm builds is one Spotlight takes: a kind it can't read makes `start` throw rather than fail.
+    @MainActor func testSpotlightTakesEveryPredicateHelmBuilds() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("helm-predicates-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let day = Date(timeIntervalSince1970: 1_780_000_000)
+        let queries = [
+            AISearchQuery(nameAll: ["bird"], contentAll: ["bird"], folderAny: ["Image", "Tests"], kinds: [.image]),
+            AISearchQuery(nameAny: ["bird", "avian"], kinds: [.image, .document], extensions: ["jpg", "heic"]),
+            AISearchQuery(contentAll: ["bird"]),
+            AISearchQuery(kinds: [.video]),
+            AISearchQuery(dateField: .any, dateFrom: day, dateTo: day.addingTimeInterval(86_400)),
+            AISearchQuery(dateField: .opened, dateFrom: day),
+            AISearchQuery(sizeMinBytes: 1, sizeMaxBytes: 1_000_000)
+        ]
+        for query in queries {
+            let predicate = try XCTUnwrap(AISearchPredicates.predicate(for: query))
+            let metadata = NSMetadataQuery()
+            metadata.predicate = predicate
+            metadata.searchScopes = [folder.path]
+            XCTAssertTrue(metadata.start(), predicate.predicateFormat)
+            metadata.stop()
+        }
     }
 
     // MARK: The kind row
@@ -115,7 +143,7 @@ final class AISearchPredicateTests: XCTestCase {
         }
         // A planned query kept to Photo asks for pictures alone, whatever kind the model named.
         let planned = AISearchQuery(nameAny: ["beach"], kinds: [.video]).limited(to: .image)
-        let asked = comparisons(AISearchPredicates.predicate(for: planned)).filter { $0.leftExpression.keyPath == "kMDItemContentTypeTree" }
+        let asked = comparisons(AISearchPredicates.predicate(for: planned)!).filter { $0.leftExpression.keyPath == "kMDItemContentTypeTree" }
         XCTAssertEqual(asked.compactMap { $0.rightExpression.constantValue as? String }, ["public.image"])
     }
 

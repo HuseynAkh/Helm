@@ -17,7 +17,7 @@ enum AISearchPrompt {
         name_all: every word must be in the file name. name_any: at least one must be; use it for other names and \
         spellings, in the request's language and in English.
         content_all: words that must appear inside the file. Use only words the person wrote; any other is dropped.
-        folder_any: words in the name of a folder above the file.
+        folder_any: words in the name of a folder above the file, inside the place searched; never the name of the place searched itself, which holds every file searched.
         Dates are YYYY-MM-DD, both days included; leave them empty and date_field none when the request names no time.
         Sizes are in bytes; 0 means no limit.
         sort is relevance unless the person asked for the newest, oldest, largest or smallest.
