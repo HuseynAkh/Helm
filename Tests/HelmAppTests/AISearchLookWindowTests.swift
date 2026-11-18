@@ -169,17 +169,31 @@ import HelmPersistence
                        controller.aiSearchStatusForTesting?.text ?? "")
     }
 
-    func testAModelOnThisMacLooksAtTwelve() async throws {
+    /// A model on this Mac that sees pictures looks at 24 files, 4 a question, so each question fits LM Studio's
+    /// 4,096 tokens: 12 pictures ran past them and were cut short. One that reads text only still looks at 12, in one.
+    func testAModelOnThisMacLooksAtTwentyFourOrTwelveIfItReadsTextOnly() async throws {
         let numbered = (1...30).map { String(format: "p%02d.jpg", $0) }
-        let client = AISearchLookClient(plan: """
+        let plan = """
             {"sort": "relevance", "queries": [{"content_all": ["kite"], "kinds": ["image"]}]}
-            """, isLocal: true) { names in AISearchLookClient.answer(names, fits: [:], misses: [], order: []) }
-        let (controller, _) = try await window(client: client, reader: AISearchLookReader(), files: numbered)
-        await searchReadingContents(controller, client, "kite")
-        XCTAssertEqual(client.looks.count, 1)
-        XCTAssertEqual(AISearchLookClient.items(in: client.looks[0]).first, "p30.jpg", "the newest first")
-        XCTAssertEqual(controller.aiSearchStatusForTesting?.text.hasSuffix(" · Looked at 12"), true,
+            """
+        let seeing = AISearchLookClient(plan: plan, isLocal: true) { names in AISearchLookClient.answer(names, fits: [:], misses: [], order: []) }
+        let (controller, _) = try await window(client: seeing, reader: AISearchLookReader(), files: numbered)
+        await searchReadingContents(controller, seeing, "kite")
+        XCTAssertEqual(seeing.looks.count, 6, "six questions of 4")
+        XCTAssertTrue(seeing.looks.allSatisfy { AISearchLookClient.items(in: $0).count <= 4 })
+        XCTAssertTrue(seeing.looks.contains { AISearchLookClient.items(in: $0).first == "p30.jpg" }, "the newest first")
+        XCTAssertEqual(controller.aiSearchStatusForTesting?.text.hasSuffix(" · Looked at 24"), true,
                        controller.aiSearchStatusForTesting?.text ?? "")
+        controller.window?.close()
+
+        let reading = AISearchLookClient(plan: plan, isLocal: true) { names in AISearchLookClient.answer(names, fits: [:], misses: [], order: []) }
+        let (textOnly, runtime) = try await window(client: reading, reader: AISearchLookReader(), files: numbered)
+        runtime.configure(AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"],
+                                   textOnlyModels: ["lmStudio|127.0.0.1:1234": ["openai/gpt-oss-20b"]]))
+        await searchReadingContents(textOnly, reading, "kite")
+        XCTAssertEqual(reading.looks.count, 1)
+        XCTAssertEqual(textOnly.aiSearchStatusForTesting?.text.hasSuffix(" · Looked at 12"), true,
+                       textOnly.aiSearchStatusForTesting?.text ?? "")
     }
 
     /// The two plans gpt-oss-20b made for "a bird" live, as kites: names alone, and names that say again the word

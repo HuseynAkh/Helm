@@ -59,3 +59,13 @@ A step that stalls leaves the executor refusing every later operation as busy. A
 person acknowledges the stalled change, the host calls `OperationExecutor.clearQuarantine()`.
 It asks `FileSystem.reopenAfterStall()` and lets operations run again only when that answers
 true; false means a stalled call is still out, so the host asks again before its next operation.
+
+A permissions change from Properties is one entry too, named "Change Permissions", made by the
+host without the executor: one item's mode, never anything inside a folder. Reserve with
+`beginPermissionChange()`, make the change, then `finishPermissionChange(request:change:)` with
+the `PermissionChange` (item, identity, mode before and the mode the disk kept), or nil when
+nothing changed. When `permissionChangeToUndo()` names the top entry, Undo is
+`beginPermissionUndo()` then `finishPermissionUndo(request:restored:)`; a refusal leaves the
+entry, as an operation's refused Undo does. Redo is `beginPermissionRedo()`, ended by
+`finishPermissionChange` as a new entry. The plain `beginUndo` and `beginRedoForward` don't
+handle these entries, so the host asks first.

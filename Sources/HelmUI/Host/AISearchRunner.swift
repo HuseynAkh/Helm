@@ -144,9 +144,10 @@ import HelmSearch
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
-        let walked = await walk(query, scopeRoot: scopeRoot, place: place)
-        var found = await fanOut(queries, search: query, scopeRoot: scopeRoot, walked: walked, coverage: coverage,
-                                 hiddenFolders: hiddenFolders)
+        let (walked, walkTimedOut) = await walk(query, scopeRoot: scopeRoot, place: place)
+        let fannedOut = await fanOut(queries, search: query, scopeRoot: scopeRoot, walked: walked, coverage: coverage,
+                                     hiddenFolders: hiddenFolders)
+        var found = fannedOut.found
         guard !Task.isCancelled else { return }
 
         // 3. The plain search's results, which the look and the merge both take.
@@ -161,20 +162,21 @@ import HelmSearch
         var notDownloaded = 0
         var looked = AISearchLooked()
         if let looking, coverage != .namesOnly {
+            let looks = AgentContentLimits.searchLooks(isLocal: isLocal, seesPictures: dependencies.agent.runtime.modelSeesPictures)
             delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchReadingInside, coverage: coverage))
             let read = await readInside(queries, walked: walked, found: found, plain: plainKept, scopeRoot: scopeRoot,
                                         kind: query.kind, coverage: coverage, hiddenFolders: hiddenFolders,
                                         reader: looking.reader, permit: looking.permit,
-                                        looks: AgentContentLimits.searchLooks(isLocal: isLocal))
+                                        looks: looks)
             guard !Task.isCancelled else { return }
             notDownloaded = read.notDownloaded
-            let picked = Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal)))
+            let picked = Array(read.pool.prefix(looks))
             if !picked.isEmpty {
                 delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchLooking(picked.count), coverage: coverage))
             }
             looked = await look(at: picked,
                                 request: query.text, kind: query.kind, session: session, place: place, scopeRoot: scopeRoot,
-                                reader: looking.reader, permit: looking.permit)
+                                reader: looking.reader, permit: looking.permit, isLocal: isLocal)
             guard !Task.isCancelled else { return }
             // A file the model looked at and said doesn't fit is no longer a match for what was read on this Mac.
             sightings = read.sightings.filter { !looked.misses.contains($0.key) }
@@ -266,6 +268,12 @@ import HelmSearch
             // A failed ranking leaves the merged list, with the queries' reasons.
         }
         guard !Task.isCancelled else { return }
+        // Nothing found because the disk didn't answer says so, rather than "0 matches".
+        if Self.diskDidntAnswer(found: order.count, walkTimedOut: walkTimedOut, readsTimedOut: fannedOut.timedOut, place: place) {
+            delivery.assist(SearchAssist(phase: .done, readAs: AgentText.searchDiskDidntAnswer, queriesRead: queriesRead,
+                                         coverage: coverage))
+            return
+        }
         // How the request was read, from the strictest query; with no query left, the count alone. The kind the
         // person chose follows, then the files the model looked at: "12 matches · “beach” · Photos · Looked at 48".
         var readAs = SearchReasonBuilder.readAs(count: order.count, query: shown(queries.first ?? AISearchQuery()), calendar: calendar,
@@ -279,13 +287,16 @@ import HelmSearch
 
     /// Runs every planned query and answers what each found, best first, in the plan's order. Each hit is looked up
     /// with downloads off, so a hit in a cloud folder that isn't loaded is skipped and nothing is fetched.
+    /// `timedOut` says every hit that was looked up went unanswered because the disk didn't answer.
     private func fanOut(_ queries: [AISearchQuery], search: SearchQuery, scopeRoot: URL?, walked: [FileEntry],
-                        coverage: SearchAssist.Coverage, hiddenFolders: AISearchHiddenFolders) async -> [[FileEntry]] {
+                        coverage: SearchAssist.Coverage,
+                        hiddenFolders: AISearchHiddenFolders) async -> (found: [[FileEntry]], timedOut: Bool) {
         let fileSystem = dependencies.fileSystem
         let hook = Self.fanOutAnswersForTesting
         // A fixture run keeps its keys in memory. It never asks Spotlight; the walk and the hook stand in.
         let asksSpotlight = hook == nil && !dependencies.agent.secrets.isMemoryOnly && coverage != .namesOnly
         var found = Array(repeating: [FileEntry](), count: queries.count)
+        var answered = 0, unanswered = 0
         var next = 0
         while next < queries.count, !Task.isCancelled {
             let batch = Array(next..<min(next + Self.queriesAtOnce, queries.count))
@@ -303,20 +314,22 @@ import HelmSearch
                     }
                 }
                 for await (index, urls) in group {
-                    let indexed = await DatalessGuard.off { () async -> [FileEntry] in
-                        var indexed: [FileEntry] = []
+                    let read = await DatalessGuard.off { () async -> (entries: [FileEntry], timedOut: Int) in
+                        var indexed: [FileEntry] = [], timedOut = 0
                         for url in urls.prefix(Self.spotlightReadLimit) {
                             guard !Task.isCancelled else { break }
-                            if let entry = try? await fileSystem.entry(at: url) { indexed.append(entry) }
+                            do { indexed.append(try await fileSystem.entry(at: url)) }
+                            catch { if error as? FileSystemError == .timedOut { timedOut += 1 } }
                         }
-                        return indexed
+                        return (indexed, timedOut)
                     }
-                    let outside = await hiddenFolders.outside(indexed)
+                    answered += read.entries.count; unanswered += read.timedOut
+                    let outside = await hiddenFolders.outside(read.entries)
                     found[index] = keep(outside, walked: walked, for: queries[index], search: search, scopeRoot: scopeRoot)
                 }
             }
         }
-        return found
+        return (found, unanswered > 0 && answered == 0)
     }
 
     // MARK: Inside files
@@ -426,7 +439,7 @@ import HelmSearch
     /// leaves what was read on this Mac as it was.
     private func look(at picked: [AISearchRead], request: String, kind: AISearchKind?, session: AISearchSession,
                       place: StorageFacts, scopeRoot: URL?, reader: any AgentContentReading,
-                      permit: AgentContentPermit) async -> AISearchLooked {
+                      permit: AgentContentPermit, isLocal: Bool) async -> AISearchLooked {
         guard !picked.isEmpty else { return AISearchLooked() }
         // A model that can't see pictures, as its provider said, gets Apple's descriptions of them alone.
         let sendsPictures = !picturesRefused && dependencies.agent.runtime.modelSeesPictures
@@ -437,8 +450,9 @@ import HelmSearch
         let spelled = await dependencies.agent.disk.canonicalPath(home) ?? home
         let homes = spelled == home ? [home] : [home, spelled]
         var questions: [[(entry: FileEntry, item: AISearchLookItem)]] = []
-        for start in stride(from: 0, to: shown.count, by: AgentContentLimits.looksPerQuestion) {
-            let end = min(start + AgentContentLimits.looksPerQuestion, shown.count)
+        let perQuestion = AgentContentLimits.questionSize(isLocal: isLocal, seesPictures: sendsPictures)
+        for start in stride(from: 0, to: shown.count, by: perQuestion) {
+            let end = min(start + perQuestion, shown.count)
             questions.append((start..<end).map { index in
                 let read = shown[index], fact = facts[index]
                 let modified = read.entry.modificationDate == .distantPast ? nil : read.entry.modificationDate
@@ -678,9 +692,10 @@ import HelmSearch
     }
 
     /// Everything in the folder searched, within the place's limits, with downloads off and never into a folder
-    /// that isn't loaded. Nothing is walked for a search of the whole Mac.
-    private func walk(_ search: SearchQuery, scopeRoot: URL?, place: StorageFacts) async -> [FileEntry] {
-        guard let scopeRoot else { return [] }
+    /// that isn't loaded. Nothing is walked for a search of the whole Mac. `timedOut` says the walk got nothing
+    /// because the disk didn't answer.
+    private func walk(_ search: SearchQuery, scopeRoot: URL?, place: StorageFacts) async -> (entries: [FileEntry], timedOut: Bool) {
+        guard let scopeRoot else { return ([], false) }
         let limits = Self.walkLimits(place)
         let options = SearchWalkOptions(maxDepth: limits.depth, visitLimit: limits.entries, skipsNotLoaded: true)
         let home = dependencies.home
@@ -692,9 +707,11 @@ import HelmSearch
         everything.text = ""; everything.filters = []; everything.limit = limits.entries; everything.showHidden = false
         let context = SearchRankingContext(query: everything, preferredRoots: [])
         let request = SearchRequest(text: "", scope: .currentFolder(scopeRoot), includeHidden: false)
-        let walk = Task.detached { () -> [FileEntry] in
-            let batch = await DatalessGuard.off { try? await engine.collect(request, context: context, options: options) }
-            return batch?.results.map(\.entry) ?? []
+        let walk = Task.detached { () -> (entries: [FileEntry], timedOut: Bool) in
+            await DatalessGuard.off { () async -> (entries: [FileEntry], timedOut: Bool) in
+                do { return (try await engine.collect(request, context: context, options: options).results.map(\.entry), false) }
+                catch { return ([], error as? FileSystemError == .timedOut) }
+            }
         }
         return await withTaskCancellationHandler { await walk.value } onCancel: { walk.cancel() }
     }
@@ -745,6 +762,12 @@ import HelmSearch
     }
 
     // MARK: Rules
+
+    /// Whether a search got nothing because the disk didn't answer: its walk of the folder searched or its reads of
+    /// Spotlight's hits timed out, or the place searched isn't responding. A search that found anything counts it.
+    static func diskDidntAnswer(found: Int, walkTimedOut: Bool, readsTimedOut: Bool, place: StorageFacts) -> Bool {
+        found == 0 && (walkTimedOut || readsTimedOut || !place.isResponding)
+    }
 
     /// How much of a place a search can cover. Cloud folders are searched for what is on this Mac; a server by name.
     static func coverage(of place: StorageFacts, scoped: Bool) -> SearchAssist.Coverage {

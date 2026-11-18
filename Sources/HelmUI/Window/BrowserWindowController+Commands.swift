@@ -631,7 +631,7 @@ extension BrowserWindowController {
     }
     /// Reloads the tabs an operation may have changed: those showing a folder it touched, the Trash and Recent, which
     /// any operation can change, and the tab in front.
-    private func refreshTabs(touching directories: Set<URL>, selecting ids: Set<ItemID>) {
+    func refreshTabs(touching directories: Set<URL>, selecting ids: Set<ItemID>) {
         let paths = Set(directories.map { $0.standardizedFileURL.path })
         for (id, tab) in store.state.tabs {
             // A card standing in for a place that couldn't open stays up: a refresh would put the folder it covers
@@ -1123,7 +1123,13 @@ extension BrowserWindowController {
         guard !entries.isEmpty, window != nil else { return }
         let icon = entries.count == 1 ? icons.icon(for: entries[0]) : (NSImage(named: NSImage.multipleDocumentsName) ?? icons.icon(for: entries[0]))
         let session = PropertiesSession(entries: entries, home: dependencies.home)
-        let controller = PropertiesWindowController(session: session, icon: icon,
+        // A change to the permissions is one of this window's changes, kept in its history for Undo.
+        session.changePermissions = { [weak self] item, identity, before, after in
+            guard let self else { return "The window this was opened from is closed, so nothing was changed." }
+            return await self.changePermissions(of: item, identity: identity, from: before, to: after)
+        }
+        session.follow(dependencies.operations.permissionEvents)
+        let controller = PropertiesWindowController(session: session, icon: icon, browser: self,
             reveal: { [weak self] urls in
                 guard let self, let url = urls.first else { return }
                 self.revealInCurrentTab(url)

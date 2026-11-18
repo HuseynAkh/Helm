@@ -150,7 +150,7 @@ public struct AISearchSession: Sendable {
             return homes.allSatisfy { AgentOutboundCheck.helmTextIsClean(words, home: $0) }
         }
         guard !shown.isEmpty else { throw AgentFailure.unreadable }
-        let attached = pictures ? Self.pictures(of: shown) : []
+        let attached = pictures ? Self.pictures(of: shown, limit: client.isLocal ? AgentContentLimits.localPicturesPerLook : Self.picturesPerLook) : []
         var counts: [Int: Int] = [:]
         for picture in attached { counts[picture.item, default: 0] += 1 }
         let itemsText = AISearchPrompt.lookItems(shown, pictured: counts, homes: homes, calendar: calendar)
@@ -189,9 +189,9 @@ public struct AISearchSession: Sendable {
 
     /// The pictures of `items` a look question carries, in item order, each with its label: an item's first picture
     /// before any item's second, so a long video can't crowd out the pictures after it.
-    private static func pictures(of items: [AISearchLookItem]) -> [(item: Int, picture: AgentAskPicture)] {
+    private static func pictures(of items: [AISearchLookItem], limit: Int) -> [(item: Int, picture: AgentAskPicture)] {
         var chosen: [Int: Int] = [:]
-        var left = picturesPerLook
+        var left = limit
         var depth = 0
         while left > 0 {
             var added = false

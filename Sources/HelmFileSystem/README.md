@@ -30,9 +30,10 @@ static checks passed, 98 production Swift files, zero errors. Scratch path:
 ## F2 mutation-safety integration
 
 IOExecutor cancels queued work without starting it; once begun, native work returns
-its real result despite cancellation. A timeout still quarantines the volume and
-requires external reconciliation. Cancellation is therefore not a prompt-return
-promise for blocking native calls.
+its real result despite cancellation. A mutation's timeout still quarantines the volume
+and requires external reconciliation. A read that names its path shuts only that path
+when it times out, unless the disk itself looks stuck (see [Live](Live/README.md)).
+Cancellation is therefore not a prompt-return promise for blocking native calls.
 
 Live enumeration now terminates with an error on any child metadata failure;
 already-delivered batches are partial and must not be treated as a completed

@@ -100,7 +100,8 @@ extension HostSmokeDriver {
             switch argument {
             case "open": app.showSetup(nil)
             case "guide", "access": app.showFullDiskAccessGuide(nil)
-            default: app.onboardingForTesting?.close()
+            // close: as the person closes it, with its close button.
+            default: app.onboardingForTesting?.window?.performClose(nil)
             }
             await wait(seconds: 0.6)
         case "help-menu":

@@ -38,19 +38,10 @@ public enum AgentText {
 
     public static func suggestOrganize(_ count: Int) -> String { "Organize \(counted(count, "item", "items"))" }
     public static func suggestOrganizeSelected(_ count: Int) -> String { "Organize \(number(count)) selected" }
-    public static let suggestMoveAll = "Move everything to…"
-    public static func suggestMoveSelected(_ count: Int) -> String { "Move \(number(count)) selected to…" }
-    public static let suggestCopyAll = "Copy everything to…"
-    public static func suggestCopySelected(_ count: Int) -> String { "Copy \(number(count)) selected to…" }
     public static let depthThisFolder = "This Folder"
     public static let depthTwoLevels = "2 Levels"
     public static let depthAllLevels = "All Levels"
     public static let emptyFolder = "Nothing here to organize yet."
-    /// The four sentences typed into the composer end in a space, where the person goes on to name a folder.
-    public static let fillMoveAll = "Move everything in this folder to "
-    public static func fillMoveSelected(_ count: Int) -> String { "Move the \(number(count)) selected \(count == 1 ? "item" : "items") to " }
-    public static let fillCopyAll = "Copy everything in this folder to "
-    public static func fillCopySelected(_ count: Int) -> String { "Copy the \(number(count)) selected \(count == 1 ? "item" : "items") to " }
 
     // MARK: Panel: composer and resting states
 
@@ -271,6 +262,9 @@ public enum AgentText {
     }
     public static let searchOnThisMac = "Searched what's on this Mac."
     public static let searchNamesOnly = "Names only here."
+    /// The status bar's whole line for a search that found nothing because the disk didn't answer: its walk or its
+    /// reads timed out, or the place searched isn't responding. It stands in for "0 matches".
+    public static let searchDiskDidntAnswer = "The disk didn't answer, so nothing there was searched."
     /// The kind row under the header while the search is open: its VoiceOver label, then its first choice.
     public static let searchKindRow = "File type"
     public static let searchKindAny = "Any"

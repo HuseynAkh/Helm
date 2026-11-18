@@ -646,12 +646,16 @@ public struct LaunchOptions: Equatable, Sendable {
     // MARK: Quit: wait for operations, save, then go (F-068, OK2-29).
 
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // First, so an onboarding that's open is left where it got to, however its window goes on the way out.
+        access.quitRequested()
         saveSession()
         switch quit.requestQuit(inFlightOperations: coordinator?.inFlight ?? 0) {
         case .waitForOperations: return .terminateLater
         case .flushStores: flush(); return .terminateLater
         case .terminate: return .terminateNow
-        case .none, .cancelQuit: return .terminateCancel
+        case .none, .cancelQuit:
+            access.quitCancelled()
+            return .terminateCancel
         }
     }
     private func operationsChanged(_ count: Int) {
@@ -680,6 +684,7 @@ public struct LaunchOptions: Equatable, Sendable {
             NSApp.reply(toApplicationShouldTerminate: true)
         default:
             _ = quit.cancel()
+            access.quitCancelled()
             NSApp.reply(toApplicationShouldTerminate: false)
         }
     }

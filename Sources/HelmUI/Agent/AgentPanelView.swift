@@ -3,7 +3,7 @@ import SwiftUI
 import HelmAgent
 import HelmCore
 
-/// The AI panel above its composer: the folders row, the thread, and the three suggestions just above the composer.
+/// The AI panel above its composer: the folders row, the thread, and Organize just above the composer.
 /// Its top is a fixed inset under the header, never a safe area the system works out, so the panel sits the same in
 /// every build. It draws no background of its own: the host's material shows through, as the sidebar's does.
 struct AgentPanelView: View {

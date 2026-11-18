@@ -3,7 +3,7 @@ import Foundation
 import HelmAgent
 import HelmCore
 
-/// What the AI panel shows and what its controls do: the folders AI mode can use, the thread, the three suggestions,
+/// What the AI panel shows and what its controls do: the folders AI mode can use, the thread, Organize,
 /// the plan card and its result, and the composer's text. It talks to one conversation and asks the window for
 /// everything that touches files. Only this file turns what the person typed into a message, so nothing but the
 /// composer, a suggestion or a dropped folder can start a request.
@@ -301,13 +301,8 @@ import HelmCore
 
     func choose(_ suggestion: AgentSuggestion, depth: AgentOrganizeDepth) {
         guard !requestOpen, !applying, !scopeChanging, !contentsChanging, suggestions.contains(suggestion), let root = tabRoot else { return }
-        if suggestion.runsAtOnce {
-            let message = AgentSuggestions.message(for: suggestion, depth: depth, root: root.alias)
-            begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths, asksForChanges: true), shown: suggestion.title)
-        } else {
-            type(AgentSuggestions.composerText(for: suggestion))
-            actions.focusComposer()
-        }
+        let message = AgentSuggestions.message(for: suggestion, depth: depth, root: root.alias)
+        begin(AgentPersonInput(typedByPerson: message, selectedPaths: tab.selectedPaths, asksForChanges: true), shown: suggestion.title)
     }
 
     /// The switch at the end of the folders row. Either half starts a new thread, as a change of provider does, so

@@ -32,6 +32,53 @@ extension HostSmokeDriver {
             // A row the newest Properties window doesn't have.
             check(!window.propertiesRowsForTesting.contains { $0.label == argument }, step,
                   window.propertiesRowsForTesting.map(\.label).joined(separator: ", "))
+        case "properties-access":
+            // "<Label>=<title>": the row's pop-up reads that, such as "Read only" or "Custom". With nothing after =,
+            // the row has no pop-up.
+            let bits = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            let shown = window.propertiesAccessForTesting(bits.first ?? "")
+            check(bits.count == 2 && shown == (bits[1].isEmpty ? nil : bits[1]), step, shown ?? "no pop-up")
+        case "properties-choose":
+            // "<Label>=<title>": chooses that in the row's pop-up, as a click does, and waits for the change.
+            let bits = argument.split(separator: "=", maxSplits: 1).map(String.init)
+            let chose = bits.count == 2 ? await window.propertiesChooseForTesting(bits[0], bits[1]) : false
+            check(chose, step, "nothing to choose")
+        case "properties-execute":
+            // on, off, or none when there's no "Allow executing file as program".
+            let shown = window.propertiesExecuteForTesting.map { $0 ? "on" : "off" } ?? "none"
+            check(shown == argument, step, shown)
+        case "properties-execute-set":
+            // on or off: clicks "Allow executing file as program" to that, and waits for the change.
+            let changed = await window.propertiesAllowExecutingForTesting(argument == "on")
+            check(changed, step, "nothing changed")
+        case "properties-controls":
+            // enabled or disabled: whether the pop-ups and the checkbox can be used.
+            let enabled = window.propertiesControlsEnabledForTesting
+            check(enabled == (argument == "enabled"), step, enabled ? "enabled" : "disabled")
+        case "properties-footer":
+            // The line under the permissions has these words, or, with none, there's no line.
+            let footer = window.propertiesFooterForTesting
+            check(argument.isEmpty ? footer == nil : footer?.contains(argument) == true, step, footer ?? "no line")
+        case "properties-undo", "properties-redo":
+            // Edit › Undo or Redo, sent to the newest Properties window as its menu item sends it. It runs in the
+            // browser window's turn, then the Properties window reads the item again.
+            check(window.propertiesUndoForTesting(redo: verb == "properties-redo"), step, "nothing answered")
+            await wait(seconds: 0.2)
+            var waited = 0.0
+            while window.isRunningOperationsForTesting, waited < 10 { await wait(seconds: 0.05); waited += 0.05 }
+            await wait(seconds: 0.4)
+        case "properties-undo-title":
+            // What Edit › Undo reads while the newest Properties window is in front, and that it can be chosen.
+            await window.refreshHistoryForTesting()
+            let item = window.propertiesUndoItemForTesting(redo: false)
+            check(item?.title == argument && item?.enabled == true, step, item.map { "\($0.title), enabled \($0.enabled)" } ?? "no window")
+        case "fixture-mode":
+            // fixture-mode <octal mode> <path>: the item's permissions on disk, read without following a link.
+            let bits = argument.split(separator: " ", maxSplits: 1).map(String.init)
+            var info = stat()
+            let read = bits.count == 2 && lstat(bits[1], &info) == 0
+            let mode = String(info.st_mode & 0o7777, radix: 8)
+            check(read && Int(bits[0], radix: 8) == Int(info.st_mode & 0o7777), step, read ? "mode \(mode)" : "unreadable")
         case "properties-windows":
             check(window.propertiesWindowCountForTesting == Int(argument), step, "\(window.propertiesWindowCountForTesting)")
         case "properties-close":

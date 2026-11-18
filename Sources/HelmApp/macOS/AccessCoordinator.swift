@@ -74,6 +74,13 @@ import HelmUI
     /// Helm is quitting. An open onboarding stays where it got to, for the next launch; nothing counts as seen.
     func quitting() { onboarding?.quitting() }
 
+    /// Helm has been asked to quit, by the person or by macOS's Quit & Reopen: from now on the onboarding's window
+    /// counts nothing if it closes, however AppKit closes it on the way out, so the next launch carries on.
+    func quitRequested() { onboarding?.beginEnding() }
+
+    /// The quit was cancelled: the onboarding's window counts as before.
+    func quitCancelled() { onboarding?.cancelEnding() }
+
     /// Checks access before the first window draws, then again whenever Helm comes back to the front, which
     /// is when an answered macOS question or a new permission shows up.
     func start(settings: SettingsStore, fileViewer: @escaping () -> FileViewerModel?, windows: @escaping () -> [BrowserWindowController],

@@ -30,6 +30,9 @@ import HelmPersistence
     private var leftTrash: [String: String] = [:]
     public let changes: Broadcast<[OperationRowModel]> = Broadcast()
     public let inFlightChanges: Broadcast<Int> = Broadcast()
+    /// An item's permissions were changed, put back or changed again, or an Undo or Redo of that was refused, so a
+    /// Properties window showing it reads it again.
+    public let permissionEvents: Broadcast<PermissionEvent> = Broadcast()
     public var inFlight: Int { running }
     public var currentRows: [OperationRowModel] { order.compactMap { rows[$0] } }
 
@@ -109,6 +112,8 @@ import HelmPersistence
         await DatalessGuard.off(if: downloadsOff) { await undoTop(history: history) }
     }
     private func undoTop(history: WindowOperationHistory) async -> Result<OperationResult, Failure> {
+        // A permissions change isn't the executor's: its Undo puts the mode back here.
+        if await history.permissionChangeToUndo() != nil { return await undoPermissionChange(history: history) }
         let state = await history.snapshot()
         guard let top = state.undoEntries.last else { return .failure(.message("Nothing to undo.")) }
         var recorded: [URL: URL] = [:]
@@ -194,6 +199,7 @@ import HelmPersistence
     }
 
     public func redo(history: WindowOperationHistory, resolver: ConflictResolver?) async -> Result<OperationResult, Failure> {
+        if await history.permissionChangeToRedo() != nil { return await redoPermissionChange(history: history) }
         guard let (request, command) = await history.beginRedoForward() else {
             return await history.snapshot().pending != nil ? .failure(.busy) : .failure(.message("Nothing to redo."))
         }

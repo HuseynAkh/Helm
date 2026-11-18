@@ -777,12 +777,25 @@ final class OnboardingProgressTests: XCTestCase {
         controller.endWithProcess()
         XCTAssertEqual(seen, 0, "the window going with the process isn't going through it")
         XCTAssertEqual(controller.modeForTesting, "closed")
-        // Closing it is going through it, once each time it opens.
+        // Closing it is going through it, once each time it opens, when the person closes it.
+        controller.show(.setup, activate: false)
+        controller.window?.performClose(nil)
+        XCTAssertEqual(seen, 1)
+        controller.window?.performClose(nil)
+        XCTAssertEqual(seen, 1)
+        // A close Helm or AppKit makes isn't the person's: on the way out of a quit, say.
         controller.show(.setup, activate: false)
         controller.close()
-        XCTAssertEqual(seen, 1)
-        controller.close()
-        XCTAssertEqual(seen, 1)
+        XCTAssertEqual(seen, 1, "only the person's close counts")
+        controller.show(.setup, activate: false)
+        controller.quitting()
+        controller.window?.performClose(nil)
+        XCTAssertEqual(seen, 1, "nor any close once Helm is quitting")
+        controller.show(.setup, activate: false)
+        controller.beginEnding()
+        controller.cancelEnding()
+        controller.window?.performClose(nil)
+        XCTAssertEqual(seen, 2, "a cancelled quit leaves the person's close counting")
         // So is Get Started.
         controller.show(.setup, activate: false)
         while controller.stepForTesting != "done" {
@@ -791,14 +804,13 @@ final class OnboardingProgressTests: XCTestCase {
             await controller.model.work?.value
         }
         XCTAssertTrue(controller.pressForTesting("Get Started"))
-        XCTAssertEqual(seen, 2)
+        XCTAssertEqual(seen, 3)
         XCTAssertEqual(controller.modeForTesting, "closed")
         // The guide on its own isn't the welcome.
         controller.show(.guide, activate: false)
         XCTAssertEqual(controller.modeForTesting, "guide")
-        controller.quitting()
-        controller.close()
-        XCTAssertEqual(seen, 2)
+        controller.window?.performClose(nil)
+        XCTAssertEqual(seen, 3)
     }
 
     func testEveryStepIsTheSameSize() async throws {
@@ -1091,7 +1103,7 @@ final class OnboardingProgressTests: XCTestCase {
         XCTAssertTrue(controller.model.aiSetup === ai)
         XCTAssertNil(controller.window?.appearance)
         XCTAssertEqual(seen, 0)
-        controller.close()
+        controller.window?.performClose(nil)
         XCTAssertEqual(seen, 1)
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(closed, [.setup])

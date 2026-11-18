@@ -234,9 +234,15 @@ public struct AISearchQuery: Hashable, Sendable {
     }
 
     /// The tokens among `words`, in order, each once whatever its case or accents, and no more than a field holds.
+    /// A single Latin letter, such as the "a" of "a bird", is in nearly every name and text, so it's no word to look
+    /// for: Qwen2.5-VL asked for "a" inside every photo.
     private static func words(_ words: [String]) -> [String] {
         var seen: Set<String> = []
-        return Array(words.filter { isToken($0) && seen.insert(folded($0)).inserted }.prefix(wordsPerField))
+        return Array(words.filter { isToken($0) && !isLoneLetter($0) && seen.insert(folded($0)).inserted }.prefix(wordsPerField))
+    }
+
+    private static func isLoneLetter(_ word: String) -> Bool {
+        word.count == 1 && word.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0) }
     }
 
     /// Every word the person typed, folded. A run such as "e-mail" counts whole and as its parts, so either may be

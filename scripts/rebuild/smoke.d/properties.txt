@@ -1,4 +1,5 @@
-# Properties: a folder's contents counted, with what couldn't be read, its parent folder and Nautilus's permissions.
+# Properties: a folder's contents counted, with what couldn't be read, its parent folder and Nautilus's permissions,
+# which the owner changes with Finder's pop-ups.
 # In a tab of its own, closed at the end, so the steps after these find the window as it was.
 cmd newTab
 wait 0.3
@@ -13,7 +14,8 @@ properties-note Contents=1 folder inside couldn’t be read, so what’s in it i
 properties-row Parent Folder=~
 properties-row Owner=You
 properties-note Owner=Can create and delete files
-properties-row Others=Can access files
+properties-note Others=Can access files
+properties-access Others=Read only
 properties-note Disk=GB free of
 properties-row Locked=No
 properties-lacks Size
@@ -29,7 +31,7 @@ cmd properties
 properties-wait
 properties-row Size=5 bytes
 properties-row Type=text/plain
-properties-row Runs as Program=No
+properties-execute off
 properties-row Parent Folder=~/Measured
 properties-note Owner=Can read and write
 properties-lacks Disk
@@ -83,6 +85,130 @@ select a.txt,sub
 menu openInTerminal disabled
 select Tool.app
 menu openInTerminal disabled
+# Permissions the owner changes, as in Finder's Get Info and Nautilus's Permissions page. Each change applies at once,
+# is read back from the disk and is one change in the window's history, which Undo and Redo in the Properties window
+# or the browser window take back and make again.
+go @FIX@/home/Access
+select notes.txt
+cmd properties
+properties-wait
+properties-row Owner=You
+properties-access Owner=Read & Write
+properties-access Group=Read only
+properties-access Others=Read only
+properties-note Group=Can only read
+properties-execute off
+properties-controls enabled
+properties-footer
+properties-lacks Runs as Program
+properties-shot @SHOTS@/properties-permissions.png
+properties-choose Group=No access
+fixture-mode 0604 @FIX@/home/Access/notes.txt
+properties-access Group=No access
+properties-note Group=No access
+properties-footer
+properties-undo-title Undo Change Permissions
+# The checkbox lets each class that can read the file run it, and off lets nobody
+properties-execute-set on
+fixture-mode 0705 @FIX@/home/Access/notes.txt
+properties-execute on
+properties-undo
+fixture-mode 0604 @FIX@/home/Access/notes.txt
+properties-execute off
+properties-undo
+fixture-mode 0644 @FIX@/home/Access/notes.txt
+properties-access Group=Read only
+properties-redo
+fixture-mode 0604 @FIX@/home/Access/notes.txt
+properties-access Group=No access
+properties-close
+# The browser window's Undo takes back a change made in Properties, as one of its own
+undo-title Change Permissions
+cmd undo
+fixture-mode 0644 @FIX@/home/Access/notes.txt
+# A file's access keeps each class's execute bit; the checkbox off clears them all
+select script.sh
+cmd properties
+properties-wait
+properties-execute on
+properties-choose Others=No access
+fixture-mode 0751 @FIX@/home/Access/script.sh
+properties-access Others=No access
+properties-execute on
+properties-execute-set off
+fixture-mode 0640 @FIX@/home/Access/script.sh
+properties-close
+# A folder's access includes execute, which it needs to be opened; it has no checkbox
+select Shared
+cmd properties
+properties-wait
+properties-access Others=Read only
+properties-note Owner=Can create and delete files
+properties-execute none
+properties-choose Others=No access
+fixture-mode 0750 @FIX@/home/Access/Shared
+properties-note Others=No access
+properties-choose Group=Read & Write
+fixture-mode 0770 @FIX@/home/Access/Shared
+properties-note Group=Can create and delete files
+properties-undo
+fixture-mode 0750 @FIX@/home/Access/Shared
+properties-close
+# Bits that match none of Finder's choices show as Custom until one is chosen
+select odd.txt
+cmd properties
+properties-wait
+properties-access Group=Custom
+properties-note Group=Can only write
+properties-choose Group=Read only
+fixture-mode 0644 @FIX@/home/Access/odd.txt
+properties-access Group=Read only
+properties-undo
+fixture-mode 0624 @FIX@/home/Access/odd.txt
+properties-access Group=Custom
+properties-close
+# Changed on the disk meanwhile: nothing is changed, and the window shows the disk as it is now
+select notes.txt
+cmd properties
+properties-wait
+fixture-chmod 0600 @FIX@/home/Access/notes.txt
+properties-choose Others=No access
+properties-footer changed meanwhile
+fixture-mode 0600 @FIX@/home/Access/notes.txt
+properties-access Others=No access
+properties-close
+fixture-chmod 0644 @FIX@/home/Access/notes.txt
+# Changed since a change made here: its Undo is refused, until the disk has the mode that change left
+select notes.txt
+cmd properties
+properties-wait
+properties-choose Group=No access
+fixture-mode 0604 @FIX@/home/Access/notes.txt
+fixture-chmod 0600 @FIX@/home/Access/notes.txt
+properties-undo
+properties-footer has changed since
+fixture-mode 0600 @FIX@/home/Access/notes.txt
+fixture-chmod 0604 @FIX@/home/Access/notes.txt
+properties-undo
+fixture-mode 0644 @FIX@/home/Access/notes.txt
+properties-footer
+properties-close
+# Locked: shown, with the controls off and why
+select Locked.txt
+cmd properties
+properties-wait
+properties-row Locked=Yes
+properties-access Owner=Read & Write
+properties-controls disabled
+properties-footer It’s locked, so its permissions can’t be changed.
+properties-close
+# A link's own permissions aren't used, so it has no controls
+select link.txt
+cmd properties
+properties-wait
+properties-access Owner=
+properties-footer A symbolic link uses its original’s permissions.
+properties-close
 select
 cmd closeTab
 wait 0.3

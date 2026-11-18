@@ -463,6 +463,15 @@ setup-steps welcome,access,viewer,ai,done
 onboarding-quitting
 setting-is onboardingCompleted false
 setup-progress welcome:welcome,access,viewer,ai,done:
+# Closed on the way out, as AppKit may close it, it still counts nothing: the next launch carries on at the welcome
+onboarding close
+onboarding-is closed
+setting-is onboardingCompleted false
+setup-progress welcome:welcome,access,viewer,ai,done:
+# Shown again and closed by the person, it's through
+setup-first-launch
+onboarding-is setup
+setup-step welcome
 onboarding close
 setting-is onboardingCompleted true
 setup-progress none

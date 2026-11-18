@@ -69,6 +69,11 @@ final class SearchEngineTests: XCTestCase {
         }
         await fulfillment(of: [warning], timeout: 1)
         XCTAssertTrue(result.truncated); XCTAssertEqual(result.results.count, 2)
+        // A folder inside that doesn't answer is left out the same way, and the rest is still searched.
+        await fs.setFailure(.timedOut, at: denied)
+        let stalled = try await engine(fs).collect(SearchRequest(text: "report"), context: context())
+        XCTAssertTrue(stalled.truncated); XCTAssertEqual(stalled.results.count, 2)
+        // The folder searched itself not answering still ends the search.
         await fs.setFailure(.timedOut, at: root)
         do { _ = try await engine(fs).collect(SearchRequest(text: ""), context: context()); XCTFail("expected timeout") }
         catch { XCTAssertEqual(error as? FileSystemError, .timedOut) }

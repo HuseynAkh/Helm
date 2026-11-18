@@ -2,40 +2,40 @@ import XCTest
 import HelmCore
 @testable import HelmAgent
 
-/// The three things the panel offers in the folder on show, worked out from two counts and the folder's place.
+/// What the panel offers in the folder on show, Organize, worked out from two counts and the folder's place. Moving
+/// and copying are asked for in the composer, so they're no suggestion of their own.
 final class AgentSuggestionsTests: XCTestCase {
     private func make(items: Int, selected: Int = 0, storage: StorageFacts = .thisMac) -> [AgentSuggestion] {
         AgentSuggestions.make(itemCount: items, selectedCount: selected, storage: storage)
     }
 
-    func testThreeChipsForAFolderWithItems() {
+    func testOrganizeAloneForAFolderWithItems() {
         let chips = make(items: 214)
-        XCTAssertEqual(chips.map(\.kind), [.organize, .moveAll, .copyAll])
-        XCTAssertEqual(chips.map(\.count), [214, 214, 214])
-        XCTAssertEqual(chips.map(\.isSelection), [false, false, false])
-        XCTAssertEqual(chips.map(\.title), ["Organize 214 items", "Move everything to…", "Copy everything to…"])
-        XCTAssertEqual(chips.map(\.id), ["organize", "moveAll", "copyAll"])
-        XCTAssertEqual(make(items: 1).map(\.title), ["Organize 1 item", "Move everything to…", "Copy everything to…"])
+        XCTAssertEqual(chips.map(\.kind), [.organize])
+        XCTAssertEqual(chips.map(\.count), [214])
+        XCTAssertEqual(chips.map(\.isSelection), [false])
+        XCTAssertEqual(chips.map(\.title), ["Organize 214 items"])
+        XCTAssertEqual(chips.map(\.id), ["organize"])
+        XCTAssertEqual(make(items: 1).map(\.title), ["Organize 1 item"])
     }
 
     func testTheChipsFollowTheSelection() {
         let chips = make(items: 214, selected: 12)
-        XCTAssertEqual(chips.map(\.kind), [.organize, .moveAll, .copyAll])
-        XCTAssertEqual(chips.map(\.count), [12, 12, 12])
-        XCTAssertEqual(chips.map(\.isSelection), [true, true, true])
-        XCTAssertEqual(chips.map(\.title), ["Organize 12 selected", "Move 12 selected to…", "Copy 12 selected to…"])
-        XCTAssertEqual(make(items: 214, selected: 1).map(\.title), ["Organize 1 selected", "Move 1 selected to…", "Copy 1 selected to…"])
+        XCTAssertEqual(chips.map(\.kind), [.organize])
+        XCTAssertEqual(chips.map(\.count), [12])
+        XCTAssertEqual(chips.map(\.isSelection), [true])
+        XCTAssertEqual(chips.map(\.title), ["Organize 12 selected"])
+        XCTAssertEqual(make(items: 214, selected: 1).map(\.title), ["Organize 1 selected"])
         // The ids stay the same, so a chip keeps its place when the selection changes.
         XCTAssertEqual(chips.map(\.id), make(items: 214).map(\.id))
         // A count below zero is no selection.
-        XCTAssertEqual(make(items: 3, selected: -1).map(\.isSelection), [false, false, false])
+        XCTAssertEqual(make(items: 3, selected: -1).map(\.isSelection), [false])
     }
 
     func testCountsAreTheRealOnes() {
         let grouped = 1_240.formatted(.number)
         XCTAssertEqual(make(items: 1_240).first?.title, "Organize \(grouped) items")
-        XCTAssertEqual(make(items: 5_000, selected: 1_240).map(\.title),
-                       ["Organize \(grouped) selected", "Move \(grouped) selected to…", "Copy \(grouped) selected to…"])
+        XCTAssertEqual(make(items: 5_000, selected: 1_240).map(\.title), ["Organize \(grouped) selected"])
     }
 
     func testNoChipsForAnEmptyFolder() {
@@ -59,16 +59,11 @@ final class AgentSuggestionsTests: XCTestCase {
             StorageFacts(kind: .external, name: "External disk", trash: .unknown)
         ]
         for place in places {
-            XCTAssertEqual(make(items: 30, storage: place).count, 3, place.name)
+            XCTAssertEqual(make(items: 30, storage: place).count, 1, place.name)
         }
     }
 
-    func testOnlyOrganizeRunsAtOnce() {
-        XCTAssertEqual(make(items: 214).map(\.runsAtOnce), [true, false, false])
-        XCTAssertEqual(make(items: 214, selected: 12).map(\.runsAtOnce), [true, false, false])
-    }
-
-    // MARK: What is sent and what is typed
+    // MARK: What is sent
 
     func testTheSentencesAModelIsSentAreFixed() {
         let organize = AgentSuggestion(kind: .organize, count: 214, isSelection: false)
@@ -114,32 +109,6 @@ final class AgentSuggestionsTests: XCTestCase {
         }
     }
 
-    func testMoveAndCopyFillTheComposer() {
-        let moveAll = AgentSuggestion(kind: .moveAll, count: 214, isSelection: false)
-        let copyAll = AgentSuggestion(kind: .copyAll, count: 214, isSelection: false)
-        let moveSelected = AgentSuggestion(kind: .moveAll, count: 12, isSelection: true)
-        let copySelected = AgentSuggestion(kind: .copyAll, count: 12, isSelection: true)
-        XCTAssertEqual(AgentSuggestions.composerText(for: moveAll), "Move everything in this folder to ")
-        XCTAssertEqual(AgentSuggestions.composerText(for: copyAll), "Copy everything in this folder to ")
-        XCTAssertEqual(AgentSuggestions.composerText(for: moveSelected), "Move the 12 selected items to ")
-        XCTAssertEqual(AgentSuggestions.composerText(for: copySelected), "Copy the 12 selected items to ")
-        XCTAssertEqual(AgentSuggestions.composerText(for: AgentSuggestion(kind: .moveAll, count: 1, isSelection: true)),
-                       "Move the 1 selected item to ")
-        // Organize runs by itself, so it types nothing.
-        XCTAssertEqual(AgentSuggestions.composerText(for: AgentSuggestion(kind: .organize, count: 214, isSelection: false)), "")
-        // What is typed is what is sent once the person has named a folder: with the folder, it reads as a message
-        // that ends in a path.
-        for chip in [moveAll, copyAll, moveSelected, copySelected] {
-            let typed = AgentSuggestions.composerText(for: chip)
-            XCTAssertEqual(AgentSuggestions.message(for: chip, depth: .thisFolder, root: "r1"), typed)
-            guard case .message(_, let candidates) = AgentComposerIntent.parse(typed + "~/Pictures/2026") else {
-                XCTFail("not a message: \(typed)")
-                continue
-            }
-            XCTAssertEqual(candidates, [AgentTrailingPath(path: "~/Pictures/2026", prefix: typed)])
-        }
-    }
-
     func testDepthsAreTheDepthsAListingIsAskedFor() {
         XCTAssertEqual(AgentOrganizeDepth.thisFolder.rawValue, 1)
         XCTAssertEqual(AgentOrganizeDepth.twoLevels.rawValue, 2)
@@ -148,10 +117,10 @@ final class AgentSuggestionsTests: XCTestCase {
     }
 
     func testASuggestionIsAValue() {
-        let chip = AgentSuggestion(kind: .moveAll, count: 3, isSelection: true)
-        XCTAssertEqual(chip, AgentSuggestion(kind: .moveAll, count: 3, isSelection: true))
-        XCTAssertNotEqual(chip, AgentSuggestion(kind: .moveAll, count: 4, isSelection: true))
-        XCTAssertEqual(Set(make(items: 5)).count, 3)
+        let chip = AgentSuggestion(kind: .organize, count: 3, isSelection: true)
+        XCTAssertEqual(chip, AgentSuggestion(kind: .organize, count: 3, isSelection: true))
+        XCTAssertNotEqual(chip, AgentSuggestion(kind: .organize, count: 4, isSelection: true))
+        XCTAssertEqual(Set(make(items: 5)).count, 1)
         XCTAssertEqual(AgentSuggestion.Kind.organize.rawValue, "organize")
     }
 }

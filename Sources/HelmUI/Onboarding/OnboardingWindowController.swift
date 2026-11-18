@@ -30,8 +30,11 @@ import SwiftUI
     private var counted = false
     private var isWatching = false
     /// Open, whether on screen or hidden along with Helm (Command-H). A hidden window isn't visible, but it's still
-    /// open: quitting then still counts it as seen, and asking for it again keeps what it's doing.
+    /// open: asking for it again keeps what it's doing.
     private var isOpen = false
+    /// The person asked for the window to close, with its close button, Command-W or Escape. Only their close, or Get
+    /// Started, counts as going through the onboarding: a close Helm or AppKit makes, on the way out say, doesn't.
+    private var closedByPerson = false
     /// Shown for someone to use, rather than by a scripted run in the background.
     private var interactive = false
     /// The app in front, which decides whether the window floats.
@@ -199,6 +202,9 @@ import SwiftUI
 
     private func start(_ body: (OnboardingModel) -> Void) {
         counted = false
+        // Shown anew in a process that's going on, after a cancelled quit or a stand-in for one: a close counts again.
+        ending = false
+        closedByPerson = false
         body(model)
     }
 
@@ -238,11 +244,17 @@ import SwiftUI
     public var isSetupShown: Bool { isOpen && model.mode == .setup }
 
     /// Helm is quitting. The onboarding is left as it is: the step it reached is kept already, so the next launch
-    /// carries on there, as after macOS's Quit & Reopen. Nothing counts as seen. The AI mode screen on its own is
-    /// left some way other than Done, so AI mode goes off.
+    /// carries on there, as after macOS's Quit & Reopen. Nothing counts as seen, even if the window is closed on the
+    /// way out. The AI mode screen on its own is left some way other than Done, so AI mode goes off.
     public func quitting() {
         if isOpen && model.mode == .ai { leaveAIMode() }
+        ending = true
     }
+
+    /// Helm has been asked to quit and may yet go: until `cancelEnding`, a close counts nothing.
+    public func beginEnding() { ending = true }
+    /// The quit was cancelled, so a close counts again.
+    public func cancelEnding() { ending = false }
 
     /// The process ends with the window open, as when macOS quits Helm to reopen it: the window goes with nothing
     /// counted as seen and nothing turned off. Scripted runs and tests stand in for the end of the process with this.
@@ -250,7 +262,6 @@ import SwiftUI
         guard isOpen else { return }
         ending = true
         close()
-        ending = false
     }
 
     private func markSeen() {
@@ -304,8 +315,15 @@ import SwiftUI
         waitingForAccess && interactive && !hasAccess && frontmost == systemSettings ? .floating : .normal
     }
 
+    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if !ending { closedByPerson = true }
+        return true
+    }
+
     public func windowWillClose(_ notification: Notification) {
         let mode = model.mode
+        let byPerson = closedByPerson
+        closedByPerson = false
         if ending {
             isOpen = false
             if isWatching { isWatching = false; model.permissions.watch(false) }
@@ -318,7 +336,7 @@ import SwiftUI
         if isWatching { isWatching = false; model.permissions.watch(false) }
         model.closed()
         window?.level = .normal
-        markSeen()
+        if byPerson { markSeen() }
         if let onClosed { DispatchQueue.main.async { MainActor.assumeIsolated { onClosed(mode) } } }
     }
 
