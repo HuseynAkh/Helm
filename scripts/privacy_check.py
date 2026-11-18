@@ -490,7 +490,8 @@ ALLOW = [
     # Move to Applications. An app's own Info.plist, read from disk to tell Helm apart from another app.
     ('read-url', 'Sources/HelmUI/Onboarding/AppMover.swift',
      'guard let data = try? Data(contentsOf: app.appendingPathComponent("Contents/Info.plist")),'),
-    # Move to Applications. A fixed script that waits for Helm to quit, then opens the moved copy with /usr/bin/open.
+    # Move to Applications and Restart Helm. A fixed script that waits for Helm to quit, then opens the moved copy, or
+    # Helm itself, with /usr/bin/open.
     ('tool-path', 'Sources/HelmUI/Onboarding/AppMover.swift',
      'waiter.executableURL = URL(fileURLWithPath: "/bin/sh")'),
     # The four model providers with a fixed address. An address on this Mac is put together from 127.0.0.1 and a

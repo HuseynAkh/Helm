@@ -7,13 +7,14 @@ setting aiIntroSeen true
 setup-build none
 setup-owed no
 setup-built none
-# Another build: the onboarding comes back with the steps left to do, and the line about folder access on Full Disk Access
+# Another build: the onboarding comes back with the steps left to do, AI mode's among them though it was seen, and the
+# line about folder access on Full Disk Access
 setup-build build-a
 setup-owed yes
 setup-first-launch
 onboarding-is setup
 setup-step welcome
-setup-steps welcome,access,viewer,done
+setup-steps welcome,access,viewer,ai,done
 onboarding-press Continue
 setup-step access
 setup-row access pending
@@ -45,11 +46,108 @@ setup-build build-b
 setup-owed yes
 setup-first-launch
 onboarding-is setup
-setup-steps welcome,viewer,done
+setup-steps welcome,viewer,ai,done
 onboarding close
 onboarding-is closed
 setup-built build-b
 fda denied
 # Back as the steps before left it
+setup-build none
+setup-owed no
+# AI mode's step shows how AI mode stands. Set up before, it's on with its provider, and Continue goes on with it on
+setting aiModeEnabled true
+ai-provider gemini
+ai-key test-key-for-the-setup-build-steps
+ai-state-is connected
+setup-build build-d
+setup-owed yes
+setup-first-launch
+onboarding-is setup
+setup-steps welcome,access,viewer,ai,done
+onboarding-press Continue
+onboarding-press Continue
+setup-check viewer off
+onboarding-press Continue
+setup-step ai
+setting-is aiModeEnabled true
+setup-ai-reads Connected
+onboarding-press Continue
+setup-step done
+setup-summary off,off,on
+onboarding close
+setting-is aiModeEnabled true
+setup-built build-d
+setting aiModeEnabled false
+ai-provider claude
+# With everything else done, AI mode that was seen is no reason on its own to open the onboarding
+file-viewer helm
+first-in-dock true
+fda granted
+setup-build build-e
+setup-owed yes
+setup-first-launch
+onboarding-is closed
+setup-built build-e
+setup-owed no
+file-viewer finder
+first-in-dock false
+fda denied
+# Every step's buttons sit inside the window with room below them, whatever height the SDK gives the title bar. Full Disk
+# Access switched on while its step waits stays there with Restart Helm, which keeps the next step and restarts Helm,
+# stood in for here: the launch that follows carries on there
+restarts-mark
+onboarding open
+setup-step welcome
+onboarding-size 540x560
+onboarding-footer-fits
+onboarding-press Continue
+setup-step access
+onboarding-footer-fits
+onboarding-press Open System Settings
+setup-row access waiting
+onboarding-footer-fits
+fda granted
+wait 2
+setup-step access
+setup-buttons Back,Restart Helm
+onboarding-footer-fits
+onboarding-press Restart Helm
+setup-restarts 1
+onboarding-is setup
+setup-step viewer
+setup-moves 0
+setup-relaunched none
+onboarding-size 540x560
+onboarding-footer-fits
+setup-check viewer off
+onboarding-press Continue
+setup-step ai
+onboarding-footer-fits
+onboarding-press AI mode
+ai-provider other
+onboarding-size 540x560
+onboarding-footer-fits
+onboarding-press Not Now
+setup-step done
+setting-is aiModeEnabled false
+onboarding-footer-fits
+onboarding close
+onboarding-is closed
+fda denied
+# The guide's and the AI Mode screen's buttons too
+onboarding guide
+onboarding-is guide
+onboarding-footer-fits
+onboarding close
+ai-screen open
+ai-screen-is open
+onboarding-footer-fits
+ai-screen-press AI Mode
+ai-provider other
+onboarding-footer-fits
+ai-screen close
+ai-screen-is closed
+setting-is aiModeEnabled false
+ai-provider claude
 setup-build none
 setup-owed no

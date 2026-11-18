@@ -179,6 +179,9 @@ final class ResumeOnce: @unchecked Sendable {
 /// It's checked at launch, whenever Helm comes back to the front, and every moment while the guide is on show.
 @MainActor public final class PermissionCenter: ObservableObject {
     @Published public private(set) var fullDiskAccess: PrivacyAccessStatus = .unknown
+    /// Full Disk Access was switched on while this Helm runs, after the first look at launch found it off. macOS
+    /// applies it in full only from the next launch.
+    @Published public private(set) var switchedOnSinceLaunch = false
     /// Sends each change of `fullDiskAccess`.
     public let changes = Broadcast<PrivacyAccessStatus>()
     public let provider: any PrivacyAccessProviding
@@ -187,6 +190,8 @@ final class ResumeOnce: @unchecked Sendable {
     private var watching: Task<Void, Never>?
     private var watchers = 0
     private var probes = 0
+    /// The first look, at launch, has answered.
+    private var looked = false
 
     public init(provider: any PrivacyAccessProviding) { self.provider = provider }
 
@@ -199,7 +204,11 @@ final class ResumeOnce: @unchecked Sendable {
         probes += 1
         let probe = probes
         let status = await provider.probeFullDiskAccess()
-        guard probe == probes, status != fullDiskAccess else { return }
+        guard probe == probes else { return }
+        let atLaunch = !looked
+        looked = true
+        guard status != fullDiskAccess else { return }
+        if !atLaunch { switchedOnSinceLaunch = status == .granted }
         fullDiskAccess = status
         changes.send(status)
     }
@@ -218,6 +227,11 @@ final class ResumeOnce: @unchecked Sendable {
         }
     }
     public var isWatching: Bool { watching != nil }
+    /// A relaunch stood in for in this process: the next look is the new launch's first.
+    public func relaunchedForTesting() {
+        looked = false
+        switchedOnSinceLaunch = false
+    }
 
     @discardableResult public func open(_ pane: PrivacyPane) -> Bool { provider.open(pane) }
     @discardableResult public func openTrashInFinder() -> Bool { provider.openTrashInFinder() }

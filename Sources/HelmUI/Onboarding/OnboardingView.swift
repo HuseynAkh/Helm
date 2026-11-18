@@ -12,20 +12,23 @@ struct OnboardingView: View {
     @ObservedObject var model: OnboardingModel
 
     static let width: CGFloat = 540
-    /// Every step of the onboarding has this height, so the window doesn't change size from one step to the next. The
-    /// tallest step, AI mode with a provider that takes an address, fits it; anything taller scrolls in its card's place
-    /// rather than being cut off.
+    /// Every step of the onboarding has this height below the title bar, so the window doesn't change size from one
+    /// step to the next. The tallest step, AI mode with a provider that takes an address, fits it; anything taller
+    /// scrolls in its card's place rather than being cut off.
     static let stepHeight: CGFloat = 560
 
     var body: some View {
-        switch model.mode {
-        case .ai:
-            if let ai = model.aiSetup { AIModeScreen(model: ai) }
-        case .setup:
-            OnboardingStepsView(model: model)
-        case .guide:
-            guide
+        Group {
+            switch model.mode {
+            case .ai:
+                if let ai = model.aiSetup { AIModeScreen(model: ai) }
+            case .setup:
+                OnboardingStepsView(model: model)
+            case .guide:
+                guide
+            }
         }
+        .onPreferenceChange(FooterFrame.self) { model.footerFrame = $0 }
     }
 
     private var guide: some View {
@@ -41,6 +44,23 @@ struct OnboardingView: View {
         }
         .frame(width: Self.width)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Where the footer's buttons are laid out, in the window's coordinates from its top left, so a check can see that they
+/// sit inside the window.
+struct FooterFrame: PreferenceKey {
+    static let defaultValue = CGRect.zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
+
+extension View {
+    /// This row of buttons is the footer's.
+    func reportsFooterFrame() -> some View {
+        background(GeometryReader { proxy in Color.clear.preference(key: FooterFrame.self, value: proxy.frame(in: .global)) })
     }
 }
 
@@ -293,6 +313,7 @@ private struct StepFooter: View {
                 .buttonStyle(.borderedProminent).controlSize(.large)
                 .keyboardShortcut(.defaultAction).disabled(model.isWorking)
         }
+        .reportsFooterFrame()
         .padding(.horizontal, 24).padding(.vertical, 16)
     }
 }
@@ -468,6 +489,7 @@ private struct GuideFooter: View {
                 .buttonStyle(.borderedProminent).controlSize(.large)
                 .keyboardShortcut(.defaultAction)
         }
+        .reportsFooterFrame()
         .padding(.horizontal, 24).padding(.vertical, 16)
     }
 }

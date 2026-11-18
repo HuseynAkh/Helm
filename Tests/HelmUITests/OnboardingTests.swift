@@ -25,6 +25,8 @@ import HelmTestKit
     /// How far the onboarding got, each time it was kept.
     var saved: [OnboardingProgress] = []
     var refused = 0
+    /// Restart Helm, pressed. Nothing quits.
+    var restarts = 0
     var voiceOver = false
     var said: [String] = []
 
@@ -46,6 +48,7 @@ import HelmTestKit
         model.carry = { [unowned self] rows in self.carried.append(rows) }
         model.saveProgress = { [unowned self] progress in self.saved.append(progress) }
         model.refused = { [unowned self] in self.refused += 1 }
+        model.restart = { [unowned self] in self.restarts += 1 }
         model.announce = { [unowned self] text in self.said.append(text) }
         model.isVoiceOverRunning = { [unowned self] in self.voiceOver }
     }
@@ -119,15 +122,19 @@ import HelmTestKit
         await bare.open()
         XCTAssertEqual(bare.model.steps, [.welcome, .done])
         XCTAssertTrue(bare.model.nothingToDo)
-        // A launch leaves out what's done already, and AI mode once it's been seen.
+        // A launch leaves out what's done already, but never AI mode, which shows how it stands. Once it has been seen,
+        // AI mode alone is no reason to open the onboarding.
         let done = SetupRig(access: .granted)
         done.role.makeHelmDefault { _ in }
         _ = done.role.setFirstInDock(true)
         await done.open()
         XCTAssertEqual(done.model.plannedSteps(skippingDone: true), [.welcome, .ai, .done])
-        XCTAssertEqual(done.model.plannedSteps(skippingDone: true, includesAI: false), [.welcome, .done])
         XCTAssertEqual(done.model.plannedSteps(skippingDone: false), [.welcome, .access, .viewer, .ai, .done],
                        "Help › Set Up Helm… shows them all")
+        done.model.startSetup(steps: done.model.plannedSteps(skippingDone: true))
+        XCTAssertFalse(done.model.nothingToDo)
+        XCTAssertTrue(done.model.nothingLeft(besides: [.ai]))
+        XCTAssertFalse(rig.model.nothingLeft(besides: [.ai]), "while anything else is left, AI mode's step shows too")
         // The guide is the Full Disk Access row on its own, with no checkbox.
         rig.model.begin(.guide)
         XCTAssertEqual(rig.model.rows, [.fullDiskAccess])
@@ -175,7 +182,7 @@ import HelmTestKit
         XCTAssertTrue(rig.mover.relaunches.isEmpty)
     }
 
-    func testFullDiskAccessOpensSystemSettingsOnlyFromItsButtonAndGoesOnOnceItsOn() async throws {
+    func testFullDiskAccessOpensSystemSettingsOnlyFromItsButtonAndOffersARestartOnceItsOn() async throws {
         let rig = SetupRig()
         await rig.open()
         let openedEarly = await rig.press("Open System Settings")
@@ -196,17 +203,41 @@ import HelmTestKit
         XCTAssertTrue(rig.model.isWaitingForAccess)
         XCTAssertEqual(rig.model.statusLine, "Waiting for Full Disk Access")
         XCTAssertEqual(rig.saved.last, OnboardingProgress(step: .access, steps: [.welcome, .access, .viewer, .ai, .done], askedForAccess: true))
-        // Access arrives: a check mark, a moment to see it, and the next step comes by itself. Helm never quits or
-        // reopens itself for it.
+        // Access arrives: a check mark, and the step stays. macOS applies it in full only from the next launch, so its
+        // button restarts Helm, with the next step kept for that launch.
         await rig.access(.granted)
         XCTAssertEqual(rig.model.state(of: .fullDiskAccess), .done)
         XCTAssertNil(rig.model.folderNote(.fullDiskAccess))
         XCTAssertEqual(rig.said.last, "Full Disk Access is on.")
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(rig.model.step, .viewer)
+        XCTAssertEqual(rig.model.step, .access)
+        XCTAssertTrue(rig.model.offersRestart)
+        XCTAssertFalse(rig.model.stepOpensSettings)
+        XCTAssertEqual(rig.model.primaryTitle, "Restart Helm")
+        XCTAssertEqual(rig.model.backTitle, "Back")
+        XCTAssertNil(rig.model.secondaryTitle)
+        let continued = await rig.press("Continue")
+        XCTAssertFalse(continued, "Restart Helm is the way on")
+        XCTAssertEqual(rig.restarts, 0)
+        let restarted = await rig.press("Restart Helm")
+        XCTAssertTrue(restarted)
+        XCTAssertEqual(rig.restarts, 1)
+        XCTAssertEqual(rig.saved.last, OnboardingProgress(step: .viewer, steps: [.welcome, .access, .viewer, .ai, .done]))
+        XCTAssertEqual(rig.model.step, .access, "Helm quits from here")
         XCTAssertEqual(rig.mover.moves, 0)
         XCTAssertTrue(rig.mover.relaunches.isEmpty)
         XCTAssertEqual(rig.closed, 0)
+        XCTAssertEqual(rig.seen, 0, "restarting isn't going through it")
+        // Access that was on already when Helm started needs no restart: the step goes on with Continue.
+        let on = SetupRig(access: .granted)
+        await on.open()
+        await on.press("Continue")
+        XCTAssertEqual(on.model.state(of: .fullDiskAccess), .done)
+        XCTAssertFalse(on.model.offersRestart)
+        XCTAssertEqual(on.model.primaryTitle, "Continue")
+        await on.press("Continue")
+        XCTAssertEqual(on.model.step, .viewer)
+        XCTAssertEqual(on.restarts, 0)
         // Continue without access goes on and opens nothing.
         let skip = SetupRig()
         await skip.open()
@@ -337,6 +368,15 @@ import HelmTestKit
         again.model.showAIStep()
         again.model.closed()
         XCTAssertTrue(againAI.isOn)
+        // On but not asked yet, as at the launch of another build, whose onboarding shows the AI step too: left on.
+        let later = SetupRig()
+        let laterAI = try XCTUnwrap(later.ai)
+        laterAI.setOn(true)
+        XCTAssertFalse(laterAI.isConnected)
+        await later.open()
+        later.model.showAIStep()
+        later.model.closed()
+        XCTAssertTrue(laterAI.isOn)
         // Answered with Continue, it stays.
         let answered = SetupRig()
         let answeredAI = try XCTUnwrap(answered.ai)
@@ -511,7 +551,8 @@ import HelmTestKit
         XCTAssertFalse(rig.role.isFirstInDock)
         await rig.access(.granted)
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(rig.model.step, .viewer)
+        XCTAssertEqual(rig.model.step, .access)
+        XCTAssertEqual(rig.model.primaryTitle, "Restart Helm")
         XCTAssertEqual(rig.closed, 0)
     }
 
@@ -533,7 +574,8 @@ import HelmTestKit
         XCTAssertEqual(rig.saved.last?.askedForAccess, true)
         await rig.access(.granted)
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(rig.model.step, .viewer, "the wait it kept moves it on")
+        XCTAssertEqual(rig.model.step, .access)
+        XCTAssertEqual(rig.model.primaryTitle, "Restart Helm", "the wait it kept ends in the restart")
     }
 
     /// Review finding onb-5: asked for again just as it was about to move on by itself, the onboarding stays.
@@ -542,18 +584,20 @@ import HelmTestKit
         rig.model.finishDelay = 0.2
         await rig.open()
         await rig.press("Continue")
-        await rig.press("Open System Settings")
-        await rig.access(.granted)
+        await rig.press("Continue")
+        XCTAssertEqual(rig.model.step, .viewer)
+        await rig.press("Continue")
+        XCTAssertTrue(rig.role.isHelmDefault)
         XCTAssertTrue(rig.model.isFinishing)
         rig.model.askedForAgain()
         XCTAssertFalse(rig.model.isFinishing)
         try await Task.sleep(nanoseconds: 400_000_000)
-        XCTAssertEqual(rig.model.step, .access)
+        XCTAssertEqual(rig.model.step, .viewer)
         // Something changing later doesn't move it on either; Continue does.
         rig.model.refresh()
         XCTAssertFalse(rig.model.isFinishing)
         await rig.press("Continue")
-        XCTAssertEqual(rig.model.step, .viewer)
+        XCTAssertEqual(rig.model.step, .ai)
     }
 
     /// Review finding onb-9: VoiceOver hears each row that's done or didn't work, and the onboarding doesn't move on by
@@ -567,19 +611,15 @@ import HelmTestKit
         await rig.access(.granted)
         XCTAssertEqual(rig.said.last, "Full Disk Access is on.")
         XCTAssertEqual(rig.model.lastAnnouncement, rig.said.last)
-        try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(rig.model.step, .viewer)
-        XCTAssertEqual(rig.said.last, "Default File Viewer. Step 3 of 5.")
-        // With VoiceOver on it says so, and the person goes on.
-        let reading = SetupRig()
+        await rig.press("Back")
+        await rig.press("Continue")
+        XCTAssertEqual(rig.said.last, "Full Disk Access. Step 2 of 5.")
+        // With VoiceOver on it says so, and the person goes on, here from a launch where Full Disk Access was on.
+        let reading = SetupRig(access: .granted)
         reading.voiceOver = true
         await reading.open()
         await reading.press("Continue")
-        await reading.press("Open System Settings")
-        await reading.access(.granted)
-        XCTAssertEqual(reading.said.last, "Full Disk Access is on.")
         XCTAssertFalse(reading.model.isFinishing)
-        try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(reading.model.step, .access)
         await reading.press("Continue")
         XCTAssertEqual(reading.model.step, .viewer)
@@ -644,7 +684,8 @@ import HelmTestKit
         XCTAssertEqual(reopened.model.steps, steps, "the same steps, though access is done")
         XCTAssertEqual(reopened.saved.last?.step, .viewer)
         XCTAssertTrue(reopened.privacy.openedPanes.isEmpty, "System Settings isn't opened again")
-        // Quit for another reason while it waited: back at the step, still waiting, and it moves on once access is on.
+        // Quit for another reason while it waited: back at the step, still waiting, and once access is on it offers to
+        // restart Helm.
         let waiting = SetupRig()
         await waiting.center.refresh()
         waiting.model.resume(OnboardingProgress(step: .access, steps: steps, askedForAccess: true))
@@ -653,7 +694,8 @@ import HelmTestKit
         XCTAssertTrue(waiting.model.showsAccessHelp)
         await waiting.access(.granted)
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(waiting.model.step, .viewer)
+        XCTAssertEqual(waiting.model.step, .access)
+        XCTAssertTrue(waiting.model.offersRestart)
         // Any other step is where it carries on, and a step that no longer applies is left out.
         let later = SetupRig(withAI: false)
         await later.center.refresh()
@@ -770,7 +812,7 @@ final class OnboardingProgressTests: XCTestCase {
         var shown: [String] = []
         while true {
             try await Task.sleep(nanoseconds: 50_000_000)
-            let size = try XCTUnwrap(window.contentView?.frame.size)
+            let size = window.contentLayoutRect.size
             sizes.insert("\(Int(size.width))x\(Int(size.height))")
             frames.insert("\(Int(window.frame.minX)),\(Int(window.frame.maxY))")
             shown.append(controller.stepForTesting)
@@ -780,7 +822,7 @@ final class OnboardingProgressTests: XCTestCase {
             if controller.stepForTesting == "ai" {
                 ai.setOn(true)
                 try await Task.sleep(nanoseconds: 50_000_000)
-                sizes.insert("\(Int(window.contentView?.frame.width ?? 0))x\(Int(window.contentView?.frame.height ?? 0))")
+                sizes.insert("\(Int(window.contentLayoutRect.width))x\(Int(window.contentLayoutRect.height))")
                 ai.setOn(false)
             }
             controller.model.setChecked(.fileViewer, false)
@@ -795,7 +837,99 @@ final class OnboardingProgressTests: XCTestCase {
         controller.showAIMode(ai, activate: false) { _ in }
         XCTAssertEqual(controller.modeForTesting, "ai")
         XCTAssertEqual(window.appearance?.name, .darkAqua)
-        XCTAssertNotEqual(window.contentView?.frame.height, OnboardingView.stepHeight)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertNotEqual(window.contentLayoutRect.height, OnboardingView.stepHeight)
+    }
+
+    /// Every step's buttons, the guide's and the AI Mode screen's sit inside the window with room below them. The
+    /// title bar runs over the content and its height changes with the SDK Helm is built with: a step sized without
+    /// it ran past the window's bottom edge, with Continue on the edge.
+    func testEveryStepsButtonsSitInsideTheWindowWithRoomBelow() async throws {
+        let (ai, _) = aiModel()
+        let privacy = MemoryPrivacyAccess()
+        let controller = controller(privacy, ai: ai)
+        defer { controller.close() }
+        let window = try XCTUnwrap(controller.window)
+        // Out of sight, as a scripted run's windows are.
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        await controller.model.permissions.refresh()
+        var rooms: [String: CGFloat] = [:]
+        func measure(_ name: String) async throws {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            rooms[name] = try XCTUnwrap(controller.footerRoomForTesting, name)
+            XCTAssertLessThanOrEqual(window.contentLayoutRect.height, window.frame.height, name)
+        }
+        controller.show(.setup, activate: false)
+        while controller.stepForTesting != "done" {
+            try await measure(controller.stepForTesting)
+            if controller.stepForTesting == "ai" {
+                ai.setOn(true)
+                ai.choose(.other)
+                try await measure("ai, other")
+                ai.setOn(false)
+            }
+            controller.model.setChecked(.fileViewer, false)
+            XCTAssertTrue(controller.pressForTesting("Continue"))
+            await controller.model.work?.value
+        }
+        try await measure("done")
+        XCTAssertTrue(controller.pressForTesting("Back"))
+        XCTAssertTrue(controller.pressForTesting("Back"))
+        XCTAssertTrue(controller.pressForTesting("Back"))
+        XCTAssertEqual(controller.stepForTesting, "access")
+        XCTAssertTrue(controller.pressForTesting("Open System Settings"))
+        try await measure("access, waiting")
+        privacy.status = .granted
+        await controller.model.permissions.refresh()
+        XCTAssertEqual(controller.model.primaryTitle, "Restart Helm")
+        try await measure("access, restart")
+        controller.close()
+        controller.show(.guide, activate: false)
+        try await measure("guide")
+        controller.close()
+        controller.showAIMode(ai, activate: false) { _ in }
+        try await measure("AI mode")
+        ai.setOn(true)
+        ai.choose(.other)
+        try await measure("AI mode, other")
+        controller.close()
+        XCTAssertEqual(rooms.count, 11)
+        for (name, room) in rooms {
+            XCTAssertGreaterThanOrEqual(room, 12, "\(name): the buttons are \(room) points from the window's bottom edge")
+        }
+    }
+
+    /// Restart Helm, on the Full Disk Access step once access is on, keeps the next step and asks the app to restart.
+    func testRestartHelmKeepsTheNextStepAndAsksTheApp() async throws {
+        let privacy = MemoryPrivacyAccess()
+        let controller = controller(privacy)
+        defer { controller.close() }
+        controller.window?.alphaValue = 0
+        controller.window?.ignoresMouseEvents = true
+        var restarts = 0
+        var kept: [OnboardingProgress] = []
+        controller.onRestart = { restarts += 1 }
+        controller.onProgress = { kept.append($0) }
+        await controller.model.permissions.refresh()
+        controller.show(.setup, activate: false)
+        XCTAssertTrue(controller.pressForTesting("Continue"))
+        XCTAssertTrue(controller.pressForTesting("Open System Settings"))
+        XCTAssertFalse(controller.pressForTesting("Restart Helm"), "not while access is off")
+        privacy.status = .granted
+        await controller.model.permissions.refresh()
+        XCTAssertTrue(controller.model.permissions.switchedOnSinceLaunch)
+        XCTAssertTrue(controller.pressForTesting("Restart Helm"))
+        XCTAssertEqual(restarts, 1)
+        XCTAssertEqual(kept.last, OnboardingProgress(step: .viewer, steps: [.welcome, .access, .viewer, .done]))
+        XCTAssertEqual(controller.stepForTesting, "access", "the app quits it from here")
+        // A launch that finds access on has nothing to restart for.
+        let center = PermissionCenter(provider: MemoryPrivacyAccess(status: .granted))
+        await center.refresh()
+        XCTAssertFalse(center.switchedOnSinceLaunch)
+        center.relaunchedForTesting()
+        await center.refresh()
+        XCTAssertFalse(center.switchedOnSinceLaunch)
     }
 
     func testAskingForTheGuideGoesToTheAccessStep() {
@@ -838,6 +972,7 @@ final class OnboardingProgressTests: XCTestCase {
         let controller = controller(privacy)
         defer { controller.close() }
         controller.model.finishDelay = 0.2
+        await controller.model.permissions.refresh()
         controller.show(.guide, activate: false)
         XCTAssertTrue(controller.pressForTesting("Open System Settings"))
         controller.show(.setup, activate: false)
@@ -848,7 +983,8 @@ final class OnboardingProgressTests: XCTestCase {
         XCTAssertEqual(privacy.openedPanes, [.fullDiskAccess])
         privacy.status = .granted
         await controller.model.permissions.refresh()
-        XCTAssertTrue(controller.model.isFinishing)
+        XCTAssertFalse(controller.model.isFinishing, "it offers to restart Helm rather than move on")
+        XCTAssertEqual(controller.model.primaryTitle, "Restart Helm")
         controller.show(.setup, activate: false)
         try await Task.sleep(nanoseconds: 400_000_000)
         XCTAssertEqual(controller.stepForTesting, "access")

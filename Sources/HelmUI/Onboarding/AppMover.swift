@@ -157,7 +157,8 @@ public enum ReplaceDecision: Equatable, Sendable {
     }
 }
 
-/// Moving Helm into Applications, behind a seam: fixture runs and tests use a stand-in that copies nothing and never quits.
+/// Moving Helm into Applications, and reopening it, behind a seam: fixture runs and tests use a stand-in that copies
+/// nothing and never quits.
 @MainActor public protocol AppMoving: AnyObject {
     var placement: AppPlacement { get }
     /// Copies Helm into Applications. Asks first when that would replace a Helm already there, and refuses when
@@ -169,6 +170,9 @@ public enum ReplaceDecision: Equatable, Sendable {
     /// A quit that goes through ends the process, so this returns only while this Helm keeps running: true if it's on
     /// its way out, false when the quit was cancelled or the copy couldn't be opened.
     func relaunch(from copy: URL, continuing rows: [SetupRow]) async -> Bool
+    /// Quits this Helm and opens it again once it has, as macOS's Quit & Reopen does after Full Disk Access is switched
+    /// on. Returns only while this Helm keeps running: false when the quit was cancelled or nothing could reopen it.
+    func restart() async -> Bool
 }
 
 /// Copies an app bundle into the first Applications folder that will take it, and lifts the quarantine from the copy.
@@ -321,17 +325,27 @@ public struct AppBundleCopier: Sendable {
     }
 
     public func relaunch(from copy: URL, continuing rows: [SetupRow]) async -> Bool {
-        // A small shell waits for this Helm to quit, however long saving and file operations take, then opens the copy
-        // with the flag that carries on. -n opens a new one even if an older Helm is still running from the copy that
+        // With the flag that carries on. -n opens a new one even if an older Helm is still running from the copy that
         // was just replaced; without it, `open` would only bring that one forward and drop the flag.
+        await Self.reopen(copy, arguments: ["--args", SetupRow.continueFlag, SetupRow.flagValue(rows)])
+    }
+
+    /// The launch that follows finds the onboarding's kept step and carries on there.
+    public func restart() async -> Bool {
+        guard bundle.bundleURL.pathExtension == "app" else { return false }
+        return await Self.reopen(bundle.bundleURL, arguments: [])
+    }
+
+    /// A small shell waits for this Helm to quit, however long saving and file operations take, then opens `app`, a new
+    /// one with -n, with `arguments`. Then Helm quits.
+    private static func reopen(_ app: URL, arguments: [String]) async -> Bool {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let script = "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done; "
-            + "exec /usr/bin/open -n \"$0\" --args \(SetupRow.continueFlag) \"$1\""
+        let script = "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done; exec /usr/bin/open -n \"$@\""
         let waiter = Process()
         waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
-        waiter.arguments = ["-c", script, copy.path, SetupRow.flagValue(rows)]
+        waiter.arguments = ["-c", script, "sh", app.path] + arguments
         do { try waiter.run() } catch { return false }
-        await Self.quit()
+        await quit()
         // Still running, so the quit was cancelled (saving failed and the person chose Cancel, say): stop waiting.
         waiter.terminate()
         return false
@@ -361,6 +375,7 @@ public struct AppBundleCopier: Sendable {
     public var quitsOnRelaunch = false
     public private(set) var moves = 0
     public private(set) var relaunches: [[SetupRow]] = []
+    public private(set) var restarts = 0
     public init(placement: AppPlacement = .applications,
                 result: AppMoveResult = .moved(URL(fileURLWithPath: "/Applications/Helm.app", isDirectory: true))) {
         self.placement = placement; self.result = result
@@ -370,6 +385,10 @@ public struct AppBundleCopier: Sendable {
     public func hasCopy(at copy: URL) -> Bool { moves > 0 && result == .moved(copy) }
     public func relaunch(from copy: URL, continuing rows: [SetupRow]) async -> Bool {
         relaunches.append(rows)
+        return quitsOnRelaunch
+    }
+    public func restart() async -> Bool {
+        restarts += 1
         return quitsOnRelaunch
     }
 }
