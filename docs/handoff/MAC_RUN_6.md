@@ -1,6 +1,6 @@
 # Mac run 6
 
-**Status: With Read contents on, the model now reads documents and looks at small copies of pictures, video frames and scanned pages, in the AI panel and in AI search. The plain search has the kind row too, and an AI plan can make new files. A security review and a private-data scan ran on the whole change, and what they found was fixed, apart from the two items under Open. It was all checked on fixtures with a scripted model and invisible windows. No real provider, key or picture was sent anywhere, so the list under "Needs Huseyn's Mac" is not verified. The consent wording is a draft that waits for Huseyn. At his word, it was pushed and merged.**
+**Status: With Read contents on, the model now reads documents and looks at small copies of pictures, video frames and scanned pages, in the AI panel and in AI search. The plain search has the kind row too, and an AI plan can make new files. A security review and a private-data scan ran on the whole change, and what they found was fixed, apart from the first two items under Open. It was all checked on fixtures with a scripted model and invisible windows. No real provider, key or picture was sent anywhere, so the list under "Needs Huseyn's Mac" is not verified. At his word, it was pushed and merged, and he then approved the consent wording.**
 
 Run on 2026-11-17. The work was merged on `agentic/vision` and then moved onto `handoff/mac-fixups` on this Mac. Huseyn's words and the choices made for him are in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#ai-mode-mac-run-6-2026-11-17).
 
@@ -69,11 +69,10 @@ None of these was verified. Each needs a real provider, real files or a person a
 
 ## Open
 
-1. **The consent wording** is Huseyn's call. The draft is in [`OWNER_RULINGS.md`](OWNER_RULINGS.md#waiting-for-huseyn-run-6).
-2. **The reader runs inside Helm.** Apple's readers for PDFs, Word files, pictures and video run in Helm's own process, so a file built to break one of them would reach Helm. Moving them into a separate helper with no access to the network would close that, and is a bigger change than this run. Dropping .doc removed the riskiest of them.
-3. **A folder swapped for a link.** Between the plan and Apply, someone with access to the disk could swap a plan's folder for a link to somewhere else, and a new file would be written there. It needs another process running as you, and is low risk.
-4. **Speech in video** is not read; only sampled frames are.
-5. **From earlier runs:** the Release build's 14-point band under the header ([`MAC_RUN_4.md`](MAC_RUN_4.md#open)).
+1. **The reader runs inside Helm.** Apple's readers for PDFs, Word files, pictures and video run in Helm's own process, so a file built to break one of them would reach Helm. Moving them into a separate helper with no access to the network would close that, and is a bigger change than this run. Dropping .doc removed the riskiest of them.
+2. **A folder swapped for a link.** Between the plan and Apply, someone with access to the disk could swap a plan's folder for a link to somewhere else, and a new file would be written there. It needs another process running as you, and is low risk.
+3. **Speech in video** is not read; only sampled frames are.
+4. **From earlier runs:** the Release build's 14-point band under the header ([`MAC_RUN_4.md`](MAC_RUN_4.md#open)).
 
 ## Disclosures
 
