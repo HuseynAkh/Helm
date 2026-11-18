@@ -4,7 +4,8 @@ import HelmCore
 import HelmUI
 
 /// Smoke verbs for the README's pictures (scripts/readme/make_readme_images.sh). They only change how a scripted
-/// window looks: its size, whether it's drawn as the window in front, and the free space its status bar names.
+/// window looks: its size, whether it's drawn as the window in front, the screen it sits on, and the free space its
+/// status bar names.
 extension HostSmokeDriver {
     static func performReadmeVerb(_ verb: String, _ argument: String, step: String,
                                   window: BrowserWindowController, app: AppController) async -> Bool {
@@ -36,6 +37,18 @@ extension HostSmokeDriver {
             // while the run stays in the background (SmokeActiveLook). Only a scripted fixture run may turn it on.
             guard argument == "on" || argument == "off" else { check(false, step, "usage: active-look <on|off>"); return true }
             check(SmokeActiveLook.set(argument == "on", for: app), step, "not a scripted fixture run")
+        case "screen":
+            // screen <sharpest|any>: keeps the run's invisible windows on the screen with the most pixels to a point,
+            // so pictures come out sharp when the main screen is a plainer one. Only a scripted fixture run may.
+            guard argument == "sharpest" || argument == "any" else { check(false, step, "usage: screen <sharpest|any>"); return true }
+            guard SmokeActiveLook.mayTurnOn(app.options, inBackground: app.staysInBackground) else {
+                check(false, step, "not a scripted fixture run"); return true
+            }
+            SmokeBackground.setKeepsOnSharpestScreen(argument == "sharpest")
+            await wait(seconds: 0.5)
+            let scale = window.window?.backingScaleFactor ?? 0
+            let sharpest = NSScreen.screens.map(\.backingScaleFactor).max() ?? 0
+            check(argument == "any" || scale == sharpest, step, "the window draws at \(scale)x, the sharpest screen at \(sharpest)x")
         default:
             return false
         }

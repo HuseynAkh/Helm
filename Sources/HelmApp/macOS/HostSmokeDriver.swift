@@ -419,7 +419,8 @@ import Quartz
             // A child window takes its parent's level, so the pop-ups are the child windows on show.
             let children = main.childWindows ?? []
             let popups = children.filter { $0.isVisible }
-            let data = await SmokeActiveLook.drawingInFront([main]) { () -> Data? in
+            // The pop-ups are drawn in front too, so a list shows its chosen row as it does on screen.
+            let data = await SmokeActiveLook.drawingInFront([main] + popups) { () -> Data? in
                 content.cacheDisplay(in: content.bounds, to: image)
                 return withPopups(popups, over: withMaterials(image, of: content), of: main).representation(using: .png, properties: [:])
             }
