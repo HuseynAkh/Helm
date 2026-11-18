@@ -575,7 +575,7 @@ import HelmSearch
     /// Nil for a query with no such words, and for one kept to kinds Read contents doesn't read.
     static func lookQuery(_ query: AISearchQuery) -> AISearchQuery? {
         guard !query.contentAll.isEmpty else { return nil }
-        var look = query
+        var look = withoutRepeatedNames(query)
         look.contentAll = []
         let readable: [AISearchKind] = [.image, .video, .pdf, .text, .code, .document]
         if query.kinds.isEmpty {
@@ -593,12 +593,27 @@ import HelmSearch
         return look
     }
 
+    /// `query` without the name words that say again a word it looks for inside files, as a model planning "a bird"
+    /// says it: every query of gpt-oss's asked for "bird" in the name as well as inside, so no photo was ever read. A
+    /// list of other names that holds such a word goes whole, since its words are other names for the same thing.
+    /// A name word of its own, such as "trip" beside "dog", stays.
+    static func withoutRepeatedNames(_ query: AISearchQuery) -> AISearchQuery {
+        func folded(_ word: String) -> String {
+            word.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+        }
+        let inside = Set(query.contentAll.map(folded))
+        var look = query
+        look.nameAll = query.nameAll.filter { !inside.contains(folded($0)) }
+        if query.nameAny.contains(where: { inside.contains(folded($0)) }) { look.nameAny = [] }
+        return look
+    }
+
     /// A query that looks for words inside files, as one for the pictures and videos it describes: the same names,
     /// folders, dates and sizes, with no words inside files, and kept to pictures and videos. Nil for a query with no
     /// such words, and for one kept to kinds that are neither.
     static func visualQuery(_ query: AISearchQuery) -> AISearchQuery? {
         guard !query.contentAll.isEmpty else { return nil }
-        var look = query
+        var look = withoutRepeatedNames(query)
         look.contentAll = []
         let seen: [AISearchKind] = [.image, .video]
         if query.kinds.isEmpty {

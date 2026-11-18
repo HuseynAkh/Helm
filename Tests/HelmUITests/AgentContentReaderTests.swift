@@ -657,5 +657,19 @@ final class AgentContentReaderTests: XCTestCase {
         XCTAssertEqual(AISearchRunner.visualQuery(AISearchQuery(contentAll: ["dog"], extensions: ["jpg", "pdf"]))?.extensions, ["jpg"])
         XCTAssertNil(AISearchRunner.visualQuery(AISearchQuery(contentAll: ["dog"], extensions: ["pdf"])))
     }
+
+    /// gpt-oss planned "a bird" as a photo with "bird" in its name and inside it, in every query, so no photo was
+    /// read. A name word that says again a word looked for inside isn't asked of the name when choosing what to read.
+    func testANameWordThatRepeatsAWordInsideIsNotAskedOfTheName() {
+        let repeated = AISearchRunner.visualQuery(AISearchQuery(nameAll: ["Bird"], nameAny: ["bird", "avian"], contentAll: ["bird"],
+                                                                kinds: [.image]))
+        XCTAssertEqual(repeated?.nameAll, [])
+        XCTAssertEqual(repeated?.nameAny, [], "other names for the same thing go with it")
+        XCTAssertEqual(repeated?.kinds, [.image])
+        let own = AISearchRunner.visualQuery(AISearchQuery(nameAll: ["trip", "dog"], nameAny: ["beach", "shore"], contentAll: ["dog"]))
+        XCTAssertEqual(own?.nameAll, ["trip"])
+        XCTAssertEqual(own?.nameAny, ["beach", "shore"])
+        XCTAssertEqual(AISearchRunner.lookQuery(AISearchQuery(nameAny: ["oiseau", "bird"], contentAll: ["bird"]))?.nameAny, [])
+    }
 }
 #endif
