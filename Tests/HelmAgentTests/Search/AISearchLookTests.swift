@@ -146,6 +146,25 @@ final class AISearchLookTests: XCTestCase {
         XCTAssertTrue(model.sentAsks.last?.user.contains("kite in \(home)/Pictures") == true)
     }
 
+    func testOneFileThatHoldsTheHomeIsLeftOutAndTheRestAreStillAsked() async throws {
+        let model = client([AgentScript.LookRule(when: "*")])
+        let session = AISearchSession(client: model, calendar: calendar)
+        func photo(_ item: Int, name: String, folder: String) -> AISearchLookItem {
+            AISearchLookItem(item: item, name: name, folder: folder, kind: "image", modified: nil, summary: AgentContentSummary(
+                kind: .image, status: .read, labels: [AgentContentLabel(identifier: "kite", confidence: 0.9)]))
+        }
+        _ = try await session.look(request: "kite", kind: nil,
+                                   items: [photo(1, name: "a.jpg", folder: "Home / Pictures"),
+                                           photo(2, name: "b.jpg", folder: home.uppercased() + "/Pictures"),
+                                           photo(3, name: "c.jpg", folder: "Home / Desktop")],
+                                   homes: [home], pictures: false)
+        XCTAssertEqual(model.sentAsks.count, 1)
+        let sent = model.allSentText()
+        XCTAssertNil(sent.range(of: home, options: .caseInsensitive))
+        XCTAssertTrue(sent.contains("a.jpg") && sent.contains("c.jpg"), sent)
+        XCTAssertFalse(sent.contains("b.jpg"), "the file whose folder holds the home is left out")
+    }
+
     private func assertNotSent(_ look: @autoclosure () async throws -> [AISearchLook], file: StaticString = #filePath,
                                line: UInt = #line) async {
         do {
@@ -202,8 +221,8 @@ final class AISearchLookTests: XCTestCase {
         XCTAssertEqual(look["additionalProperties"], .bool(false))
         XCTAssertEqual(fields["fits"]?["type"], .string("boolean"))
         XCTAssertEqual(fields["item"]?["type"], .string("integer"))
-        XCTAssertEqual(AISearchSession.lookSeconds(isLocal: false), 30)
-        XCTAssertEqual(AISearchSession.lookSeconds(isLocal: true), 90)
+        XCTAssertEqual(AISearchSession.lookSeconds(isLocal: false), 120)
+        XCTAssertEqual(AISearchSession.lookSeconds(isLocal: true), 180)
     }
 
     // MARK: The scripted model

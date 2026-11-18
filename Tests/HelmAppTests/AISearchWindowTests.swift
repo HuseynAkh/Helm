@@ -328,7 +328,7 @@ import HelmPersistence
         await searchWithAI(controller, "report")
         let failed = await until { controller.activeTab?.search?.assist?.phase == .failed }
         XCTAssertTrue(failed)
-        XCTAssertEqual(controller.aiSearchStatusForTesting?.text, AgentText.searchFailed)
+        XCTAssertEqual(controller.aiSearchStatusForTesting?.text, AgentText.failUnreadable, "the status bar says why")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.queries, [])
         XCTAssertEqual(Set(names(controller)), Set(reports), "the name matches stay")
         XCTAssertTrue(controller.isAISearchOnForTesting, "Return again tries again")

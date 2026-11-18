@@ -77,7 +77,7 @@ import HelmSearch
              send: @escaping @Sendable (WindowStoreAction) -> Void) -> StoreEffectCancellation {
         let delivery = AISearchDelivery(tab: tab, generation: generation, send: send)
         // With no model ready this is the plain search, sent as it always is.
-        guard query.usesAI, case .ready(_, _, _, let isLocal) = dependencies.agent.runtime.state else {
+        guard query.usesAI, case .ready(let provider, _, _, let isLocal) = dependencies.agent.runtime.state else {
             return baseline { results in delivery.baseline(results) }
         }
         // Words that hold a key are never sent, as in the panel's composer: the name matches show and the status
@@ -92,7 +92,7 @@ import HelmSearch
         delivery.assist(SearchAssist(phase: .thinking))
         let plain = baseline { results in delivery.baseline(results) }
         let task = Task { @MainActor [weak self] in
-            await self?.assist(query, client: client, isLocal: isLocal, delivery: delivery)
+            await self?.assist(query, client: client, provider: provider, isLocal: isLocal, delivery: delivery)
         }
         return StoreEffectCancellation {
             plain.cancel()
@@ -102,7 +102,8 @@ import HelmSearch
 
     // MARK: The steps
 
-    private func assist(_ query: SearchQuery, client: any AgentModelClient, isLocal: Bool, delivery: AISearchDelivery) async {
+    private func assist(_ query: SearchQuery, client: any AgentModelClient, provider: String, isLocal: Bool,
+                        delivery: AISearchDelivery) async {
         let session = AISearchSession(client: client)
         let home = dependencies.home
         let scopeRoot: URL?
@@ -131,8 +132,10 @@ import HelmSearch
                                           kind: query.kind, readsContents: looking != nil)
         } catch {
             guard !Task.isCancelled else { return }
-            // The name matches stay on show, and Return again tries again.
-            delivery.assist(SearchAssist(phase: .failed, coverage: coverage))
+            // The name matches stay on show, the status bar says why, and Return again tries again.
+            let failure = error as? AgentFailure ?? .unreadable
+            delivery.assist(SearchAssist(phase: .failed, readAs: AgentText.searchFailedBecause(failure, provider: provider),
+                                         coverage: coverage))
             return
         }
         guard !Task.isCancelled else { return }
@@ -157,13 +160,18 @@ import HelmSearch
         var notDownloaded = 0
         var looked = AISearchLooked()
         if let looking, coverage != .namesOnly {
+            delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchReadingInside, coverage: coverage))
             let read = await readInside(queries, walked: walked, found: found, plain: plainKept, scopeRoot: scopeRoot,
                                         kind: query.kind, coverage: coverage, hiddenFolders: hiddenFolders,
                                         reader: looking.reader, permit: looking.permit,
                                         looks: AgentContentLimits.searchLooks(isLocal: isLocal))
             guard !Task.isCancelled else { return }
             notDownloaded = read.notDownloaded
-            looked = await look(at: Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal))),
+            let picked = Array(read.pool.prefix(AgentContentLimits.searchLooks(isLocal: isLocal)))
+            if !picked.isEmpty {
+                delivery.assist(SearchAssist(phase: .thinking, readAs: AgentText.searchLooking(picked.count), coverage: coverage))
+            }
+            looked = await look(at: picked,
                                 request: query.text, kind: query.kind, session: session, place: place, scopeRoot: scopeRoot,
                                 reader: looking.reader, permit: looking.permit)
             guard !Task.isCancelled else { return }
@@ -263,6 +271,7 @@ import HelmSearch
                                                 locale: locale)
         if let kind = query.kind { readAs += " · " + AgentText.searchKindShown(kind) }
         if looked.count > 0 { readAs += " · " + AgentText.searchLookedAt(looked.count) }
+        if looked.failed > 0 { readAs += " · " + AgentText.searchCouldntLook(looked.failed, looked.failure, provider: provider) }
         if notDownloaded > 0 { readAs += " · " + AgentText.searchNotDownloaded(notDownloaded) }
         delivery.assist(SearchAssist(phase: .done, reasons: reasons, readAs: readAs, queriesRead: queriesRead, coverage: coverage))
     }
@@ -435,28 +444,36 @@ import HelmSearch
             })
         }
         var answers: [Int: [AISearchLook]] = [:]
+        var failures: [Int: AgentFailure] = [:]
         var next = 0
         while next < questions.count, !Task.isCancelled {
             let batch = Array(next..<min(next + AgentContentLimits.lookQuestionsAtOnce, questions.count))
             next += batch.count
             let pictures = !picturesRefused
-            await withTaskGroup(of: (Int, [AISearchLook]?, Bool).self) { group in
+            await withTaskGroup(of: (Int, [AISearchLook]?, Bool, AgentFailure?).self) { group in
                 for index in batch {
                     let items = questions[index].map(\.item)
                     group.addTask {
                         let answer = await Self.ask(session, request: request, kind: kind, items: items, homes: homes, pictures: pictures)
-                        return (index, answer.looks, answer.refused)
+                        return (index, answer.looks, answer.refused, answer.failure)
                     }
                 }
-                for await (index, looks, refused) in group {
+                for await (index, looks, refused, failure) in group {
                     if refused { picturesRefused = true }
-                    if let looks { answers[index] = looks }
+                    if let looks { answers[index] = looks } else { failures[index] = failure ?? .unreadable }
                 }
             }
         }
         var looked = AISearchLooked()
         for (index, question) in questions.enumerated() {
-            guard let looks = answers[index] else { continue }
+            guard let looks = answers[index] else {
+                // Not answered: counted and said in the status bar, so a look that failed is never silent.
+                if !Task.isCancelled, let failure = failures[index] {
+                    looked.failed += question.count
+                    if looked.failure == nil { looked.failure = failure }
+                }
+                continue
+            }
             looked.count += question.count
             for look in looks where question.indices.contains(look.item - 1) {
                 let (entry, item) = question[look.item - 1]
@@ -473,17 +490,21 @@ import HelmSearch
 
     /// One look question. Asked with pictures and turned away as a bad request, it is asked once more in words alone,
     /// with the words found on this Mac standing in, and the answer says pictures were refused. Any other failure
-    /// answers no looks.
+    /// answers no looks, and why.
     nonisolated private static func ask(_ session: AISearchSession, request: String, kind: AISearchKind?,
                                         items: [AISearchLookItem], homes: [String],
-                                        pictures: Bool) async -> (looks: [AISearchLook]?, refused: Bool) {
+                                        pictures: Bool) async -> (looks: [AISearchLook]?, refused: Bool, failure: AgentFailure?) {
         let carries = pictures && items.contains { !$0.summary.images.isEmpty }
         do {
-            return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: carries), false)
+            return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: carries), false, nil)
         } catch AgentFailure.badRequest where carries {
-            return (try? await session.look(request: request, kind: kind, items: items, homes: homes, pictures: false), true)
+            do {
+                return (try await session.look(request: request, kind: kind, items: items, homes: homes, pictures: false), true, nil)
+            } catch {
+                return (nil, true, error as? AgentFailure ?? .unreadable)
+            }
         } catch {
-            return (nil, false)
+            return (nil, false, error as? AgentFailure ?? .unreadable)
         }
     }
 
@@ -799,6 +820,9 @@ private struct AISearchLooked {
     var misses: Set<ItemID> = []
     /// The files in the questions it answered.
     var count = 0
+    /// The files in the questions it didn't answer, and why the first of those wasn't.
+    var failed = 0
+    var failure: AgentFailure?
 }
 
 /// The folders of one AI search that carry macOS's hidden flag. An agent listing never enters such a folder, so an

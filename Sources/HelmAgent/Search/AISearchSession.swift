@@ -74,10 +74,10 @@ public struct AISearchSession: Sendable {
 
     /// The most rows sent to be ranked. A model on this Mac often has a small context, so it gets half.
     public static func maxRows(isLocal: Bool) -> Int { isLocal ? 30 : 60 }
-    /// How long one question may take, in seconds.
-    public static func callSeconds(isLocal: Bool) -> Double { isLocal ? 60 : 20 }
+    /// How long one question may take, in seconds. A model that reasons first can take most of a minute.
+    public static func callSeconds(isLocal: Bool) -> Double { isLocal ? 120 : 60 }
     /// How long one look question may take, in seconds: it carries pictures.
-    public static func lookSeconds(isLocal: Bool) -> Double { isLocal ? 90 : 30 }
+    public static func lookSeconds(isLocal: Bool) -> Double { isLocal ? 180 : 120 }
     /// The most pictures one look question carries. Past it an item's later video frames are left out first.
     static let picturesPerLook = AgentContentLimits.picturesPerRequest
     /// The longest phrase of what was seen that is kept.
@@ -144,7 +144,12 @@ public struct AISearchSession: Sendable {
     public func look(request: String, kind: AISearchKind?, items: [AISearchLookItem], homes: [String],
                      pictures: Bool) async throws -> [AISearchLook] {
         let request = Self.trimmed(request)
-        let shown = Array(items.prefix(AgentContentLimits.looksPerQuestion))
+        // A file whose words still hold the home folder's path is left out of the question, not the rest with it.
+        let shown = items.prefix(AgentContentLimits.looksPerQuestion).filter { item in
+            let words = AISearchPrompt.lookItems([item], pictured: [:], homes: homes, calendar: calendar)
+            return homes.allSatisfy { AgentOutboundCheck.helmTextIsClean(words, home: $0) }
+        }
+        guard !shown.isEmpty else { throw AgentFailure.unreadable }
         let attached = pictures ? Self.pictures(of: shown) : []
         var counts: [Int: Int] = [:]
         for picture in attached { counts[picture.item, default: 0] += 1 }

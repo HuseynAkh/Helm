@@ -244,8 +244,8 @@ final class AISearchSessionTests: XCTestCase {
     func testLimitsByWhereTheModelRuns() {
         XCTAssertEqual(AISearchSession.maxRows(isLocal: false), 60)
         XCTAssertEqual(AISearchSession.maxRows(isLocal: true), 30)
-        XCTAssertEqual(AISearchSession.callSeconds(isLocal: false), 20)
-        XCTAssertEqual(AISearchSession.callSeconds(isLocal: true), 60)
+        XCTAssertEqual(AISearchSession.callSeconds(isLocal: false), 60)
+        XCTAssertEqual(AISearchSession.callSeconds(isLocal: true), 120)
         XCTAssertEqual(AISearchSession.requestCharacters, 500)
     }
 }
