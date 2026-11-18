@@ -264,7 +264,7 @@ public enum AgentText {
     public static let searchNamesOnly = "Names only here."
     /// The status bar's whole line for a search that found nothing because the disk didn't answer: its walk or its
     /// reads timed out, or the place searched isn't responding. It stands in for "0 matches".
-    public static let searchDiskDidntAnswer = "The disk didn’t answer, so nothing there was searched."
+    public static let searchDiskDidntAnswer = "The disk didn't answer, so nothing there was searched."
     /// The kind row under the header while the search is open: its VoiceOver label, then its first choice.
     public static let searchKindRow = "File type"
     public static let searchKindAny = "Any"
