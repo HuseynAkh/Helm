@@ -216,6 +216,24 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(rig.client.sentTurns.count, 3, "ten minutes a request")
     }
 
+    func testTheRequestsTimeStartsOnceTheKeychainHasAnswered() async {
+        // macOS asks the person about the keychain for longer than the whole request may take.
+        let clock = FakeClock()
+        let rig = await self.rig(#"{"rules": [{"when": "*", "turns": [{"text": "Hello."}]}]}"#, clock: clock,
+                                 client: { inner in AgentLoopKeychainClient(inner: inner, clock: clock, seconds: 700) })
+        let words = await send(rig, "hello")
+        XCTAssertEqual(words, ["status thinking", "reply Hello.", "finished"])
+        XCTAssertEqual(rig.client.sentTurns.count, 1)
+    }
+
+    func testAKeychainRefusalEndsTheRequestBeforeAnyTurn() async {
+        let rig = await self.rig(#"{"rules": [{"when": "*", "turns": [{"text": "Hello."}]}]}"#,
+                                 client: { inner in AgentLoopKeychainClient(inner: inner, refusal: .keyDenied) })
+        let words = await send(rig, "hello")
+        XCTAssertEqual(words, ["failed keyDenied", "finished"])
+        XCTAssertEqual(rig.client.sentTurns.count, 0, "nothing was sent")
+    }
+
     func testATurnThatEndsPastTheRequestsTimeRunsNoneOfItsCalls() async {
         let clock = FakeClock()
         let rig = await self.rig(#"{"rules": [{"when": "*", "turns": [{"calls": [\#(Self.list)]}, {"text": "never"}]}]}"#, clock: clock,

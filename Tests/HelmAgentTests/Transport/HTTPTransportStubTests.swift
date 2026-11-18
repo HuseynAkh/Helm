@@ -232,6 +232,35 @@ final class HTTPTransportStubTests: XCTestCase {
         XCTAssertEqual(secrets.secretAsks, 1)
     }
 
+    func testPreparingReadsTheKeyBeforeAnyRequestAndTheRequestCarriesIt() async throws {
+        let profile = try T.claude()
+        let secrets = AgentCountingSecretStore()
+        try secrets.save(T.secret(), for: profile.secretID)
+        let transport = transport(profile, secrets: secrets)
+        AgentStubLoader.reset { _ in Self.ok("data: one\n") }
+        try await transport.prepareKey()
+        XCTAssertEqual(secrets.secretAsks, 1, "read before any request")
+        XCTAssertEqual(AgentStubLoader.seen.count, 0, "and nothing sent")
+        let outcome = await T.drain(transport.stream(.chat, body: T.data("{}")))
+        XCTAssertEqual(outcome.lines, ["data: one"])
+        XCTAssertEqual(secrets.secretAsks, 1, "the request carries the key already read")
+        await transport.shutdown()
+        await XCTAssertThrowsTransport(.cancelled) { try await transport.prepareKey() }
+        XCTAssertEqual(secrets.secretAsks, 1)
+    }
+
+    func testPreparingReadsNothingWhereNoKeyGoes() async throws {
+        let secrets = AgentCountingSecretStore()
+        // Ollama sends no key, and a cloud key may not go to this Mac.
+        let ollama = try T.ollama()
+        let cloudHere = AgentProviderProfile(id: .claude, endpoint: try AgentEndpoint(localPort: 8080))
+        for profile in [ollama, cloudHere] {
+            try secrets.save(T.secret(), for: profile.secretID)
+            try await transport(profile, secrets: secrets).prepareKey()
+        }
+        XCTAssertEqual(secrets.presenceAsks + secrets.secretAsks, 0)
+    }
+
     func testABodyThatHoldsTheKeyIsRefused() async throws {
         let profile = try T.claude()
         AgentStubLoader.reset { _ in Self.ok("data: one\n") }

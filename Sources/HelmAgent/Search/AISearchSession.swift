@@ -222,9 +222,15 @@ public struct AISearchSession: Sendable {
 
     /// Asks one question, within the time a question may take. Cancelling the caller cancels the question.
     private func answer(to ask: AgentStructuredAsk, seconds: Double? = nil) async throws -> Data {
-        let client = self.client
-        let seconds = seconds ?? Self.callSeconds(isLocal: client.isLocal)
+        try await Self.answer(from: client, to: ask, seconds: seconds ?? Self.callSeconds(isLocal: client.isLocal))
+    }
+
+    /// The question's time starts once the client has what a request needs: reading a key or a sign-in from the
+    /// keychain can wait on macOS asking the person, and that wait is theirs, not the provider's.
+    static func answer(from client: any AgentModelClient, to ask: AgentStructuredAsk, seconds: Double) async throws -> Data {
         do {
+            try await client.prepare()
+            try Task.checkCancellation()
             return try await withThrowingTaskGroup(of: Data.self) { group in
                 group.addTask { try await client.structured(ask) }
                 group.addTask {

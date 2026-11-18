@@ -148,6 +148,14 @@ public protocol AgentModelClient: Sendable {
     /// JSON in the shape the ask gives. No tools are sent.
     func structured(_ ask: AgentStructuredAsk) async throws -> Data
     func models() async throws -> [AgentModelInfo]
+    /// Reads what a request will need from the keychain, a key or a sign-in, and holds it. macOS may ask the person
+    /// first, so a caller with a time limit starts it after this. Throws only an `AgentFailure`.
+    func prepare() async throws
+}
+
+extension AgentModelClient {
+    /// A client that reads nothing from the keychain is ready at once.
+    public func prepare() async throws {}
 }
 
 /// A client that holds a connection, which is let go when AI mode turns off or the provider changes.

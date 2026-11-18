@@ -100,6 +100,16 @@ public final class LiveModelClient: AgentLiveClient, @unchecked Sendable {
         }
     }
 
+    /// Reads the key or the ChatGPT sign-in now, so the time a question may take starts after macOS's keychain
+    /// question rather than during it.
+    public func prepare() async throws {
+        do {
+            try await transport.prepareKey()
+        } catch {
+            throw failureMap(error)
+        }
+    }
+
     public func shutdown() async {
         await transport.shutdown()
     }

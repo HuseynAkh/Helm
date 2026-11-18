@@ -283,6 +283,18 @@ public actor AgentSession: AgentConversing {
     /// that was dropped never leave the app.
     private func turns(client: any AgentModelClient, runner: AgentToolRunner, limits: AgentLimits, system: String,
                        selected: Set<String>, asksForChanges: Bool, emit: (AgentSessionEvent) -> Void) async -> (names: Int, summaries: Int) {
+        // Reading the key or the sign-in can wait on macOS asking the person about the keychain, so the request's
+        // time starts once it is read.
+        do {
+            try await client.prepare()
+        } catch {
+            emit(isStopping ? .notice(.stopped) : .failed(error as? AgentFailure ?? .unreadable))
+            return (0, 0)
+        }
+        if isStopping {
+            emit(.notice(.stopped))
+            return (0, 0)
+        }
         let started = parts.clock.now()
         var counts = RequestCounts()
         /// The words of the turn that ended without a plan, while the model is asked for one.

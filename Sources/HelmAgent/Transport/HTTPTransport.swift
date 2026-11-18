@@ -86,6 +86,15 @@ public final class HTTPTransport: AgentTransport, @unchecked Sendable {
         }
     }
 
+    /// Reads the key, or the sign-in's token, before a request's time starts, as a chat request would. A provider
+    /// that sends no key, or a key that may not go to this endpoint, reads nothing.
+    public func prepareKey() async throws {
+        try ensureOpen()
+        guard try spec(.chat).auth != .none, Self.mayCarryKey(profile) else { return }
+        _ = try await key()
+        try ensureOpen()
+    }
+
     /// Cancels every request, forgets the key and closes the session. Requests made afterwards throw `.cancelled`.
     public func shutdown() async {
         refuseRequests()
