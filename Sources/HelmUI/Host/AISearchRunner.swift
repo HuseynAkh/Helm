@@ -139,7 +139,8 @@ import HelmSearch
             return
         }
         guard !Task.isCancelled else { return }
-        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind)
+        let queries = Self.queries(plan.queries, coverage: coverage, request: query.text, kind: query.kind,
+                                   readsContents: looking != nil)
 
         // 2. Fan out.
         let hiddenFolders = AISearchHiddenFolders(fileSystem: dependencies.fileSystem, home: home)
@@ -761,10 +762,29 @@ import HelmSearch
     /// With the kind row at Any and no kind named in the request, the last and loosest query looks at every kind, so a
     /// model that guessed one, such as documents for "a receipt" that's a photo, can't hide the rest.
     static func queries(_ planned: [AISearchQuery], coverage: SearchAssist.Coverage, request: String,
-                        kind: AISearchKind? = nil) -> [AISearchQuery] {
-        let kept = placeQueries(planned, coverage: coverage, request: request)
+                        kind: AISearchKind? = nil, readsContents: Bool = false) -> [AISearchQuery] {
+        var kept = placeQueries(planned, coverage: coverage, request: request)
+        if readsContents, coverage != .namesOnly { kept = insideLast(kept, request: request) }
         guard let kind else { return everyKindLast(kept, request: request) }
         return AISearchPlan(sort: .relevance, queries: kept).limited(to: kind).queries
+    }
+
+    /// With Read contents on, a plan that looks for no words inside files gets queries that do: the words the person
+    /// typed among its first query's names, inside files of its kinds, its dates and sizes kept and its folders and
+    /// extensions left out. gpt-oss planned "a bird" as names alone about half the time, so no photo was ever read.
+    /// Names that must all be there are looked for together; other names, each on its own, two at most.
+    static func insideLast(_ queries: [AISearchQuery], request: String) -> [AISearchQuery] {
+        guard let first = queries.first, queries.allSatisfy({ $0.contentAll.isEmpty }) else { return queries }
+        func typed(_ words: [String]) -> [String] { AISearchQuery(contentAll: words).clamped(request: request).contentAll }
+        let all = typed(first.nameAll), any = typed(first.nameAny)
+        let groups = all.isEmpty ? any.prefix(2).map { [$0] } : [all]
+        var added = queries
+        for words in groups {
+            let inside = AISearchQuery(contentAll: words, kinds: first.kinds, dateField: first.dateField, dateFrom: first.dateFrom,
+                                       dateTo: first.dateTo, sizeMinBytes: first.sizeMinBytes, sizeMaxBytes: first.sizeMaxBytes)
+            if !added.contains(inside) { added.append(inside) }
+        }
+        return added
     }
 
     /// Adds the last query again without its kinds and extensions, when every query has some and the request names

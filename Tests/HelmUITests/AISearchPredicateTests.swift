@@ -174,5 +174,27 @@ final class AISearchPredicateTests: XCTestCase {
         XCTAssertEqual(AISearchRunner.queries(open, coverage: .full, request: "a receipt"), open)
         XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "a receipt", kind: .pdf).count, 2)
     }
+
+    /// gpt-oss planned "a bird" as names alone about half the time. With Read contents on, such a plan also looks
+    /// inside files for the person's own words among its first query's names, in its kinds; without, it's as planned.
+    @MainActor func testWithReadContentsOnAPlanOfNamesAloneAlsoLooksInsideFiles() {
+        let planned = [AISearchQuery(nameAny: ["bird", "avian"], folderAny: ["Image", "Tests"], kinds: [.image], extensions: ["jpg"]),
+                       AISearchQuery(nameAny: ["bird"])]
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "a bird", readsContents: true),
+                       planned + [AISearchQuery(contentAll: ["bird"], kinds: [.image])], "only the word typed, no folders or extensions")
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .full, request: "a bird"), planned, "Read contents off")
+        XCTAssertEqual(AISearchRunner.queries(planned, coverage: .namesOnly, request: "a bird", readsContents: true), planned,
+                       "a server is searched by name only")
+        let both = [AISearchQuery(nameAll: ["red", "car"], kinds: [.image])]
+        XCTAssertEqual(AISearchRunner.queries(both, coverage: .full, request: "red car", readsContents: true),
+                       both + [AISearchQuery(contentAll: ["red", "car"], kinds: [.image])] + [AISearchQuery(contentAll: ["red", "car"])],
+                       "and, every query having a kind, once more over every kind")
+        let either = [AISearchQuery(nameAny: ["dog", "cat", "puppy"])]
+        XCTAssertEqual(AISearchRunner.queries(either, coverage: .full, request: "dog or cat or puppy", readsContents: true),
+                       either + [AISearchQuery(contentAll: ["dog"]), AISearchQuery(contentAll: ["cat"])])
+        // A plan that looks inside already is left as it is.
+        let inside = planned + [AISearchQuery(contentAll: ["bird"])]
+        XCTAssertEqual(AISearchRunner.queries(inside, coverage: .full, request: "a bird", readsContents: true), inside)
+    }
 }
 #endif

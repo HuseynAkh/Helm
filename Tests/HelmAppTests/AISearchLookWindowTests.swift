@@ -182,6 +182,32 @@ import HelmPersistence
                        controller.aiSearchStatusForTesting?.text ?? "")
     }
 
+    /// The two plans gpt-oss-20b made for "a bird" live, as kites: names alone, and names that say again the word
+    /// looked for inside, the folder searched among its folder words. Each still reads the pictures, finds the one
+    /// labelled a kite on this Mac, after the list named for kites, and lets the model, on this Mac and reading text
+    /// only, look.
+    func testPlansOfNamesFromASmallModelStillReadThePictures() async throws {
+        for plan in ["""
+            {"sort":"relevance","queries":[{"name_any":["kite"],"folder_any":["Pictures"],"kinds":["image"]},{"name_any":["kite"]}]}
+            """, """
+            {"sort":"relevance","queries":[{"name_any":["kite"],"content_all":["kite"],"folder_any":["Pictures"],"kinds":["image"]},
+             {"name_any":["kite"],"content_all":["kite"],"kinds":["image","document"]},{"name_any":["kite"],"content_all":["kite"]}]}
+            """] {
+            let client = AISearchLookClient(plan: plan, isLocal: true) { names in
+                AISearchLookClient.answer(names, fits: [:], misses: [], order: [])
+            }
+            let (controller, runtime) = try await window(client: client, reader: AISearchLookReader())
+            runtime.configure(AIConfig(provider: "lmStudio", models: ["lmStudio": "openai/gpt-oss-20b"],
+                                       textOnlyModels: ["lmStudio|127.0.0.1:1234": ["openai/gpt-oss-20b"]]))
+            await searchReadingContents(controller, client, "kite")
+            XCTAssertEqual(client.looks.count, 1, plan)
+            XCTAssertTrue(names(controller).contains("IMG_0042.jpg"), "\(names(controller)) for \(plan)")
+            XCTAssertTrue(controller.aiSearchStatusForTesting?.text.contains("Looked at") == true,
+                          controller.aiSearchStatusForTesting?.text ?? "")
+            controller.window?.close()
+        }
+    }
+
     // MARK: What the model may look at
 
     func testASearchOfTheWholeMacLooksOnlyAtWhatThisMacMatchedOrASearchFound() async throws {
