@@ -21,6 +21,10 @@ public actor WindowOperationHistory {
     private var execution: (id: OperationID, plan: OperationPlan)?
     private var inverse: HistoryUndoRequest?
     private var completedInverses: [JournalEntry] = []
+    /// Permissions changes, which the host makes outside the executor, by the entry each one made.
+    private var permissionChanges: [OperationID: PermissionChange] = [:]
+    /// The reservation a permissions change, its Undo or its Redo holds, while the host makes it.
+    private var permissionRequest: HistoryRequestID?
     public init() {}
     public func snapshot() -> OperationHistoryState { state }
     /// Original evidence stays available to a future reconciliation host (B-038).
@@ -173,5 +177,102 @@ public actor WindowOperationHistory {
     public func beginRedo() -> HistoryAvailability {
         OperationHistoryReducer.reduce(&state, .beginRedo)
         return state.redoAvailability
+    }
+
+    // MARK: Permissions changes
+
+    /// What Edit calls a permissions change: "Undo Change Permissions".
+    public static let permissionChangeName = "Change Permissions"
+
+    /// Reserves the history for a change to an item's permissions, as `beginForward` does for an operation, so nothing
+    /// else in the window starts meanwhile. Nil while the history is busy or waits on a reconciliation.
+    public func beginPermissionChange() -> HistoryRequestID? {
+        let request = HistoryRequestID()
+        OperationHistoryReducer.reduce(&state, .beginForward(request, name: Self.permissionChangeName))
+        guard state.pending?.request == request else { return nil }
+        forwardCommand = nil
+        permissionRequest = request
+        return request
+    }
+
+    /// Ends a reservation from `beginPermissionChange` or `beginPermissionRedo`. A change that was made becomes one
+    /// entry, which Undo takes back. Nil means nothing changed, and the reservation goes with nothing recorded.
+    @discardableResult
+    public func finishPermissionChange(request: HistoryRequestID, change: PermissionChange?, failure: String = "Nothing changed") -> Bool {
+        guard case .forward(request, _) = state.pending, permissionRequest == request, execution == nil else { return false }
+        permissionRequest = nil
+        guard let change, change.before != change.after else {
+            OperationHistoryReducer.reduce(&state, .abortForward(request, failure: .failed(failure)))
+            return true
+        }
+        let operation = OperationID()
+        OperationHistoryReducer.reduce(&state, .startForward(request, operation: operation))
+        OperationHistoryReducer.reduce(&state, .finishForward(request, operation: operation, outcome: .succeeded))
+        seenOperations.insert(operation)
+        permissionChanges[operation] = change
+        return true
+    }
+
+    /// The permissions change Undo would take back next, when the latest entry is one.
+    public func permissionChangeToUndo() -> PermissionChange? {
+        state.undoEntries.last.flatMap { permissionChanges[$0.operationID] }
+    }
+    /// The permissions change Redo would make again next, when the latest undone entry is one.
+    public func permissionChangeToRedo() -> PermissionChange? {
+        state.redoEntries.last.flatMap { permissionChanges[$0.operationID] }
+    }
+
+    /// Reserves Undo for the latest entry when it's a permissions change, and hands back the change to take back.
+    /// Nil when it isn't one, or the history is busy.
+    public func beginPermissionUndo() -> (request: HistoryRequestID, change: PermissionChange)? {
+        guard let top = state.undoEntries.last, let change = permissionChanges[top.operationID] else { return nil }
+        let request = HistoryRequestID()
+        let effects = OperationHistoryReducer.reduce(&state, .beginUndo(request))
+        guard case .performUndo(request, top.operationID) = effects.first else { return nil }
+        permissionRequest = request
+        return (request, change)
+    }
+
+    /// Ends a reservation from `beginPermissionUndo`. Put back, the entry moves to Redo. Refused, with nothing
+    /// changed, it stays where it was, as an operation whose Undo is refused does.
+    @discardableResult
+    public func finishPermissionUndo(request: HistoryRequestID, restored: Bool, failure: String = "Refused") -> Bool {
+        guard case .undo(request, _) = state.pending, permissionRequest == request, execution == nil else { return false }
+        permissionRequest = nil
+        guard restored else {
+            OperationHistoryReducer.reduce(&state, .complete(request, outcome: .refused(failure)))
+            return true
+        }
+        let operation = OperationID()
+        OperationHistoryReducer.reduce(&state, .startUndo(request, operation: operation))
+        OperationHistoryReducer.reduce(&state, .complete(request, outcome: .succeeded))
+        seenOperations.insert(operation)
+        return true
+    }
+
+    /// Reserves Redo for the latest undone entry when it's a permissions change, and hands back the change to make
+    /// again. The host makes it afresh and ends it with `finishPermissionChange`, so it becomes a new entry. As with
+    /// an operation's Redo, the undone entry is let go as it starts.
+    public func beginPermissionRedo() -> (request: HistoryRequestID, change: PermissionChange)? {
+        guard let entry = state.redoEntries.last, let change = permissionChanges[entry.operationID] else { return nil }
+        let request = HistoryRequestID()
+        OperationHistoryReducer.reduce(&state, .beginRedoForward(request))
+        guard state.pending?.request == request else { return nil }
+        forwardCommand = nil
+        permissionRequest = request
+        return (request, change)
+    }
+}
+
+/// A change to one item's permissions, which Properties makes and the window's history keeps, so Undo puts the mode
+/// back and Redo makes it again. Each is made only while the item is still the one with `identity` and has the mode
+/// the other left.
+public struct PermissionChange: Equatable, Sendable {
+    public let item: URL
+    public let identity: FileObjectIdentity
+    public let before: UInt16
+    public let after: UInt16
+    public init(item: URL, identity: FileObjectIdentity, before: UInt16, after: UInt16) {
+        self.item = item; self.identity = identity; self.before = before; self.after = after
     }
 }
