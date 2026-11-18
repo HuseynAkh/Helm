@@ -15,6 +15,17 @@ import HelmCore
     let word = AgentText.readContents
     private let wordWidth: CGFloat
     private let height: CGFloat
+    private var widthConstraint: NSLayoutConstraint?
+    /// The words beside the symbol. Off, where a row has no room for them, it shows the symbol alone; its tooltip and
+    /// VoiceOver still say Read contents.
+    var showsWord = true {
+        didSet {
+            guard showsWord != oldValue else { return }
+            widthConstraint?.constant = width
+            invalidateIntrinsicContentSize()
+            needsDisplay = true
+        }
+    }
     /// The person turned it over: the new state.
     var onToggle: ((Bool) -> Void)?
 
@@ -30,14 +41,20 @@ import HelmCore
         isToggle = true
         layer?.cornerRadius = Self.cornerRadius
         refusesFirstResponder = true
-        widthAnchor.constraint(equalToConstant: Self.width(wordWidth: wordWidth)).isActive = true
+        setAccessibilityLabel(AgentText.readContents)
+        let constraint = widthAnchor.constraint(equalToConstant: Self.width(wordWidth: wordWidth))
+        constraint.isActive = true
+        widthConstraint = constraint
         setContentHuggingPriority(.required, for: .horizontal)
         setContentCompressionResistancePriority(.required, for: .horizontal)
     }
     required init?(coder: NSCoder) { nil }
 
-    /// Its width: the symbol, the gap and the words, with room either side.
-    var width: CGFloat { Self.width(wordWidth: wordWidth) }
+    /// Its width: the symbol, the gap and the words, with room either side, or the symbol alone.
+    var width: CGFloat { showsWord ? Self.width(wordWidth: wordWidth) : Self.symbolOnlyWidth }
+    /// Its width with the words, whether or not they show.
+    var fullWidth: CGFloat { Self.width(wordWidth: wordWidth) }
+    static let symbolOnlyWidth: CGFloat = ceil(2 * 7 + symbolSize + 3)
     private static func width(wordWidth: CGFloat) -> CGFloat { ceil(2 * padding + symbolSize + 3 + gap + wordWidth) }
     override var intrinsicContentSize: NSSize { NSSize(width: width, height: height) }
 
@@ -67,7 +84,7 @@ import HelmCore
         let symbol = NSImage(systemSymbolName: Self.symbol, accessibilityDescription: nil)?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: Self.symbolSize, weight: .regular))
         let symbolSize = symbol?.size ?? .zero
-        let total = symbolSize.width + Self.gap + ceil(textSize.width)
+        let total = showsWord ? symbolSize.width + Self.gap + ceil(textSize.width) : symbolSize.width
         var x = ((bounds.width - total) / 2).rounded()
         if let symbol {
             let rect = backingAlignedRect(NSRect(x: x, y: (bounds.height - symbolSize.height) / 2, width: symbolSize.width,
@@ -75,6 +92,7 @@ import HelmCore
             Self.draw(symbol, in: rect, color: mark, appearance: effectiveAppearance)
             x += symbolSize.width + Self.gap
         }
+        guard showsWord else { return }
         text.draw(in: NSRect(x: x, y: ((bounds.height - textSize.height) / 2).rounded(), width: ceil(textSize.width),
                              height: ceil(textSize.height)))
     }

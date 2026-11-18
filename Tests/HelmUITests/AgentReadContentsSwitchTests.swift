@@ -159,6 +159,26 @@ import HelmCore
         XCTAssertEqual(bar.contentsForTesting.shown, false)
         XCTAssertFalse(bar.clickContentsForTesting())
     }
+
+    /// With the AI panel open the row is narrower: the switch shows its symbol alone rather than sit on a choice, and
+    /// still says Read contents to VoiceOver. Wide again, its words come back.
+    func testInANarrowRowTheSwitchShowsItsSymbolAloneAndNeverSitsOnAChoice() {
+        let bar = SearchKindBar(frame: NSRect(x: 0, y: 0, width: 700, height: SearchKindBar.height))
+        bar.showContents(offered: true, on: true)
+        bar.setShown(true)
+        for width: CGFloat in [700, 510, 470] {
+            bar.setFrameSize(NSSize(width: width, height: SearchKindBar.height))
+            bar.layoutSubtreeIfNeeded()
+            let lastChip = bar.chips.last.map { $0.convert($0.bounds, to: bar) } ?? .zero
+            let toggle = bar.contentsToggle.convert(bar.contentsToggle.bounds, to: bar)
+            XCTAssertLessThanOrEqual(lastChip.maxX, toggle.minX, "\(width): \(lastChip) \(toggle)")
+            XCTAssertLessThanOrEqual(toggle.maxX, width)
+            XCTAssertEqual(bar.contentsToggle.showsWord, width == 700, "\(width)")
+            XCTAssertEqual(bar.contentsToggle.accessibilityLabel(), "Read contents")
+        }
+        bar.setFrameSize(NSSize(width: 700, height: SearchKindBar.height))
+        XCTAssertTrue(bar.contentsToggle.showsWord)
+    }
 }
 
 /// XCTest's assertions take their values as autoclosures, which can't wait.

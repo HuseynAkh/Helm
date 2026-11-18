@@ -117,13 +117,21 @@ import HelmCore
         super.setFrameSize(newSize)
         fitChips(to: newSize.width)
     }
-    /// Each choice's padding, the same for all: the most there's room for, between the least and the most.
+    /// Each choice's padding, the same for all: the most there's room for, between the least and the most. Where the
+    /// choices don't fit beside the Read contents switch with its words, as with the AI panel open, the switch shows
+    /// its symbol alone, so it never sits on a choice.
     private func fitChips(to width: CGFloat) {
         guard width > 0, !chips.isEmpty else { return }
         let words = chips.reduce(0) { $0 + $1.wordWidth }
+        let fixed = 2 * Self.edge + Self.gap * CGFloat(chips.count - 1) + words
+        let least = Self.leastPadding * CGFloat(2 * chips.count)
         // The switch at the end keeps its own width, and a gap before it.
-        let toggle = contentsToggle.isHidden ? 0 : contentsToggle.width + Self.toggleGap
-        let room = width - 2 * Self.edge - Self.gap * CGFloat(chips.count - 1) - words - toggle
+        var toggle: CGFloat = 0
+        if !contentsToggle.isHidden {
+            contentsToggle.showsWord = width - fixed - least >= contentsToggle.fullWidth + Self.toggleGap
+            toggle = contentsToggle.width + Self.toggleGap
+        }
+        let room = width - fixed - toggle
         let padding = min(Self.mostPadding, max(Self.leastPadding, floor(room / CGFloat(2 * chips.count))))
         for chip in chips { chip.padding = padding }
     }
