@@ -97,10 +97,14 @@ import HelmPersistence
     func requestQuitAnyway()
     /// The AI mode screen, where AI mode is turned on and a model chosen. `window` is the one whose spark opened it.
     func showAIModeScreen(from window: BrowserWindowController?)
+    /// Brings in a window a browser window opened, such as Properties. A run that stays in the background keeps it
+    /// invisible and behind.
+    func present(_ window: NSWindow)
 }
 
 public extension BrowserWindowHost {
     /// A host without AI mode's screen shows nothing.
     func showAIModeScreen(from window: BrowserWindowController?) {}
+    func present(_ window: NSWindow) { window.makeKeyAndOrderFront(nil) }
 }
 #endif

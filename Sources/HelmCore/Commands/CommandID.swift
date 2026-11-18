@@ -22,6 +22,9 @@ public enum CommandID: String, CaseIterable, Codable, Sendable {
     case aiPanel
     /// File › Find with AI: the search field's spark from the keyboard.
     case findWithAI
+    /// Open in Terminal: a new window of the terminal app chosen in Settings, in the selected folder or the one on
+    /// show, as Nautilus offers on a folder.
+    case openInTerminal
 
     /// Still later, per OWNER_RULINGS.md. Everything else in the menus works.
     public var isPlanned: Bool {

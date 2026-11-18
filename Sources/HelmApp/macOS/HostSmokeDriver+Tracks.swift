@@ -28,6 +28,7 @@ extension HostSmokeDriver {
         if await performAgentPlacesVerb(verb, argument, step: step, window: window, app: app) { return true }
         if await performAISearchVerb(verb, argument, step: step, window: window, app: app) { return true }
         if await performAgentSetupVerb(verb, argument, step: step, window: window, app: app) { return true }
+        if await performPropertiesVerb(verb, argument, step: step, window: window, app: app) { return true }
         return false
     }
 }

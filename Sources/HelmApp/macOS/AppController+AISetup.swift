@@ -10,6 +10,16 @@ extension AppController {
         guard let model = aiSetupModel() else { return }
         access.showAIMode(model, from: window)
     }
+    /// A window a browser window opened, such as Properties: in front as usual, or kept invisible and behind by a run
+    /// that stays in the background, as its browser windows are.
+    public func present(_ window: NSWindow) {
+        if staysInBackground {
+            SmokeBackground.hide(window)
+            window.orderFrontRegardless()
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
     /// Once at launch, after the first window, for someone who set Helm up before AI mode and got no onboarding now.
     /// Everyone else meets AI mode as a step of the onboarding. Never by itself in a fixture run.
     func showAIIntroIfNeeded() {

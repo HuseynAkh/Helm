@@ -19,6 +19,15 @@ extension SettingsPaneView {
             } header: {
                 Text("Windows")
             }
+            #if os(macOS)
+            Section {
+                Picker("Open in Terminal uses", selection: string(.terminalApp)) {
+                    ForEach(terminals, id: \.id) { Text($0.name).tag($0.id) }
+                }
+            } header: {
+                Text("Terminal")
+            }
+            #endif
             Section {
                 Toggle("Remember recent items", isOn: bool(.rememberRecentItems))
             } header: {
@@ -34,3 +43,17 @@ extension SettingsPaneView {
         }
     }
 }
+
+#if os(macOS)
+extension SettingsPaneView {
+    /// The terminals on this Mac that can open a folder, and the one chosen even when it's gone, so the choice shows.
+    var terminals: [TerminalApps.App] {
+        var apps = TerminalLocator.installed(folder: FileManager.default.temporaryDirectory)
+        let chosen = snapshot.string(.terminalApp)
+        if !apps.contains(where: { $0.id == chosen }) {
+            apps.append(TerminalApps.App(id: chosen, name: "\(TerminalApps.name(of: chosen)) (not on this Mac)"))
+        }
+        return apps
+    }
+}
+#endif

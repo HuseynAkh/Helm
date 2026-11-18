@@ -302,8 +302,8 @@ menu columns disabled
 # Sheets open and close
 select alpha.md
 cmd properties
-sheet
-dismiss-sheet
+properties-wait
+properties-close
 select alpha.md,notes.txt
 cmd rename
 wait 0.4

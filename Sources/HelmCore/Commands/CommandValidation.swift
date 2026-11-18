@@ -83,6 +83,8 @@ public enum CommandValidation {
         case .viewOptions, .computer: return .window
         case .goToTrash: return .window
         case .aiPanel, .findWithAI: return .window
+        // The window narrows it to one folder, selected or on show, which these facts can't tell.
+        case .openInTerminal: return .window
         }
     }
 

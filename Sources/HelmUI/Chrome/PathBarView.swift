@@ -13,6 +13,13 @@ import HelmCore
     func pathBarPerformDrop(_ info: NSDraggingInfo, into url: URL) -> Bool
     func pathBarDragEnded()
     func pathBarFolderMenu() -> NSMenu?
+    /// Open in Terminal from a piece's menu.
+    func pathBarOpenInTerminal(_ url: URL)
+}
+
+extension PathBarDelegate {
+    /// A delegate without a terminal offers none.
+    func pathBarOpenInTerminal(_ url: URL) {}
 }
 
 /// One piece of the path as it's shown.
@@ -295,10 +302,16 @@ struct PathBarSegment: Equatable {
         let open = NSMenuItem(title: "Open in New Tab", action: #selector(openSegmentTab(_:)), keyEquivalent: "")
         open.target = self; open.representedObject = url
         menu.addItem(open)
+        let terminal = NSMenuItem(title: "Open in Terminal", action: #selector(openSegmentTerminal(_:)), keyEquivalent: "")
+        terminal.target = self; terminal.representedObject = url
+        menu.addItem(terminal)
         let copy = NSMenuItem(title: "Copy Path", action: #selector(copySegmentPath(_:)), keyEquivalent: "")
         copy.target = self; copy.representedObject = url
         menu.addItem(copy)
         return menu
+    }
+    @objc private func openSegmentTerminal(_ sender: NSMenuItem) {
+        if let url = sender.representedObject as? URL { delegate?.pathBarOpenInTerminal(url) }
     }
     @objc private func openSegmentTab(_ sender: NSMenuItem) {
         if let url = sender.representedObject as? URL { delegate?.pathBarOpenInNewTab(url) }

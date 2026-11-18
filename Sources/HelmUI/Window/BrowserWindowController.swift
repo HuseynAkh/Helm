@@ -117,6 +117,8 @@ struct WindowTints: Equatable {
     /// The Down arrow took the keys to results that hadn't come in yet: the first is selected when they do.
     var firstResultWanted: (tab: TabID, search: Generation)?
     var closedTabs: [Location] = []
+    /// The Properties windows this window opened that are still open.
+    var propertiesWindows: [PropertiesWindowController] = []
     /// The app's cut, shared with every window, since they share one pasteboard.
     var cutTransaction: ClipboardTransaction? { dependencies.cut.transaction }
     /// This window's file operations, run one after another in the order they were asked for. The window's undo
@@ -791,6 +793,7 @@ struct WindowTints: Equatable {
     func pathBarNavigate(to url: URL) { navigate(to: .directory(url)) }
     func pathBarOpenInNewTab(_ url: URL) { newTab(at: .directory(url)) }
     func pathBarCopyPath(_ url: URL) { copyPaths(of: [url]) }
+    func pathBarOpenInTerminal(_ url: URL) { openInTerminal(url) }
     func pathBarBeginEditing() { store.send(.tab(activeTabID, .addressBar(.beginEditing))) }
     func pathBarAction(_ action: AddressEditorAction) {
         store.send(.tab(activeTabID, .addressBar(action)))
@@ -880,6 +883,8 @@ struct WindowTints: Equatable {
         }
     }
     func sidebarEmptyTrash() { emptyTrash() }
+    func sidebarOpensInTerminal(_ url: URL) -> Bool { opensInTerminal(url) }
+    func sidebarOpenInTerminal(_ url: URL) { openInTerminal(url) }
 
     // MARK: Quick Look
 
