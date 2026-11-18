@@ -176,7 +176,7 @@ import HelmSearch
             }
             looked = await look(at: picked,
                                 request: query.text, kind: query.kind, session: session, place: place, scopeRoot: scopeRoot,
-                                reader: looking.reader, permit: looking.permit)
+                                reader: looking.reader, permit: looking.permit, isLocal: isLocal)
             guard !Task.isCancelled else { return }
             // A file the model looked at and said doesn't fit is no longer a match for what was read on this Mac.
             sightings = read.sightings.filter { !looked.misses.contains($0.key) }
@@ -439,7 +439,7 @@ import HelmSearch
     /// leaves what was read on this Mac as it was.
     private func look(at picked: [AISearchRead], request: String, kind: AISearchKind?, session: AISearchSession,
                       place: StorageFacts, scopeRoot: URL?, reader: any AgentContentReading,
-                      permit: AgentContentPermit) async -> AISearchLooked {
+                      permit: AgentContentPermit, isLocal: Bool) async -> AISearchLooked {
         guard !picked.isEmpty else { return AISearchLooked() }
         // A model that can't see pictures, as its provider said, gets Apple's descriptions of them alone.
         let sendsPictures = !picturesRefused && dependencies.agent.runtime.modelSeesPictures
@@ -450,8 +450,9 @@ import HelmSearch
         let spelled = await dependencies.agent.disk.canonicalPath(home) ?? home
         let homes = spelled == home ? [home] : [home, spelled]
         var questions: [[(entry: FileEntry, item: AISearchLookItem)]] = []
-        for start in stride(from: 0, to: shown.count, by: AgentContentLimits.looksPerQuestion) {
-            let end = min(start + AgentContentLimits.looksPerQuestion, shown.count)
+        let perQuestion = AgentContentLimits.questionSize(isLocal: isLocal, seesPictures: sendsPictures)
+        for start in stride(from: 0, to: shown.count, by: perQuestion) {
+            let end = min(start + perQuestion, shown.count)
             questions.append((start..<end).map { index in
                 let read = shown[index], fact = facts[index]
                 let modified = read.entry.modificationDate == .distantPast ? nil : read.entry.modificationDate

@@ -169,8 +169,8 @@ import HelmPersistence
                        controller.aiSearchStatusForTesting?.text ?? "")
     }
 
-    /// A model on this Mac that sees pictures looks at two questions of them, 24 files: with 12, Qwen2.5-VL never saw
-    /// the parrot among a folder's 23 photos. One that reads text only still looks at 12.
+    /// A model on this Mac that sees pictures looks at 24 files, 4 a question, so each question fits LM Studio's
+    /// 4,096 tokens: 12 pictures ran past them and were cut short. One that reads text only still looks at 12, in one.
     func testAModelOnThisMacLooksAtTwentyFourOrTwelveIfItReadsTextOnly() async throws {
         let numbered = (1...30).map { String(format: "p%02d.jpg", $0) }
         let plan = """
@@ -179,8 +179,9 @@ import HelmPersistence
         let seeing = AISearchLookClient(plan: plan, isLocal: true) { names in AISearchLookClient.answer(names, fits: [:], misses: [], order: []) }
         let (controller, _) = try await window(client: seeing, reader: AISearchLookReader(), files: numbered)
         await searchReadingContents(controller, seeing, "kite")
-        XCTAssertEqual(seeing.looks.count, 2, "two questions of 12")
-        XCTAssertEqual(AISearchLookClient.items(in: seeing.looks[0]).first, "p30.jpg", "the newest first")
+        XCTAssertEqual(seeing.looks.count, 6, "six questions of 4")
+        XCTAssertTrue(seeing.looks.allSatisfy { AISearchLookClient.items(in: $0).count <= 4 })
+        XCTAssertTrue(seeing.looks.contains { AISearchLookClient.items(in: $0).first == "p30.jpg" }, "the newest first")
         XCTAssertEqual(controller.aiSearchStatusForTesting?.text.hasSuffix(" · Looked at 24"), true,
                        controller.aiSearchStatusForTesting?.text ?? "")
         controller.window?.close()

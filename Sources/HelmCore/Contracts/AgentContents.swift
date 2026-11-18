@@ -173,13 +173,22 @@ public enum AgentContentLimits {
     public static let picturesPerRequest = 24
     /// Files the model looks at in one AI search: pictures, video frames and the first lines of documents, the best
     /// candidates first. A model on this Mac is slower, so it looks at fewer: 12, or 24 for one that sees pictures,
-    /// whose look is the point of the search. With 12, Qwen2.5-VL never saw the parrot among a folder's 23 photos.
+    /// whose look is the point of the search, so a folder of a couple of dozen photos is looked at whole.
     public static func searchLooks(isLocal: Bool, seesPictures: Bool = false) -> Int {
         isLocal ? (seesPictures ? 2 * looksPerQuestion : looksPerQuestion) : 48
     }
     /// Files shown to the model in one question of an AI search's look, and questions asked at once.
     public static let looksPerQuestion = 12
     public static let lookQuestionsAtOnce = 2
+    /// A model on this Mac that sees pictures is shown 4 files a question, and 6 pictures at most, so a question fits
+    /// the 4,096 tokens LM Studio gives a model unless told otherwise. A 512-point picture takes Qwen2.5-VL some 330
+    /// of them: 12 ran past it, LM Studio cut the question short without a word, and only the first files were judged.
+    public static let localPictureLooksPerQuestion = 4
+    public static let localPicturesPerLook = 6
+    /// Files a look question shows the model.
+    public static func questionSize(isLocal: Bool, seesPictures: Bool) -> Int {
+        isLocal && seesPictures ? localPictureLooksPerQuestion : looksPerQuestion
+    }
 
     /// What kind of file this is to Read contents, from its type and its extension. A link, a folder and a package
     /// are `.other`.
