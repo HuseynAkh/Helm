@@ -45,8 +45,9 @@ public struct LiveFileSystem: FileSystem {
         self.readMetadata = readMetadata
     }
     func queueKey(_ url: URL) -> String {
-        // A read waiting on a macOS privacy question holds its lane, and the watchdog then shuts that lane until
-        // the read returns. Such a folder gets a lane of its own, so the rest of the disk carries on meanwhile.
+        // A read waiting on a macOS privacy question holds one of its lane's workers until it returns, and reads
+        // waiting in two such folders at once would shut a shared lane. Each such folder gets a lane of its own, so
+        // the rest of the disk carries on meanwhile.
         if !privacyRoots.isEmpty {
             let spelled = PathSpelling.standardPath(url).lowercased()
             if let root = privacyRoots.first(where: { spelled == $0.match || spelled.hasPrefix($0.match + "/") }) { return root.key }
@@ -59,6 +60,9 @@ public struct LiveFileSystem: FileSystem {
         if components.count > 2 && components[1] == "Volumes" { return "/Volumes/" + components[2] }
         return "/"
     }
+    /// What a read of `url` tells the executor it reads. A read that stalls there then shuts only that folder or item,
+    /// and what is inside it, so the rest of its lane carries on.
+    func readPath(_ url: URL) -> String { PathSpelling.standardPath(url) }
     public func enumerate(_ directory: URL, options: EnumerationOptions = EnumerationOptions()) -> AsyncThrowingStream<[FileEntry], Error> {
         AsyncThrowingStream { continuation in
             let cancellation = EnumerationCancellation()
@@ -67,7 +71,7 @@ public struct LiveFileSystem: FileSystem {
                 // see them, so they are read here.
                 let downloadsOff = DatalessGuard.isOff, skipped = DatalessGuard.skippedChildren
                 do {
-                    try await executor.runReadWithProgress(volume: queueKey(directory)) { progress in
+                    try await executor.runReadWithProgress(volume: queueKey(directory), path: readPath(directory)) { progress in
                         try cancellation.check()
                         // opendir provides an O(1) permission preflight without materializing 100k URLs.
                         guard let handle = opendir(directory.path) else {
@@ -193,7 +197,7 @@ public struct LiveFileSystem: FileSystem {
     /// is never looked at, so it reads as a dangling link whatever its target.
     func entry(at url: URL, resolveSymlinkTargets: Bool) async throws -> FileEntry {
         let read = readMetadata
-        return try await executor.runRead(volume: queueKey(url)) {
+        return try await executor.runRead(volume: queueKey(url), path: readPath(url)) {
             do {
                 let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
                 let volume = (attributes[.systemNumber] as? NSNumber)?.stringValue ?? queueKey(url)
@@ -312,7 +316,7 @@ public struct LiveFileSystem: FileSystem {
     /// Queries volume metadata only; Linux uses case-sensitive path semantics (F-052/B-039).
     public func isCaseSensitive(at url: URL) async throws -> Bool {
         #if os(macOS)
-        return try await executor.runRead(volume: queueKey(url)) {
+        return try await executor.runRead(volume: queueKey(url), path: readPath(url)) {
             try url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames ?? false
         }
         #else
@@ -320,13 +324,13 @@ public struct LiveFileSystem: FileSystem {
         #endif
     }
     public func volumeIdentifier(for url: URL) async throws -> String {
-        try await executor.runRead(volume: queueKey(url)) {
+        try await executor.runRead(volume: queueKey(url), path: readPath(url)) {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             return (attributes[.systemNumber] as? NSNumber)?.stringValue ?? "/"
         }
     }
     public func availableCapacity(of url: URL) async throws -> Int64 {
-        try await executor.runRead(volume: queueKey(url)) {
+        try await executor.runRead(volume: queueKey(url), path: readPath(url)) {
             let attributes = try FileManager.default.attributesOfFileSystem(forPath: url.path)
             guard let value = attributes[.systemFreeSize] as? NSNumber else { throw FileSystemError.unsupported }
             return value.int64Value

@@ -2,7 +2,9 @@
 
 IOExecutor preserves bounded, per-volume blocking work for B-107. Its executor lock
 serializes request registration, queued-to-running admission, and timeout quarantine.
-A timeout rejects every registered request that has not started. Already-running
+A timeout that shuts a lane rejects every registered request on it that has not started;
+a read that shuts only its folder rejects only what waits to read there, and every
+change (see "A stalled read shuts its folder, not its lane" below). Already-running
 requests retain their actual result unless their own deadline expires. Cancellation
 before continuation installation is retained; cancellation after begin cannot erase
 a successful primitive. Lock order is executor then result state; cancellation takes
@@ -73,11 +75,38 @@ on it is still out, and the answer is then false. Call it only once the person h
 acknowledged the stalled change: that is the reconciliation `clearQuarantine` asks for.
 
 True means every lane a stalled change shut is open again. It doesn't mean nothing is out.
-A lane shut only by a timed-out read is left alone and doesn't make the answer false: a
-read changes nothing, and waiting for it would hold up every other lane. That lane reopens
-by itself when the read returns. Until then a change on it still fails as timed out, so a
-caller that keeps a stall flag of its own can see one more timed-out failure there after a
-true.
+A lane shut only by a timed-out read, or with a read stalled in one folder, is left alone
+and doesn't make the answer false: a read changes nothing, and waiting for it would hold up
+every other lane. The stall clears by itself when the read returns. Until then a change on
+that lane still fails as timed out, so a caller that keeps a stall flag of its own can see
+one more timed-out failure there after a true.
 
 `CanonicalPath` is the one place that asks for an item's real path. `realPath` answers nil
 when any part of the path is missing.
+
+## A stalled read shuts its folder, not its lane
+
+Without Full Disk Access, a read can wait on a macOS privacy question that nobody has
+answered, and the watchdog times it out after 30 s. `runRead` and `runReadWithProgress`
+take an optional `path`, the folder listed or the item read, which `LiveFileSystem` passes
+for every read it makes (`readPath`, spelled by `PathSpelling.standardPath`). When a read
+with a path times out, only that path is shut: a later read of it or inside it, folder by
+folder and without regard to case as the Mac's disk compares names, fails at once as timed
+out, and reads queued for it are turned away. Every other read on the lane carries on.
+
+The whole lane still shuts, as before, when the disk itself looks stuck: reads stalled in
+two places at once, neither inside the other (stalls inside one another count as one
+place); a stalled read that named no path; or stalled reads holding every one of the
+lane's workers, which would otherwise leave queued reads waiting with no time limit. A
+stall clears when its timed-out read returns, and a lane shut by reads opens once the last
+of them is back.
+
+Changes keep the conservative rule. A timed-out change shuts every lane it touches until
+`clearQuarantine` or `reopenAll` reconciles it. A change can't say where it lands, so
+while any read on its lane is stalled it is refused as timed out, as it was when that read
+shut the whole lane. Callers that pass no path, such as the volume, storage and agent disk
+readers with executors of their own, behave exactly as before.
+
+`PrivacyAreas.askingRoots` still get lanes of their own: a read waiting there holds one of
+that lane's workers rather than one of the disk's, and two such folders waiting at once
+can't shut the disk's lane between them.
