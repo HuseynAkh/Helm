@@ -112,7 +112,8 @@ enum AISearchPrompt {
             if summary.status == .read {
                 if !summary.lines.isEmpty { fields["first_lines"] = quoted(summary.lines, lookLineCharacters, homes: homes) }
                 if let pages = summary.pages { fields["pages"] = .number(Double(pages)) }
-                let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }.prefix(AgentContentLimits.labels)
+                let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }
+                .prefix(AgentContentLimits.labels(for: summary.kind))
                 if !labels.isEmpty { fields["shows"] = .array(labels.map { .string(AgentTextEscaper.escape($0.words)) }) }
                 if !summary.foundText.isEmpty {
                     let key = summary.kind == .image ? "text_in_image" : summary.kind == .video ? "text_in_frames" : "text_found"

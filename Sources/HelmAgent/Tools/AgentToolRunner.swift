@@ -420,7 +420,8 @@ public struct AgentToolRunner: Sendable {
                 members["text_in_scan"] = quoted(summary.foundText, AgentContentLimits.foundTextCharacters)
             }
         case .image, .video:
-            let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }.prefix(AgentContentLimits.labels)
+            let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }
+                .prefix(AgentContentLimits.labels(for: summary.kind))
             members["shows"] = .array(labels.map { .string(AgentTextEscaper.escape($0.words)) })
             let found = quoted(summary.foundText, AgentContentLimits.foundTextCharacters)
             if summary.kind == .image {

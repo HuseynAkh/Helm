@@ -1,4 +1,6 @@
 #if os(macOS)
+import AVFoundation
+import CoreVideo
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -126,6 +128,52 @@ final class AgentRealPictureTests: XCTestCase {
         let copy = try XCTUnwrap(summary(path).images.first)
         let corner = pixels(try decoded(copy.jpeg), side: 32).prefix(4)
         XCTAssertGreaterThan(corner.prefix(3).map(Int.init).min() ?? 0, 240, "a transparent corner is white: \(Array(corner))")
+    }
+
+    /// A short video of two photos, four seconds each, as a camera's .MOV: Helm reads it, samples frames from both
+    /// halves, and recognition sees what each shows.
+    func testAShortVideoIsReadFrameByFrame() async throws {
+        func photo(_ name: String) throws -> CGImage {
+            let source = try XCTUnwrap(CGImageSourceCreateWithURL(URL(fileURLWithPath: try sample(name)) as CFURL, nil))
+            return try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        }
+        let halves = [try photo("Animals/Penguin"), try photo("Nature/Lightning")]
+        let url = folder.url.appendingPathComponent("MOV_0001.MOV")
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264,
+                                                                           AVVideoWidthKey: 512, AVVideoHeightKey: 512])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB, kCVPixelBufferWidthKey as String: 512,
+            kCVPixelBufferHeightKey as String: 512])
+        writer.add(input)
+        XCTAssertTrue(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        for frame in 0..<80 {
+            while !input.isReadyForMoreMediaData { try await Task.sleep(nanoseconds: 1_000_000) }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, try XCTUnwrap(adaptor.pixelBufferPool), &buffer)
+            let pixels = try XCTUnwrap(buffer)
+            CVPixelBufferLockBaseAddress(pixels, [])
+            let context = try XCTUnwrap(CGContext(data: CVPixelBufferGetBaseAddress(pixels), width: 512, height: 512, bitsPerComponent: 8,
+                                                  bytesPerRow: CVPixelBufferGetBytesPerRow(pixels), space: CGColorSpaceCreateDeviceRGB(),
+                                                  bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue))
+            context.draw(halves[frame < 40 ? 0 : 1], in: CGRect(x: 0, y: 0, width: 512, height: 512))
+            CVPixelBufferUnlockBaseAddress(pixels, [])
+            XCTAssertTrue(adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 10)))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        XCTAssertEqual(writer.status, .completed)
+
+        let read = summary(url.path)
+        XCTAssertEqual(read.kind, .video)
+        XCTAssertEqual(read.status, .read, "\(read.status)")
+        XCTAssertGreaterThanOrEqual(read.images.count, 2, "frames for the model")
+        for image in read.images { XCTAssertTrue(AgentContentExtractor.hasNoMetadata(image.jpeg)) }
+        let labels = Set(read.labels.map(\.identifier))
+        XCTAssertTrue(labels.contains("penguin") || labels.contains("bird"), "the first half: \(labels.sorted())")
+        XCTAssertTrue(labels.contains("lightning") || labels.contains("storm"),
+                      "the second half: \(labels.sorted()), frames \(read.frames ?? -1) at \(read.images.map(\.source)), \(read.seconds ?? -1) s")
     }
 
     /// A 48-megapixel photo is read and comes down to the model's size.

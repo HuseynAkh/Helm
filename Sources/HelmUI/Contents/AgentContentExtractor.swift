@@ -346,6 +346,7 @@ enum AgentContentExtractor {
                     guard let frame = try? await generator.image(at: time),
                           let seen = look(at: VNImageRequestHandler(cgImage: frame.image, options: [:])) else { continue }
                     looked += 1
+                    // Each frame's own labels, already its most certain five, so every scene is kept.
                     for label in seen.labels { best[label.identifier] = max(best[label.identifier] ?? 0, label.confidence) }
                     for line in seen.text where !text.contains(line) { text.append(line) }
                     let seconds = frame.actualTime.seconds.isFinite ? frame.actualTime.seconds : time.seconds
@@ -355,7 +356,7 @@ enum AgentContentExtractor {
                 let labels: [AgentContentLabel] = best.map { AgentContentLabel(identifier: $0.key, confidence: $0.value) }
                     .sorted(by: comesFirst)
                 let found = lines(of: text.joined(separator: "\n"), characters: AgentContentLimits.foundTextCharacters)
-                answer.finish(AgentContentSummary(kind: .video, status: .read, labels: Array(labels.prefix(AgentContentLimits.labels)),
+                answer.finish(AgentContentSummary(kind: .video, status: .read, labels: Array(labels.prefix(AgentContentLimits.videoLabels)),
                                                   foundText: found, seconds: duration, frames: looked, images: images))
             } catch {
                 answer.finish(.notRead(.video, Task.isCancelled ? .not_responding : .unreadable))

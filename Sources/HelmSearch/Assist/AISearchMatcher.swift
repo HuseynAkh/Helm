@@ -66,7 +66,8 @@ public enum AISearchMatcher {
         case .text, .pdf, .other: return nil
         }
         let text = summary.foundText.joined(separator: " ")
-        let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }.prefix(AgentContentLimits.labels)
+        let labels = summary.labels.filter { $0.confidence >= AgentContentLimits.labelConfidence }
+                .prefix(AgentContentLimits.labels(for: summary.kind))
         var textWords: [String] = [], shown: [String] = []
         for word in words {
             // A label that is the word itself first, so "sky" is shown as sky rather than as blue sky.
