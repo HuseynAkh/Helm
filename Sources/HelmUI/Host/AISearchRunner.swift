@@ -66,6 +66,8 @@ import HelmSearch
     /// How many items one planned query keeps, and how many Spotlight is read for.
     static let keptPerQuery = 200
     static let spotlightReadLimit = 2_000
+    /// How many times `spotlightReadLimit` paths are read from Spotlight, so the shallowest can be kept.
+    static let spotlightReadAhead = 3
     static let spotlightSeconds = 2.5
     /// Planned queries asked of Spotlight at once.
     static let queriesAtOnce = 3
@@ -339,12 +341,12 @@ import HelmSearch
     /// query describes in every way but its words for inside files: from the walk of the folder searched
     /// (`lookQuery`), or for a search of the whole Mac its pictures and videos from Spotlight (`visualQuery`), which
     /// are read only to be matched on this Mac. As many found files as the model looks at come first, then the
-    /// described ones, newest first, then the rest of the found ones: `AgentContentLimits.searchCandidates` at most. A
+    /// described ones, nearest to the folder searched first, then the rest of the found ones: `AgentContentLimits.searchCandidates` at most. A
     /// picture or a video a query's pictures-and-videos form (`visualQuery`) describes, whose text or labels hold every
     /// one of its words for inside files, is a match of that query. Answers each query's matches, what was seen in
     /// each, how many weren't read because they aren't downloaded, and the files read that the model may look at, in
     /// the order it is to look at them: the matches, then the files found, then, in a search kept to a folder alone,
-    /// the newest.
+    /// the nearest.
     private func readInside(_ queries: [AISearchQuery], walked: [FileEntry], found: [[FileEntry]], plain: [FileEntry],
                             scopeRoot: URL?, kind: AISearchKind?, coverage: SearchAssist.Coverage,
                             hiddenFolders: AISearchHiddenFolders, reader: any AgentContentReading, permit: AgentContentPermit,
@@ -369,8 +371,9 @@ import HelmSearch
                 described.append(entry)
             }
         }
-        let newest = described.sorted { $0.modificationDate > $1.modificationDate }
-        let chosen = Array((foundFirst.prefix(looks) + newest + foundFirst.dropFirst(looks)).prefix(AgentContentLimits.searchCandidates))
+        let nearRoot = scopeRoot ?? dependencies.home
+        let nearest = Self.nearestFirst(described, below: nearRoot)
+        let chosen = Array((foundFirst.prefix(looks) + nearest + foundFirst.dropFirst(looks)).prefix(AgentContentLimits.searchCandidates))
         guard !chosen.isEmpty, !Task.isCancelled else { return AISearchReading(found: queries.map { _ in [] }) }
 
         // Read what this session hasn't read yet. A file that isn't downloaded is never opened.
@@ -399,10 +402,10 @@ import HelmSearch
         var reading = AISearchReading(found: queries.map { _ in [FileEntry]() })
         reading.notDownloaded = notDownloaded
         var sightedBy: [ItemID: Int] = [:]
-        let byDate = chosen.sorted { $0.modificationDate > $1.modificationDate }
+        let byNearness = Self.nearestFirst(chosen, below: nearRoot)
         for (index, look) in queries.map(Self.visualQuery).enumerated() {
             guard let look else { continue }
-            for entry in byDate where AISearchMatcher.matches(entry, look, scopeRoot: scopeRoot, contentVerified: false) {
+            for entry in byNearness where AISearchMatcher.matches(entry, look, scopeRoot: scopeRoot, contentVerified: false) {
                 guard let summary = summaries[entry.id],
                       let sighting = AISearchMatcher.sighting(of: queries[index].contentAll, in: summary) else { continue }
                 reading.found[index].append(entry)
@@ -413,8 +416,8 @@ import HelmSearch
             }
         }
         // The order the model looks in: matches by the query that saw them, then the files found in the order found,
-        // then the newest. A search of the whole Mac stops before the newest: a file there is looked at only when this
-        // Mac matched it or a search found it.
+        // then the nearest to the folder searched, newest first among equals. A search of the whole Mac stops before
+        // those: a file there is looked at only when this Mac matched it or a search found it.
         let foundAt = Dictionary(foundFirst.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         func rank(_ entry: FileEntry) -> (tier: Int, place: Int) {
             if let query = sightedBy[entry.id] { return (0, query) }
@@ -422,7 +425,7 @@ import HelmSearch
             return (2, 0)
         }
         let lastTier = scopeRoot == nil ? 1 : 2
-        let lookable = byDate.filter { summaries[$0.id]?.status == .read && rank($0).tier <= lastTier }
+        let lookable = byNearness.filter { summaries[$0.id]?.status == .read && rank($0).tier <= lastTier }
         reading.pool = lookable.enumerated().sorted { left, right in
             let one = rank(left.element), other = rank(right.element)
             if one.tier != other.tier { return one.tier < other.tier }
@@ -672,7 +675,9 @@ import HelmSearch
     }
 
     /// What one query keeps: the index's hits checked again (the index already checked words inside files), and the
-    /// walk's items that the query describes. Each item once, allowed, ranked by its name against the query's words.
+    /// walk's items that the query describes. Each item once, allowed, ranked by its name against the query's words
+    /// and the person's own, and by how near it is to the folder searched (the home folder for the whole Mac), so
+    /// what's close comes before what's buried, for an equal match.
     private func keep(_ indexed: [FileEntry], walked: [FileEntry], for planned: AISearchQuery, search: SearchQuery,
                       scopeRoot: URL?) -> [FileEntry] {
         var seen: Set<ItemID> = []
@@ -687,7 +692,9 @@ import HelmSearch
         var ranking = search
         ranking.text = (planned.nameAll + planned.nameAny).joined(separator: " ")
         ranking.limit = Self.keptPerQuery
-        let context = HostEffectRunner.rankingContext(ranking, settings: dependencies.settings.snapshot)
+        let context = HostEffectRunner.rankingContext(ranking, settings: dependencies.settings.snapshot,
+                                                      proximityRoot: scopeRoot ?? dependencies.home,
+                                                      requestWords: SearchRanker.requestWords(search.text))
         return SearchRanker.rank(kept, context: context, clock: dependencies.clock).results.prefix(Self.keptPerQuery).map(\.entry)
     }
 
@@ -883,6 +890,24 @@ import HelmSearch
         case .largest: return entries.sorted { $0.size > $1.size }
         case .smallest: return entries.sorted { $0.size < $1.size }
         }
+    }
+
+    /// The `limit` paths with the fewest folders above them, in their order otherwise.
+    static func shallowest(_ urls: [URL], limit: Int) -> [URL] {
+        guard urls.count > limit else { return urls }
+        let depths = urls.map { $0.standardizedFileURL.pathComponents.count }
+        let kept = Set(urls.indices.sorted { depths[$0] != depths[$1] ? depths[$0] < depths[$1] : $0 < $1 }.prefix(max(0, limit)))
+        return urls.indices.filter { kept.contains($0) }.map { urls[$0] }
+    }
+
+    /// `entries` nearest to `root` first, a folder at a time: what's right in it, then one folder down, and so on,
+    /// newest first among equals; anything outside `root` last.
+    static func nearestFirst(_ entries: [FileEntry], below root: URL) -> [FileEntry] {
+        let depths = entries.map { SearchRanker.depth(of: $0.url, below: root) ?? Int.max }
+        return zip(entries, depths).sorted { left, right in
+            if left.1 != right.1 { return left.1 < right.1 }
+            return left.0.modificationDate > right.0.modificationDate
+        }.map(\.0)
     }
 
     /// Depth and entries a walk may cover, by the place searched.
@@ -1092,13 +1117,16 @@ private final class AISearchDelivery: @unchecked Sendable {
         guard let continuation else { return }
         self.continuation = nil
         metadata.disableUpdates()
+        // Spotlight's order says nothing of where a file is, so a few times the limit are read and the shallowest
+        // kept: past the limit, the files buried deepest are the ones left out.
         var urls: [URL] = []
-        for index in 0..<min(metadata.resultCount, limit) {
+        for index in 0..<min(metadata.resultCount, limit * AISearchRunner.spotlightReadAhead) {
             if let item = metadata.result(at: index) as? NSMetadataItem,
                let path = item.value(forAttribute: NSMetadataItemPathKey) as? String {
                 urls.append(URL(fileURLWithPath: path))
             }
         }
+        urls = AISearchRunner.shallowest(urls, limit: limit)
         metadata.stop()
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil

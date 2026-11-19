@@ -2,7 +2,8 @@ import Foundation
 
 extension TabReducer {
     static func startSearch(_ query: SearchQuery, state: inout TabState, effects: inout [TabEffect]) {
-        if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query.filters.isEmpty {
+        // A kind chosen in the kind row is a search of its own: with no words, every file of that kind.
+        if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query.filters.isEmpty && query.kind == nil {
             endSearch(&state, effects: &effects); return
         }
         // New words keep the order chosen for the results; a new search starts with Best Match.

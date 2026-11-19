@@ -599,14 +599,23 @@ extension AISearchWindowTests {
         XCTAssertTrue(unnamed, controller.statusTextForTesting)
         XCTAssertTrue(client.asks.isEmpty, "nothing is sent")
 
-        // With no words a choice searches nothing, and the empty search stays open; the next words are kept to it.
+        // With no words a choice lists every file of that kind, and Any goes back to the folder with the search still
+        // open; the next words are kept to the kind chosen.
         let closed = await closeSearch(controller)
         XCTAssertTrue(closed)
         controller.beginSearch()
         XCTAssertTrue(controller.chooseSearchKindForTesting("Video"))
+        let listed = await until { controller.activeTab?.search?.query.kind == .video && controller.activeTab?.search?.isGathering == false }
+        XCTAssertTrue(listed, "no words: the kind is listed")
+        XCTAssertEqual(controller.activeTab?.search?.query.text, "")
+        XCTAssertEqual(names(controller), ["report-clip.mov"])
+        XCTAssertTrue(client.asks.isEmpty, "a listing asks no model")
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Any"))
+        let folder = await until { controller.activeTab?.search == nil }
+        XCTAssertTrue(folder, "Any with no words shows the folder again")
         await settle(0.3)
-        XCTAssertNil(controller.activeTab?.search, "no words, no search")
-        XCTAssertTrue(controller.isSearchingForTesting)
+        XCTAssertTrue(controller.isSearchingForTesting, "and the search stays open")
+        XCTAssertTrue(controller.chooseSearchKindForTesting("Video"))
         controller.typeIntoSearchForTesting("report")
         let videos = await until { controller.activeTab?.search?.query.kind == .video && controller.activeTab?.search?.isGathering == false }
         XCTAssertTrue(videos)

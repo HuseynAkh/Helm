@@ -13,6 +13,9 @@ header-shot @SHOTS@/header-grid.png
 header-tooltips
 view-options open
 header-shot @SHOTS@/header-sort-open.png
+# The popover hangs from the sort button's lower edge, mid-screen and with the window at the top of the screen
+view-options-below-button
+view-options-below-button top
 view-options close
 # With the panel shut, the main menu is drawn whole, at rest and lit, light and dark, and the resting spark's ink is its size
 agent-is closed

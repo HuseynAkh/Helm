@@ -380,13 +380,15 @@ search-ai-is off
 # The kind row shows while the search is open, spark on or off, at Any. Photo keeps the name matches and the model's
 # plan to pictures, and the status bar names it; another kind searches the words again by name. The spark off and on
 # again keeps the kind and the search on show. Tab takes the keys to the row, where the arrows choose, and the row is
-# back at Any once the search closes
+# back at Any once the search closes. With no words yet, a kind lists the folder's files of that kind at once
 search-kinds-shown false
 search-ai on
 search-kinds-shown true
 search-kind-is Any
 search-kind Photo
 search-kind-is Photo
+has photo-1.png
+lacks todo.txt
 search to
 has photo-1.png
 lacks todo.txt

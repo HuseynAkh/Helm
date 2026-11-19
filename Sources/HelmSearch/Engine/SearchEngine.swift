@@ -69,7 +69,8 @@ public struct SearchEngine: Sendable {
         var query = context.query
         query.text = (try? SearchQueryParser.compile(request).rankingText) ?? ""
         query.scope = request.scope; query.showHidden = request.includeHidden; query.filters = request.filters
-        return SearchRankingContext(query: query, preferredRoots: context.preferredRoots, includeSystemLocations: context.includeSystemLocations)
+        return SearchRankingContext(query: query, preferredRoots: context.preferredRoots, includeSystemLocations: context.includeSystemLocations,
+                                    proximityRoot: context.proximityRoot, requestWords: context.requestWords)
     }
     func candidates(_ request: SearchRequest, options: SearchWalkOptions,
                     diagnostic: @Sendable (SearchDiagnostic) -> Void) async throws -> (values: [SearchCandidate], truncated: Bool) {

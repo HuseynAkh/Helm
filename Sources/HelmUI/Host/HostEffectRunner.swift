@@ -147,11 +147,16 @@ import HelmSearch
         let volumes = dependencies.volumes.volumes.filter { !$0.isInternal }.map(\.url)
         let spotlight = SpotlightSearch(query: query)
         let standIn = Self.spotlightAnswersForTesting?(query)
-        let context = Self.rankingContext(query, settings: dependencies.settings.snapshot)
+        // A kind listed with no words has no name to rank by, so it's listed nearest first: what's in the folder
+        // searched (the home folder for the whole Mac), then a folder down, and so on.
+        let wordless = query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let near: URL? = !wordless ? nil : { if case .currentFolder(let url) = query.scope { return url }; return home }()
+        let context = Self.rankingContext(query, settings: dependencies.settings.snapshot, proximityRoot: near)
         // The kind row's choice: everything found, by the walk or by Spotlight, is of that kind or isn't a result.
         let kind = query.kind
         let rank: @Sendable ([SearchCandidate]) -> [SearchResult] = { candidates in
             let kept = kind.map { kind in candidates.filter { AISearchMatcher.isOf(kind, $0.entry) } } ?? candidates
+            if let near { return SearchRanker.nearestFirst(kept, below: near, limit: query.limit) }
             return SearchRanker.rank(kept, context: context, clock: clock).results
         }
         // Current-folder searches also walk the folder, which finds what Spotlight hasn't indexed.
@@ -198,9 +203,11 @@ import HelmSearch
     /// How results are ordered, from Settings › Search as it is when the search starts: results in your own folders
     /// (Documents, Desktop, Downloads and the like) come first only while that switch is on, and macOS's system
     /// folders sink to the bottom unless they're included.
-    static func rankingContext(_ query: SearchQuery, settings: SettingsSnapshot) -> SearchRankingContext {
+    static func rankingContext(_ query: SearchQuery, settings: SettingsSnapshot, proximityRoot: URL? = nil,
+                               requestWords: [String] = []) -> SearchRankingContext {
         SearchRankingContext(query: query, preferredRoots: settings.bool(.searchPreferUserFolders) ? nil : [],
-                             includeSystemLocations: settings.bool(.searchIncludeSystemLocations))
+                             includeSystemLocations: settings.bool(.searchIncludeSystemLocations),
+                             proximityRoot: proximityRoot, requestWords: requestWords)
     }
 
     // MARK: Location bar

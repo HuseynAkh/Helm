@@ -63,7 +63,9 @@ public enum ContentStatePresentation {
         if let search = tab.search {
             // While a model is still thinking the page waits, so "No results" never shows and then fills in.
             if search.isGathering || search.assist?.phase == .thinking { return nil }
-            return noResults(offersAI: aiSearchReady && !search.query.usesAI)
+            // A kind listed with no words has nothing to ask a model.
+            let worded = !search.query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            return noResults(offersAI: aiSearchReady && !search.query.usesAI && worded)
         }
         switch tab.location {
         case .trash: return empty(.trash)
