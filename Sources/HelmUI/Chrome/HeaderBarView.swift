@@ -378,10 +378,11 @@ extension HeaderBarDelegate {
     }
 
     /// Clicking away from an empty search closes it, as Finder's toolbar search collapses. One with words stays,
-    /// in the path bar's resting fill, and so do its results. The kind row counts as part of the search: the keys
-    /// moving between it and the field close nothing.
+    /// in the path bar's resting fill, and so do its results, and so does one with a kind chosen, whose listing is
+    /// what you're clicking into. The kind row counts as part of the search: the keys moving between it and the
+    /// field close nothing.
     private func searchFieldLostFocus() {
-        guard isSearching, !searchField.isEditing, !kindBar.hasKeys,
+        guard isSearching, !searchField.isEditing, !kindBar.hasKeys, kindBar.kind == nil,
               searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         dismissSearch()
     }

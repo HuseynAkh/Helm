@@ -19,13 +19,16 @@ public struct SearchQuery: Sendable, Equatable {
     /// Only items of this kind, as the search's kind row chose it, or of a kind it covers (`AISearchKind.covers`), with
     /// a model's help or without. Nil for any kind.
     public var kind: AISearchKind?
+    /// The kind row on the view as it is: only what's on show in the folder (or the place) the tab shows, taken
+    /// from its listing and kept in its order, with nothing walked or asked of Spotlight. Return searches deeper.
+    public var inViewOnly: Bool
     public init(text: String, scope: SearchScope, bookmarkPaths: [String], homeDirectory: URL,
                 lastDirectory: URL?, showHidden: Bool, limit: Int, filters: [SearchClause] = [], includesContents: Bool = false,
-                usesAI: Bool = false, kind: AISearchKind? = nil) {
+                usesAI: Bool = false, kind: AISearchKind? = nil, inViewOnly: Bool = false) {
         self.text = text; self.scope = scope; self.bookmarkPaths = bookmarkPaths
         self.homeDirectory = homeDirectory; self.lastDirectory = lastDirectory
         self.showHidden = showHidden; self.limit = limit; self.filters = filters
-        self.includesContents = includesContents; self.usesAI = usesAI; self.kind = kind
+        self.includesContents = includesContents; self.usesAI = usesAI; self.kind = kind; self.inViewOnly = inViewOnly
     }
 }
 /// Ranked metadata preserves search ordering (F-044); smaller ordinal ranks indicate stronger matches.

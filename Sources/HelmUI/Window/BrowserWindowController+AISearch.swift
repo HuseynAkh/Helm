@@ -52,8 +52,15 @@ extension BrowserWindowController {
     }
 
     /// Return in the search field. With the spark on and a model ready, the words are sent; otherwise nothing
-    /// changes, since typing already searched them.
+    /// changes, since typing already searched them. With no words and a kind chosen, the kind is searched for in the
+    /// folders inside too, or across the Mac, past the view on show; a model needs words, so none is asked.
     func headerSearchSubmitted(_ text: String) {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard header.searchKind != nil else { return }
+            cancelPendingSearch()
+            search("", deeper: true)
+            return
+        }
         guard let runner = aiSearchRunner, runner.isOn, isAISearchReady,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         cancelPendingSearch()
