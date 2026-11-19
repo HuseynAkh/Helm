@@ -85,6 +85,12 @@ import HelmPersistence
         return found.sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
     }
 
+    /// macOS 27's SwiftUI draws a menu picker itself, as it draws buttons, so the provider menu is no AppKit pop-up
+    /// there and these tests can't read it; through macOS 26 it is an NSPopUpButton. The screen's parts still name it.
+    private var menuIsAppKit: Bool { ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27 }
+    /// The kinds of AppKit control a screen with the provider menu shows, with "menu" where AppKit draws it.
+    private func withMenu(_ kinds: [String]) -> [String] { menuIsAppKit ? kinds : kinds.filter { $0 != "menu" } }
+
     /// The kinds of AppKit control on show, top to bottom. SwiftUI draws its buttons itself, so a button never shows
     /// here: this finds any control the screen gains beyond the switch, the provider menu and the key field.
     private func controlKinds(in screen: OnboardingWindowController) -> [String] {
@@ -169,16 +175,19 @@ import HelmPersistence
         XCTAssertEqual(AIModeScreen.parts(for: model), [.titleRow, .sentence, .provider, .key, .state, .consent, .done])
         XCTAssertEqual(AIModeScreen.buttonTitles(for: model), [AgentText.done])
         // SwiftUI draws the new parts on a later pass, which a slow Mac, such as GitHub's, takes longer to reach.
-        _ = await until(5) { self.controls(in: screen).contains { $0 is NSPopUpButton } }
+        _ = await until(5) { self.controls(in: screen).contains { $0 is NSSecureTextField } }
         shown = controls(in: screen)
         XCTAssertTrue(shown.first is NSSwitch)
-        let menu = try XCTUnwrap(shown.compactMap { $0 as? NSPopUpButton }.first)
-        XCTAssertEqual(menu.titleOfSelectedItem, "Claude")
-        XCTAssertEqual(menu.itemTitles, AgentProviderID.allCases.map(AgentProviderCatalog.name))
+        if menuIsAppKit {
+            let menu = try XCTUnwrap(shown.compactMap { $0 as? NSPopUpButton }.first)
+            XCTAssertEqual(menu.titleOfSelectedItem, "Claude")
+            XCTAssertEqual(menu.itemTitles, AgentProviderID.allCases.map(AgentProviderCatalog.name))
+        }
+        XCTAssertEqual(model.provider, .claude, "the menu starts on Claude")
         XCTAssertEqual(shown.filter { $0 is NSSecureTextField }.count, 1, "the key field")
         XCTAssertEqual(shown.filter { $0 is NSSwitch }.count, 1)
         // Beside the menu, the provider's help: its info button and its How to connect link. No other button.
-        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "button", "button", "key"],
+        XCTAssertEqual(controlKinds(in: screen), withMenu(["switch", "menu", "button", "button", "key"]),
                        "and no other button but the provider's help")
         let keyField = try XCTUnwrap(shown.compactMap { $0 as? NSSecureTextField }.first)
         let caretInKeyField = await until { self.hasCaret(keyField) }
@@ -455,8 +464,8 @@ import HelmPersistence
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(controlKinds(in: screen), ["switch"], "the switch first, with Back, Not Now and Continue drawn by SwiftUI")
         model.setOn(true)
-        _ = await until(5) { self.controlKinds(in: screen) == ["switch", "menu", "button", "button", "key"] }
-        XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "button", "button", "key"],
+        _ = await until(5) { self.controlKinds(in: screen) == self.withMenu(["switch", "menu", "button", "button", "key"]) }
+        XCTAssertEqual(controlKinds(in: screen), withMenu(["switch", "menu", "button", "button", "key"]),
                        "the provider, its help, and the key, as on the AI Mode screen")
         let store = try secrets(app)
         let keyField = try XCTUnwrap(controls(in: screen).compactMap { $0 as? NSSecureTextField }.first)
