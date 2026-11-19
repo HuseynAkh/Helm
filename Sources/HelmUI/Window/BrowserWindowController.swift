@@ -651,6 +651,12 @@ struct WindowTints: Equatable {
         return viewOptions.contentView
     }
     public func closeViewOptionsForTesting() { viewOptions.close() }
+    /// For the smoke run: the sort button and the open popover's window, on screen.
+    public var viewOptionsPlacementForTesting: (button: NSRect, popover: NSRect)? {
+        let button = header.sortButton
+        guard let buttonWindow = button.window, let popoverWindow = viewOptions.contentView?.window else { return nil }
+        return (buttonWindow.convertToScreen(button.convert(button.bounds, to: nil)), popoverWindow.frame)
+    }
     /// Keeps the open popover in step with the tab and settings, so pressing again shows the new state at once.
     private func refreshViewOptions() {
         guard let tab = activeTab else { return }
@@ -702,11 +708,12 @@ struct WindowTints: Equatable {
         search(typed.isEmpty ? (activeTab?.search?.query.text ?? "") : typed)
     }
     /// A choice in the kind row: the words on show are searched again by name for that kind, spark on or off. With no
-    /// words nothing is searched; the next ones are kept to it. With the spark on, Return then asks the model again.
+    /// words, every file of that kind in the place searched is listed, nearest first, and Any goes back to the folder.
+    /// With the spark on, Return then asks the model again.
     func headerSearchKindChanged() {
         let typed = header.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : header.searchText
-        guard let text = typed ?? activeTab?.search?.query.text,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let text = typed ?? activeTab?.search?.query.text ?? ""
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, header.searchKind == nil, activeTab?.search == nil { return }
         cancelPendingSearch()
         search(text)
     }
@@ -720,7 +727,9 @@ struct WindowTints: Equatable {
     /// Searches the tab for `text`. With `usesAI`, a model helps when a runner for that is installed.
     public func search(_ text: String, usesAI: Bool = false) {
         guard let tab = activeTab else { return }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        // No words: a kind chosen in the kind row lists that kind; with Any there's nothing to search.
+        let wordless = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard !wordless || header.searchKind != nil else {
             store.send(.tab(tab.id, .searchEnded)); return
         }
         let settings = dependencies.settings.snapshot
@@ -732,7 +741,7 @@ struct WindowTints: Equatable {
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
                                 limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
-                                usesAI: usesAI, kind: header.searchKind)
+                                usesAI: usesAI && !wordless, kind: header.searchKind)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

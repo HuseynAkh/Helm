@@ -28,6 +28,8 @@ recent-record @FIX@/home/Documents/Projects/Lighthouse
 go @FIX@/home/Pictures
 view grid
 wait 4
+go @FIX@/home/Pictures/Camera Roll
+wait 3
 go @FIX@/home/Downloads
 wait 2
 go @FIX@/home/Documents
@@ -35,11 +37,11 @@ wait 2
 go @FIX@/home/Documents/Invoices
 wait 2
 # The file manager, with AI mode off, as Helm starts
-# Pictures in the grid, dark and light
+# The camera roll in the grid, dark and light
 appearance dark
-go @FIX@/home/Pictures
+go @FIX@/home/Pictures/Camera Roll
 view grid
-select Sunset over the Bay.jpg
+select IMG_4098.jpg
 wait 3
 screenshot @SHOTS@/hero-dark.png
 appearance light
@@ -53,7 +55,7 @@ view grid
 wait 1
 type ~/Documents/Pro
 wait 1
-typed-rows Projects,Product Roadmap.pdf
+typed-rows Projects,Proposals,Prototypes,Product Roadmap.pdf,Progress Report.pdf
 screenshot-popups @SHOTS@/path-dark.png
 appearance light
 wait 1.5
@@ -119,13 +121,13 @@ missing @FIX@/home/Downloads/Images
 agent-say /clear
 agent-close
 agent-is closed
-# AI search from Home, kept to photos, with Read contents on: Helm finds the six receipts by the word printed on them,
-# on this Mac, and the model looks at them and keeps the two from places to eat
+# AI search from Home, kept to photos, with Read contents on: Helm finds the photos with a dog in them by what Apple's
+# on-device recognition sees, on this Mac, and the model looks at them and keeps the four at the beach
 appearance dark
 go @FIX@/home
 view grid
 wait 1
-agent-script @FIX@/agent-receipts.json
+agent-script @FIX@/agent-dogs.json
 search-open
 search-ai on
 search-ai-is on
@@ -134,20 +136,22 @@ search-kind Photo
 search-kind-is Photo
 search-contents on
 search-contents-is on
-search a receipt from somewhere I ate
+search photos of my dog at the beach
 search-return
 search-status-reads Looked at
-has IMG_2041.jpg
-has IMG_2110.jpg
-lacks IMG_1988.jpg
-lacks IMG_2102.jpg
-lacks Sunset over the Bay.jpg
-result-reason IMG_2041.jpg=Model saw: A Harbour Cafe receipt for a flat white, a croissant and soup
+has IMG_4127.jpg
+has IMG_4133.jpg
+has IMG_4140.jpg
+has IMG_4152.jpg
+lacks IMG_3988.jpg
+lacks IMG_3861.jpg
+lacks IMG_4120.jpg
+result-reason IMG_4127.jpg=Model saw: A golden retriever running along the water's edge on a beach
 # A click on the files: the search keeps its words and results, and its field rests, as a finished search does
 focus-files
 search-shown true
 search-looks resting
-has IMG_2110.jpg
+has IMG_4152.jpg
 wait 3
 screenshot @SHOTS@/ai-search-dark.png
 appearance light

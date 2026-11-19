@@ -70,6 +70,8 @@ extension HeaderBarDelegate {
     /// What the header last showed, so it can tell another tab, a new place and a search that ended apart.
     private var shownTab: TabID?
     private var shownSearchGeneration = Generation()
+    /// Any was chosen with no words, so the listing it ends leaves the search open.
+    private var anyEndsListing = false
     private var shownNavigation: Generation?
     private var shownSortTitle: String?
     static let height: CGFloat = 52
@@ -97,7 +99,12 @@ extension HeaderBarDelegate {
         searchField.onSubmit = { [weak self] text in self?.delegate?.headerSearchSubmitted(text) }
         searchField.onAIToggle = { [weak self] on in self?.delegate?.headerSearchAIToggled(on) }
         searchField.onTab = { [weak self] in self?.giveKeysToKindBar() ?? false }
-        kindBar.onChoose = { [weak self] _ in self?.delegate?.headerSearchKindChanged() }
+        kindBar.onChoose = { [weak self] kind in
+            guard let self else { return }
+            // Any with no words ends the kind's listing and shows the folder again, with the search still open.
+            self.anyEndsListing = kind == nil && self.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            self.delegate?.headerSearchKindChanged()
+        }
         kindBar.onLeave = { [weak self] in self?.searchField.focus(selectingAll: false) }
         kindBar.onResign = { [weak self] in self?.searchFieldLostFocus() }
         searchField.onScope = { [weak self] everywhere in
@@ -356,8 +363,12 @@ extension HeaderBarDelegate {
             pathBar.focusLocationField()
             delegate?.headerSearchDismissed()
         } else if let search = tab.search {
+            anyEndsListing = false
             if switched || !isSearching { show(search.query) }
         } else if isSearching {
+            let keptOpen = anyEndsListing && ended && !switched && !navigating
+            anyEndsListing = false
+            if keptOpen { return }
             // Clearing the words while you type ends the tab's search but leaves the field open for new ones. Any
             // other end closes it, such as Go › Documents while you're already in Documents, which ends the search
             // without going anywhere.

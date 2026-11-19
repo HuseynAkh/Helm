@@ -158,6 +158,22 @@ extension HostSmokeDriver {
                 window.closeViewOptionsForTesting()
                 await wait(seconds: 0.4)
             }
+        case "view-options-below-button":
+            // The open popover hangs from the sort button's lower edge, under the header, and never over the button.
+            // "top" first moves the window to the top of its screen, under the menu bar, and opens the popover again.
+            if argument == "top", let main = window.window, let screen = main.screen ?? NSScreen.main {
+                window.closeViewOptionsForTesting()
+                await wait(seconds: 0.3)
+                main.setFrameTopLeftPoint(NSPoint(x: screen.visibleFrame.minX + 40, y: screen.visibleFrame.maxY))
+                _ = window.showViewOptionsForTesting()
+                await wait(seconds: 0.6)
+            }
+            guard let placement = window.viewOptionsPlacementForTesting else { check(false, step, "no popover"); return true }
+            let button = placement.button, popover = placement.popover
+            print("MSG view-options button \(NSStringFromRect(button)) popover \(NSStringFromRect(popover))"); fflush(stdout)
+            let below = popover.maxY <= button.minY + 14
+            let centred = abs(popover.midX - button.midX) < 2 || popover.minX <= button.midX && button.midX <= popover.maxX
+            check(below && centred, step, "button \(NSStringFromRect(button)) popover \(NSStringFromRect(popover))")
         case "menu-lit":
             // The main menu button as it looks while its menu is open. A real menu would hold the run until it closed.
             window.lightMainMenuForTesting(argument == "true")

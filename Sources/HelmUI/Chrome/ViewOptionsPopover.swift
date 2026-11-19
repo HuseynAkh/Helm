@@ -92,8 +92,10 @@ struct HeaderViewOptionsView: View {
     }
 
     private func heading(_ title: String) -> some View {
-        Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            .padding(.horizontal, 10).padding(.bottom, 4)
+        // A section heading as macOS draws one: small, semibold and quiet, on the rows' leading edge.
+        Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+            .padding(.horizontal, 10).padding(.top, 2).padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -104,8 +106,10 @@ private struct FillButtonStyle<S: Shape>: ButtonStyle {
     var resting: Double = 0
     var hover: Double = 0.08
     var pressed: Double = 0.14
+    /// The colour of the fill: the text colour, or the accent for the choice in use.
+    var tint: Color = .primary
     func makeBody(configuration: Configuration) -> some View {
-        FillBody(configuration: configuration, shape: shape, resting: resting, hover: hover, pressed: pressed)
+        FillBody(configuration: configuration, shape: shape, resting: resting, hover: hover, pressed: pressed, tint: tint)
     }
     private struct FillBody: View {
         let configuration: ButtonStyleConfiguration
@@ -113,13 +117,14 @@ private struct FillButtonStyle<S: Shape>: ButtonStyle {
         let resting: Double
         let hover: Double
         let pressed: Double
+        let tint: Color
         @State private var hovering = false
         @Environment(\.isEnabled) private var isEnabled
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         var body: some View {
             let fill = !isEnabled ? resting : configuration.isPressed ? pressed : hovering ? hover : resting
             configuration.label
-                .background(shape.fill(Color.primary.opacity(fill))
+                .background(shape.fill(tint.opacity(fill))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: fill))
                 .onHover { hovering = $0 }
         }
@@ -128,7 +133,7 @@ private struct FillButtonStyle<S: Shape>: ButtonStyle {
 
 /// A row that lights up under the pointer and more while it's pressed, like a libadwaita popover row.
 private struct HoverRow<Content: View>: View {
-    var restingFill: Double = 0
+    var chosen = false
     let action: () -> Void
     @ViewBuilder let content: () -> Content
     var body: some View {
@@ -138,7 +143,10 @@ private struct HoverRow<Content: View>: View {
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(FillButtonStyle(shape: RoundedRectangle(cornerRadius: 7), resting: restingFill))
+        // The choice in use rests on an accent fill that the pointer deepens; the others light up grey under it.
+        .buttonStyle(chosen
+            ? FillButtonStyle(shape: RoundedRectangle(cornerRadius: 7), resting: 0.2, hover: 0.26, pressed: 0.32, tint: .accentColor)
+            : FillButtonStyle(shape: RoundedRectangle(cornerRadius: 7)))
     }
 }
 
@@ -150,9 +158,9 @@ private struct SortRow: View {
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        // The sort in use keeps a faint fill, so it stands out without the pointer.
-        HoverRow(restingFill: active ? 0.06 : 0, action: action) {
-            Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).opacity(active ? 1 : 0).frame(width: 14)
+        // The sort in use rests on an accent fill, with its order at the trailing end, so every name starts on the
+        // same edge as the heading and the rows below, with no empty check column pushing the others in.
+        HoverRow(chosen: active, action: action) {
             Text(title).font(.system(size: 14, weight: active ? .semibold : .regular))
             Spacer(minLength: 8)
             if let detail {

@@ -15,12 +15,12 @@ Describe a file and Helm finds it. Say how a folder should look and Helm sorts i
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/ai-search-dark.png">
-  <img src="docs/images/ai-search-light.png" alt="AI search from Home for a receipt from somewhere I ate, with Photo chosen in the kind row and Read contents on: two receipt photos, IMG_2110.jpg from a deli and IMG_2041.jpg from a café, and the status bar reading 2 matches, Mentions “receipt”, Photos, Looked at 34">
+  <img src="docs/images/ai-search-light.png" alt="AI search from Home for photos of my dog at the beach, with Photo chosen in the kind row and Read contents on: four photos of a golden retriever on a beach, named only IMG_4127.jpg to IMG_4152.jpg, and the status bar reading 4 matches, Mentions “dog”, Photos, Looked at 47">
 </picture>
 
 ## Find any file by describing it
 
-Search the way you remember things: "a receipt from somewhere I ate", "the lease that renews in January", "a video of the storm". Helm turns your words into searches, runs them on your Mac, and shows what matched and why.
+Search the way you remember things: "photos of my dog at the beach", "a receipt from somewhere I ate", "the lease that renews in January", "a video of the storm". Helm turns your words into searches, runs them on your Mac, and shows what matched and why.
 
 - **It looks inside.** Turn on **Read contents** and Helm reads documents and looks at photos and video frames, so a file turns up by what it shows, whatever it's called.
 - **One kind at a time.** Photo, Video, Document, Folder, Code, Audio or Archive, one click under the search field.
@@ -32,7 +32,7 @@ Press **⌘L** and the path bar becomes a prompt. Type a path as you would after
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/path-dark.png">
-  <img src="docs/images/path-light.png" alt="The top of the window over Home: the path bar is a prompt reading ~/Documents/Pro, with the rest of Projects in grey after the caret, and under it the suggestions Projects, chosen, and Product Roadmap.pdf">
+  <img src="docs/images/path-light.png" alt="The top of the window over Home: the path bar is a prompt reading ~/Documents/Pro, with the rest of Projects in grey after the caret, and under it the suggestions, folders first: Projects, chosen, Proposals and Prototypes, then Product Roadmap.pdf and Progress Report.pdf">
 </picture>
 
 | Type or press | What happens |
@@ -59,7 +59,7 @@ Everything works without AI, and AI mode is off until you turn it on.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
-  <img src="docs/images/hero-light.png" alt="Helm showing a Pictures folder in the grid, with landscape thumbnails. The sidebar on the left holds Recent, Home and the usual folders, the Trash, a Projects bookmark, a starred Quarterly Report.pdf and iCloud Drive, and the header bar runs along the top">
+  <img src="docs/images/hero-light.png" alt="Helm showing a Camera Roll folder in the grid, with photo thumbnails of a dog, a cat, a harbour, food and city streets. The sidebar on the left holds Recent, Home and the usual folders, the Trash, a Projects bookmark, a starred Quarterly Report.pdf and iCloud Drive, and the header bar runs along the top">
 </picture>
 
 - **A sidebar that's yours.** Recent, Starred, your bookmarks, disks and cloud drives. Drag rows into your order and hide the ones you don't use.
