@@ -47,9 +47,11 @@ extension HostSmokeDriver {
         case "search-return":
             // Return in the search field, then waits until the model has answered or failed. With Read contents on,
             // every candidate is read on this Mac first, which takes longer.
+            // With no words and a kind chosen, Return searches deeper without a model, so a plain search's end counts.
             window.submitSearchForTesting()
             let answered = await aiSearchWaitUntil(seconds: 30) {
-                guard let search = window.activeTab?.search, search.query.usesAI else { return false }
+                guard let search = window.activeTab?.search else { return false }
+                guard search.query.usesAI else { return search.query.text.isEmpty && !search.query.inViewOnly && !search.isGathering }
                 return search.assist.map { $0.phase != .thinking } ?? !search.isGathering
             }
             check(answered, step, "still \(window.activeTab?.search?.assist?.phase.rawValue ?? "not searching")")

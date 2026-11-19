@@ -708,8 +708,8 @@ struct WindowTints: Equatable {
         search(typed.isEmpty ? (activeTab?.search?.query.text ?? "") : typed)
     }
     /// A choice in the kind row: the words on show are searched again by name for that kind, spark on or off. With no
-    /// words, every file of that kind in the place searched is listed, nearest first, and Any goes back to the folder.
-    /// With the spark on, Return then asks the model again.
+    /// words it works on the view as it is, the folder on show sorted down to that kind, and Return searches deeper
+    /// (`headerSearchSubmitted`); Any goes back to the folder. With the spark on and words, Return asks the model again.
     func headerSearchKindChanged() {
         let typed = header.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : header.searchText
         let text = typed ?? activeTab?.search?.query.text ?? ""
@@ -724,8 +724,9 @@ struct WindowTints: Equatable {
         store.send(.tab(activeTabID, .searchEnded))
         focusContent()
     }
-    /// Searches the tab for `text`. With `usesAI`, a model helps when a runner for that is installed.
-    public func search(_ text: String, usesAI: Bool = false) {
+    /// Searches the tab for `text`. With `usesAI`, a model helps when a runner for that is installed. With no words
+    /// and a kind chosen, the kind is shown from the view as it is, unless `deeper` asks for the folders inside too.
+    public func search(_ text: String, usesAI: Bool = false, deeper: Bool = false) {
         guard let tab = activeTab else { return }
         // No words: a kind chosen in the kind row lists that kind; with Any there's nothing to search.
         let wordless = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -741,7 +742,7 @@ struct WindowTints: Equatable {
         let query = SearchQuery(text: text, scope: scope, bookmarkPaths: dependencies.bookmarks.records.map(\.path),
                                 homeDirectory: dependencies.home, lastDirectory: tab.lastDirectory, showHidden: tab.showHidden,
                                 limit: settings.integer(.searchResultLimit), includesContents: settings.bool(.searchFileContents),
-                                usesAI: usesAI && !wordless, kind: header.searchKind)
+                                usesAI: usesAI && !wordless, kind: header.searchKind, inViewOnly: wordless && !deeper)
         store.send(.tab(tab.id, .searchStarted(query)))
     }
     /// Cmd+F. While a card stands in for the listing there's nothing on show to search, and the folder under it is

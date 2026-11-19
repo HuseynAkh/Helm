@@ -220,6 +220,8 @@ extension TabReducer {
         if state.search != nil {
             state.underlyingSnapshot = snapshot
             state.underlyingSelection = SnapshotDiff.selection(state.restorationIDs ?? state.underlyingSelection, in: snapshot)
+            // A kind row on the view follows the folder as it changes.
+            if state.search?.query.inViewOnly == true { filterView(&state) }
         } else if state.inlineRenameID != nil { state.deferredSnapshot = snapshot }
         else { present(snapshot, state: &state) }
     }
