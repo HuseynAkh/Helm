@@ -168,7 +168,8 @@ import HelmPersistence
         model.setOn(true)
         XCTAssertEqual(AIModeScreen.parts(for: model), [.titleRow, .sentence, .provider, .key, .state, .consent, .done])
         XCTAssertEqual(AIModeScreen.buttonTitles(for: model), [AgentText.done])
-        try await Task.sleep(nanoseconds: 300_000_000)
+        // SwiftUI draws the new parts on a later pass, which a slow Mac, such as GitHub's, takes longer to reach.
+        _ = await until(5) { self.controls(in: screen).contains { $0 is NSPopUpButton } }
         shown = controls(in: screen)
         XCTAssertTrue(shown.first is NSSwitch)
         let menu = try XCTUnwrap(shown.compactMap { $0 as? NSPopUpButton }.first)
@@ -454,7 +455,7 @@ import HelmPersistence
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(controlKinds(in: screen), ["switch"], "the switch first, with Back, Not Now and Continue drawn by SwiftUI")
         model.setOn(true)
-        try await Task.sleep(nanoseconds: 300_000_000)
+        _ = await until(5) { self.controlKinds(in: screen) == ["switch", "menu", "button", "button", "key"] }
         XCTAssertEqual(controlKinds(in: screen), ["switch", "menu", "button", "button", "key"],
                        "the provider, its help, and the key, as on the AI Mode screen")
         let store = try secrets(app)
