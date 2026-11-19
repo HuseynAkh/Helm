@@ -125,7 +125,10 @@ jobs:
         run: bash scripts/static_checks.sh
 
       - name: Run the tests
-        run: swift test
+        # GitHub's macOS runners are virtual Macs with no GPU, and ImageIO there can't decode pictures or video
+        # frames, so every test that reads a real picture finds it unreadable. Those two classes are left out here;
+        # they run in every `swift test` on a Mac and in the fixture smoke, which reads pictures too.
+        run: swift test --skip AgentContentReaderTests --skip AgentRealPictureTests
 
       - name: Build the disk image, zip, checksums and notes
         env:

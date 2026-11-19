@@ -31,7 +31,7 @@ It builds the folder as it is. On a Mac, uncommitted changes go into the build, 
    git tag -a v0.2 -m "Helm 0.2"
    git push origin v0.2
    ```
-5. **Wait for the Release workflow.** It runs the static and privacy checks and the tests, builds and checks the app, attests the disk image and the zip, and makes a **draft** release called "Helm 0.2". Nothing is public yet.
+5. **Wait for the Release workflow.** It runs the static and privacy checks and the tests (all but the two classes that read real pictures, `AgentContentReaderTests` and `AgentRealPictureTests`: GitHub's virtual Macs have no GPU and can't decode pictures, so run those with `swift test` on your Mac before tagging), builds and checks the app, attests the disk image and the zip, and makes a **draft** release called "Helm 0.2". Nothing is public yet.
 6. **Check the draft** under Releases: the disk image, the zip and `SHA256SUMS.txt` are attached, and the notes read well. Download the disk image, verify it as below, and open Helm.
 7. **Publish the draft.** Only then can people see it.
 

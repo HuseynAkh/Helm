@@ -174,7 +174,9 @@ import HelmTestKit
         try await Task.sleep(nanoseconds: 600_000_000)
         XCTAssertEqual(times.count, 3, "a stuck folder isn't tried forever")
         if times.count == 3 {
-            XCTAssertGreaterThan(times[2].timeIntervalSince(times[1]), times[1].timeIntervalSince(times[0]) * 0.9)
+            // The waits grow to the longest: a timer never fires early, so the last gap is at least that long, however
+            // late a busy Mac runs the earlier ones.
+            XCTAssertGreaterThanOrEqual(times[2].timeIntervalSince(times[1]), page.longestRetryInterval * 0.9)
         }
         // Try Again starts the count over.
         page.restartRetries()
