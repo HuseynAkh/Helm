@@ -8,4 +8,6 @@
 
 The app icon is not changed (Huseyn, 2026-11-13), and no variant of it was made for AI mode.
 
-`bash scripts/readme/make_readme_images.sh` draws the mark and the banner again, through `scripts/readme/make_brand.swift`, from `App/AppIcon.icns`. Nothing comes from an image service.
+`bash scripts/readme/make_readme_images.sh` draws the mark and the banner again, through `scripts/readme/make_brand.swift`, from `App/AppIcon.icns`. Nothing there comes from an image service.
+
+The photos in `scripts/readme/photos`, the camera roll that the README's AI search picture searches, were made for the README with Google's Gemini image model (Gemini 2.5 Flash Image) on 2026-11-18, at Huseyn's choice: a golden retriever four times at the beach and once in a park, and eight everyday photos. They show no real person, place or pet, and carry Google's SynthID watermark.

@@ -3,7 +3,7 @@
 # disks or free space, and draws AI mode's mark (the trefoil) and the banner in docs/brand. The run uses fixture
 # folders, a private pasteboard, a stand-in Trash and stand-ins for the onboarding's switches, like the smoke, and like
 # the smoke it's kept off the network. AI mode answers from a scripted model (agent-script.json and
-# agent-receipts.json beside the home), so no request goes to any provider.
+# agent-dogs.json beside the home), so no request goes to any provider.
 # usage: bash scripts/readme/make_readme_images.sh [scratch-path]
 # The run stays in the background: its windows are invisible and never take the screen. Each capture still draws its
 # window as the window in front, window buttons in colour and accents on (the steps' active-look).
@@ -77,18 +77,20 @@ plan = {"sort": "newest", "queries": [
      "date_from": (today - datetime.timedelta(days=60)).isoformat(), "date_to": today.isoformat()}]}
 rank = {"ranked": [{"row": row, "why": ["name", "kind", "date"]} for row in range(1, 4)]}
 script = {"rules": rules, "searchPlan": plan, "searchRank": rank, "models": models}
-# AI search with Read contents: the word "receipt", looked for inside pictures on this Mac, then the model looks at
-# the receipts and keeps the two from places to eat. Helm keeps a word to look for inside files only when the person
-# typed it.
-receipts = {"rules": rules, "models": models, "searchRank": {"ranked": []},
-            "searchPlan": {"sort": "relevance", "queries": [
-                {"content_all": ["receipt"], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
-                 "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}]},
-            "searchLooks": [{"when": "receipt", "fits": [
-                {"name": "IMG_2041.jpg", "seen": "A Harbour Cafe receipt for a flat white, a croissant and soup"},
-                {"name": "IMG_2110.jpg", "seen": "A Mountain Deli receipt for a sandwich and lemonade"}],
-                "misses": ["IMG_1988.jpg", "IMG_2066.jpg", "IMG_2079.jpg", "IMG_2102.jpg"]}]}
-for name, value in (("agent-script.json", script), ("agent-receipts.json", receipts)):
+# AI search with Read contents: the word "dog", looked for inside photos on this Mac, which Apple's on-device
+# recognition finds in the five photos of the dog; then the model looks at them and keeps the four at the beach.
+# Helm keeps a word to look for inside files only when the person typed it.
+dogs = {"rules": rules, "models": models, "searchRank": {"ranked": []},
+        "searchPlan": {"sort": "relevance", "queries": [
+            {"content_all": ["dog"], "name_all": [], "name_any": [], "folder_any": [], "kinds": [], "extensions": [],
+             "date_field": "none", "date_from": "", "date_to": "", "size_min_bytes": 0, "size_max_bytes": 0}]},
+        "searchLooks": [{"when": "dog", "fits": [
+            {"name": "IMG_4127.jpg", "seen": "A golden retriever running along the water's edge on a beach"},
+            {"name": "IMG_4133.jpg", "seen": "The dog standing in the surf with a tennis ball in its mouth"},
+            {"name": "IMG_4140.jpg", "seen": "The dog shaking off sea water on the sand"},
+            {"name": "IMG_4152.jpg", "seen": "The dog sitting on a dune with the sea behind it"}],
+            "misses": ["IMG_3988.jpg", "IMG_3861.jpg", "IMG_4120.jpg"]}]}
+for name, value in (("agent-script.json", script), ("agent-dogs.json", dogs)):
     with open(os.path.join(fix, name), 'w', encoding='utf-8') as handle:
         json.dump(value, handle, ensure_ascii=False, indent=1)
 PY
@@ -118,8 +120,8 @@ swiftc -O scripts/readme/frame_shot.swift -o "$root/frame_shot" || exit 1
 frame() { name=$1; shift; "$root/frame_shot" "$root/shots/$name.png" "docs/images/$name.png" "$@" || exit 1; }
 frame ai-search-dark 1600
 frame ai-search-light 1600
-frame path-dark 1600 14 crop=0,0,1240,200
-frame path-light 1600 14 crop=0,0,1240,200
+frame path-dark 1600 14 crop=0,0,1240,300
+frame path-light 1600 14 crop=0,0,1240,300
 frame ai-plan-light 760 18 crop=900,52,340,548
 frame ai-plan-dark 760 18 crop=900,52,340,548
 frame ai-undo-light 760 18 crop=900,52,340,548

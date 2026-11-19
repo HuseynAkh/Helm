@@ -1,5 +1,6 @@
-// Builds a demo home folder for README screenshots: made-up documents, pictures and projects, all drawn here,
-// so no screenshot ever shows anything from a real Mac.
+// Builds a demo home folder for README screenshots: made-up documents, pictures and projects, drawn here, and a
+// camera roll of photos made for the README with Google's Gemini image model (scripts/readme/photos), so no
+// screenshot ever shows anything from a real Mac or anyone's own photos.
 // Usage: swift scripts/readme/make_demo_home.swift <home>
 import AppKit
 import CoreGraphics
@@ -166,6 +167,12 @@ let assets = folder("Documents/Projects/Lighthouse/Assets")
 writePNG(landscape(palettes[4].1, seed: 11, width: 1024, height: 1024), to: assets.appendingPathComponent("AppIcon.png"))
 _ = project
 _ = folder("Documents/Projects/Field Notes")
+// Folders beside Projects that start the same way, so typing ~/Documents/Pro suggests a few at once.
+_ = folder("Documents/Proposals")
+write("# Garden studio\n\nA proposal for the back garden.\n", to: "Documents/Proposals/Garden Studio.md")
+_ = folder("Documents/Prototypes/Paper Sketches")
+pdf(title: "Progress Report", subtitle: "October 2026 · Where things stand", accent: 0x64D2FF, pages: 2, chart: true,
+    to: documents.appendingPathComponent("Progress Report.pdf"))
 write("Day 1: clear skies.\n", to: "Documents/Projects/Field Notes/Day 1.txt")
 
 // MARK: Desktop and Downloads
@@ -274,6 +281,24 @@ pdf(title: "Lease Renewal", subtitle: "Flat 3B · From 1 January 2027", accent: 
 
 for name in ["Music", "Movies", "Library", "Templates"] { _ = folder(name) }
 
+// MARK: A camera roll, for AI search's picture
+
+// Photos named as a phone names them, so only what they show can find them: the same dog four times at the beach
+// and once in a park, among the other things a phone fills up with.
+let cameraRoll = folder("Pictures/Camera Roll")
+let photos = URL(fileURLWithPath: "scripts/readme/photos", isDirectory: true)
+let roll: [(String, String)] = [
+    ("dog-beach-run", "IMG_4127"), ("dog-beach-ball", "IMG_4133"), ("dog-beach-shake", "IMG_4140"),
+    ("dog-beach-dune", "IMG_4152"), ("dog-park", "IMG_3988"), ("beach-umbrella", "IMG_4120"),
+    ("cat-window", "IMG_3861"), ("mountain-trail", "IMG_3902"), ("pasta", "IMG_4011"), ("city-night", "IMG_3740"),
+    ("cake", "IMG_3795"), ("latte", "IMG_4066"), ("harbour", "IMG_4098"),
+]
+for (source, name) in roll {
+    let from = photos.appendingPathComponent("\(source).jpg")
+    guard manager.fileExists(atPath: from.path) else { print("missing photo \(from.path)"); exit(1) }
+    try? manager.copyItem(at: from, to: cameraRoll.appendingPathComponent("\(name).jpg"))
+}
+
 // MARK: iCloud Drive and the Trash
 
 // Stand-ins where a real Mac keeps them, so the sidebar shows iCloud Drive and the Trash has something in it.
@@ -309,6 +334,20 @@ let pinnedDates: [String: Date] = [
     "Desktop/IMG_2110.jpg": day(1, 13, 12),
     "Documents/Scans/IMG_2066.jpg": day(8, 11, 2),
     "Documents/Scans/IMG_2079.jpg": day(10, 17, 36),
+    // The camera roll, taken over the summer and fall in the order of their numbers.
+    "Pictures/Camera Roll/IMG_3740.jpg": day(96, 21, 14),
+    "Pictures/Camera Roll/IMG_3795.jpg": day(88, 19, 2),
+    "Pictures/Camera Roll/IMG_3861.jpg": day(74, 8, 37),
+    "Pictures/Camera Roll/IMG_3902.jpg": day(66, 11, 48),
+    "Pictures/Camera Roll/IMG_3988.jpg": day(52, 16, 5),
+    "Pictures/Camera Roll/IMG_4011.jpg": day(47, 20, 26),
+    "Pictures/Camera Roll/IMG_4066.jpg": day(39, 9, 12),
+    "Pictures/Camera Roll/IMG_4098.jpg": day(33, 17, 41),
+    "Pictures/Camera Roll/IMG_4120.jpg": day(29, 10, 3),
+    "Pictures/Camera Roll/IMG_4127.jpg": day(29, 10, 9),
+    "Pictures/Camera Roll/IMG_4133.jpg": day(29, 10, 17),
+    "Pictures/Camera Roll/IMG_4140.jpg": day(29, 10, 22),
+    "Pictures/Camera Roll/IMG_4152.jpg": day(29, 15, 50),
     // The fall's invoices, each dated in step with its name, for AI search's picture.
     "Documents/Invoices/Invoice November.pdf": day(2, 10, 15),
     "Documents/Invoices/Invoice October.pdf": day(25, 14, 30),
